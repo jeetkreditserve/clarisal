@@ -1,5 +1,4 @@
 import pytest
-from django.urls import reverse
 from rest_framework.test import APIClient
 from apps.accounts.models import User, UserRole
 
@@ -71,7 +70,7 @@ class TestLogin:
         response = api_client.post('/api/auth/logout/', {
             'refresh': login.json()['refresh']
         }, format='json')
-        assert response.status_code == 200
+        assert response.status_code == 204
         # Attempt to refresh with blacklisted token
         refresh_response = api_client.post('/api/auth/refresh/', {
             'refresh': login.json()['refresh']

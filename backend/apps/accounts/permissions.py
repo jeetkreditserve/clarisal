@@ -1,5 +1,6 @@
 from rest_framework.permissions import BasePermission
 from .models import UserRole
+from apps.organisations.models import OrganisationStatus
 
 
 class IsControlTowerUser(BasePermission):
@@ -45,4 +46,7 @@ class BelongsToActiveOrg(BasePermission):
         if request.user.role == UserRole.CONTROL_TOWER:
             return True
         org = request.user.organisation
-        return org is not None and org.status in ['PAID', 'ACTIVE']
+        return org is not None and org.status in [
+            OrganisationStatus.PAID,
+            OrganisationStatus.ACTIVE,
+        ]
