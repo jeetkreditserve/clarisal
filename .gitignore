@@ -48,3 +48,4 @@ htmlcov/
 # Playwright
 frontend/playwright-report/
 frontend/test-results/
+frontend/tsconfig.tsbuildinfo
