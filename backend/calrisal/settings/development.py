@@ -1,5 +1,7 @@
 from .base import *
 
+INSTALLED_APPS += ['django_extensions']
+
 DEBUG = True
 
 # Use console email in development (override with file-based for Playwright tests)

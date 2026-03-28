@@ -79,7 +79,10 @@ TEMPLATES = [
 WSGI_APPLICATION = 'calrisal.wsgi.application'
 
 DATABASES = {
-    'default': env.db('DATABASE_URL', default='postgresql://calrisal:calrisal_dev_password@localhost:5432/calrisal')
+    'default': {
+        **env.db('DATABASE_URL', default='postgresql://calrisal:calrisal_dev_password@localhost:5432/calrisal'),
+        'CONN_MAX_AGE': 60,
+    }
 }
 
 AUTH_PASSWORD_VALIDATORS = [
@@ -148,6 +151,16 @@ CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'UTC'
 CELERY_TASK_TRACK_STARTED = True
 
+# Cache (Redis — use DB 1 to avoid collision with Celery broker on DB 0)
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+        'LOCATION': env('REDIS_URL', default='redis://localhost:6379/0').replace('/0', '/1'),
+    }
+}
+
+CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
+
 # Email
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = env('EMAIL_HOST', default='smtp.zoho.in')
@@ -168,4 +181,4 @@ AWS_S3_FILE_OVERWRITE = False
 
 # App config
 FRONTEND_URL = env('FRONTEND_URL', default='http://localhost:5173')
-INVITE_TOKEN_EXPIRY_HOURS = 48
+INVITE_TOKEN_EXPIRY_HOURS = env.int('INVITE_TOKEN_EXPIRY_HOURS', default=48)
