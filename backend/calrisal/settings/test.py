@@ -1,17 +1,10 @@
 from .development import *
 
-# Use local database for tests (not the Docker 'db' hostname)
+# Use in-memory SQLite for tests
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'calrisal_test',
-        'USER': 'calrisal',
-        'PASSWORD': 'calrisal_dev_password',
-        'HOST': 'localhost',
-        'PORT': '5432',
-        'TEST': {
-            'NAME': 'calrisal_test',
-        },
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': ':memory:',
     }
 }
 

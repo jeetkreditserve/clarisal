@@ -1,3 +1,3 @@
 import os
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'calrisal.settings.development')
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'calrisal.settings.test')
