@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import api from '@/lib/api'
+import { acceptInvite } from '@/lib/api/invitations'
 import { cn } from '@/lib/utils'
 
 export function InviteAcceptPage() {
@@ -36,11 +37,22 @@ export function InviteAcceptPage() {
     setError('')
     setIsLoading(true)
     try {
-      await api.post('/auth/invite/accept/', { token, password, confirm_password: confirmPassword })
-      navigate('/auth/login', { state: { message: 'Password set successfully. Please sign in.' } })
+      const result = await acceptInvite({ token: token!, password, confirm_password: confirmPassword })
+      localStorage.setItem('access_token', result.access)
+      localStorage.setItem('refresh_token', result.refresh)
+      const roleRoutes: Record<string, string> = {
+        CONTROL_TOWER: '/ct/dashboard',
+        ORG_ADMIN: '/org/dashboard',
+        EMPLOYEE: '/me/dashboard',
+      }
+      navigate(roleRoutes[result.user.role] ?? '/auth/login', { replace: true })
     } catch (err: unknown) {
-      const axiosError = err as { response?: { data?: { error?: string } } }
-      setError(axiosError.response?.data?.error || 'Failed to set password. The link may have expired.')
+      const axiosError = err as { response?: { data?: { error?: string; token?: string[] } } }
+      setError(
+        axiosError.response?.data?.error ??
+        axiosError.response?.data?.token?.[0] ??
+        'Failed to set password. The link may have expired.'
+      )
     } finally {
       setIsLoading(false)
     }

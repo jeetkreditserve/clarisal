@@ -7,6 +7,9 @@ import { LoginPage } from '@/pages/auth/LoginPage'
 import { InviteAcceptPage } from '@/pages/auth/InviteAcceptPage'
 import { RequestPasswordResetPage } from '@/pages/auth/RequestPasswordResetPage'
 import { CTDashboardPage } from '@/pages/ct/DashboardPage'
+import { OrganisationsPage } from '@/pages/ct/OrganisationsPage'
+import { NewOrganisationPage } from '@/pages/ct/NewOrganisationPage'
+import { OrganisationDetailPage } from '@/pages/ct/OrganisationDetailPage'
 import { OrgDashboardPage } from '@/pages/org/DashboardPage'
 import { EmployeeDashboardPage } from '@/pages/employee/DashboardPage'
 
@@ -33,7 +36,9 @@ export const router = createBrowserRouter([
         element: <CTLayout />,
         children: [
           { path: '/ct/dashboard', element: <CTDashboardPage /> },
-          // Phase 2: CT organisation routes will be added here
+          { path: '/ct/organisations', element: <OrganisationsPage /> },
+          { path: '/ct/organisations/new', element: <NewOrganisationPage /> },
+          { path: '/ct/organisations/:id', element: <OrganisationDetailPage /> },
         ],
       },
     ],
