@@ -2,6 +2,7 @@ from django.db import transaction
 from django.utils import timezone
 from django.conf import settings
 from rest_framework import serializers as drf_serializers
+from rest_framework.exceptions import NotFound
 from apps.accounts.models import User, UserRole
 from apps.organisations.models import OrganisationStatus
 from apps.organisations.services import transition_organisation_state
@@ -23,7 +24,7 @@ def create_org_admin_invitation(organisation, email, first_name, last_name, invi
         ).update(status=InvitationStatus.REVOKED)
 
         # Create or get user (may already exist if re-inviting)
-        user, _ = User.objects.get_or_create(
+        user, created = User.objects.get_or_create(
             email=email,
             defaults={
                 'first_name': first_name,
@@ -33,7 +34,7 @@ def create_org_admin_invitation(organisation, email, first_name, last_name, invi
                 'is_active': False,
             },
         )
-        if not user.is_active:
+        if not created and not user.is_active:
             user.first_name = first_name
             user.last_name = last_name
             user.organisation = organisation
@@ -59,7 +60,7 @@ def validate_invite_token(token):
     try:
         invite = Invitation.objects.select_related('organisation', 'user').get(token=token)
     except Invitation.DoesNotExist:
-        raise drf_serializers.ValidationError({'token': 'Invitation not found.'})
+        raise NotFound('Invitation not found.')
 
     if not invite.is_valid:
         if invite.is_expired:
@@ -80,7 +81,7 @@ def accept_invitation(token, password):
     with transaction.atomic():
         user.set_password(password)
         user.is_active = True
-        user.save(update_fields=['password', 'is_active', 'updated_at'])
+        user.save(update_fields=['password', 'is_active'])
 
         invite.status = InvitationStatus.ACCEPTED
         invite.save(update_fields=['status'])

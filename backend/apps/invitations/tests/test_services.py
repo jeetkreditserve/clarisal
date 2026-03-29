@@ -6,6 +6,7 @@ from apps.invitations.models import Invitation, InvitationRole, InvitationStatus
 from apps.invitations.services import create_org_admin_invitation, validate_invite_token, accept_invitation
 from apps.organisations.models import Organisation, OrganisationStatus
 from rest_framework import serializers as drf_serializers
+from rest_framework.exceptions import NotFound
 
 
 @pytest.fixture
@@ -83,7 +84,7 @@ class TestValidateInviteToken:
             validate_invite_token(invite.token)
 
     def test_raises_for_nonexistent_token(self):
-        with pytest.raises(drf_serializers.ValidationError):
+        with pytest.raises(NotFound):
             validate_invite_token('nonexistent-token-xyz')
 
 

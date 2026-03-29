@@ -4,7 +4,7 @@ from django.core.mail import send_mail
 from django.conf import settings
 
 
-@shared_task(bind=True, autoretry_for=(SMTPException,), max_retries=3, default_retry_delay=60)
+@shared_task(bind=True, autoretry_for=(SMTPException, OSError), max_retries=3, default_retry_delay=60)
 def send_invite_email(self, invite_id: str):
     from apps.invitations.models import Invitation
     from django.db import transaction
@@ -21,6 +21,7 @@ def send_invite_email(self, invite_id: str):
         invite_url = f"{settings.FRONTEND_URL}/auth/invite/{invite.token}"
         org_name = invite.organisation.name if invite.organisation else 'Calrisal'
         invited_by_name = invite.invited_by.full_name if invite.invited_by else 'the platform admin'
+        expiry_hours = getattr(settings, 'INVITE_TOKEN_EXPIRY_HOURS', 48)
 
         subject = f"You've been invited to join {org_name} on Calrisal"
         body = (
@@ -29,7 +30,7 @@ def send_invite_email(self, invite_id: str):
             f"as {invite.role}.\n\n"
             f"Click the link below to set your password and get started:\n\n"
             f"{invite_url}\n\n"
-            f"This link expires in 48 hours.\n\n"
+            f"This link expires in {expiry_hours} hours.\n\n"
             f"If you weren't expecting this invitation, you can safely ignore this email.\n\n"
             f"— The Calrisal Team"
         )
