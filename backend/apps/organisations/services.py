@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.db.models import Count, Q
 from apps.accounts.models import User, UserRole
 from .models import Organisation, OrganisationStateTransition, OrganisationStatus
 
@@ -49,11 +50,18 @@ def update_licence_count(org, new_count):
 
 
 def get_ct_dashboard_stats():
+    agg = Organisation.objects.aggregate(
+        total=Count('id'),
+        active=Count('id', filter=Q(status=OrganisationStatus.ACTIVE)),
+        pending=Count('id', filter=Q(status=OrganisationStatus.PENDING)),
+        paid=Count('id', filter=Q(status=OrganisationStatus.PAID)),
+        suspended=Count('id', filter=Q(status=OrganisationStatus.SUSPENDED)),
+    )
     return {
-        'total_organisations': Organisation.objects.count(),
-        'active_organisations': Organisation.objects.filter(status=OrganisationStatus.ACTIVE).count(),
-        'pending_organisations': Organisation.objects.filter(status=OrganisationStatus.PENDING).count(),
-        'paid_organisations': Organisation.objects.filter(status=OrganisationStatus.PAID).count(),
-        'suspended_organisations': Organisation.objects.filter(status=OrganisationStatus.SUSPENDED).count(),
+        'total_organisations': agg['total'],
+        'active_organisations': agg['active'],
+        'pending_organisations': agg['pending'],
+        'paid_organisations': agg['paid'],
+        'suspended_organisations': agg['suspended'],
         'total_employees': User.objects.filter(role=UserRole.EMPLOYEE, is_active=True).count(),
     }
