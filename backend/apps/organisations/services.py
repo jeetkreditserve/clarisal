@@ -28,16 +28,17 @@ def transition_organisation_state(org, new_status, transitioned_by, note=''):
             f"Cannot transition from '{org.status}' to '{new_status}'. "
             f"Allowed: {[s.value for s in allowed]}"
         )
-    old_status = org.status
-    org.status = new_status
-    org.save(update_fields=['status', 'updated_at'])
-    OrganisationStateTransition.objects.create(
-        organisation=org,
-        from_status=old_status,
-        to_status=new_status,
-        transitioned_by=transitioned_by,
-        note=note,
-    )
+    with transaction.atomic():
+        old_status = org.status
+        org.status = new_status
+        org.save(update_fields=['status', 'updated_at'])
+        OrganisationStateTransition.objects.create(
+            organisation=org,
+            from_status=old_status,
+            to_status=new_status,
+            transitioned_by=transitioned_by,
+            note=note,
+        )
     return org
 
 

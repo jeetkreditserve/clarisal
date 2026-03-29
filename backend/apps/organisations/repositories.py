@@ -1,3 +1,4 @@
+from apps.accounts.models import User, UserRole
 from .models import Organisation
 
 
@@ -10,5 +11,4 @@ def get_organisation_by_id(pk):
 
 
 def get_org_admins(organisation):
-    from apps.accounts.models import User, UserRole
     return User.objects.filter(organisation=organisation, role=UserRole.ORG_ADMIN)

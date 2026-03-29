@@ -77,6 +77,12 @@ class TestTransitionOrganisationState:
         result = transition_organisation_state(pending_org, OrganisationStatus.SUSPENDED, ct_user)
         assert result.status == OrganisationStatus.SUSPENDED
 
+    def test_suspended_to_active_succeeds(self, ct_user, pending_org):
+        pending_org.status = OrganisationStatus.SUSPENDED
+        pending_org.save()
+        result = transition_organisation_state(pending_org, OrganisationStatus.ACTIVE, ct_user)
+        assert result.status == OrganisationStatus.ACTIVE
+
 
 @pytest.mark.django_db
 class TestUpdateLicenceCount:
@@ -96,3 +102,6 @@ class TestGetCtDashboardStats:
         assert stats['total_organisations'] == 2
         assert stats['active_organisations'] == 1
         assert stats['pending_organisations'] == 1
+        assert stats['paid_organisations'] == 0
+        assert stats['suspended_organisations'] == 0
+        assert stats['total_employees'] == 0
