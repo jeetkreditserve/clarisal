@@ -11,5 +11,5 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('health/', health_check),
     path('api/auth/', include('apps.accounts.urls')),
-    # Phase 2+: CT, Org, Employee URLs will be added here
+    path('api/ct/', include('apps.organisations.urls')),
 ]
