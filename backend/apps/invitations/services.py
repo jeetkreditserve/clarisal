@@ -1,10 +1,9 @@
-import secrets
 from django.db import transaction
 from django.utils import timezone
 from django.conf import settings
 from rest_framework import serializers as drf_serializers
 from apps.accounts.models import User, UserRole
-from apps.organisations.models import Organisation, OrganisationStatus
+from apps.organisations.models import OrganisationStatus
 from apps.organisations.services import transition_organisation_state
 from .models import Invitation, InvitationRole, InvitationStatus
 
@@ -42,7 +41,6 @@ def create_org_admin_invitation(organisation, email, first_name, last_name, invi
             user.save(update_fields=['first_name', 'last_name', 'organisation', 'role'])
 
         invite = Invitation.objects.create(
-            token=secrets.token_urlsafe(32),
             email=email,
             organisation=organisation,
             role=InvitationRole.ORG_ADMIN,
@@ -52,7 +50,8 @@ def create_org_admin_invitation(organisation, email, first_name, last_name, invi
             expires_at=timezone.now() + timezone.timedelta(hours=expiry_hours),
         )
 
-    transaction.on_commit(lambda: send_invite_email.delay(str(invite.id)))
+        transaction.on_commit(lambda: send_invite_email.delay(str(invite.id)))
+
     return user, invite
 
 
@@ -75,6 +74,8 @@ def accept_invitation(token, password):
 
     invite = validate_invite_token(token)
     user = invite.user
+    if user is None:
+        raise drf_serializers.ValidationError({'token': 'Invitation has no associated user.'})
 
     with transaction.atomic():
         user.set_password(password)
