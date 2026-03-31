@@ -1,17 +1,20 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ArrowLeft, CreditCard, History, Mail, ShieldAlert, UserPlus } from 'lucide-react'
 import { toast } from 'sonner'
 import {
+  useCreateLicenceBatch,
   useInviteOrgAdmin,
+  useMarkLicenceBatchPaid,
   useMarkOrganisationPaid,
   useOrganisation,
   useOrgAdmins,
   useResendOrgAdminInvite,
   useRestoreOrganisation,
   useSuspendOrganisation,
-  useUpdateOrgLicences,
+  useUpdateLicenceBatch,
 } from '@/hooks/useCtOrganisations'
+import type { LicenceBatch } from '@/types/organisation'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
@@ -26,6 +29,43 @@ import {
 } from '@/lib/status'
 import { getErrorMessage } from '@/lib/errors'
 
+type BatchFormState = {
+  quantity: string
+  price_per_licence_per_month: string
+  start_date: string
+  end_date: string
+  note: string
+}
+
+function calculateBillingMonths(startDate: string, endDate: string) {
+  if (!startDate || !endDate) return 0
+  const start = new Date(`${startDate}T00:00:00Z`)
+  const end = new Date(`${endDate}T00:00:00Z`)
+  const diffMs = end.getTime() - start.getTime()
+  if (Number.isNaN(diffMs) || diffMs < 0) return 0
+  const totalDays = Math.floor(diffMs / (24 * 60 * 60 * 1000)) + 1
+  return Math.max(1, Math.ceil(totalDays / 30))
+}
+
+function formatMoney(value: string | number, currency = 'INR') {
+  const numeric = typeof value === 'number' ? value : Number(value)
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency,
+    maximumFractionDigits: 2,
+  }).format(Number.isFinite(numeric) ? numeric : 0)
+}
+
+function emptyBatchForm(): BatchFormState {
+  return {
+    quantity: '1',
+    price_per_licence_per_month: '0.00',
+    start_date: '',
+    end_date: '',
+    note: '',
+  }
+}
+
 export function OrganisationDetailPage() {
   const { id } = useParams<{ id: string }>()
   const organisationId = id ?? ''
@@ -36,18 +76,42 @@ export function OrganisationDetailPage() {
   const restoreMutation = useRestoreOrganisation()
   const inviteAdminMutation = useInviteOrgAdmin(organisationId)
   const resendInviteMutation = useResendOrgAdminInvite(organisationId)
-  const updateLicencesMutation = useUpdateOrgLicences(organisationId)
+  const createBatchMutation = useCreateLicenceBatch(organisationId)
+  const updateBatchMutation = useUpdateLicenceBatch(organisationId)
+  const markBatchPaidMutation = useMarkLicenceBatchPaid(organisationId)
 
   const [actionNote, setActionNote] = useState('')
-  const [licenceCountInput, setLicenceCountInput] = useState('')
-  const [licenceNote, setLicenceNote] = useState('')
   const [showInviteForm, setShowInviteForm] = useState(false)
   const [inviteForm, setInviteForm] = useState({ email: '', first_name: '', last_name: '' })
+  const [batchForm, setBatchForm] = useState<BatchFormState>(emptyBatchForm)
+  const [editingBatchId, setEditingBatchId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!organisation) return
+    if (editingBatchId) return
+    setBatchForm({
+      quantity: '1',
+      price_per_licence_per_month: organisation.batch_defaults.price_per_licence_per_month,
+      start_date: organisation.batch_defaults.start_date,
+      end_date: organisation.batch_defaults.end_date,
+      note: '',
+    })
+  }, [editingBatchId, organisation])
 
   const completedSteps = useMemo(() => {
     const currentIndex = ORG_ONBOARDING_STEPS.findIndex((step) => step.id === organisation?.onboarding_stage)
     return currentIndex >= 0 ? currentIndex : 0
   }, [organisation?.onboarding_stage])
+
+  const pricingPreview = useMemo(() => {
+    const months = calculateBillingMonths(batchForm.start_date, batchForm.end_date)
+    const quantity = Number(batchForm.quantity || 0)
+    const price = Number(batchForm.price_per_licence_per_month || 0)
+    return {
+      billingMonths: months,
+      totalAmount: quantity * price * months,
+    }
+  }, [batchForm])
 
   if (isLoading || !organisation) {
     return (
@@ -60,6 +124,17 @@ export function OrganisationDetailPage() {
         </div>
       </div>
     )
+  }
+
+  const resetBatchForm = () => {
+    setEditingBatchId(null)
+    setBatchForm({
+      quantity: '1',
+      price_per_licence_per_month: organisation.batch_defaults.price_per_licence_per_month,
+      start_date: organisation.batch_defaults.start_date,
+      end_date: organisation.batch_defaults.end_date,
+      note: '',
+    })
   }
 
   const handleMarkPaid = async () => {
@@ -114,17 +189,51 @@ export function OrganisationDetailPage() {
     }
   }
 
-  const handleUpdateLicences = async () => {
+  const handleEditBatch = (batch: LicenceBatch) => {
+    setEditingBatchId(batch.id)
+    setBatchForm({
+      quantity: String(batch.quantity),
+      price_per_licence_per_month: batch.price_per_licence_per_month,
+      start_date: batch.start_date,
+      end_date: batch.end_date,
+      note: batch.note,
+    })
+  }
+
+  const handleSaveBatch = async (event: React.FormEvent) => {
+    event.preventDefault()
+    const payload = {
+      quantity: Number(batchForm.quantity),
+      price_per_licence_per_month: batchForm.price_per_licence_per_month,
+      start_date: batchForm.start_date,
+      end_date: batchForm.end_date,
+      note: batchForm.note,
+    }
+
     try {
-      await updateLicencesMutation.mutateAsync({
-        count: Number(licenceCountInput || organisation.licence_summary.purchased),
-        note: licenceNote,
-      })
-      toast.success('Licence allocation updated.')
-      setLicenceNote('')
-      setLicenceCountInput('')
+      if (editingBatchId) {
+        await updateBatchMutation.mutateAsync({ batchId: editingBatchId, payload })
+        toast.success('Draft licence batch updated.')
+      } else {
+        await createBatchMutation.mutateAsync(payload)
+        toast.success('Draft licence batch created.')
+      }
+      resetBatchForm()
     } catch (error) {
-      toast.error(getErrorMessage(error, 'Unable to update licences.'))
+      toast.error(getErrorMessage(error, 'Unable to save licence batch.'))
+    }
+  }
+
+  const handleMarkBatchPaid = async (batchId: string) => {
+    if (!window.confirm('Mark this licence batch as paid? It will become read-only afterwards.')) return
+    try {
+      await markBatchPaidMutation.mutateAsync({ batchId })
+      toast.success('Licence batch marked as paid.')
+      if (editingBatchId === batchId) {
+        resetBatchForm()
+      }
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to mark the licence batch as paid.'))
     }
   }
 
@@ -138,12 +247,12 @@ export function OrganisationDetailPage() {
       <PageHeader
         eyebrow="Organisation detail"
         title={organisation.name}
-        description={`Tenant ${organisation.slug} is currently ${startCase(organisation.status)} with ${organisation.licence_summary.allocated} of ${organisation.licence_summary.purchased} licences allocated.`}
+        description={`Tenant ${organisation.slug} is currently ${startCase(organisation.status)} with ${organisation.licence_summary.allocated} allocated employees against ${organisation.licence_summary.active_paid_quantity} active paid seats.`}
         actions={
           <>
             {organisation.status === 'PENDING' ? (
               <button onClick={handleMarkPaid} className="btn-primary" disabled={markPaidMutation.isPending}>
-                Mark payment received
+                Mark organisation paid
               </button>
             ) : null}
             {organisation.status === 'ACTIVE' ? (
@@ -251,13 +360,14 @@ export function OrganisationDetailPage() {
         </div>
       </SectionCard>
 
-      <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        <SectionCard title="Licence control" description="Seat availability governs employee invitations and active onboarding.">
-          <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+        <SectionCard title="Licence capacity" description="Only paid batches that are currently active contribute seats for employee invitations.">
+          <div className="grid gap-4 md:grid-cols-4">
             {[
-              { label: 'Purchased', value: organisation.licence_summary.purchased },
-              { label: 'Allocated', value: organisation.licence_summary.allocated },
-              { label: 'Available', value: organisation.licence_summary.available },
+              { label: 'Active paid seats', value: organisation.licence_summary.active_paid_quantity },
+              { label: 'Allocated employees', value: organisation.licence_summary.allocated },
+              { label: 'Available seats', value: organisation.licence_summary.available },
+              { label: 'Overage', value: organisation.licence_summary.overage },
             ].map((item) => (
               <div key={item.label} className="surface-muted rounded-[24px] p-5">
                 <p className="text-sm text-[hsl(var(--muted-foreground))]">{item.label}</p>
@@ -266,57 +376,155 @@ export function OrganisationDetailPage() {
             ))}
           </div>
 
-          <div className="mt-5 grid gap-4 lg:grid-cols-[160px_minmax(0,1fr)_auto]">
+          {organisation.licence_summary.has_overage ? (
+            <div className="notice-error mt-5">
+              Active paid capacity is below allocated employees. New employee invites are blocked until capacity is restored.
+            </div>
+          ) : null}
+
+          <form onSubmit={handleSaveBatch} className="mt-6 grid gap-4 lg:grid-cols-2">
             <div>
-              <label htmlFor="licence-count" className="field-label">
-                New total
+              <label htmlFor="batch-quantity" className="field-label">
+                Quantity
               </label>
               <input
-                id="licence-count"
+                id="batch-quantity"
                 type="number"
-                min={organisation.licence_summary.allocated}
-                value={licenceCountInput || String(organisation.licence_summary.purchased)}
-                onChange={(event) => setLicenceCountInput(event.target.value)}
+                min={1}
+                value={batchForm.quantity}
+                onChange={(event) => setBatchForm((current) => ({ ...current, quantity: event.target.value }))}
                 className="field-input"
               />
             </div>
             <div>
-              <label htmlFor="licence-note" className="field-label">
-                Change note
+              <label htmlFor="batch-price" className="field-label">
+                Price per licence per month
               </label>
               <input
-                id="licence-note"
-                value={licenceNote}
-                onChange={(event) => setLicenceNote(event.target.value)}
+                id="batch-price"
+                type="number"
+                min={0}
+                step="0.01"
+                value={batchForm.price_per_licence_per_month}
+                onChange={(event) => setBatchForm((current) => ({ ...current, price_per_licence_per_month: event.target.value }))}
                 className="field-input"
-                placeholder="Optional context for the ledger entry"
               />
             </div>
-            <div className="flex items-end">
-              <button onClick={handleUpdateLicences} disabled={updateLicencesMutation.isPending} className="btn-primary">
-                <CreditCard className="h-4 w-4" />
-                Update licences
-              </button>
+            <div>
+              <label htmlFor="batch-start-date" className="field-label">
+                Start date
+              </label>
+              <input
+                id="batch-start-date"
+                type="date"
+                value={batchForm.start_date}
+                onChange={(event) => setBatchForm((current) => ({ ...current, start_date: event.target.value }))}
+                className="field-input"
+              />
             </div>
-          </div>
+            <div>
+              <label htmlFor="batch-end-date" className="field-label">
+                End date
+              </label>
+              <input
+                id="batch-end-date"
+                type="date"
+                value={batchForm.end_date}
+                onChange={(event) => setBatchForm((current) => ({ ...current, end_date: event.target.value }))}
+                className="field-input"
+              />
+            </div>
+            <div className="lg:col-span-2">
+              <label htmlFor="batch-note" className="field-label">
+                Note
+              </label>
+              <input
+                id="batch-note"
+                value={batchForm.note}
+                onChange={(event) => setBatchForm((current) => ({ ...current, note: event.target.value }))}
+                className="field-input"
+                placeholder="Optional context for the commercial batch"
+              />
+            </div>
+            <div className="surface-muted rounded-[24px] p-5">
+              <p className="text-sm text-[hsl(var(--muted-foreground))]">Billing months</p>
+              <p className="mt-2 text-2xl font-semibold text-[hsl(var(--foreground-strong))]">{pricingPreview.billingMonths}</p>
+            </div>
+            <div className="surface-muted rounded-[24px] p-5">
+              <p className="text-sm text-[hsl(var(--muted-foreground))]">Upfront total</p>
+              <p className="mt-2 text-2xl font-semibold text-[hsl(var(--foreground-strong))]">
+                {formatMoney(pricingPreview.totalAmount, organisation.currency)}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-3 lg:col-span-2">
+              <button type="submit" className="btn-primary" disabled={createBatchMutation.isPending || updateBatchMutation.isPending}>
+                <CreditCard className="h-4 w-4" />
+                {editingBatchId ? 'Update draft batch' : 'Create draft batch'}
+              </button>
+              {editingBatchId ? (
+                <button type="button" onClick={resetBatchForm} className="btn-secondary">
+                  Cancel editing
+                </button>
+              ) : null}
+            </div>
+          </form>
 
           <div className="table-shell mt-6">
             <table className="min-w-full text-sm">
               <thead>
                 <tr className="table-head-row">
-                  <th className="pb-3 pr-4 font-semibold">Delta</th>
-                  <th className="pb-3 pr-4 font-semibold">Reason</th>
-                  <th className="pb-3 pr-4 font-semibold">Note</th>
-                  <th className="pb-3 font-semibold">Created</th>
+                  <th className="pb-3 pr-4 font-semibold">Qty</th>
+                  <th className="pb-3 pr-4 font-semibold">Price</th>
+                  <th className="pb-3 pr-4 font-semibold">Term</th>
+                  <th className="pb-3 pr-4 font-semibold">Months</th>
+                  <th className="pb-3 pr-4 font-semibold">Total</th>
+                  <th className="pb-3 pr-4 font-semibold">State</th>
+                  <th className="pb-3 text-right font-semibold">Action</th>
                 </tr>
               </thead>
               <tbody className="table-body">
-                {organisation.licence_ledger_entries.map((entry) => (
-                  <tr key={entry.id} className="table-row border-b border-[hsla(var(--border),0.76)] last:border-b-0">
-                    <td className="table-primary py-4 pr-4 font-semibold">{entry.delta > 0 ? `+${entry.delta}` : entry.delta}</td>
-                    <td className="table-secondary py-4 pr-4">{startCase(entry.reason)}</td>
-                    <td className="table-secondary py-4 pr-4">{entry.note || 'No note'}</td>
-                    <td className="table-secondary py-4">{formatDateTime(entry.created_at)}</td>
+                {organisation.licence_batches.map((batch) => (
+                  <tr key={batch.id} className="table-row border-b border-[hsla(var(--border),0.76)] last:border-b-0">
+                    <td className="table-primary py-4 pr-4 font-semibold">{batch.quantity}</td>
+                    <td className="table-secondary py-4 pr-4">{formatMoney(batch.price_per_licence_per_month, organisation.currency)}</td>
+                    <td className="table-secondary py-4 pr-4">
+                      {formatDate(batch.start_date)} to {formatDate(batch.end_date)}
+                    </td>
+                    <td className="table-secondary py-4 pr-4">{batch.billing_months}</td>
+                    <td className="table-secondary py-4 pr-4">{formatMoney(batch.total_amount, organisation.currency)}</td>
+                    <td className="py-4 pr-4">
+                      <div className="flex flex-wrap gap-2">
+                        <StatusBadge tone={batch.payment_status === 'PAID' ? 'success' : 'warning'}>
+                          {startCase(batch.payment_status)}
+                        </StatusBadge>
+                        <StatusBadge tone={batch.lifecycle_state === 'ACTIVE' ? 'success' : batch.lifecycle_state === 'EXPIRED' ? 'danger' : 'info'}>
+                          {startCase(batch.lifecycle_state)}
+                        </StatusBadge>
+                      </div>
+                    </td>
+                    <td className="py-4 text-right">
+                      <div className="flex justify-end gap-2">
+                        {batch.payment_status === 'DRAFT' ? (
+                          <>
+                            <button onClick={() => handleEditBatch(batch)} className="btn-ghost" type="button">
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => handleMarkBatchPaid(batch.id)}
+                              className="btn-primary"
+                              type="button"
+                              disabled={markBatchPaidMutation.isPending}
+                            >
+                              Mark paid
+                            </button>
+                          </>
+                        ) : (
+                          <span className="text-xs font-medium uppercase tracking-[0.16em] text-[hsl(var(--muted-foreground))]">
+                            Locked
+                          </span>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>

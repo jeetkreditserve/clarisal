@@ -1,6 +1,7 @@
 import api from '@/lib/api'
 import type {
   CtDashboardStats,
+  LicenceBatch,
   OrgAdmin,
   OrganisationDetail,
   OrganisationListItem,
@@ -28,7 +29,6 @@ export async function fetchOrganisation(id: string): Promise<OrganisationDetail>
 
 export async function createOrganisation(payload: {
   name: string
-  licence_count: number
   address?: string
   phone?: string
   email?: string
@@ -70,19 +70,53 @@ export async function fetchOrgLicences(id: string): Promise<{
   total_count: number
   used_count: number
   available_count: number
+  overage_count: number
   utilisation_percent: number
 }> {
   const { data } = await api.get(`/ct/organisations/${id}/licences/`)
   return data
 }
 
-export async function updateOrgLicences(id: string, licence_count: number, note = ''): Promise<{
-  total_count: number
-  used_count: number
-  available_count: number
-  utilisation_percent: number
-}> {
-  const { data } = await api.patch(`/ct/organisations/${id}/licences/`, { licence_count, note })
+export async function fetchLicenceBatches(id: string): Promise<LicenceBatch[]> {
+  const { data } = await api.get(`/ct/organisations/${id}/licence-batches/`)
+  return data
+}
+
+export async function createLicenceBatch(
+  id: string,
+  payload: {
+    quantity: number
+    price_per_licence_per_month: string
+    start_date: string
+    end_date: string
+    note?: string
+  }
+): Promise<LicenceBatch> {
+  const { data } = await api.post(`/ct/organisations/${id}/licence-batches/`, payload)
+  return data
+}
+
+export async function updateLicenceBatch(
+  id: string,
+  batchId: string,
+  payload: Partial<{
+    quantity: number
+    price_per_licence_per_month: string
+    start_date: string
+    end_date: string
+    note: string
+  }>
+): Promise<LicenceBatch> {
+  const { data } = await api.patch(`/ct/organisations/${id}/licence-batches/${batchId}/`, payload)
+  return data
+}
+
+export async function markLicenceBatchPaid(
+  id: string,
+  batchId: string,
+  payload?: { paid_at?: string }
+): Promise<LicenceBatch> {
+  const { data } = await api.post(`/ct/organisations/${id}/licence-batches/${batchId}/mark-paid/`, payload ?? {})
   return data
 }
 

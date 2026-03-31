@@ -1,6 +1,8 @@
 export type OrganisationStatus = 'PENDING' | 'PAID' | 'ACTIVE' | 'SUSPENDED'
 export type OrganisationBillingStatus = 'PENDING_PAYMENT' | 'PAID'
 export type OrganisationAccessState = 'PROVISIONING' | 'ACTIVE' | 'SUSPENDED'
+export type LicenceBatchPaymentStatus = 'DRAFT' | 'PAID'
+export type LicenceBatchLifecycleState = 'DRAFT' | 'PAID_PENDING_START' | 'ACTIVE' | 'EXPIRED'
 export type OrganisationOnboardingStage =
   | 'ORG_CREATED'
   | 'LICENCES_ASSIGNED'
@@ -58,10 +60,38 @@ export interface LicenceLedgerEntry {
 }
 
 export interface LicenceSummary {
-  purchased: number
+  active_paid_quantity: number
   allocated: number
   available: number
+  overage: number
+  has_overage: boolean
   utilisation_percent: number
+}
+
+export interface LicenceBatch {
+  id: string
+  quantity: number
+  price_per_licence_per_month: string
+  start_date: string
+  end_date: string
+  billing_months: number
+  total_amount: string
+  payment_status: LicenceBatchPaymentStatus
+  lifecycle_state: LicenceBatchLifecycleState
+  note: string
+  created_by_email: string | null
+  paid_by_email: string | null
+  paid_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface LicenceBatchDefaults {
+  start_date: string
+  end_date: string
+  price_per_licence_per_month: string
+  billing_months: number
+  total_amount: string
 }
 
 export interface OrganisationDetail {
@@ -90,6 +120,8 @@ export interface OrganisationDetail {
   lifecycle_events: LifecycleEvent[]
   licence_ledger_entries: LicenceLedgerEntry[]
   licence_summary: LicenceSummary
+  licence_batches: LicenceBatch[]
+  batch_defaults: LicenceBatchDefaults
 }
 
 export interface OrgAdmin {

@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from datetime import timedelta
+from decimal import Decimal
 import environ
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -180,3 +181,4 @@ AWS_S3_FILE_OVERWRITE = False
 FRONTEND_URL = env('FRONTEND_URL', default='http://localhost:5173')
 INVITE_TOKEN_EXPIRY_HOURS = env.int('INVITE_TOKEN_EXPIRY_HOURS', default=48)
 PASSWORD_RESET_TOKEN_EXPIRY_MINUTES = env.int('PASSWORD_RESET_TOKEN_EXPIRY_MINUTES', default=30)
+DEFAULT_LICENCE_PRICE_PER_MONTH = env.decimal('DEFAULT_LICENCE_PRICE_PER_MONTH', default=Decimal('0.00'))

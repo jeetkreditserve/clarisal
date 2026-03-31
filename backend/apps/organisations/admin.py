@@ -2,6 +2,7 @@ from django.contrib import admin
 
 from .models import (
     Organisation,
+    OrganisationLicenceBatch,
     OrganisationLifecycleEvent,
     OrganisationLicenceLedger,
     OrganisationMembership,
@@ -39,6 +40,22 @@ class OrganisationLicenceLedgerAdmin(admin.ModelAdmin):
     list_filter = ('reason',)
     search_fields = ('organisation__name', 'created_by__email', 'note')
     autocomplete_fields = ('organisation', 'created_by')
+
+
+@admin.register(OrganisationLicenceBatch)
+class OrganisationLicenceBatchAdmin(admin.ModelAdmin):
+    list_display = (
+        'organisation',
+        'quantity',
+        'price_per_licence_per_month',
+        'payment_status',
+        'start_date',
+        'end_date',
+        'paid_at',
+    )
+    list_filter = ('payment_status', 'start_date', 'end_date')
+    search_fields = ('organisation__name', 'note')
+    autocomplete_fields = ('organisation', 'created_by', 'paid_by')
 
 
 @admin.register(OrganisationLifecycleEvent)

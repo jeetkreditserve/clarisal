@@ -5,6 +5,9 @@ from .views import (
     OrganisationActivateView,
     OrganisationAdminsView,
     OrganisationDetailView,
+    OrganisationLicenceBatchDetailView,
+    OrganisationLicenceBatchListCreateView,
+    OrganisationLicenceBatchMarkPaidView,
     OrganisationLicencesView,
     OrganisationListCreateView,
     OrganisationRestoreView,
@@ -19,5 +22,8 @@ urlpatterns = [
     path('organisations/<uuid:pk>/restore/', OrganisationRestoreView.as_view(), name='organisation-restore'),
     path('organisations/<uuid:pk>/suspend/', OrganisationSuspendView.as_view(), name='organisation-suspend'),
     path('organisations/<uuid:pk>/licences/', OrganisationLicencesView.as_view(), name='organisation-licences'),
+    path('organisations/<uuid:pk>/licence-batches/', OrganisationLicenceBatchListCreateView.as_view(), name='organisation-licence-batch-list-create'),
+    path('organisations/<uuid:pk>/licence-batches/<uuid:batch_id>/', OrganisationLicenceBatchDetailView.as_view(), name='organisation-licence-batch-detail'),
+    path('organisations/<uuid:pk>/licence-batches/<uuid:batch_id>/mark-paid/', OrganisationLicenceBatchMarkPaidView.as_view(), name='organisation-licence-batch-mark-paid'),
     path('organisations/<uuid:pk>/admins/', OrganisationAdminsView.as_view(), name='organisation-admins'),
 ]

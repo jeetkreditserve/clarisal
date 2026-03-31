@@ -31,8 +31,10 @@ from apps.organisations.models import (
     OrganisationStatus,
 )
 from apps.organisations.services import (
+    create_licence_batch,
     create_organisation,
     ensure_org_admin_membership,
+    mark_licence_batch_paid,
     mark_employee_invited,
     mark_master_data_configured,
     set_primary_admin,
@@ -199,6 +201,7 @@ class Command(BaseCommand):
             groups = self._ensure_groups()
             control_tower = self._ensure_control_tower_user(control_tower_password, groups['control_tower'])
             organisation = self._ensure_organisation(control_tower, licence_count)
+            organisation = self._ensure_primary_licence_batch(organisation, control_tower, licence_count)
             organisation = self._ensure_paid(organisation, control_tower)
             org_admin = self._ensure_org_admin(organisation, control_tower, groups['org_admin'])
             organisation = self._ensure_primary_admin(organisation, org_admin, control_tower)
@@ -312,6 +315,27 @@ class Command(BaseCommand):
                 )
             except ValueError as exc:
                 raise CommandError(str(exc)) from exc
+        return organisation
+
+    def _ensure_primary_licence_batch(self, organisation, actor, licence_count):
+        batch = organisation.licence_batches.order_by('created_at').first()
+        today = date.today()
+        try:
+            default_end_date = today.replace(year=today.year + 1)
+        except ValueError:
+            default_end_date = today.replace(month=2, day=28, year=today.year + 1)
+        if batch is None:
+            batch = create_licence_batch(
+                organisation,
+                quantity=licence_count,
+                price_per_licence_per_month='0.00',
+                start_date=today,
+                end_date=default_end_date,
+                created_by=actor,
+                note='Seed opening licence batch',
+            )
+        if batch.payment_status != 'PAID':
+            batch = mark_licence_batch_paid(batch, paid_by=actor, paid_at=today)
         return organisation
 
     def _ensure_paid(self, organisation, control_tower):

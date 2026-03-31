@@ -106,7 +106,7 @@ export function CTDashboardPage() {
                 <tr className="table-head-row">
                   <th className="pb-3 pr-4 font-semibold">Organisation</th>
                   <th className="pb-3 pr-4 font-semibold">State</th>
-                  <th className="pb-3 pr-4 font-semibold">Licences</th>
+                  <th className="pb-3 pr-4 font-semibold">Active seats</th>
                   <th className="pb-3 font-semibold">Created</th>
                 </tr>
               </thead>

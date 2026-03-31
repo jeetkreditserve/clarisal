@@ -1,17 +1,20 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
+  createLicenceBatch,
   createOrganisation,
   fetchCtStats,
+  fetchLicenceBatches,
   fetchOrganisation,
   fetchOrgAdmins,
   fetchOrganisations,
   inviteOrgAdmin,
+  markLicenceBatchPaid,
   markOrganisationPaid,
   resendOrgAdminInvite,
   restoreOrganisation,
   suspendOrganisation,
+  updateLicenceBatch,
   updateOrganisation,
-  updateOrgLicences,
 } from '@/lib/api/organisations'
 
 export function useCtStats() {
@@ -46,6 +49,14 @@ export function useUpdateOrganisation(id: string) {
   return useMutation({
     mutationFn: (payload: Parameters<typeof updateOrganisation>[1]) => updateOrganisation(id, payload),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['ct', 'organisations', id] }),
+  })
+}
+
+export function useLicenceBatches(orgId: string) {
+  return useQuery({
+    queryKey: ['ct', 'organisations', orgId, 'licence-batches'],
+    queryFn: () => fetchLicenceBatches(orgId),
+    enabled: !!orgId,
   })
 }
 
@@ -109,14 +120,41 @@ export function useResendOrgAdminInvite(orgId: string) {
   })
 }
 
-export function useUpdateOrgLicences(orgId: string) {
+export function useCreateLicenceBatch(orgId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ count, note }: { count: number; note?: string }) => updateOrgLicences(orgId, count, note),
+    mutationFn: (payload: Parameters<typeof createLicenceBatch>[1]) => createLicenceBatch(orgId, payload),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['ct', 'organisations', orgId] })
       qc.invalidateQueries({ queryKey: ['ct', 'organisations'] })
       qc.invalidateQueries({ queryKey: ['ct', 'stats'] })
+      qc.invalidateQueries({ queryKey: ['ct', 'organisations', orgId, 'licence-batches'] })
+    },
+  })
+}
+
+export function useUpdateLicenceBatch(orgId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ batchId, payload }: { batchId: string; payload: Parameters<typeof updateLicenceBatch>[2] }) =>
+      updateLicenceBatch(orgId, batchId, payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ct', 'organisations', orgId] })
+      qc.invalidateQueries({ queryKey: ['ct', 'organisations', orgId, 'licence-batches'] })
+    },
+  })
+}
+
+export function useMarkLicenceBatchPaid(orgId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ batchId, paidAt }: { batchId: string; paidAt?: string }) =>
+      markLicenceBatchPaid(orgId, batchId, paidAt ? { paid_at: paidAt } : undefined),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ct', 'organisations', orgId] })
+      qc.invalidateQueries({ queryKey: ['ct', 'organisations'] })
+      qc.invalidateQueries({ queryKey: ['ct', 'stats'] })
+      qc.invalidateQueries({ queryKey: ['ct', 'organisations', orgId, 'licence-batches'] })
     },
   })
 }

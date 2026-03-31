@@ -1,4 +1,5 @@
 import pytest
+from decimal import Decimal
 from django.urls import reverse
 from rest_framework.test import APIClient
 from apps.accounts.models import User, UserRole
@@ -42,15 +43,15 @@ class TestOrganisationListCreate:
     def test_create_org(self, ct_client):
         client, _ = ct_client
         response = client.post('/api/ct/organisations/', {
-            'name': 'New Org', 'licence_count': 5, 'email': 'org@test.com',
+            'name': 'New Org', 'email': 'org@test.com',
         }, format='json')
         assert response.status_code == 201
         assert response.data['name'] == 'New Org'
         assert response.data['status'] == OrganisationStatus.PENDING
 
-    def test_create_requires_name_and_licence_count(self, ct_client):
+    def test_create_requires_name(self, ct_client):
         client, _ = ct_client
-        response = client.post('/api/ct/organisations/', {'name': 'Org'}, format='json')
+        response = client.post('/api/ct/organisations/', {}, format='json')
         assert response.status_code == 400
 
     def test_unauthenticated_returns_401(self):
@@ -94,3 +95,58 @@ class TestOrganisationActivate:
         # PENDING cannot go to SUSPENDED
         response = client.post(f'/api/ct/organisations/{org.id}/suspend/')
         assert response.status_code == 400
+
+
+@pytest.mark.django_db
+class TestLicenceBatchViews:
+    def test_org_detail_includes_batch_defaults_and_batches(self, ct_client, org):
+        client, _ = ct_client
+
+        response = client.get(f'/api/ct/organisations/{org.id}/')
+
+        assert response.status_code == 200
+        assert 'licence_batches' in response.data
+        assert 'batch_defaults' in response.data
+        assert response.data['licence_batches'] == []
+
+    def test_create_update_and_mark_paid_batch(self, ct_client, org):
+        client, _ = ct_client
+
+        create_response = client.post(
+            f'/api/ct/organisations/{org.id}/licence-batches/',
+            {
+                'quantity': 5,
+                'price_per_licence_per_month': '99.00',
+                'start_date': '2026-04-01',
+                'end_date': '2026-12-31',
+                'note': 'Initial commercial batch',
+            },
+            format='json',
+        )
+
+        assert create_response.status_code == 201
+        assert create_response.data['payment_status'] == 'DRAFT'
+        assert create_response.data['lifecycle_state'] == 'DRAFT'
+
+        batch_id = create_response.data['id']
+        update_response = client.patch(
+            f'/api/ct/organisations/{org.id}/licence-batches/{batch_id}/',
+            {
+                'quantity': 6,
+                'price_per_licence_per_month': '109.00',
+            },
+            format='json',
+        )
+        assert update_response.status_code == 200
+        assert update_response.data['quantity'] == 6
+        assert update_response.data['price_per_licence_per_month'] == '109.00'
+
+        pay_response = client.post(
+            f'/api/ct/organisations/{org.id}/licence-batches/{batch_id}/mark-paid/',
+            {'paid_at': '2026-04-01'},
+            format='json',
+        )
+
+        assert pay_response.status_code == 200
+        assert pay_response.data['payment_status'] == 'PAID'
+        assert pay_response.data['lifecycle_state'] == 'ACTIVE'

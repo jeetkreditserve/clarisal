@@ -1,6 +1,7 @@
 import uuid
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 from django.utils.text import slugify
 
 
@@ -37,6 +38,18 @@ class LicenceLedgerReason(models.TextChoices):
     PURCHASE = 'PURCHASE', 'Purchase'
     ADJUSTMENT = 'ADJUSTMENT', 'Adjustment'
     CORRECTION = 'CORRECTION', 'Correction'
+
+
+class LicenceBatchPaymentStatus(models.TextChoices):
+    DRAFT = 'DRAFT', 'Draft'
+    PAID = 'PAID', 'Paid'
+
+
+class LicenceBatchLifecycleState(models.TextChoices):
+    DRAFT = 'DRAFT', 'Draft'
+    PAID_PENDING_START = 'PAID_PENDING_START', 'Paid Pending Start'
+    ACTIVE = 'ACTIVE', 'Active'
+    EXPIRED = 'EXPIRED', 'Expired'
 
 
 class LifecycleEventType(models.TextChoices):
@@ -181,6 +194,59 @@ class OrganisationLicenceLedger(models.Model):
     class Meta:
         db_table = 'organisation_licence_ledger'
         ordering = ['-created_at']
+
+
+class OrganisationLicenceBatch(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organisation = models.ForeignKey(
+        Organisation,
+        on_delete=models.CASCADE,
+        related_name='licence_batches',
+    )
+    quantity = models.PositiveIntegerField()
+    price_per_licence_per_month = models.DecimalField(max_digits=10, decimal_places=2)
+    start_date = models.DateField()
+    end_date = models.DateField()
+    billing_months = models.PositiveIntegerField()
+    total_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    payment_status = models.CharField(
+        max_length=20,
+        choices=LicenceBatchPaymentStatus.choices,
+        default=LicenceBatchPaymentStatus.DRAFT,
+    )
+    note = models.TextField(blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='created_licence_batches',
+    )
+    paid_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='paid_licence_batches',
+    )
+    paid_at = models.DateField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'organisation_licence_batches'
+        ordering = ['-created_at']
+
+    @property
+    def lifecycle_state(self):
+        today = timezone.localdate()
+        if self.payment_status == LicenceBatchPaymentStatus.DRAFT:
+            return LicenceBatchLifecycleState.DRAFT
+        if today < self.start_date:
+            return LicenceBatchLifecycleState.PAID_PENDING_START
+        if self.start_date <= today <= self.end_date:
+            return LicenceBatchLifecycleState.ACTIVE
+        return LicenceBatchLifecycleState.EXPIRED
 
 
 class OrganisationLifecycleEvent(models.Model):

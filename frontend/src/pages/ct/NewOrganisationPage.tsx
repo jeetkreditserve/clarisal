@@ -11,7 +11,6 @@ export function NewOrganisationPage() {
   const { mutateAsync, isPending } = useCreateOrganisation()
   const [form, setForm] = useState({
     name: '',
-    licence_count: 5,
     address: '',
     phone: '',
     email: '',
@@ -21,7 +20,7 @@ export function NewOrganisationPage() {
   const [error, setError] = useState<string | null>(null)
 
   const set = (field: string) => (e: React.ChangeEvent<HTMLInputElement>) =>
-    setForm((current) => ({ ...current, [field]: field === 'licence_count' ? Number(e.target.value) : e.target.value }))
+    setForm((current) => ({ ...current, [field]: e.target.value }))
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -60,10 +59,9 @@ export function NewOrganisationPage() {
         description="Set the commercial and operational baseline before payment confirmation and admin invitation."
       />
 
-      <SectionCard title="Organisation details" description="This creates the tenant shell and opening licence balance.">
+      <SectionCard title="Organisation details" description="This creates the tenant shell. Licence batches are created later from the organisation detail screen.">
         <form onSubmit={handleSubmit} className="grid gap-5 lg:grid-cols-2">
           <div className="lg:col-span-2">{field('name', 'Organisation name', 'text', true)}</div>
-          {field('licence_count', 'Opening licence count', 'number', true)}
           {field('email', 'Contact email', 'email')}
           {field('phone', 'Contact phone')}
           {field('country_code', 'Country code', 'text', true)}
@@ -73,7 +71,7 @@ export function NewOrganisationPage() {
           <div className="surface-muted rounded-[26px] p-5 text-sm leading-6 text-[hsl(var(--muted-foreground))] lg:col-span-2">
             <p className="font-semibold text-[hsl(var(--foreground-strong))]">Provisioning note</p>
             <p className="mt-2">
-              Creating an organisation only provisions the tenant shell and opening licence balance. Payment confirmation,
+              Creating an organisation only provisions the tenant shell. Commercial licence batches, payment confirmation,
               activation, and admin invitation are completed on the organisation detail screen.
             </p>
           </div>

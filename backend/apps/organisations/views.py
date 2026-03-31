@@ -5,16 +5,23 @@ from rest_framework.pagination import PageNumberPagination
 from django.shortcuts import get_object_or_404
 from apps.accounts.permissions import BelongsToActiveOrg, IsControlTowerUser, IsOrgAdmin
 from apps.accounts.workspaces import get_active_admin_organisation
-from .models import Organisation, OrganisationStatus
+from .models import Organisation, OrganisationLicenceBatch, OrganisationStatus
 from .repositories import get_organisations, get_organisation_by_id, get_org_admins
 from .serializers import (
     OrganisationListSerializer, OrganisationDetailSerializer,
     CreateOrganisationSerializer, UpdateOrganisationSerializer,
-    LicenceUpdateSerializer, OrgAdminSerializer, CTDashboardStatsSerializer, OrgDashboardStatsSerializer,
+    LicenceBatchMarkPaidSerializer,
+    LicenceBatchSerializer,
+    LicenceBatchUpdateSerializer,
+    LicenceBatchWriteSerializer,
+    OrgAdminSerializer, CTDashboardStatsSerializer, OrgDashboardStatsSerializer,
 )
 from .services import (
+    create_licence_batch,
     create_organisation, transition_organisation_state,
-    update_licence_count, get_ct_dashboard_stats, get_org_dashboard_stats, get_org_licence_summary,
+    get_ct_dashboard_stats, get_org_dashboard_stats, get_org_licence_summary,
+    mark_licence_batch_paid,
+    update_licence_batch,
 )
 
 
@@ -107,33 +114,12 @@ class OrganisationLicencesView(APIView):
         org = get_object_or_404(Organisation, id=pk)
         summary = get_org_licence_summary(org)
         return Response({
-            'total_count': summary['purchased'],
+            'total_count': summary['active_paid_quantity'],
             'used_count': summary['allocated'],
             'available_count': summary['available'],
+            'overage_count': summary['overage'],
             'utilisation_percent': summary['utilisation_percent'],
         })
-
-    def patch(self, request, pk):
-        org = get_object_or_404(Organisation, id=pk)
-        serializer = LicenceUpdateSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        try:
-            update_licence_count(
-                org,
-                serializer.validated_data['licence_count'],
-                changed_by=request.user,
-                note=serializer.validated_data.get('note', ''),
-            )
-        except ValueError as e:
-            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        summary = get_org_licence_summary(org)
-        return Response({
-            'total_count': summary['purchased'],
-            'used_count': summary['allocated'],
-            'available_count': summary['available'],
-            'utilisation_percent': summary['utilisation_percent'],
-        })
-
 
 class OrganisationAdminsView(APIView):
     permission_classes = [IsControlTowerUser]
@@ -161,3 +147,56 @@ class OrgDashboardStatsView(APIView):
             return Response({'error': 'Select an administrator organisation workspace to continue.'}, status=status.HTTP_400_BAD_REQUEST)
         stats = get_org_dashboard_stats(organisation)
         return Response(OrgDashboardStatsSerializer(stats).data)
+
+
+class OrganisationLicenceBatchListCreateView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def get(self, request, pk):
+        org = get_object_or_404(Organisation, id=pk)
+        batches = org.licence_batches.select_related('created_by', 'paid_by')
+        return Response(LicenceBatchSerializer(batches, many=True).data)
+
+    def post(self, request, pk):
+        org = get_object_or_404(Organisation, id=pk)
+        serializer = LicenceBatchWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            batch = create_licence_batch(org, created_by=request.user, **serializer.validated_data)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(LicenceBatchSerializer(batch).data, status=status.HTTP_201_CREATED)
+
+
+class OrganisationLicenceBatchDetailView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def patch(self, request, pk, batch_id):
+        org = get_object_or_404(Organisation, id=pk)
+        batch = get_object_or_404(OrganisationLicenceBatch, organisation=org, id=batch_id)
+        serializer = LicenceBatchUpdateSerializer(data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        try:
+            batch = update_licence_batch(batch, actor=request.user, **serializer.validated_data)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(LicenceBatchSerializer(batch).data)
+
+
+class OrganisationLicenceBatchMarkPaidView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def post(self, request, pk, batch_id):
+        org = get_object_or_404(Organisation, id=pk)
+        batch = get_object_or_404(OrganisationLicenceBatch, organisation=org, id=batch_id)
+        serializer = LicenceBatchMarkPaidSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            batch = mark_licence_batch_paid(
+                batch,
+                paid_by=request.user,
+                paid_at=serializer.validated_data.get('paid_at'),
+            )
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(LicenceBatchSerializer(batch).data)

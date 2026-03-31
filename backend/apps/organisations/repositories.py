@@ -14,6 +14,7 @@ def get_organisations():
             'state_transitions',
             'lifecycle_events',
             'licence_ledger_entries',
+            'licence_batches',
         )
         .order_by('-created_at')
     )

@@ -92,7 +92,7 @@ export function OrganisationsPage() {
                   <th className="pb-3 pr-4 font-semibold">Status</th>
                   <th className="pb-3 pr-4 font-semibold">Billing</th>
                   <th className="pb-3 pr-4 font-semibold">Stage</th>
-                  <th className="pb-3 pr-4 font-semibold">Licences</th>
+                  <th className="pb-3 pr-4 font-semibold">Active seats</th>
                   <th className="pb-3 pr-4 font-semibold">Created</th>
                   <th className="pb-3 text-right font-semibold">Action</th>
                 </tr>
