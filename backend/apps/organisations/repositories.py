@@ -11,6 +11,7 @@ def get_organisations():
             'paid_marked_by',
         )
         .prefetch_related(
+            'addresses',
             'state_transitions',
             'lifecycle_events',
             'licence_ledger_entries',

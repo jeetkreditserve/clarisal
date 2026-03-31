@@ -25,6 +25,7 @@ def seed_env(monkeypatch):
     monkeypatch.setenv('CONTROL_TOWER_PASSWORD', 'ControlTower@123')
     monkeypatch.setenv('SEED_ORGANISATION_NAME', 'Northstar People Pvt Ltd')
     monkeypatch.setenv('SEED_ORGANISATION_LICENCE_COUNT', '10')
+    monkeypatch.setenv('SEED_ORGANISATION_PAN', 'AACCN1234F')
     monkeypatch.setenv('SEED_ORGANISATION_EMAIL', 'hello@northstarpeople.com')
     monkeypatch.setenv('SEED_ORGANISATION_PHONE', '+91 9123456789')
     monkeypatch.setenv('SEED_ORGANISATION_ADDRESS', '7 Brigade Road, Bengaluru, Karnataka 560001')
@@ -68,6 +69,7 @@ class TestSeedControlTowerCommand:
 
         organisation = Organisation.objects.get(name='Northstar People Pvt Ltd')
         assert organisation.licence_count == 10
+        assert organisation.pan_number == 'AACCN1234F'
         assert organisation.status == OrganisationStatus.ACTIVE
         assert organisation.billing_status == OrganisationBillingStatus.PAID
         assert organisation.access_state == OrganisationAccessState.ACTIVE

@@ -26,31 +26,59 @@ from apps.employees.services import (
 from apps.locations.models import OfficeLocation
 from apps.organisations.models import (
     Organisation,
+    OrganisationAddress,
+    OrganisationAddressType,
     OrganisationMembershipStatus,
     OrganisationOnboardingStage,
     OrganisationStatus,
 )
 from apps.organisations.services import (
+    create_organisation_address,
     create_licence_batch,
     create_organisation,
+    deactivate_organisation_address,
     ensure_org_admin_membership,
     mark_licence_batch_paid,
     mark_employee_invited,
     mark_master_data_configured,
     set_primary_admin,
     transition_organisation_state,
+    update_organisation_address,
     update_licence_count,
+    update_organisation_profile,
 )
 
 
 DEFAULT_ORGANISATION = {
     'name': 'Acme Workforce Pvt Ltd',
     'licence_count': 10,
+    'pan_number': 'AACCA1234F',
     'email': 'hello@acmeworkforce.com',
     'phone': '+91 9876543210',
-    'address': '42 Residency Road, Bengaluru, Karnataka 560025',
     'country_code': 'IN',
     'currency': 'INR',
+    'addresses': [
+        {
+            'address_type': OrganisationAddressType.REGISTERED,
+            'line1': '42 Residency Road',
+            'line2': '',
+            'city': 'Bengaluru',
+            'state': 'Karnataka',
+            'country': 'India',
+            'pincode': '560025',
+            'gstin': '29AACCA1234F1Z5',
+        },
+        {
+            'address_type': OrganisationAddressType.BILLING,
+            'line1': '18 Nariman Point',
+            'line2': '',
+            'city': 'Mumbai',
+            'state': 'Maharashtra',
+            'country': 'India',
+            'pincode': '400021',
+            'gstin': '27AACCA1234F1Z7',
+        },
+    ],
 }
 
 DEFAULT_ORG_ADMIN = {
@@ -61,25 +89,6 @@ DEFAULT_ORG_ADMIN = {
 }
 
 DEFAULT_EMPLOYEE_PASSWORD = 'Employee@12345'
-
-DEMO_LOCATIONS = [
-    {
-        'name': 'Bengaluru HQ',
-        'address': '42 Residency Road',
-        'city': 'Bengaluru',
-        'state': 'Karnataka',
-        'country': 'India',
-        'pincode': '560025',
-    },
-    {
-        'name': 'Mumbai Branch',
-        'address': '18 Nariman Point',
-        'city': 'Mumbai',
-        'state': 'Maharashtra',
-        'country': 'India',
-        'pincode': '400021',
-    },
-]
 
 DEMO_DEPARTMENTS = [
     {
@@ -106,7 +115,7 @@ DEMO_EMPLOYEES = [
         'employment_type': EmploymentType.FULL_TIME,
         'date_of_joining': date(2024, 6, 3),
         'department': 'People Operations',
-        'location': 'Bengaluru HQ',
+        'location': 'Registered Office',
         'profile': {
             'date_of_birth': date(1994, 8, 21),
             'gender': 'FEMALE',
@@ -163,7 +172,7 @@ DEMO_EMPLOYEES = [
         'employment_type': EmploymentType.FULL_TIME,
         'date_of_joining': date(2024, 9, 16),
         'department': 'Finance',
-        'location': 'Mumbai Branch',
+        'location': 'Billing Address',
     },
     {
         'email': 'ananya.iyer@acmeworkforce.com',
@@ -174,7 +183,7 @@ DEMO_EMPLOYEES = [
         'employment_type': EmploymentType.FULL_TIME,
         'date_of_joining': date(2025, 1, 6),
         'department': 'Engineering',
-        'location': 'Bengaluru HQ',
+        'location': 'Registered Office',
     },
 ]
 
@@ -268,12 +277,27 @@ class Command(BaseCommand):
     def _ensure_organisation(self, control_tower, licence_count):
         organisation_defaults = {
             'name': os.environ.get('SEED_ORGANISATION_NAME', DEFAULT_ORGANISATION['name']),
+            'pan_number': os.environ.get('SEED_ORGANISATION_PAN', DEFAULT_ORGANISATION['pan_number']),
             'email': os.environ.get('SEED_ORGANISATION_EMAIL', DEFAULT_ORGANISATION['email']),
             'phone': os.environ.get('SEED_ORGANISATION_PHONE', DEFAULT_ORGANISATION['phone']),
-            'address': os.environ.get('SEED_ORGANISATION_ADDRESS', DEFAULT_ORGANISATION['address']),
             'country_code': os.environ.get('SEED_ORGANISATION_COUNTRY_CODE', DEFAULT_ORGANISATION['country_code']),
             'currency': os.environ.get('SEED_ORGANISATION_CURRENCY', DEFAULT_ORGANISATION['currency']),
         }
+        address_line1 = os.environ.get(
+            'SEED_ORGANISATION_ADDRESS',
+            DEFAULT_ORGANISATION['addresses'][0]['line1'],
+        )
+        addresses = [
+            {
+                **DEFAULT_ORGANISATION['addresses'][0],
+                'line1': address_line1,
+                'gstin': f"29{organisation_defaults['pan_number']}1Z5",
+            },
+            {
+                **DEFAULT_ORGANISATION['addresses'][1],
+                'gstin': f"27{organisation_defaults['pan_number']}1Z7",
+            },
+        ]
         seed_slug = slugify(organisation_defaults['name'])
         organisation = (
             Organisation.objects.filter(slug=seed_slug).first()
@@ -285,7 +309,8 @@ class Command(BaseCommand):
                 name=organisation_defaults['name'],
                 licence_count=licence_count,
                 created_by=control_tower,
-                address=organisation_defaults['address'],
+                pan_number=organisation_defaults['pan_number'],
+                addresses=addresses,
                 phone=organisation_defaults['phone'],
                 email=organisation_defaults['email'],
                 country_code=organisation_defaults['country_code'],
@@ -302,8 +327,10 @@ class Command(BaseCommand):
                 organisation.created_by = control_tower
                 changed = True
             if changed:
-                organisation.save()
+                organisation = update_organisation_profile(organisation, actor=control_tower, **organisation_defaults)
                 self.stdout.write(self.style.WARNING(f"Demo organisation {organisation.name} already exists, updated seed state."))
+
+        self._ensure_seed_addresses(organisation, control_tower, addresses)
 
         if organisation.licence_count != licence_count:
             try:
@@ -316,6 +343,21 @@ class Command(BaseCommand):
             except ValueError as exc:
                 raise CommandError(str(exc)) from exc
         return organisation
+
+    def _ensure_seed_addresses(self, organisation, actor, addresses):
+        existing_by_type = {address.address_type: address for address in organisation.addresses.filter(is_active=True)}
+        for payload in addresses:
+            current = existing_by_type.get(payload['address_type'])
+            if current is None:
+                create_organisation_address(
+                    organisation,
+                    actor=actor,
+                    auto_create_location=True,
+                    **payload,
+                )
+                continue
+
+            update_organisation_address(current, actor=actor, **payload)
 
     def _ensure_primary_licence_batch(self, organisation, actor, licence_count):
         batch = organisation.licence_batches.order_by('created_at').first()
@@ -404,24 +446,26 @@ class Command(BaseCommand):
 
     def _ensure_locations(self, organisation):
         locations = {}
-        for payload in DEMO_LOCATIONS:
+        for address in organisation.addresses.filter(is_active=True).order_by('created_at'):
             location, created = OfficeLocation.objects.get_or_create(
                 organisation=organisation,
-                name=payload['name'],
-                defaults=payload,
+                name=address.label,
+                defaults={'organisation_address': address},
             )
-            if not created:
-                changed = False
-                for field, value in payload.items():
-                    if getattr(location, field) != value:
-                        setattr(location, field, value)
-                        changed = True
-                if not location.is_active:
-                    location.is_active = True
-                    changed = True
-                if changed:
-                    location.save()
+            location.organisation_address = address
+            location.address = address.line1
+            location.city = address.city
+            location.state = address.state
+            location.country = address.country
+            location.pincode = address.pincode
+            location.is_active = True
+            location.is_remote = False
+            location.save()
             locations[location.name] = location
+
+        organisation.locations.exclude(name__in=list(locations.keys())).filter(
+            employees__isnull=True,
+        ).update(is_active=False)
         return locations
 
     def _ensure_departments(self, organisation):

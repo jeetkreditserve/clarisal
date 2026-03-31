@@ -3,19 +3,26 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '@/hooks/useAuth'
 import {
   createDepartment,
+  createOrgAddress,
   createLocation,
   deactivateDepartment,
+  deactivateOrgAddress,
   deactivateLocation,
+  deleteEmployee,
+  endEmployeeEmployment,
   fetchDepartments,
   fetchEmployeeDetail,
   fetchEmployeeDocuments,
   fetchEmployees,
   fetchLocations,
   fetchOrgDashboard,
+  fetchOrgProfile,
   getEmployeeDocumentDownloadUrl,
   inviteEmployee,
+  markEmployeeJoined,
   rejectEmployeeDocument,
-  terminateEmployee,
+  updateOrgAddress,
+  updateOrgProfile,
   updateDepartment,
   updateEmployee,
   updateLocation,
@@ -30,6 +37,51 @@ function useOrgScope() {
 export function useOrgDashboard() {
   const organisationId = useOrgScope()
   return useQuery({ queryKey: ['org', organisationId, 'dashboard'], queryFn: fetchOrgDashboard })
+}
+
+export function useOrgProfile() {
+  const organisationId = useOrgScope()
+  return useQuery({ queryKey: ['org', organisationId, 'profile'], queryFn: fetchOrgProfile })
+}
+
+export function useUpdateOrgProfile() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: updateOrgProfile,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useCreateOrgAddress() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: createOrgAddress,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useUpdateOrgAddress() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Parameters<typeof updateOrgAddress>[1] }) => updateOrgAddress(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useDeactivateOrgAddress() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: deactivateOrgAddress,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
 }
 
 export function useLocations(includeInactive = false) {
@@ -145,10 +197,30 @@ export function useUpdateEmployee(id: string) {
   })
 }
 
-export function useTerminateEmployee(id: string) {
+export function useMarkEmployeeJoined(id: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: () => terminateEmployee(id),
+    mutationFn: (payload: Parameters<typeof markEmployeeJoined>[1]) => markEmployeeJoined(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useEndEmployeeEmployment(id: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: Parameters<typeof endEmployeeEmployment>[1]) => endEmployeeEmployment(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useDeleteEmployee(id: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => deleteEmployee(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['org'] })
     },

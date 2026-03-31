@@ -14,9 +14,8 @@ from apps.organisations.models import (
 from .models import AccountType, User, UserRole
 
 ACTIVE_EMPLOYEE_STATUSES = [
-    EmployeeStatus.INVITED,
+    EmployeeStatus.PENDING,
     EmployeeStatus.ACTIVE,
-    EmployeeStatus.INACTIVE,
 ]
 
 

@@ -14,8 +14,10 @@ from .serializers import (
     BankAccountWriteSerializer,
     EducationRecordSerializer,
     EmployeeDetailSerializer,
+    EmployeeEndEmploymentSerializer,
     EmployeeInviteSerializer,
     EmployeeListSerializer,
+    EmployeeMarkJoinedSerializer,
     EmployeeProfileSerializer,
     EmployeeUpdateSerializer,
     GovernmentIdSerializer,
@@ -27,10 +29,12 @@ from .services import (
     create_education_record,
     delete_bank_account,
     delete_education_record,
+    delete_employee,
+    end_employment,
     get_employee_dashboard,
     get_profile_completion,
     invite_employee,
-    terminate_employee,
+    mark_employee_joined,
     update_bank_account,
     update_education_record,
     update_employee,
@@ -109,17 +113,52 @@ class EmployeeDetailView(APIView):
         return Response(EmployeeDetailSerializer(employee).data)
 
 
-class EmployeeTerminateView(APIView):
+class EmployeeMarkJoinedView(APIView):
     permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
 
     def post(self, request, pk):
         organisation = _get_admin_organisation(request)
         employee = get_object_or_404(Employee, organisation=organisation, id=pk)
+        serializer = EmployeeMarkJoinedSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
         try:
-            employee = terminate_employee(employee, terminated_by=request.user)
+            employee = mark_employee_joined(employee, actor=request.user, **serializer.validated_data)
         except ValueError as exc:
             return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(EmployeeDetailSerializer(employee).data)
+
+
+class EmployeeEndEmploymentView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+
+    def post(self, request, pk):
+        organisation = _get_admin_organisation(request)
+        employee = get_object_or_404(Employee, organisation=organisation, id=pk)
+        serializer = EmployeeEndEmploymentSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            employee = end_employment(
+                employee,
+                actor=request.user,
+                end_status=serializer.validated_data['status'],
+                date_of_exit=serializer.validated_data['date_of_exit'],
+            )
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(EmployeeDetailSerializer(employee).data)
+
+
+class EmployeeDeleteView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+
+    def delete(self, request, pk):
+        organisation = _get_admin_organisation(request)
+        employee = get_object_or_404(Employee, organisation=organisation, id=pk)
+        try:
+            delete_employee(employee, actor=request.user)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class MyDashboardView(APIView):

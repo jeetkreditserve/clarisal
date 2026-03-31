@@ -1,9 +1,10 @@
 import math
+import re
 from datetime import date
 from decimal import Decimal
 
 from django.conf import settings
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Count, F, Q, Sum
 from django.utils import timezone
 
@@ -15,6 +16,8 @@ from .models import (
     LifecycleEventType,
     LicenceLedgerReason,
     Organisation,
+    OrganisationAddress,
+    OrganisationAddressType,
     OrganisationAccessState,
     OrganisationBillingStatus,
     OrganisationLifecycleEvent,
@@ -26,6 +29,277 @@ from .models import (
     OrganisationStateTransition,
     OrganisationStatus,
 )
+
+PAN_PATTERN = re.compile(r'^[A-Z]{5}[0-9]{4}[A-Z]$')
+GSTIN_PATTERN = re.compile(r'^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$')
+
+LICENCE_CONSUMING_EMPLOYEE_STATUSES = [
+    EmployeeStatus.INVITED,
+    EmployeeStatus.PENDING,
+    EmployeeStatus.ACTIVE,
+]
+
+MANDATORY_ADDRESS_TYPES = {
+    OrganisationAddressType.REGISTERED,
+    OrganisationAddressType.BILLING,
+}
+
+
+def normalize_pan_number(value):
+    normalized = (value or '').replace(' ', '').upper()
+    if not normalized:
+        return ''
+    if not PAN_PATTERN.match(normalized):
+        raise ValueError('PAN must be in the format AAAAA9999A.')
+    return normalized
+
+
+def normalize_gstin(value, pan_number=''):
+    normalized = (value or '').replace(' ', '').upper()
+    if not normalized:
+        return None
+    if not GSTIN_PATTERN.match(normalized):
+        raise ValueError('GSTIN must be in the format 22AAAAA0000A1Z5.')
+    if pan_number and normalized[2:12] != pan_number:
+        raise ValueError('GSTIN must contain the organisation PAN number.')
+    return normalized
+
+
+def _default_address_label(address_type):
+    return {
+        OrganisationAddressType.REGISTERED: 'Registered Office',
+        OrganisationAddressType.BILLING: 'Billing Address',
+        OrganisationAddressType.HEADQUARTERS: 'Headquarters',
+        OrganisationAddressType.WAREHOUSE: 'Warehouse',
+        OrganisationAddressType.CUSTOM: 'Custom Address',
+    }[address_type]
+
+
+def _normalize_address_payload(payload, pan_number):
+    address_type = payload.get('address_type')
+    if address_type not in OrganisationAddressType.values:
+        raise ValueError('Address type is invalid.')
+
+    line1 = (payload.get('line1') or '').strip()
+    city = (payload.get('city') or '').strip()
+    state = (payload.get('state') or '').strip()
+    country = (payload.get('country') or '').strip() or 'India'
+    pincode = (payload.get('pincode') or '').strip()
+    line2 = (payload.get('line2') or '').strip()
+    if not all([line1, city, state, pincode]):
+        raise ValueError('Address line 1, city, state, and pincode are required.')
+
+    label = (payload.get('label') or '').strip()
+    if address_type in MANDATORY_ADDRESS_TYPES:
+        label = _default_address_label(address_type)
+    elif not label:
+        raise ValueError('A label is required for headquarters, warehouse, and custom addresses.')
+
+    return {
+        'address_type': address_type,
+        'label': label,
+        'line1': line1,
+        'line2': line2,
+        'city': city,
+        'state': state,
+        'country': country,
+        'pincode': pincode,
+        'gstin': normalize_gstin(payload.get('gstin'), pan_number),
+        'is_active': payload.get('is_active', True),
+    }
+
+
+def validate_address_collection(addresses, pan_number):
+    if not addresses:
+        raise ValueError('At least one address is required.')
+    normalized_addresses = [_normalize_address_payload(address, pan_number) for address in addresses]
+    active_counts = {
+        address_type: sum(
+            1
+            for address in normalized_addresses
+            if address['address_type'] == address_type and address.get('is_active', True)
+        )
+        for address_type in MANDATORY_ADDRESS_TYPES
+    }
+    missing = [address_type for address_type, count in active_counts.items() if count != 1]
+    if missing:
+        raise ValueError('Exactly one active registered address and one active billing address are required.')
+    return normalized_addresses
+
+
+def _sync_location_address_fields(location, organisation_address):
+    location.organisation_address = organisation_address
+    location.address = organisation_address.line1
+    location.city = organisation_address.city
+    location.state = organisation_address.state
+    location.country = organisation_address.country
+    location.pincode = organisation_address.pincode
+
+
+def _ensure_default_location_for_address(organisation_address, actor=None, is_remote=False):
+    from apps.locations.models import OfficeLocation
+
+    location, created = OfficeLocation.objects.get_or_create(
+        organisation=organisation_address.organisation,
+        name=organisation_address.label,
+        defaults={'is_remote': is_remote},
+    )
+    _sync_location_address_fields(location, organisation_address)
+    if created or not location.is_active:
+        location.is_active = True
+    if location.is_remote != is_remote:
+        location.is_remote = is_remote
+    location.save()
+    log_audit_event(
+        actor,
+        'location.created' if created else 'location.updated',
+        organisation=organisation_address.organisation,
+        target=location,
+        payload={'auto_created': True, 'organisation_address_id': str(organisation_address.id)},
+    )
+    return location
+
+
+def create_organisation_address(
+    organisation,
+    *,
+    address_type,
+    line1,
+    city,
+    state,
+    pincode,
+    actor=None,
+    line2='',
+    country='India',
+    label='',
+    gstin=None,
+    is_active=True,
+    auto_create_location=False,
+):
+    if not organisation.pan_number:
+        raise ValueError('Organisation PAN must be set before adding addresses.')
+
+    payload = _normalize_address_payload(
+        {
+            'address_type': address_type,
+            'label': label,
+            'line1': line1,
+            'line2': line2,
+            'city': city,
+            'state': state,
+            'country': country,
+            'pincode': pincode,
+            'gstin': gstin,
+            'is_active': is_active,
+        },
+        organisation.pan_number,
+    )
+
+    try:
+        with transaction.atomic():
+            address = OrganisationAddress.objects.create(organisation=organisation, **payload)
+            log_audit_event(
+                actor,
+                'organisation.address.created',
+                organisation=organisation,
+                target=address,
+                payload={'address_type': address.address_type, 'label': address.label},
+            )
+            if auto_create_location and address.is_active:
+                _ensure_default_location_for_address(address, actor=actor)
+                mark_master_data_configured(organisation, actor)
+            return address
+    except IntegrityError as exc:
+        raise ValueError('GSTIN must be unique and required address types can only exist once.') from exc
+
+
+def update_organisation_address(address, actor=None, **fields):
+    organisation = address.organisation
+    pan_number = normalize_pan_number(fields.pop('pan_number', organisation.pan_number or ''))
+    if pan_number and pan_number != (organisation.pan_number or ''):
+        validate_organisation_pan_change(organisation, pan_number)
+
+    payload = _normalize_address_payload(
+        {
+            'address_type': fields.get('address_type', address.address_type),
+            'label': fields.get('label', address.label),
+            'line1': fields.get('line1', address.line1),
+            'line2': fields.get('line2', address.line2),
+            'city': fields.get('city', address.city),
+            'state': fields.get('state', address.state),
+            'country': fields.get('country', address.country),
+            'pincode': fields.get('pincode', address.pincode),
+            'gstin': fields.get('gstin', address.gstin),
+            'is_active': fields.get('is_active', address.is_active),
+        },
+        organisation.pan_number or pan_number,
+    )
+
+    if address.address_type in MANDATORY_ADDRESS_TYPES and (
+        fields.get('is_active') is False or payload['address_type'] != address.address_type
+    ):
+        active_count = organisation.addresses.filter(
+            address_type=address.address_type,
+            is_active=True,
+        ).exclude(id=address.id).count()
+        if active_count == 0:
+            raise ValueError(f'{address.get_address_type_display()} cannot be removed without a replacement.')
+
+    for attr, value in payload.items():
+        setattr(address, attr, value)
+
+    try:
+        with transaction.atomic():
+            address.save()
+            if address.office_locations.exists():
+                for location in address.office_locations.all():
+                    _sync_location_address_fields(location, address)
+                    location.save()
+            log_audit_event(
+                actor,
+                'organisation.address.updated',
+                organisation=organisation,
+                target=address,
+                payload={'address_type': address.address_type, 'label': address.label},
+            )
+        return address
+    except IntegrityError as exc:
+        raise ValueError('GSTIN must be unique and required address types can only exist once.') from exc
+
+
+def deactivate_organisation_address(address, actor=None):
+    if address.address_type in MANDATORY_ADDRESS_TYPES:
+        remaining = address.organisation.addresses.filter(
+            address_type=address.address_type,
+            is_active=True,
+        ).exclude(id=address.id)
+        if not remaining.exists():
+            raise ValueError(f'{address.get_address_type_display()} cannot be removed without a replacement.')
+    if address.office_locations.filter(is_active=True).exists():
+        raise ValueError('Deactivate linked office locations before deactivating this address.')
+
+    address.is_active = False
+    address.save(update_fields=['is_active', 'updated_at'])
+    log_audit_event(
+        actor,
+        'organisation.address.deactivated',
+        organisation=address.organisation,
+        target=address,
+        payload={'address_type': address.address_type, 'label': address.label},
+    )
+    return address
+
+
+def validate_organisation_pan_change(organisation, pan_number):
+    normalized_pan = normalize_pan_number(pan_number)
+    invalid_gst_addresses = [
+        address
+        for address in organisation.addresses.exclude(gstin__isnull=True).exclude(gstin='')
+        if (address.gstin or '')[2:12] != normalized_pan
+    ]
+    if invalid_gst_addresses:
+        raise ValueError('PAN cannot be changed because one or more GSTINs do not match the new PAN.')
+    return normalized_pan
 
 VALID_TRANSITIONS = {
     OrganisationStatus.PENDING: [OrganisationStatus.PAID],
@@ -144,7 +418,7 @@ def get_org_licence_summary(org, as_of=None):
     )['total'] or 0
     used = Employee.objects.filter(
         organisation=org,
-        status__in=[EmployeeStatus.INVITED, EmployeeStatus.ACTIVE],
+        status__in=LICENCE_CONSUMING_EMPLOYEE_STATUSES,
     ).count()
     available = max(active_paid_quantity - used, 0)
     overage = max(used - active_paid_quantity, 0)
@@ -159,11 +433,25 @@ def get_org_licence_summary(org, as_of=None):
     }
 
 
-def create_organisation(name, created_by, address='', phone='', email='', country_code='IN', currency='INR', licence_count=0):
+def create_organisation(
+    name,
+    created_by,
+    pan_number,
+    addresses,
+    phone='',
+    email='',
+    country_code='IN',
+    currency='INR',
+    licence_count=0,
+):
+    normalized_pan = normalize_pan_number(pan_number)
+    normalized_addresses = validate_address_collection(addresses, normalized_pan)
+
     with transaction.atomic():
         organisation = Organisation.objects.create(
             name=name,
-            address=address,
+            pan_number=normalized_pan,
+            address=normalized_addresses[0]['line1'],
             phone=phone,
             email=email,
             licence_count=licence_count,
@@ -192,13 +480,54 @@ def create_organisation(name, created_by, address='', phone='', email='', countr
             created_by,
             {'licence_count': licence_count},
         )
+        for address_payload in normalized_addresses:
+            create_organisation_address(
+                organisation,
+                actor=created_by,
+                auto_create_location=True,
+                **address_payload,
+            )
         log_audit_event(
             created_by,
             'organisation.created',
             organisation=organisation,
             target=organisation,
-            payload={'licence_count': licence_count},
+            payload={'licence_count': licence_count, 'pan_number': normalized_pan},
         )
+    return organisation
+
+
+def update_organisation_profile(organisation, actor=None, **fields):
+    if 'pan_number' in fields:
+        organisation.pan_number = validate_organisation_pan_change(
+            organisation,
+            fields.pop('pan_number'),
+        )
+
+    legacy_address = fields.pop('address', None)
+    for attr, value in fields.items():
+        setattr(organisation, attr, value)
+
+    if legacy_address:
+        organisation.address = legacy_address
+    elif organisation.addresses.filter(is_active=True).exists():
+        primary_address = (
+            organisation.addresses.filter(
+                address_type=OrganisationAddressType.REGISTERED,
+                is_active=True,
+            ).first()
+            or organisation.addresses.filter(is_active=True).first()
+        )
+        organisation.address = primary_address.line1 if primary_address else organisation.address
+
+    organisation.save()
+    log_audit_event(
+        actor,
+        'organisation.updated',
+        organisation=organisation,
+        target=organisation,
+        payload={key: value for key, value in fields.items() if value is not None},
+    )
     return organisation
 
 
@@ -413,7 +742,7 @@ def get_ct_dashboard_stats():
         'total_employees': Employee.objects.filter(status=EmployeeStatus.ACTIVE).count(),
         'total_licences': active_licences,
         'allocated_licences': Employee.objects.filter(
-            status__in=[EmployeeStatus.INVITED, EmployeeStatus.ACTIVE]
+            status__in=LICENCE_CONSUMING_EMPLOYEE_STATUSES
         ).count(),
     }
 
@@ -424,7 +753,9 @@ def get_org_dashboard_stats(organisation):
         'total_employees': employees.count(),
         'active_employees': employees.filter(status=EmployeeStatus.ACTIVE).count(),
         'invited_employees': employees.filter(status=EmployeeStatus.INVITED).count(),
-        'inactive_employees': employees.filter(status=EmployeeStatus.INACTIVE).count(),
+        'pending_employees': employees.filter(status=EmployeeStatus.PENDING).count(),
+        'resigned_employees': employees.filter(status=EmployeeStatus.RESIGNED).count(),
+        'retired_employees': employees.filter(status=EmployeeStatus.RETIRED).count(),
         'terminated_employees': employees.filter(status=EmployeeStatus.TERMINATED).count(),
         'by_department': list(
             employees.filter(status=EmployeeStatus.ACTIVE)

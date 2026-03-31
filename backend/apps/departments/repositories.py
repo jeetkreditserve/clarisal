@@ -2,7 +2,7 @@ from .models import Department
 
 
 def list_departments(organisation, include_inactive=False):
-    queryset = Department.objects.filter(organisation=organisation).order_by('name')
+    queryset = Department.objects.select_related('parent_department').filter(organisation=organisation).order_by('name')
     if not include_inactive:
         queryset = queryset.filter(is_active=True)
     return queryset

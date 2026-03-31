@@ -4,6 +4,8 @@ from .views import (
     CTDashboardStatsView,
     OrganisationActivateView,
     OrganisationAdminsView,
+    OrganisationAddressDetailView,
+    OrganisationAddressListCreateView,
     OrganisationDetailView,
     OrganisationLicenceBatchDetailView,
     OrganisationLicenceBatchListCreateView,
@@ -26,4 +28,6 @@ urlpatterns = [
     path('organisations/<uuid:pk>/licence-batches/<uuid:batch_id>/', OrganisationLicenceBatchDetailView.as_view(), name='organisation-licence-batch-detail'),
     path('organisations/<uuid:pk>/licence-batches/<uuid:batch_id>/mark-paid/', OrganisationLicenceBatchMarkPaidView.as_view(), name='organisation-licence-batch-mark-paid'),
     path('organisations/<uuid:pk>/admins/', OrganisationAdminsView.as_view(), name='organisation-admins'),
+    path('organisations/<uuid:pk>/addresses/', OrganisationAddressListCreateView.as_view(), name='organisation-address-list-create'),
+    path('organisations/<uuid:pk>/addresses/<uuid:address_id>/', OrganisationAddressDetailView.as_view(), name='organisation-address-detail'),
 ]

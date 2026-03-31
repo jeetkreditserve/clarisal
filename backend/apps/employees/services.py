@@ -9,6 +9,7 @@ from apps.accounts.workspaces import sync_user_role
 from apps.audit.services import log_audit_event
 from apps.common.security import encrypt_value, mask_value
 from apps.departments.models import Department
+from apps.invitations.models import InvitationRole, InvitationStatus
 from apps.invitations.services import create_employee_invitation
 from apps.locations.models import OfficeLocation
 from apps.organisations.services import get_org_licence_summary, mark_employee_invited
@@ -26,6 +27,16 @@ from .models import (
 PAN_PATTERN = re.compile(r'^[A-Z]{5}[0-9]{4}[A-Z]$')
 AADHAAR_PATTERN = re.compile(r'^[0-9]{12}$')
 IFSC_PATTERN = re.compile(r'^[A-Z]{4}0[A-Z0-9]{6}$')
+LICENCE_CONSUMING_STATUSES = [
+    EmployeeStatus.INVITED,
+    EmployeeStatus.PENDING,
+    EmployeeStatus.ACTIVE,
+]
+TERMINAL_EMPLOYEE_STATUSES = [
+    EmployeeStatus.RESIGNED,
+    EmployeeStatus.RETIRED,
+    EmployeeStatus.TERMINATED,
+]
 
 
 def _get_department(organisation, department_id):
@@ -42,7 +53,7 @@ def _get_location(organisation, location_id):
 
 def _next_employee_code(organisation):
     existing_codes = set(
-        Employee.objects.filter(organisation=organisation).values_list('employee_code', flat=True)
+        Employee.objects.filter(organisation=organisation).exclude(employee_code__isnull=True).exclude(employee_code='').values_list('employee_code', flat=True)
     )
     counter = 1
     while True:
@@ -50,6 +61,10 @@ def _next_employee_code(organisation):
         if code not in existing_codes:
             return code
         counter += 1
+
+
+def get_next_employee_code(organisation):
+    return _next_employee_code(organisation)
 
 
 def get_profile_completion(employee):
@@ -84,7 +99,7 @@ def get_profile_completion(employee):
 
 def invite_employee(
     organisation,
-    email,
+    company_email,
     first_name,
     last_name,
     designation='',
@@ -103,7 +118,7 @@ def invite_employee(
 
     with transaction.atomic():
         user, created = User.objects.get_or_create(
-            email=email,
+            email=company_email,
             account_type=AccountType.WORKFORCE,
             defaults={
                 'first_name': first_name,
@@ -118,19 +133,20 @@ def invite_employee(
             user.is_active = False
         user.save(update_fields=['first_name', 'last_name', 'is_active', 'updated_at'])
 
-        employee, employee_created = Employee.objects.get_or_create(
-            user=user,
-            organisation=organisation,
-            defaults={
-                'employee_code': _next_employee_code(organisation),
-                'designation': designation,
-                'employment_type': employment_type,
-                'date_of_joining': date_of_joining,
-                'department': department,
-                'office_location': office_location,
-                'status': EmployeeStatus.INVITED,
-            },
-        )
+        employee = Employee.objects.filter(user=user, organisation=organisation).first()
+        if employee and employee.status not in [EmployeeStatus.INVITED, EmployeeStatus.PENDING]:
+            raise ValueError('This user already exists in the organisation and cannot be reinvited.')
+        if employee is None:
+            employee = Employee.objects.create(
+                user=user,
+                organisation=organisation,
+                designation=designation,
+                employment_type=employment_type,
+                date_of_joining=date_of_joining,
+                department=department,
+                office_location=office_location,
+                status=EmployeeStatus.INVITED,
+            )
         employee.designation = designation
         employee.employment_type = employment_type
         employee.date_of_joining = date_of_joining
@@ -148,7 +164,7 @@ def invite_employee(
             'employee.invited',
             organisation=organisation,
             target=employee,
-            payload={'email': email, 'employee_code': employee.employee_code},
+            payload={'email': company_email, 'status': employee.status},
         )
         return employee, invitation
 
@@ -160,6 +176,8 @@ def update_employee(employee, actor=None, **fields):
         employee.department = _get_department(employee.organisation, department_id)
     if office_location_id is not None:
         employee.office_location = _get_location(employee.organisation, office_location_id)
+    if 'employee_code' in fields:
+        fields['employee_code'] = (fields['employee_code'] or '').strip().upper() or None
     for attr, value in fields.items():
         setattr(employee, attr, value)
     employee.save()
@@ -167,20 +185,81 @@ def update_employee(employee, actor=None, **fields):
     return employee
 
 
-def terminate_employee(employee, terminated_by=None):
-    if employee.status == EmployeeStatus.TERMINATED:
-        raise ValueError('Employee is already terminated.')
-    employee.status = EmployeeStatus.TERMINATED
-    employee.date_of_exit = employee.date_of_exit or date.today()
-    employee.save(update_fields=['status', 'date_of_exit', 'updated_at'])
+def mark_employee_joined(employee, employee_code, date_of_joining, actor=None):
+    if employee.status != EmployeeStatus.PENDING:
+        raise ValueError('Only pending employees can be marked as joined.')
+
+    normalized_code = (employee_code or '').strip().upper()
+    if not normalized_code:
+        raise ValueError('Employee code is required when marking an employee as joined.')
+    if not date_of_joining:
+        raise ValueError('Date of joining is required when marking an employee as joined.')
+    if Employee.objects.filter(
+        organisation=employee.organisation,
+        employee_code=normalized_code,
+    ).exclude(id=employee.id).exists():
+        raise ValueError('Employee code already exists in this organisation.')
+
+    employee.employee_code = normalized_code
+    employee.date_of_joining = date_of_joining
+    employee.status = EmployeeStatus.ACTIVE
+    employee.save(update_fields=['employee_code', 'date_of_joining', 'status', 'updated_at'])
     log_audit_event(
-        terminated_by,
-        'employee.terminated',
+        actor,
+        'employee.joined',
         organisation=employee.organisation,
         target=employee,
-        payload={'date_of_exit': employee.date_of_exit.isoformat()},
+        payload={'employee_code': normalized_code, 'date_of_joining': date_of_joining.isoformat()},
     )
     return employee
+
+
+def end_employment(employee, end_status, date_of_exit, actor=None):
+    if employee.status != EmployeeStatus.ACTIVE:
+        raise ValueError('Only active employees can end employment.')
+    if end_status not in TERMINAL_EMPLOYEE_STATUSES:
+        raise ValueError('End employment status must be resigned, retired, or terminated.')
+    if not date_of_exit:
+        raise ValueError('Date of exit is required.')
+
+    employee.status = end_status
+    employee.date_of_exit = date_of_exit
+    employee.save(update_fields=['status', 'date_of_exit', 'updated_at'])
+    log_audit_event(
+        actor,
+        'employee.employment_ended',
+        organisation=employee.organisation,
+        target=employee,
+        payload={'status': end_status, 'date_of_exit': date_of_exit.isoformat()},
+    )
+    return employee
+
+
+def delete_employee(employee, actor=None):
+    if employee.status not in [EmployeeStatus.INVITED, EmployeeStatus.PENDING]:
+        raise ValueError('Only invited or pending employees can be deleted.')
+
+    organisation = employee.organisation
+    user = employee.user
+    payload = {
+        'user_email': user.email,
+        'status': employee.status,
+        'employee_id': str(employee.id),
+    }
+
+    from apps.invitations.models import Invitation
+
+    with transaction.atomic():
+        Invitation.objects.filter(
+            organisation=organisation,
+            user=user,
+            role=InvitationRole.EMPLOYEE,
+            status=InvitationStatus.PENDING,
+        ).update(status=InvitationStatus.REVOKED, revoked_at=timezone.now())
+        employee.delete()
+        sync_user_role(user)
+
+    log_audit_event(actor, 'employee.deleted', organisation=organisation, payload=payload)
 
 
 def update_employee_profile(employee, actor=None, **fields):

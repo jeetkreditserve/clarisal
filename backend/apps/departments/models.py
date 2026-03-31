@@ -9,6 +9,13 @@ class Department(models.Model):
         on_delete=models.CASCADE,
         related_name='departments',
     )
+    parent_department = models.ForeignKey(
+        'self',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='child_departments',
+    )
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)

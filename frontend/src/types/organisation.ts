@@ -1,6 +1,12 @@
 export type OrganisationStatus = 'PENDING' | 'PAID' | 'ACTIVE' | 'SUSPENDED'
 export type OrganisationBillingStatus = 'PENDING_PAYMENT' | 'PAID'
 export type OrganisationAccessState = 'PROVISIONING' | 'ACTIVE' | 'SUSPENDED'
+export type OrganisationAddressType =
+  | 'REGISTERED'
+  | 'BILLING'
+  | 'HEADQUARTERS'
+  | 'WAREHOUSE'
+  | 'CUSTOM'
 export type LicenceBatchPaymentStatus = 'DRAFT' | 'PAID'
 export type LicenceBatchLifecycleState = 'DRAFT' | 'PAID_PENDING_START' | 'ACTIVE' | 'EXPIRED'
 export type OrganisationOnboardingStage =
@@ -30,6 +36,23 @@ export interface OrganisationListItem {
   onboarding_stage: OrganisationOnboardingStage
   licence_count: number
   created_at: string
+}
+
+export interface OrganisationAddress {
+  id: string
+  address_type: OrganisationAddressType
+  address_type_label: string
+  label: string
+  line1: string
+  line2: string
+  city: string
+  state: string
+  country: string
+  pincode: string
+  gstin: string | null
+  is_active: boolean
+  created_at: string
+  updated_at: string
 }
 
 export interface StateTransition {
@@ -105,6 +128,7 @@ export interface OrganisationDetail {
   licence_count: number
   country_code: string
   currency: string
+  pan_number: string | null
   address: string
   phone: string
   email: string
@@ -116,6 +140,7 @@ export interface OrganisationDetail {
   created_by_email: string
   created_at: string
   updated_at: string
+  addresses: OrganisationAddress[]
   state_transitions: StateTransition[]
   lifecycle_events: LifecycleEvent[]
   licence_ledger_entries: LicenceLedgerEntry[]
@@ -149,13 +174,15 @@ export interface OrgDashboardStats {
   total_employees: number
   active_employees: number
   invited_employees: number
-  inactive_employees: number
+  pending_employees: number
+  resigned_employees: number
+  retired_employees: number
   terminated_employees: number
   by_department: Array<{ department_name: string; count: number }>
   by_location: Array<{ location_name: string; count: number }>
   recent_joins: Array<{
     id: string
-    employee_code: string
+    employee_code: string | null
     designation: string
     date_of_joining: string
     user__first_name: string

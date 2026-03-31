@@ -8,6 +8,11 @@ const orgAdminPassword = process.env.SEED_ORG_ADMIN_PASSWORD ?? 'Admin@12345'
 const employeePassword = process.env.SEED_EMPLOYEE_PASSWORD ?? 'Employee@12345'
 const browser = await chromium.launch({ headless: true })
 const results = []
+const authViewportMatrix = [
+  { width: 1440, height: 900 },
+  { width: 1366, height: 768 },
+  { width: 1280, height: 720 },
+]
 
 async function run(name, fn) {
   const context = await browser.newContext()
@@ -24,7 +29,73 @@ async function run(name, fn) {
   }
 }
 
+async function assertAuthPageFits(page, path, viewport) {
+  await page.setViewportSize(viewport)
+  await page.goto(`${baseUrl}${path}`, { waitUntil: 'networkidle' })
+
+  const metrics = await page.evaluate(() => {
+    const frame = document.querySelector('.auth-shell-frame')
+    const submit = document.querySelector('button[type="submit"]')
+
+    if (!frame) {
+      throw new Error('Auth shell frame not found')
+    }
+
+    if (!submit) {
+      throw new Error('Auth submit button not found')
+    }
+
+    const frameRect = frame.getBoundingClientRect()
+    const submitRect = submit.getBoundingClientRect()
+    const nestedScrollers = [...document.querySelectorAll('*')]
+      .filter((element) => {
+        const style = getComputedStyle(element)
+        return ['auto', 'scroll'].includes(style.overflowY) && element.scrollHeight > element.clientHeight + 1
+      })
+      .map((element) => {
+        const className = typeof element.className === 'string' ? element.className.trim() : ''
+        return element.tagName.toLowerCase() + (className ? `.${className.replace(/\s+/g, '.')}` : '')
+      })
+
+    return {
+      innerHeight: window.innerHeight,
+      scrollHeight: document.documentElement.scrollHeight,
+      frameTop: frameRect.top,
+      frameBottom: frameRect.bottom,
+      submitBottom: submitRect.bottom,
+      nestedScrollers,
+    }
+  })
+
+  if (metrics.scrollHeight > metrics.innerHeight + 1) {
+    throw new Error(`Viewport overflow for ${path} at ${viewport.width}x${viewport.height}: ${JSON.stringify(metrics)}`)
+  }
+
+  if (metrics.frameTop < -1 || metrics.frameBottom > metrics.innerHeight + 1) {
+    throw new Error(`Auth frame escaped viewport for ${path} at ${viewport.width}x${viewport.height}: ${JSON.stringify(metrics)}`)
+  }
+
+  if (metrics.submitBottom > metrics.innerHeight + 1) {
+    throw new Error(`Submit button fell below viewport for ${path} at ${viewport.width}x${viewport.height}: ${JSON.stringify(metrics)}`)
+  }
+
+  if (metrics.nestedScrollers.length > 0) {
+    throw new Error(`Nested scrollers found for ${path} at ${viewport.width}x${viewport.height}: ${metrics.nestedScrollers.join(', ')}`)
+  }
+}
+
 try {
+  await run('auth_login_no_scroll', async (page) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('calrisal-theme', 'light')
+    })
+
+    for (const viewport of authViewportMatrix) {
+      await assertAuthPageFits(page, '/auth/login', viewport)
+      await assertAuthPageFits(page, '/ct/login', viewport)
+    }
+  })
+
   await run('light_theme_auth_surface', async (page) => {
     await page.addInitScript(() => {
       localStorage.setItem('calrisal-theme', 'light')

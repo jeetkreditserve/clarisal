@@ -2,9 +2,12 @@ FROM node:20-bookworm-slim AS dev
 WORKDIR /app
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 COPY package*.json ./
+COPY docker/dev-entrypoint.sh /usr/local/bin/frontend-dev-entrypoint
+RUN chmod +x /usr/local/bin/frontend-dev-entrypoint
 RUN npm install && npx playwright install --with-deps chromium
 COPY . .
 EXPOSE 5173
+ENTRYPOINT ["frontend-dev-entrypoint"]
 CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
 
 FROM node:20-bookworm-slim AS builder

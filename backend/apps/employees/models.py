@@ -13,8 +13,10 @@ class EmploymentType(models.TextChoices):
 
 class EmployeeStatus(models.TextChoices):
     INVITED = 'INVITED', 'Invited'
+    PENDING = 'PENDING', 'Pending'
     ACTIVE = 'ACTIVE', 'Active'
-    INACTIVE = 'INACTIVE', 'Inactive'
+    RESIGNED = 'RESIGNED', 'Resigned'
+    RETIRED = 'RETIRED', 'Retired'
     TERMINATED = 'TERMINATED', 'Terminated'
 
 
@@ -61,7 +63,7 @@ class Employee(models.Model):
         on_delete=models.CASCADE,
         related_name='employee_records',
     )
-    employee_code = models.CharField(max_length=20)
+    employee_code = models.CharField(max_length=20, null=True, blank=True)
     department = models.ForeignKey(
         'departments.Department',
         null=True,
@@ -101,11 +103,17 @@ class Employee(models.Model):
 
     class Meta:
         db_table = 'employees'
-        unique_together = [('organisation', 'employee_code')]
         ordering = ['-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['organisation', 'employee_code'],
+                condition=Q(employee_code__isnull=False) & ~Q(employee_code=''),
+                name='unique_employee_code_per_org_when_present',
+            ),
+        ]
 
     def __str__(self):
-        return f'{self.employee_code} - {self.user.full_name}'
+        return f'{self.employee_code or "UNASSIGNED"} - {self.user.full_name}'
 
 
 class EmployeeProfile(models.Model):
@@ -136,7 +144,7 @@ class EmployeeProfile(models.Model):
         db_table = 'employee_profiles'
 
     def __str__(self):
-        return f'Profile({self.employee.employee_code})'
+        return f'Profile({self.employee.employee_code or self.employee.user.email})'
 
 
 class EducationRecord(models.Model):

@@ -7,6 +7,29 @@ from apps.organisations.services import (
 )
 
 
+def organisation_addresses():
+    return [
+        {
+            'address_type': 'REGISTERED',
+            'line1': '123 Main St',
+            'city': 'Bengaluru',
+            'state': 'Karnataka',
+            'country': 'India',
+            'pincode': '560001',
+            'gstin': '29ABCDE1234F1Z5',
+        },
+        {
+            'address_type': 'BILLING',
+            'line1': '18 Nariman Point',
+            'city': 'Mumbai',
+            'state': 'Maharashtra',
+            'country': 'India',
+            'pincode': '400021',
+            'gstin': '27ABCDE1234F1Z7',
+        },
+    ]
+
+
 @pytest.fixture
 def ct_user(db):
     return User.objects.create_superuser(
@@ -26,20 +49,36 @@ def pending_org(ct_user):
 @pytest.mark.django_db
 class TestCreateOrganisation:
     def test_creates_with_pending_status(self, ct_user):
-        org = create_organisation(name='Test Corp', licence_count=5, created_by=ct_user)
+        org = create_organisation(
+            name='Test Corp',
+            licence_count=5,
+            created_by=ct_user,
+            pan_number='ABCDE1234F',
+            addresses=organisation_addresses(),
+        )
         assert org.status == OrganisationStatus.PENDING
         assert org.name == 'Test Corp'
         assert org.licence_count == 5
+        assert org.pan_number == 'ABCDE1234F'
+        assert org.addresses.count() == 2
 
     def test_auto_generates_slug(self, ct_user):
-        org = create_organisation(name='Hello World Corp', licence_count=1, created_by=ct_user)
+        org = create_organisation(
+            name='Hello World Corp',
+            licence_count=1,
+            created_by=ct_user,
+            pan_number='ABCDE1234F',
+            addresses=organisation_addresses(),
+        )
         assert 'hello' in org.slug
         assert org.slug != ''
 
     def test_stores_optional_fields(self, ct_user):
         org = create_organisation(
             name='Test', licence_count=1, created_by=ct_user,
-            address='123 Main St', phone='+91999', email='org@test.com',
+            pan_number='ABCDE1234F',
+            addresses=organisation_addresses(),
+            phone='+91999', email='org@test.com',
         )
         assert org.address == '123 Main St'
         assert org.email == 'org@test.com'

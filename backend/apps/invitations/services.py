@@ -12,7 +12,6 @@ from apps.employees.models import Employee, EmployeeStatus
 from apps.organisations.models import OrganisationMembershipStatus, OrganisationStatus
 from apps.organisations.services import (
     ensure_org_admin_membership,
-    mark_employee_invited,
     set_primary_admin,
     transition_organisation_state,
 )
@@ -159,9 +158,8 @@ def accept_invitation(token, password=''):
 
         if invite.role == InvitationRole.EMPLOYEE and invite.organisation:
             employee = Employee.objects.get(user=user, organisation=invite.organisation)
-            employee.status = EmployeeStatus.ACTIVE
+            employee.status = EmployeeStatus.PENDING
             employee.save(update_fields=['status', 'updated_at'])
-            mark_employee_invited(invite.organisation, user, employee)
 
         sync_user_role(user)
 

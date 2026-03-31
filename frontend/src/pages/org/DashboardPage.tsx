@@ -29,6 +29,9 @@ export function OrgDashboardPage() {
               <Link to="/org/employees" className="btn-primary">
                 Invite employee
               </Link>
+              <Link to="/org/profile" className="btn-secondary">
+                Organisation profile
+              </Link>
               <Link to="/org/locations" className="btn-secondary">
                 Manage master data
               </Link>
@@ -54,8 +57,9 @@ export function OrgDashboardPage() {
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <MetricCard title="Total employees" value={data.total_employees} hint="All employee records in this organisation." icon={Users} tone="primary" />
             <MetricCard title="Active employees" value={data.active_employees} hint="Currently active and engaged employees." icon={UserPlus} tone="success" />
-            <MetricCard title="Invited employees" value={data.invited_employees} hint="Employees who still need to activate their access." icon={Users} tone="info" />
-            <MetricCard title="Licence usage" value={`${data.licence_used}/${data.licence_total}`} hint="Invited and active employees consume purchased seats." icon={CreditCard} tone="warning" />
+            <MetricCard title="Invited employees" value={data.invited_employees} hint="Invited employees consume licences before password setup." icon={Users} tone="info" />
+            <MetricCard title="Pending employees" value={data.pending_employees} hint="Pending employees accepted access but are not joined yet." icon={Users} tone="warning" />
+            <MetricCard title="Licence usage" value={`${data.licence_used}/${data.licence_total}`} hint="Invited, pending, and active employees consume purchased seats." icon={CreditCard} tone="warning" />
           </div>
 
           <SectionCard title="Onboarding stage" description="Organisation readiness state derived from backend lifecycle transitions.">

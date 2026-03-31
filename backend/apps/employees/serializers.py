@@ -6,6 +6,7 @@ from .models import (
     EmployeeBankAccount,
     EmployeeGovernmentId,
     EmployeeProfile,
+    EmployeeStatus,
     EmploymentType,
     GovernmentIdType,
 )
@@ -34,9 +35,9 @@ class EmployeeListSerializer(serializers.ModelSerializer):
 
 
 class EmployeeInviteSerializer(serializers.Serializer):
-    email = serializers.EmailField()
     first_name = serializers.CharField(max_length=100)
     last_name = serializers.CharField(max_length=100)
+    company_email = serializers.EmailField()
     designation = serializers.CharField(max_length=255, required=False, allow_blank=True, default='')
     employment_type = serializers.ChoiceField(choices=EmploymentType.choices, default=EmploymentType.FULL_TIME)
     date_of_joining = serializers.DateField(required=False, allow_null=True)
@@ -50,7 +51,22 @@ class EmployeeUpdateSerializer(serializers.Serializer):
     date_of_joining = serializers.DateField(required=False, allow_null=True)
     department_id = serializers.UUIDField(required=False, allow_null=True)
     office_location_id = serializers.UUIDField(required=False, allow_null=True)
-    status = serializers.CharField(required=False)
+
+
+class EmployeeMarkJoinedSerializer(serializers.Serializer):
+    employee_code = serializers.CharField(max_length=20)
+    date_of_joining = serializers.DateField()
+
+
+class EmployeeEndEmploymentSerializer(serializers.Serializer):
+    status = serializers.ChoiceField(
+        choices=[
+            EmployeeStatus.RESIGNED,
+            EmployeeStatus.RETIRED,
+            EmployeeStatus.TERMINATED,
+        ]
+    )
+    date_of_exit = serializers.DateField()
 
 
 class EmployeeProfileSerializer(serializers.ModelSerializer):
@@ -130,6 +146,7 @@ class ProfileCompletionSerializer(serializers.Serializer):
 class EmployeeDetailSerializer(serializers.ModelSerializer):
     full_name = serializers.CharField(source='user.full_name', read_only=True)
     email = serializers.EmailField(source='user.email', read_only=True)
+    suggested_employee_code = serializers.SerializerMethodField()
     profile = EmployeeProfileSerializer(read_only=True)
     education_records = EducationRecordSerializer(many=True, read_only=True)
     government_ids = GovernmentIdSerializer(many=True, read_only=True)
@@ -140,6 +157,7 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
         fields = [
             'id',
             'employee_code',
+            'suggested_employee_code',
             'full_name',
             'email',
             'designation',
@@ -154,3 +172,10 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
             'government_ids',
             'bank_accounts',
         ]
+
+    def get_suggested_employee_code(self, obj):
+        if obj.employee_code:
+            return obj.employee_code
+        from .services import get_next_employee_code
+
+        return get_next_employee_code(obj.organisation)

@@ -23,6 +23,7 @@ from .services import (
 from .workspaces import (
     get_active_admin_organisation,
     get_active_employee,
+    get_workspace_state,
     initialize_workforce_workspace,
     set_active_admin_organisation,
     set_active_employee_workspace,
@@ -66,7 +67,8 @@ class WorkforceLoginView(APIView):
         if not user or not user.is_active:
             return Response({'error': 'Invalid email or password'}, status=status.HTTP_401_UNAUTHORIZED)
 
-        if not (user.organisation_memberships.exists() or user.employee_records.exists()):
+        workspace_state = get_workspace_state(user, request)
+        if not workspace_state.admin_memberships and not workspace_state.employee_records:
             return Response({'error': 'No workforce access is configured for this account.'}, status=status.HTTP_403_FORBIDDEN)
 
         initialize_workforce_workspace(request, user)

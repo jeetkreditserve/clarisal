@@ -5,10 +5,12 @@ from rest_framework.pagination import PageNumberPagination
 from django.shortcuts import get_object_or_404
 from apps.accounts.permissions import BelongsToActiveOrg, IsControlTowerUser, IsOrgAdmin
 from apps.accounts.workspaces import get_active_admin_organisation
-from .models import Organisation, OrganisationLicenceBatch, OrganisationStatus
+from .models import Organisation, OrganisationAddress, OrganisationLicenceBatch, OrganisationStatus
 from .repositories import get_organisations, get_organisation_by_id, get_org_admins
 from .serializers import (
     OrganisationListSerializer, OrganisationDetailSerializer,
+    OrganisationAddressSerializer,
+    OrganisationAddressWriteSerializer,
     CreateOrganisationSerializer, UpdateOrganisationSerializer,
     LicenceBatchMarkPaidSerializer,
     LicenceBatchSerializer,
@@ -17,11 +19,15 @@ from .serializers import (
     OrgAdminSerializer, CTDashboardStatsSerializer, OrgDashboardStatsSerializer,
 )
 from .services import (
+    create_organisation_address,
     create_licence_batch,
     create_organisation, transition_organisation_state,
+    deactivate_organisation_address,
     get_ct_dashboard_stats, get_org_dashboard_stats, get_org_licence_summary,
     mark_licence_batch_paid,
+    update_organisation_address,
     update_licence_batch,
+    update_organisation_profile,
 )
 
 
@@ -60,9 +66,10 @@ class OrganisationDetailView(APIView):
         org = get_object_or_404(Organisation, id=pk)
         serializer = UpdateOrganisationSerializer(data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        for attr, value in serializer.validated_data.items():
-            setattr(org, attr, value)
-        org.save()
+        try:
+            org = update_organisation_profile(org, actor=request.user, **serializer.validated_data)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(OrganisationDetailSerializer(org).data)
 
 
@@ -121,6 +128,49 @@ class OrganisationLicencesView(APIView):
             'utilisation_percent': summary['utilisation_percent'],
         })
 
+
+class OrganisationAddressListCreateView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def post(self, request, pk):
+        organisation = get_object_or_404(Organisation, id=pk)
+        serializer = OrganisationAddressWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            address = create_organisation_address(
+                organisation,
+                actor=request.user,
+                auto_create_location=True,
+                **serializer.validated_data,
+            )
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(OrganisationAddressSerializer(address).data, status=status.HTTP_201_CREATED)
+
+
+class OrganisationAddressDetailView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def patch(self, request, pk, address_id):
+        organisation = get_object_or_404(Organisation, id=pk)
+        address = get_object_or_404(OrganisationAddress, organisation=organisation, id=address_id)
+        serializer = OrganisationAddressWriteSerializer(data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        try:
+            address = update_organisation_address(address, actor=request.user, **serializer.validated_data)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(OrganisationAddressSerializer(address).data)
+
+    def delete(self, request, pk, address_id):
+        organisation = get_object_or_404(Organisation, id=pk)
+        address = get_object_or_404(OrganisationAddress, organisation=organisation, id=address_id)
+        try:
+            address = deactivate_organisation_address(address, actor=request.user)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(OrganisationAddressSerializer(address).data)
+
 class OrganisationAdminsView(APIView):
     permission_classes = [IsControlTowerUser]
 
@@ -147,6 +197,77 @@ class OrgDashboardStatsView(APIView):
             return Response({'error': 'Select an administrator organisation workspace to continue.'}, status=status.HTTP_400_BAD_REQUEST)
         stats = get_org_dashboard_stats(organisation)
         return Response(OrgDashboardStatsSerializer(stats).data)
+
+
+class OrgProfileView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+
+    def get(self, request):
+        organisation = get_active_admin_organisation(request, request.user)
+        if organisation is None:
+            return Response({'error': 'Select an administrator organisation workspace to continue.'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(OrganisationDetailSerializer(organisation).data)
+
+    def patch(self, request):
+        organisation = get_active_admin_organisation(request, request.user)
+        if organisation is None:
+            return Response({'error': 'Select an administrator organisation workspace to continue.'}, status=status.HTTP_400_BAD_REQUEST)
+        serializer = UpdateOrganisationSerializer(data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        try:
+            organisation = update_organisation_profile(organisation, actor=request.user, **serializer.validated_data)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(OrganisationDetailSerializer(organisation).data)
+
+
+class OrgProfileAddressListCreateView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+
+    def post(self, request):
+        organisation = get_active_admin_organisation(request, request.user)
+        if organisation is None:
+            return Response({'error': 'Select an administrator organisation workspace to continue.'}, status=status.HTTP_400_BAD_REQUEST)
+        serializer = OrganisationAddressWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            address = create_organisation_address(
+                organisation,
+                actor=request.user,
+                auto_create_location=False,
+                **serializer.validated_data,
+            )
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(OrganisationAddressSerializer(address).data, status=status.HTTP_201_CREATED)
+
+
+class OrgProfileAddressDetailView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+
+    def patch(self, request, address_id):
+        organisation = get_active_admin_organisation(request, request.user)
+        if organisation is None:
+            return Response({'error': 'Select an administrator organisation workspace to continue.'}, status=status.HTTP_400_BAD_REQUEST)
+        address = get_object_or_404(OrganisationAddress, organisation=organisation, id=address_id)
+        serializer = OrganisationAddressWriteSerializer(data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        try:
+            address = update_organisation_address(address, actor=request.user, **serializer.validated_data)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(OrganisationAddressSerializer(address).data)
+
+    def delete(self, request, address_id):
+        organisation = get_active_admin_organisation(request, request.user)
+        if organisation is None:
+            return Response({'error': 'Select an administrator organisation workspace to continue.'}, status=status.HTTP_400_BAD_REQUEST)
+        address = get_object_or_404(OrganisationAddress, organisation=organisation, id=address_id)
+        try:
+            address = deactivate_organisation_address(address, actor=request.user)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(OrganisationAddressSerializer(address).data)
 
 
 class OrganisationLicenceBatchListCreateView(APIView):

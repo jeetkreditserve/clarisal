@@ -3,10 +3,23 @@ import type {
   CtDashboardStats,
   LicenceBatch,
   OrgAdmin,
+  OrganisationAddress,
   OrganisationDetail,
   OrganisationListItem,
   PaginatedResponse,
 } from '@/types/organisation'
+
+export interface OrganisationAddressInput {
+  address_type: 'REGISTERED' | 'BILLING' | 'HEADQUARTERS' | 'WAREHOUSE' | 'CUSTOM'
+  label?: string
+  line1: string
+  line2?: string
+  city: string
+  state: string
+  country?: string
+  pincode: string
+  gstin?: string | null
+}
 
 export async function fetchCtStats(): Promise<CtDashboardStats> {
   const { data } = await api.get('/ct/dashboard/')
@@ -29,11 +42,12 @@ export async function fetchOrganisation(id: string): Promise<OrganisationDetail>
 
 export async function createOrganisation(payload: {
   name: string
-  address?: string
+  pan_number: string
   phone?: string
   email?: string
   country_code?: string
   currency?: string
+  addresses: OrganisationAddressInput[]
 }): Promise<OrganisationDetail> {
   const { data } = await api.post('/ct/organisations/', payload)
   return data
@@ -41,13 +55,33 @@ export async function createOrganisation(payload: {
 
 export async function updateOrganisation(id: string, payload: {
   name?: string
-  address?: string
+  pan_number?: string
   phone?: string
   email?: string
   country_code?: string
   currency?: string
+  logo_url?: string
 }): Promise<OrganisationDetail> {
   const { data } = await api.patch(`/ct/organisations/${id}/`, payload)
+  return data
+}
+
+export async function createOrganisationAddress(id: string, payload: OrganisationAddressInput): Promise<OrganisationAddress> {
+  const { data } = await api.post(`/ct/organisations/${id}/addresses/`, payload)
+  return data
+}
+
+export async function updateOrganisationAddress(
+  id: string,
+  addressId: string,
+  payload: Partial<OrganisationAddressInput>
+): Promise<OrganisationAddress> {
+  const { data } = await api.patch(`/ct/organisations/${id}/addresses/${addressId}/`, payload)
+  return data
+}
+
+export async function deactivateOrganisationAddress(id: string, addressId: string): Promise<OrganisationAddress> {
+  const { data } = await api.delete(`/ct/organisations/${id}/addresses/${addressId}/`)
   return data
 }
 

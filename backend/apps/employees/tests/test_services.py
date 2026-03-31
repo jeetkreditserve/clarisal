@@ -54,7 +54,7 @@ class TestInviteEmployee:
             organisation,
             quantity=1,
             price_per_licence_per_month=Decimal('100.00'),
-            start_date=date(2026, 4, 1),
+            start_date=date(2026, 3, 1),
             end_date=date(2026, 12, 31),
             created_by=org_admin,
         )
@@ -62,7 +62,7 @@ class TestInviteEmployee:
 
         invite_employee(
             organisation,
-            email='employee1@test.com',
+            company_email='employee1@test.com',
             first_name='One',
             last_name='Employee',
             invited_by=org_admin,
@@ -71,7 +71,7 @@ class TestInviteEmployee:
         with pytest.raises(ValueError, match='No licences are available for this organisation.'):
             invite_employee(
                 organisation,
-                email='employee2@test.com',
+                company_email='employee2@test.com',
                 first_name='Two',
                 last_name='Employee',
                 invited_by=org_admin,

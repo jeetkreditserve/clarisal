@@ -14,6 +14,7 @@ import { OrganisationsPage } from '@/pages/ct/OrganisationsPage'
 import { NewOrganisationPage } from '@/pages/ct/NewOrganisationPage'
 import { OrganisationDetailPage } from '@/pages/ct/OrganisationDetailPage'
 import { OrgDashboardPage } from '@/pages/org/DashboardPage'
+import { OrgProfilePage } from '@/pages/org/ProfilePage'
 import { LocationsPage } from '@/pages/org/LocationsPage'
 import { DepartmentsPage } from '@/pages/org/DepartmentsPage'
 import { EmployeesPage } from '@/pages/org/EmployeesPage'
@@ -78,6 +79,7 @@ export const router = createBrowserRouter([
         element: <OrgLayout />,
         children: [
           { path: '/org/dashboard', element: <OrgDashboardPage /> },
+          { path: '/org/profile', element: <OrgProfilePage /> },
           { path: '/org/locations', element: <LocationsPage /> },
           { path: '/org/departments', element: <DepartmentsPage /> },
           { path: '/org/employees', element: <EmployeesPage /> },

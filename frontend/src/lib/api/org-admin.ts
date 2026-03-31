@@ -1,5 +1,10 @@
 import api from '@/lib/api'
-import type { OrgDashboardStats, PaginatedResponse } from '@/types/organisation'
+import type {
+  OrgDashboardStats,
+  OrganisationAddress,
+  OrganisationDetail,
+  PaginatedResponse,
+} from '@/types/organisation'
 import type {
   Department,
   DocumentRecord,
@@ -13,6 +18,59 @@ export async function fetchOrgDashboard() {
   return data
 }
 
+export async function fetchOrgProfile() {
+  const { data } = await api.get<OrganisationDetail>('/org/profile/')
+  return data
+}
+
+export async function updateOrgProfile(payload: Partial<{
+  name: string
+  pan_number: string
+  phone: string
+  email: string
+  country_code: string
+  currency: string
+  logo_url: string
+}>) {
+  const { data } = await api.patch<OrganisationDetail>('/org/profile/', payload)
+  return data
+}
+
+export async function createOrgAddress(payload: {
+  address_type: string
+  label?: string
+  line1: string
+  line2?: string
+  city: string
+  state: string
+  country?: string
+  pincode: string
+  gstin?: string | null
+}) {
+  const { data } = await api.post<OrganisationAddress>('/org/profile/addresses/', payload)
+  return data
+}
+
+export async function updateOrgAddress(addressId: string, payload: Partial<{
+  address_type: string
+  label: string
+  line1: string
+  line2: string
+  city: string
+  state: string
+  country: string
+  pincode: string
+  gstin: string | null
+}>) {
+  const { data } = await api.patch<OrganisationAddress>(`/org/profile/addresses/${addressId}/`, payload)
+  return data
+}
+
+export async function deactivateOrgAddress(addressId: string) {
+  const { data } = await api.delete<OrganisationAddress>(`/org/profile/addresses/${addressId}/`)
+  return data
+}
+
 export async function fetchLocations(includeInactive = false) {
   const { data } = await api.get<Location[]>('/org/locations/', {
     params: { include_inactive: includeInactive },
@@ -22,11 +80,8 @@ export async function fetchLocations(includeInactive = false) {
 
 export async function createLocation(payload: {
   name: string
-  address?: string
-  city?: string
-  state?: string
-  country?: string
-  pincode?: string
+  organisation_address_id: string
+  is_remote?: boolean
 }) {
   const { data } = await api.post<Location>('/org/locations/', payload)
   return data
@@ -34,11 +89,8 @@ export async function createLocation(payload: {
 
 export async function updateLocation(id: string, payload: Partial<{
   name: string
-  address: string
-  city: string
-  state: string
-  country: string
-  pincode: string
+  organisation_address_id: string
+  is_remote: boolean
 }>) {
   const { data } = await api.patch<Location>(`/org/locations/${id}/`, payload)
   return data
@@ -56,12 +108,19 @@ export async function fetchDepartments(includeInactive = false) {
   return data
 }
 
-export async function createDepartment(payload: { name: string; description?: string }) {
+export async function createDepartment(payload: {
+  name: string
+  description?: string
+  parent_department_id?: string | null
+}) {
   const { data } = await api.post<Department>('/org/departments/', payload)
   return data
 }
 
-export async function updateDepartment(id: string, payload: Partial<{ name: string; description: string }>) {
+export async function updateDepartment(
+  id: string,
+  payload: Partial<{ name: string; description: string; parent_department_id: string | null }>
+) {
   const { data } = await api.patch<Department>(`/org/departments/${id}/`, payload)
   return data
 }
@@ -81,9 +140,9 @@ export async function fetchEmployees(params?: {
 }
 
 export async function inviteEmployee(payload: {
-  email: string
   first_name: string
   last_name: string
+  company_email: string
   designation?: string
   employment_type?: string
   date_of_joining?: string | null
@@ -110,15 +169,27 @@ export async function updateEmployee(
     date_of_joining: string | null
     department_id: string | null
     office_location_id: string | null
-    status: string
   }>
 ) {
   const { data } = await api.patch<EmployeeDetail>(`/org/employees/${id}/`, payload)
   return data
 }
 
-export async function terminateEmployee(id: string) {
-  const { data } = await api.post<EmployeeDetail>(`/org/employees/${id}/terminate/`)
+export async function markEmployeeJoined(id: string, payload: { employee_code: string; date_of_joining: string }) {
+  const { data } = await api.post<EmployeeDetail>(`/org/employees/${id}/mark-joined/`, payload)
+  return data
+}
+
+export async function endEmployeeEmployment(
+  id: string,
+  payload: { status: 'RESIGNED' | 'RETIRED' | 'TERMINATED'; date_of_exit: string }
+) {
+  const { data } = await api.post<EmployeeDetail>(`/org/employees/${id}/end-employment/`, payload)
+  return data
+}
+
+export async function deleteEmployee(id: string) {
+  const { data } = await api.delete<EmployeeDetail>(`/org/employees/${id}/delete/`)
   return data
 }
 

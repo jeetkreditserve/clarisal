@@ -55,5 +55,8 @@ class LocationDeactivateView(APIView):
     def post(self, request, pk):
         organisation = get_active_admin_organisation(request, request.user)
         location = get_object_or_404(OfficeLocation, organisation=organisation, id=pk)
-        deactivate_location(location, actor=request.user)
+        try:
+            deactivate_location(location, actor=request.user)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(LocationSerializer(location).data)

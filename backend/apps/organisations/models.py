@@ -1,6 +1,7 @@
 import uuid
 from django.conf import settings
 from django.db import models
+from django.db.models import Q
 from django.utils import timezone
 from django.utils.text import slugify
 
@@ -71,6 +72,14 @@ class OrganisationMembershipStatus(models.TextChoices):
     REVOKED = 'REVOKED', 'Revoked'
 
 
+class OrganisationAddressType(models.TextChoices):
+    REGISTERED = 'REGISTERED', 'Registered'
+    BILLING = 'BILLING', 'Billing'
+    HEADQUARTERS = 'HEADQUARTERS', 'Headquarters'
+    WAREHOUSE = 'WAREHOUSE', 'Warehouse'
+    CUSTOM = 'CUSTOM', 'Custom'
+
+
 class Organisation(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=255)
@@ -98,6 +107,7 @@ class Organisation(models.Model):
     licence_count = models.PositiveIntegerField(default=0)
     country_code = models.CharField(max_length=2, default='IN')
     currency = models.CharField(max_length=3, default='INR')
+    pan_number = models.CharField(max_length=10, null=True, blank=True)
     address = models.TextField(blank=True)
     phone = models.CharField(max_length=20, blank=True)
     email = models.EmailField(blank=True)
@@ -146,6 +156,49 @@ class Organisation(models.Model):
 
     def __str__(self):
         return f'{self.name} ({self.status})'
+
+
+class OrganisationAddress(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organisation = models.ForeignKey(
+        Organisation,
+        on_delete=models.CASCADE,
+        related_name='addresses',
+    )
+    address_type = models.CharField(
+        max_length=24,
+        choices=OrganisationAddressType.choices,
+    )
+    label = models.CharField(max_length=255, blank=True)
+    line1 = models.TextField()
+    line2 = models.TextField(blank=True)
+    city = models.CharField(max_length=100)
+    state = models.CharField(max_length=100)
+    country = models.CharField(max_length=100, default='India')
+    pincode = models.CharField(max_length=20)
+    gstin = models.CharField(max_length=15, null=True, blank=True, unique=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'organisation_addresses'
+        ordering = ['created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['organisation', 'address_type'],
+                condition=Q(address_type=OrganisationAddressType.REGISTERED, is_active=True),
+                name='unique_active_registered_address_per_org',
+            ),
+            models.UniqueConstraint(
+                fields=['organisation', 'address_type'],
+                condition=Q(address_type=OrganisationAddressType.BILLING, is_active=True),
+                name='unique_active_billing_address_per_org',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.organisation.name} - {self.label or self.get_address_type_display()}'
 
 
 class OrganisationStateTransition(models.Model):

@@ -48,13 +48,16 @@ export function getEmployeeStatusTone(status?: EmployeeStatus | null): Tone {
   switch (status) {
     case 'ACTIVE':
       return 'success'
+    case 'PENDING':
+      return 'warning'
     case 'INVITED':
       return 'info'
+    case 'RESIGNED':
+    case 'RETIRED':
     case 'TERMINATED':
       return 'danger'
-    case 'INACTIVE':
     default:
-      return 'warning'
+      return 'neutral'
   }
 }
 

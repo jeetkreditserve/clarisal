@@ -1,19 +1,37 @@
 export type EmploymentType = 'FULL_TIME' | 'PART_TIME' | 'CONTRACT' | 'INTERN'
-export type EmployeeStatus = 'INVITED' | 'ACTIVE' | 'INACTIVE' | 'TERMINATED'
+export type EmployeeStatus = 'INVITED' | 'PENDING' | 'ACTIVE' | 'RESIGNED' | 'RETIRED' | 'TERMINATED'
 export type GovernmentIdType = 'PAN' | 'AADHAAR'
 export type GovernmentIdStatus = 'PENDING' | 'VERIFIED' | 'REJECTED'
 export type BankAccountType = 'SAVINGS' | 'CURRENT' | 'SALARY'
 export type DocumentStatus = 'PENDING' | 'VERIFIED' | 'REJECTED'
 export type DocumentType = 'PAN' | 'AADHAAR' | 'EDUCATION_CERT' | 'EMPLOYMENT_LETTER' | 'OTHER'
 
+export interface LinkedOrganisationAddress {
+  id: string
+  address_type: string
+  address_type_label: string
+  label: string
+  line1: string
+  line2: string
+  city: string
+  state: string
+  country: string
+  pincode: string
+  gstin: string | null
+  is_active: boolean
+}
+
 export interface Location {
   id: string
   name: string
+  organisation_address: LinkedOrganisationAddress | null
+  organisation_address_id: string | null
   address: string
   city: string
   state: string
   country: string
   pincode: string
+  is_remote: boolean
   is_active: boolean
   created_at: string
   updated_at: string
@@ -23,6 +41,8 @@ export interface Department {
   id: string
   name: string
   description: string
+  parent_department_id: string | null
+  parent_department_name: string | null
   is_active: boolean
   created_at: string
   updated_at: string
@@ -30,7 +50,7 @@ export interface Department {
 
 export interface EmployeeListItem {
   id: string
-  employee_code: string
+  employee_code: string | null
   full_name: string
   email: string
   designation: string
@@ -97,7 +117,8 @@ export interface BankAccount {
 
 export interface EmployeeDetail {
   id: string
-  employee_code: string
+  employee_code: string | null
+  suggested_employee_code: string
   full_name: string
   email: string
   designation: string
