@@ -24,7 +24,16 @@ export function WorkspaceSwitcher({ currentMode }: WorkspaceSwitcherProps) {
     setIsSwitching(true)
     try {
       const nextUser = await switchWorkspace({ workspace_kind, organisation_id })
-      navigate(workspace_kind === 'ADMIN' ? '/org/dashboard' : '/me/dashboard', { replace: true })
+      if (workspace_kind === 'ADMIN') {
+        navigate('/org/dashboard', { replace: true })
+      } else if (
+        nextUser.active_employee_status === 'INVITED' ||
+        (nextUser.active_employee_onboarding_status && nextUser.active_employee_onboarding_status !== 'COMPLETE')
+      ) {
+        navigate('/me/onboarding', { replace: true })
+      } else {
+        navigate('/me/dashboard', { replace: true })
+      }
       return nextUser
     } finally {
       setIsSwitching(false)

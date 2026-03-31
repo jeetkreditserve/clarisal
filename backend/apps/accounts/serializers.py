@@ -1,5 +1,7 @@
 from rest_framework import serializers
 
+from apps.organisations.services import get_org_operations_guard
+
 from .models import AccountType, User
 from .workspaces import get_default_route, get_workspace_state
 
@@ -43,6 +45,9 @@ class UserSerializer(serializers.ModelSerializer):
     has_employee_access = serializers.SerializerMethodField()
     admin_organisations = serializers.SerializerMethodField()
     employee_workspaces = serializers.SerializerMethodField()
+    active_employee_status = serializers.SerializerMethodField()
+    active_employee_onboarding_status = serializers.SerializerMethodField()
+    org_operations_guard = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -66,6 +71,9 @@ class UserSerializer(serializers.ModelSerializer):
             'has_employee_access',
             'admin_organisations',
             'employee_workspaces',
+            'active_employee_status',
+            'active_employee_onboarding_status',
+            'org_operations_guard',
             'is_active',
         ]
         read_only_fields = fields
@@ -154,7 +162,22 @@ class UserSerializer(serializers.ModelSerializer):
                     'organisation_id': str(organisation.id),
                     'organisation_name': organisation.name,
                     'employee_status': employee.status,
+                    'onboarding_status': employee.onboarding_status,
                     'is_active_context': bool(state.active_employee and state.active_employee.id == employee.id),
                 }
             )
         return results
+
+    def get_active_employee_status(self, obj):
+        employee = self._state(obj).active_employee
+        return employee.status if employee else None
+
+    def get_active_employee_onboarding_status(self, obj):
+        employee = self._state(obj).active_employee
+        return employee.onboarding_status if employee else None
+
+    def get_org_operations_guard(self, obj):
+        organisation = self._current_org(obj)
+        if organisation is None or obj.account_type == AccountType.CONTROL_TOWER:
+            return None
+        return get_org_operations_guard(organisation)

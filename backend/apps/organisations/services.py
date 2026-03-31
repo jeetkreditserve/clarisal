@@ -433,6 +433,21 @@ def get_org_licence_summary(org, as_of=None):
     }
 
 
+def get_org_operations_guard(org, as_of=None):
+    summary = get_org_licence_summary(org, as_of=as_of)
+    licence_expired = summary['active_paid_quantity'] <= 0
+    return {
+        'licence_expired': licence_expired,
+        'admin_mutations_blocked': licence_expired,
+        'approval_actions_blocked': licence_expired,
+        'seat_assignment_blocked': summary['available'] <= 0,
+        'reason': 'Organisation licences have expired. Renew licences in Control Tower to continue.'
+        if licence_expired
+        else '',
+        'summary': summary,
+    }
+
+
 def create_organisation(
     name,
     created_by,

@@ -33,5 +33,22 @@ export function ProtectedRoute({ requiredAccess }: ProtectedRouteProps) {
     return <Navigate to={getDefaultRoute(user)} replace />
   }
 
+  if (
+    requiredAccess === 'EMPLOYEE' &&
+    location.pathname !== '/me/onboarding' &&
+    user.active_employee_status === 'INVITED'
+  ) {
+    return <Navigate to="/me/onboarding" replace />
+  }
+
+  if (
+    requiredAccess === 'EMPLOYEE' &&
+    location.pathname !== '/me/onboarding' &&
+    user.active_employee_onboarding_status &&
+    user.active_employee_onboarding_status !== 'COMPLETE'
+  ) {
+    return <Navigate to="/me/onboarding" replace />
+  }
+
   return <Outlet />
 }

@@ -19,7 +19,13 @@ urlpatterns = [
     path('api/org/', include('apps.departments.urls')),
     path('api/org/', include('apps.employees.urls')),
     path('api/org/', include('apps.documents.urls')),
+    path('api/org/', include('apps.approvals.urls')),
+    path('api/org/', include('apps.timeoff.org_urls')),
+    path('api/org/', include('apps.communications.urls')),
     path('api/org/', include('apps.audit.urls')),
     path('api/me/', include('apps.employees.self_urls')),
     path('api/me/', include('apps.documents.self_urls')),
+    path('api/me/', include('apps.approvals.self_urls')),
+    path('api/me/', include('apps.timeoff.self_urls')),
+    path('api/me/', include('apps.communications.self_urls')),
 ]

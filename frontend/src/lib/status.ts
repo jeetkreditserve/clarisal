@@ -1,4 +1,12 @@
-import type { DocumentStatus, EmployeeStatus } from '@/types/hr'
+import type {
+  ApprovalActionStatus,
+  DocumentStatus,
+  EmployeeDocumentRequestStatus,
+  EmployeeOnboardingStatus,
+  EmployeeStatus,
+  LeaveRequestStatus,
+  OnDutyRequestStatus,
+} from '@/types/hr'
 import type {
   OrganisationAccessState,
   OrganisationBillingStatus,
@@ -67,6 +75,64 @@ export function getDocumentStatusTone(status?: DocumentStatus | null): Tone {
       return 'success'
     case 'REJECTED':
       return 'danger'
+    case 'PENDING':
+    default:
+      return 'warning'
+  }
+}
+
+export function getDocumentRequestStatusTone(status?: EmployeeDocumentRequestStatus | null): Tone {
+  switch (status) {
+    case 'VERIFIED':
+    case 'WAIVED':
+      return 'success'
+    case 'SUBMITTED':
+      return 'info'
+    case 'REJECTED':
+      return 'danger'
+    case 'REQUESTED':
+    default:
+      return 'warning'
+  }
+}
+
+export function getOnboardingStatusTone(status?: EmployeeOnboardingStatus | null): Tone {
+  switch (status) {
+    case 'COMPLETE':
+      return 'success'
+    case 'DOCUMENTS_PENDING':
+      return 'info'
+    case 'BASIC_DETAILS_PENDING':
+    case 'NOT_STARTED':
+    default:
+      return 'warning'
+  }
+}
+
+export function getApprovalActionTone(status?: ApprovalActionStatus | null): Tone {
+  switch (status) {
+    case 'APPROVED':
+      return 'success'
+    case 'REJECTED':
+    case 'CANCELLED':
+      return 'danger'
+    case 'SKIPPED':
+      return 'neutral'
+    case 'PENDING':
+    default:
+      return 'warning'
+  }
+}
+
+export function getLeaveStatusTone(status?: LeaveRequestStatus | OnDutyRequestStatus | null): Tone {
+  switch (status) {
+    case 'APPROVED':
+      return 'success'
+    case 'REJECTED':
+    case 'CANCELLED':
+      return 'danger'
+    case 'WITHDRAWN':
+      return 'neutral'
     case 'PENDING':
     default:
       return 'warning'

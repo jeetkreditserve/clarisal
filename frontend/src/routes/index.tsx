@@ -20,9 +20,17 @@ import { DepartmentsPage } from '@/pages/org/DepartmentsPage'
 import { EmployeesPage } from '@/pages/org/EmployeesPage'
 import { EmployeeDetailPage } from '@/pages/org/EmployeeDetailPage'
 import { EmployeeDashboardPage } from '@/pages/employee/DashboardPage'
+import { OnboardingPage } from '@/pages/employee/OnboardingPage'
 import { ProfilePage } from '@/pages/employee/ProfilePage'
 import { EducationPage } from '@/pages/employee/EducationPage'
 import { DocumentsPage } from '@/pages/employee/DocumentsPage'
+import { LeavePage } from '@/pages/employee/LeavePage'
+import { OnDutyPage } from '@/pages/employee/OnDutyPage'
+import { ApprovalsPage } from '@/pages/employee/ApprovalsPage'
+import { HolidaysPage } from '@/pages/org/HolidaysPage'
+import { LeavePlansPage } from '@/pages/org/LeavePlansPage'
+import { ApprovalWorkflowsPage } from '@/pages/org/ApprovalWorkflowsPage'
+import { NoticesPage } from '@/pages/org/NoticesPage'
 
 export const router = createBrowserRouter([
   // Public auth routes
@@ -84,6 +92,10 @@ export const router = createBrowserRouter([
           { path: '/org/departments', element: <DepartmentsPage /> },
           { path: '/org/employees', element: <EmployeesPage /> },
           { path: '/org/employees/:id', element: <EmployeeDetailPage /> },
+          { path: '/org/holidays', element: <HolidaysPage /> },
+          { path: '/org/leave-plans', element: <LeavePlansPage /> },
+          { path: '/org/approval-workflows', element: <ApprovalWorkflowsPage /> },
+          { path: '/org/notices', element: <NoticesPage /> },
         ],
       },
     ],
@@ -96,10 +108,14 @@ export const router = createBrowserRouter([
       {
         element: <EmployeeLayout />,
         children: [
+          { path: '/me/onboarding', element: <OnboardingPage /> },
           { path: '/me/dashboard', element: <EmployeeDashboardPage /> },
           { path: '/me/profile', element: <ProfilePage /> },
           { path: '/me/education', element: <EducationPage /> },
           { path: '/me/documents', element: <DocumentsPage /> },
+          { path: '/me/leave', element: <LeavePage /> },
+          { path: '/me/od', element: <OnDutyPage /> },
+          { path: '/me/approvals', element: <ApprovalsPage /> },
         ],
       },
     ],

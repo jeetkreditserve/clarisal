@@ -1,11 +1,23 @@
 import api from '@/lib/api'
 import type {
+  ApprovalActionItem,
   BankAccount,
+  CalendarMonthView,
   DocumentRecord,
+  EmployeeDocumentRequest,
+  EmployeeEvent,
+  EmergencyContact,
   EducationRecord,
   EmployeeDashboard,
+  FamilyMember,
   GovernmentId,
+  LeaveOverview,
+  LeaveRequestRecord,
+  MyOnboardingResponse,
   MyProfileResponse,
+  NoticeItem,
+  OnDutyPolicy,
+  OnDutyRequestRecord,
 } from '@/types/hr'
 
 export async function fetchMyDashboard() {
@@ -18,6 +30,19 @@ export async function fetchMyProfile() {
   return data
 }
 
+export async function fetchMyOnboarding() {
+  const { data } = await api.get<MyOnboardingResponse>('/me/onboarding/')
+  return data
+}
+
+export async function updateMyOnboarding(payload: Record<string, unknown>) {
+  const { data } = await api.patch<{ profile: MyProfileResponse['profile']; summary: MyOnboardingResponse['summary'] }>(
+    '/me/onboarding/',
+    payload
+  )
+  return data
+}
+
 export async function updateMyProfile(payload: Record<string, unknown>) {
   const { data } = await api.patch<Pick<MyProfileResponse, 'profile' | 'profile_completion'>>('/me/profile/', payload)
   return data
@@ -26,6 +51,37 @@ export async function updateMyProfile(payload: Record<string, unknown>) {
 export async function fetchEducation() {
   const { data } = await api.get<EducationRecord[]>('/me/education/')
   return data
+}
+
+export async function createFamilyMember(payload: Omit<FamilyMember, 'id' | 'created_at' | 'updated_at'>) {
+  const { data } = await api.post<FamilyMember>('/me/family-members/', payload)
+  return data
+}
+
+export async function updateFamilyMember(id: string, payload: Partial<Omit<FamilyMember, 'id' | 'created_at' | 'updated_at'>>) {
+  const { data } = await api.patch<FamilyMember>(`/me/family-members/${id}/`, payload)
+  return data
+}
+
+export async function deleteFamilyMember(id: string) {
+  await api.delete(`/me/family-members/${id}/`)
+}
+
+export async function createEmergencyContact(payload: Omit<EmergencyContact, 'id' | 'created_at' | 'updated_at'>) {
+  const { data } = await api.post<EmergencyContact>('/me/emergency-contacts/', payload)
+  return data
+}
+
+export async function updateEmergencyContact(
+  id: string,
+  payload: Partial<Omit<EmergencyContact, 'id' | 'created_at' | 'updated_at'>>
+) {
+  const { data } = await api.patch<EmergencyContact>(`/me/emergency-contacts/${id}/`, payload)
+  return data
+}
+
+export async function deleteEmergencyContact(id: string) {
+  await api.delete(`/me/emergency-contacts/${id}/`)
 }
 
 export async function createEducation(payload: Omit<EducationRecord, 'id' | 'created_at' | 'updated_at'>) {
@@ -100,6 +156,27 @@ export async function fetchMyDocuments() {
   return data
 }
 
+export async function fetchMyDocumentRequests() {
+  const { data } = await api.get<EmployeeDocumentRequest[]>('/me/document-requests/')
+  return data
+}
+
+export async function uploadRequestedDocument(payload: {
+  request_id: string
+  file: File
+  metadata?: Record<string, unknown>
+}) {
+  const formData = new FormData()
+  formData.append('file', payload.file)
+  if (payload.metadata) {
+    formData.append('metadata', JSON.stringify(payload.metadata))
+  }
+  const { data } = await api.post<DocumentRecord>(`/me/document-requests/${payload.request_id}/upload/`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+  return data
+}
+
 export async function uploadMyDocument(payload: {
   document_type: string
   file: File
@@ -119,5 +196,72 @@ export async function uploadMyDocument(payload: {
 
 export async function getMyDocumentDownloadUrl(documentId: string) {
   const { data } = await api.get<{ url: string }>(`/me/documents/${documentId}/download/`)
+  return data
+}
+
+export async function fetchMyNotices() {
+  const { data } = await api.get<NoticeItem[]>('/me/notices/')
+  return data
+}
+
+export async function fetchMyEvents() {
+  const { data } = await api.get<EmployeeEvent[]>('/me/events/')
+  return data
+}
+
+export async function fetchMyApprovalInbox() {
+  const { data } = await api.get<ApprovalActionItem[]>('/me/approvals/inbox/')
+  return data
+}
+
+export async function approveMyApprovalAction(actionId: string, comment = '') {
+  const { data } = await api.post<ApprovalActionItem>(`/me/approvals/actions/${actionId}/approve/`, { comment })
+  return data
+}
+
+export async function rejectMyApprovalAction(actionId: string, comment = '') {
+  const { data } = await api.post<ApprovalActionItem>(`/me/approvals/actions/${actionId}/reject/`, { comment })
+  return data
+}
+
+export async function fetchMyLeaveOverview() {
+  const { data } = await api.get<LeaveOverview>('/me/leave/')
+  return data
+}
+
+export async function createMyLeaveRequest(payload: Record<string, unknown>) {
+  const { data } = await api.post<LeaveRequestRecord>('/me/leave/requests/', payload)
+  return data
+}
+
+export async function withdrawMyLeaveRequest(id: string) {
+  const { data } = await api.post<LeaveRequestRecord>(`/me/leave/requests/${id}/withdraw/`)
+  return data
+}
+
+export async function fetchMyOnDutyPolicies() {
+  const { data } = await api.get<OnDutyPolicy[]>('/me/on-duty/policies/')
+  return data
+}
+
+export async function fetchMyOnDutyRequests() {
+  const { data } = await api.get<OnDutyRequestRecord[]>('/me/on-duty/requests/')
+  return data
+}
+
+export async function createMyOnDutyRequest(payload: Record<string, unknown>) {
+  const { data } = await api.post<OnDutyRequestRecord>('/me/on-duty/requests/', payload)
+  return data
+}
+
+export async function withdrawMyOnDutyRequest(id: string) {
+  const { data } = await api.post<OnDutyRequestRecord>(`/me/on-duty/requests/${id}/withdraw/`)
+  return data
+}
+
+export async function fetchMyCalendar(month?: string) {
+  const { data } = await api.get<CalendarMonthView>('/me/calendar/', {
+    params: month ? { month } : undefined,
+  })
   return data
 }

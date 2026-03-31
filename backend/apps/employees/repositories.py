@@ -13,7 +13,15 @@ def list_employees(organisation, status=None, search=None):
     queryset = (
         Employee.objects.filter(organisation=organisation)
         .select_related('user', 'department', 'office_location', 'reporting_to__user')
-        .prefetch_related('education_records', 'government_ids', 'bank_accounts', 'documents')
+        .prefetch_related(
+            'education_records',
+            'government_ids',
+            'bank_accounts',
+            'documents',
+            'document_requests__document_type_ref',
+            'family_members',
+            'emergency_contacts',
+        )
         .order_by('-created_at')
     )
     if status:
@@ -36,7 +44,15 @@ def get_employee(organisation, pk):
 def get_employee_self(user, organisation=None):
     queryset = (
         Employee.objects.select_related('user', 'profile', 'department', 'office_location')
-        .prefetch_related('education_records', 'government_ids', 'bank_accounts', 'documents')
+        .prefetch_related(
+            'education_records',
+            'government_ids',
+            'bank_accounts',
+            'documents',
+            'document_requests__document_type_ref',
+            'family_members',
+            'emergency_contacts',
+        )
         .filter(user=user)
     )
     if organisation is not None:

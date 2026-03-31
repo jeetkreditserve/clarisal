@@ -34,6 +34,18 @@ class MaritalStatus(models.TextChoices):
     WIDOWED = 'WIDOWED', 'Widowed'
 
 
+class BloodTypeChoice(models.TextChoices):
+    A_POSITIVE = 'A_POSITIVE', 'A+'
+    A_NEGATIVE = 'A_NEGATIVE', 'A-'
+    B_POSITIVE = 'B_POSITIVE', 'B+'
+    B_NEGATIVE = 'B_NEGATIVE', 'B-'
+    AB_POSITIVE = 'AB_POSITIVE', 'AB+'
+    AB_NEGATIVE = 'AB_NEGATIVE', 'AB-'
+    O_POSITIVE = 'O_POSITIVE', 'O+'
+    O_NEGATIVE = 'O_NEGATIVE', 'O-'
+    UNKNOWN = 'UNKNOWN', 'Unknown'
+
+
 class GovernmentIdType(models.TextChoices):
     PAN = 'PAN', 'PAN'
     AADHAAR = 'AADHAAR', 'Aadhaar'
@@ -49,6 +61,13 @@ class BankAccountType(models.TextChoices):
     SAVINGS = 'SAVINGS', 'Savings'
     CURRENT = 'CURRENT', 'Current'
     SALARY = 'SALARY', 'Salary'
+
+
+class EmployeeOnboardingStatus(models.TextChoices):
+    NOT_STARTED = 'NOT_STARTED', 'Not Started'
+    BASIC_DETAILS_PENDING = 'BASIC_DETAILS_PENDING', 'Basic Details Pending'
+    DOCUMENTS_PENDING = 'DOCUMENTS_PENDING', 'Documents Pending'
+    COMPLETE = 'COMPLETE', 'Complete'
 
 
 class Employee(models.Model):
@@ -98,6 +117,12 @@ class Employee(models.Model):
         choices=EmployeeStatus.choices,
         default=EmployeeStatus.INVITED,
     )
+    onboarding_status = models.CharField(
+        max_length=32,
+        choices=EmployeeOnboardingStatus.choices,
+        default=EmployeeOnboardingStatus.NOT_STARTED,
+    )
+    onboarding_completed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -127,6 +152,7 @@ class EmployeeProfile(models.Model):
     gender = models.CharField(max_length=20, choices=GenderChoice.choices, blank=True)
     marital_status = models.CharField(max_length=20, choices=MaritalStatus.choices, blank=True)
     nationality = models.CharField(max_length=100, blank=True)
+    blood_type = models.CharField(max_length=20, choices=BloodTypeChoice.choices, blank=True)
     phone_personal = models.CharField(max_length=20, blank=True)
     phone_emergency = models.CharField(max_length=20, blank=True)
     emergency_contact_name = models.CharField(max_length=255, blank=True)
@@ -234,5 +260,64 @@ class EmployeeBankAccount(models.Model):
                 fields=['employee'],
                 condition=Q(is_primary=True),
                 name='unique_primary_bank_account_per_employee',
+            ),
+        ]
+
+
+class FamilyRelationChoice(models.TextChoices):
+    SPOUSE = 'SPOUSE', 'Spouse'
+    FATHER = 'FATHER', 'Father'
+    MOTHER = 'MOTHER', 'Mother'
+    SON = 'SON', 'Son'
+    DAUGHTER = 'DAUGHTER', 'Daughter'
+    BROTHER = 'BROTHER', 'Brother'
+    SISTER = 'SISTER', 'Sister'
+    OTHER = 'OTHER', 'Other'
+
+
+class EmployeeFamilyMember(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    employee = models.ForeignKey(
+        Employee,
+        on_delete=models.CASCADE,
+        related_name='family_members',
+    )
+    full_name = models.CharField(max_length=255)
+    relation = models.CharField(max_length=20, choices=FamilyRelationChoice.choices, default=FamilyRelationChoice.OTHER)
+    date_of_birth = models.DateField(null=True, blank=True)
+    contact_number = models.CharField(max_length=20, blank=True)
+    is_dependent = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'employee_family_members'
+        ordering = ['full_name']
+
+
+class EmployeeEmergencyContact(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    employee = models.ForeignKey(
+        Employee,
+        on_delete=models.CASCADE,
+        related_name='emergency_contacts',
+    )
+    full_name = models.CharField(max_length=255)
+    relation = models.CharField(max_length=100)
+    phone_number = models.CharField(max_length=20)
+    alternate_phone_number = models.CharField(max_length=20, blank=True)
+    address = models.TextField(blank=True)
+    is_primary = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'employee_emergency_contacts'
+        ordering = ['-is_primary', 'full_name']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['employee'],
+                condition=Q(is_primary=True),
+                name='unique_primary_emergency_contact_per_employee',
             ),
         ]

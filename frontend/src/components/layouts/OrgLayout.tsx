@@ -1,5 +1,5 @@
 import { Outlet, useNavigate } from 'react-router-dom'
-import { Building, Building2, LayoutDashboard, LogOut, MapPin, Users } from 'lucide-react'
+import { Bell, Building, Building2, CalendarDays, ClipboardCheck, LayoutDashboard, LogOut, MapPin, Users } from 'lucide-react'
 import { SidebarNav, type NavItem } from './SidebarNav'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
 import { useAuth } from '@/hooks/useAuth'
@@ -13,6 +13,10 @@ const navItems: NavItem[] = [
   { label: 'Locations', href: '/org/locations', icon: MapPin },
   { label: 'Departments', href: '/org/departments', icon: Building },
   { label: 'Employees', href: '/org/employees', icon: Users },
+  { label: 'Holidays', href: '/org/holidays', icon: CalendarDays },
+  { label: 'Leave and OD', href: '/org/leave-plans', icon: ClipboardCheck },
+  { label: 'Approvals', href: '/org/approval-workflows', icon: ClipboardCheck },
+  { label: 'Notices', href: '/org/notices', icon: Bell },
 ]
 
 export function OrgLayout() {
@@ -52,6 +56,12 @@ export function OrgLayout() {
           </div>
         </header>
         <main className="page-shell flex-1 py-6">
+          {user?.org_operations_guard?.admin_mutations_blocked ? (
+            <div className="mb-6 rounded-[24px] border border-[hsl(var(--warning)_/_0.32)] bg-[hsl(var(--warning)_/_0.12)] px-5 py-4 text-sm text-[hsl(var(--foreground-strong))]">
+              <p className="font-semibold">Organisation admin actions are currently blocked.</p>
+              <p className="mt-1 text-[hsl(var(--muted-foreground))]">{user.org_operations_guard.reason}</p>
+            </div>
+          ) : null}
           <Outlet />
         </main>
       </div>

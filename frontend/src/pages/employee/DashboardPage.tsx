@@ -1,12 +1,14 @@
 import { Link } from 'react-router-dom'
 import { FileClock, FileWarning, ShieldCheck, UserRound } from 'lucide-react'
-import { useMyDashboard, useMyProfile } from '@/hooks/useEmployeeSelf'
+
+import { MonthCalendar } from '@/components/ui/MonthCalendar'
 import { MetricCard } from '@/components/ui/MetricCard'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { SkeletonMetricCard, SkeletonTable } from '@/components/ui/Skeleton'
 import { StatusBadge } from '@/components/ui/StatusBadge'
-import { startCase } from '@/lib/format'
+import { useMyDashboard, useMyProfile } from '@/hooks/useEmployeeSelf'
+import { getApprovalActionTone, getOnboardingStatusTone } from '@/lib/status'
 
 export function EmployeeDashboardPage() {
   const { data: dashboard, isLoading } = useMyDashboard()
@@ -17,14 +19,14 @@ export function EmployeeDashboardPage() {
       <PageHeader
         eyebrow="Self-service"
         title="My dashboard"
-        description="Track your profile completion, document review state, and required onboarding sections."
+        description="Track onboarding progress, notices, approvals, and the current month calendar for leave, on-duty, and holidays."
         actions={
           <>
-            <Link to="/me/profile" className="btn-primary">
-              Complete profile
+            <Link to="/me/onboarding" className="btn-primary">
+              Continue onboarding
             </Link>
-            <Link to="/me/documents" className="btn-secondary">
-              Upload documents
+            <Link to="/me/leave" className="btn-secondary">
+              Request leave
             </Link>
           </>
         }
@@ -45,40 +47,87 @@ export function EmployeeDashboardPage() {
       ) : (
         <>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <MetricCard title="Profile completion" value={`${dashboard.profile_completion.percent}%`} hint={`Employee code ${dashboard.employee_code}`} icon={UserRound} tone="primary" />
-            <MetricCard title="Pending documents" value={dashboard.pending_documents} hint="Waiting for organisation review." icon={FileClock} tone="warning" />
-            <MetricCard title="Verified documents" value={dashboard.verified_documents} hint="Documents approved by your administrator." icon={ShieldCheck} tone="success" />
-            <MetricCard title="Rejected documents" value={dashboard.rejected_documents} hint="Review notes and upload corrected copies." icon={FileWarning} tone="danger" />
+            <MetricCard title="Profile completion" value={`${dashboard.profile_completion.percent}%`} hint={`Employee code ${dashboard.employee_code || 'Pending assignment'}`} icon={UserRound} tone="primary" />
+            <MetricCard title="Pending documents" value={dashboard.pending_documents} hint="Files waiting for admin review." icon={FileClock} tone="warning" />
+            <MetricCard title="Verified documents" value={dashboard.verified_documents} hint="Approved by your organisation." icon={ShieldCheck} tone="success" />
+            <MetricCard title="Rejected documents" value={dashboard.rejected_documents} hint="Upload corrected copies where needed." icon={FileWarning} tone="danger" />
           </div>
 
           <div className="grid gap-6 xl:grid-cols-2">
-            <SectionCard title="Completed sections" description="The sections you have already finished.">
+            <SectionCard title="Onboarding snapshot" description="Complete the remaining items until your record is fully ready.">
               <div className="flex flex-wrap gap-2">
-                {dashboard.profile_completion.completed_sections.length > 0 ? (
-                  dashboard.profile_completion.completed_sections.map((section) => (
-                    <StatusBadge key={section} tone="success">
-                      {startCase(section)}
-                    </StatusBadge>
-                  ))
-                ) : (
-                  <p className="text-sm text-[hsl(var(--muted-foreground))]">No profile sections completed yet.</p>
-                )}
-              </div>
-            </SectionCard>
-
-            <SectionCard title="Still required" description="Finish these sections to reach a complete employee record.">
-              <div className="flex flex-wrap gap-2">
+                <StatusBadge tone={getOnboardingStatusTone(dashboard.onboarding_status)}>{dashboard.onboarding_status}</StatusBadge>
+                {dashboard.profile_completion.completed_sections.map((section) => (
+                  <StatusBadge key={section} tone="success">
+                    {section.replaceAll('_', ' ')}
+                  </StatusBadge>
+                ))}
                 {dashboard.profile_completion.missing_sections.map((section) => (
                   <StatusBadge key={section} tone="warning">
-                    {startCase(section)}
+                    {section.replaceAll('_', ' ')}
                   </StatusBadge>
                 ))}
               </div>
               <div className="surface-muted mt-5 rounded-[24px] p-5 text-sm text-[hsl(var(--muted-foreground))]">
-                <p className="font-medium text-[hsl(var(--foreground-strong))]">Current name</p>
+                <p className="font-medium text-[hsl(var(--foreground-strong))]">Current profile</p>
                 <p className="mt-1">{profile?.employee.full_name || 'Employee'}</p>
-                <p className="mt-4 font-medium text-[hsl(var(--foreground-strong))]">Organisation</p>
+                <p className="mt-4 font-medium text-[hsl(var(--foreground-strong))]">Employee email</p>
                 <p className="mt-1">{profile?.employee.email}</p>
+              </div>
+            </SectionCard>
+
+            <SectionCard title="Approvals and notices" description="Requests waiting on you, plus the latest organisation notices.">
+              <div className="space-y-3">
+                {dashboard.approvals.items.length > 0 ? (
+                  dashboard.approvals.items.map((item) => (
+                    <div key={item.action_id} className="surface-muted rounded-[20px] px-4 py-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="font-medium text-[hsl(var(--foreground-strong))]">{item.label}</p>
+                        <StatusBadge tone={getApprovalActionTone('PENDING')}>Pending</StatusBadge>
+                      </div>
+                      <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
+                        {item.request_kind.replaceAll('_', ' ')} • {item.stage_name}
+                      </p>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-[hsl(var(--muted-foreground))]">No approvals are waiting on you right now.</p>
+                )}
+                {dashboard.notices.slice(0, 2).map((notice) => (
+                  <div key={notice.id} className="surface-muted rounded-[20px] px-4 py-3">
+                    <p className="font-medium text-[hsl(var(--foreground-strong))]">{notice.title}</p>
+                    <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">{notice.body}</p>
+                  </div>
+                ))}
+              </div>
+            </SectionCard>
+          </div>
+
+          <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+            <SectionCard title="Month calendar" description="Leave, on-duty, and holiday entries are merged into a single calendar view.">
+              <MonthCalendar month={dashboard.calendar} />
+            </SectionCard>
+
+            <SectionCard title="Events and leave balances" description="Upcoming celebrations plus your current leave availability.">
+              <div className="flex flex-wrap gap-2">
+                {dashboard.events.map((event) => (
+                  <StatusBadge key={`${event.kind}-${event.date}`} tone="info">
+                    {event.kind.replaceAll('_', ' ')} • {event.label}
+                  </StatusBadge>
+                ))}
+              </div>
+              <div className="mt-5 space-y-3">
+                {dashboard.leave_balances.map((balance) => (
+                  <div key={balance.leave_type_id} className="surface-muted rounded-[20px] px-4 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="font-medium text-[hsl(var(--foreground-strong))]">{balance.leave_type_name}</p>
+                      <span className="text-sm font-semibold text-[hsl(var(--foreground-strong))]">{balance.available}</span>
+                    </div>
+                    <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
+                      Credited {balance.credited} • Pending {balance.pending}
+                    </p>
+                  </div>
+                ))}
               </div>
             </SectionCard>
           </div>

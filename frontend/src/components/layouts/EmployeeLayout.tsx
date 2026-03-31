@@ -1,5 +1,5 @@
 import { Outlet, useNavigate } from 'react-router-dom'
-import { CreditCard, FileText, GraduationCap, IdCard, LayoutDashboard, LogOut, User } from 'lucide-react'
+import { CheckSquare, CreditCard, FileText, GraduationCap, IdCard, LayoutDashboard, LogOut, PlaneTakeoff, User } from 'lucide-react'
 import { SidebarNav, type NavItem } from './SidebarNav'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
 import { useAuth } from '@/hooks/useAuth'
@@ -7,12 +7,16 @@ import { StatusBadge } from '@/components/ui/StatusBadge'
 import { ThemeToggle } from '@/components/ui/ThemeToggle'
 
 const navItems: NavItem[] = [
+  { label: 'Onboarding', href: '/me/onboarding', icon: CheckSquare },
   { label: 'Dashboard', href: '/me/dashboard', icon: LayoutDashboard },
   { label: 'Profile', href: '/me/profile', icon: User },
   { label: 'Education', href: '/me/education', icon: GraduationCap },
   { label: 'Identity', href: '/me/profile', icon: IdCard },
   { label: 'Banking', href: '/me/profile', icon: CreditCard },
   { label: 'Documents', href: '/me/documents', icon: FileText },
+  { label: 'Leave', href: '/me/leave', icon: LayoutDashboard },
+  { label: 'On Duty', href: '/me/od', icon: PlaneTakeoff },
+  { label: 'Approvals', href: '/me/approvals', icon: CheckSquare },
 ]
 
 export function EmployeeLayout() {
@@ -34,6 +38,11 @@ export function EmployeeLayout() {
             <div className="mt-2 flex flex-wrap items-center gap-3">
               <h1 className="text-xl font-semibold tracking-tight text-[hsl(var(--foreground-strong))]">{user?.full_name || 'Employee profile'}</h1>
               <StatusBadge tone="info">{user?.organisation_name || 'Calrisal'}</StatusBadge>
+              {user?.active_employee_onboarding_status ? (
+                <StatusBadge tone={user.active_employee_onboarding_status === 'COMPLETE' ? 'success' : 'warning'}>
+                  {user.active_employee_onboarding_status}
+                </StatusBadge>
+              ) : null}
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-3">

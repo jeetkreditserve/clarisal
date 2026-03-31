@@ -5,6 +5,14 @@ from unittest.mock import patch
 import pytest
 
 from apps.accounts.models import User, UserRole
+from apps.approvals.models import (
+    ApprovalApproverType,
+    ApprovalRequestKind,
+    ApprovalStage,
+    ApprovalStageApprover,
+    ApprovalWorkflow,
+    ApprovalWorkflowRule,
+)
 from apps.employees.services import invite_employee
 from apps.organisations.models import (
     Organisation,
@@ -45,10 +53,47 @@ def organisation(ct_user):
     )
 
 
+@pytest.fixture
+def default_workflow(organisation, org_admin):
+    workflow = ApprovalWorkflow.objects.create(
+        organisation=organisation,
+        name='Default Employee Workflow',
+        is_default=True,
+        is_active=True,
+        created_by=org_admin,
+    )
+    ApprovalWorkflowRule.objects.create(
+        workflow=workflow,
+        name='Default Leave Rule',
+        request_kind=ApprovalRequestKind.LEAVE,
+        priority=100,
+        is_active=True,
+    )
+    ApprovalWorkflowRule.objects.create(
+        workflow=workflow,
+        name='Default OD Rule',
+        request_kind=ApprovalRequestKind.ON_DUTY,
+        priority=100,
+        is_active=True,
+    )
+    stage = ApprovalStage.objects.create(
+        workflow=workflow,
+        name='Primary Admin Approval',
+        sequence=1,
+    )
+    ApprovalStageApprover.objects.create(
+        stage=stage,
+        approver_type=ApprovalApproverType.PRIMARY_ORG_ADMIN,
+    )
+    organisation.primary_admin_user = org_admin
+    organisation.save(update_fields=['primary_admin_user', 'updated_at'])
+    return workflow
+
+
 @pytest.mark.django_db
 class TestInviteEmployee:
     @patch('apps.invitations.services.transaction.on_commit')
-    def test_invite_blocks_when_active_paid_capacity_is_exhausted(self, mock_on_commit, organisation, org_admin):
+    def test_invite_blocks_when_active_paid_capacity_is_exhausted(self, mock_on_commit, organisation, org_admin, default_workflow):
         mock_on_commit.side_effect = lambda fn: None
         batch = create_licence_batch(
             organisation,

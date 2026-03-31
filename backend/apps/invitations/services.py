@@ -8,7 +8,7 @@ from apps.accounts.models import AccountType, User
 from apps.accounts.workspaces import initialize_workforce_workspace, sync_user_role
 from apps.audit.services import log_audit_event
 from apps.common.security import generate_secure_token, hash_token
-from apps.employees.models import Employee, EmployeeStatus
+from apps.employees.models import Employee, EmployeeOnboardingStatus, EmployeeStatus
 from apps.organisations.models import OrganisationMembershipStatus, OrganisationStatus
 from apps.organisations.services import (
     ensure_org_admin_membership,
@@ -158,8 +158,9 @@ def accept_invitation(token, password=''):
 
         if invite.role == InvitationRole.EMPLOYEE and invite.organisation:
             employee = Employee.objects.get(user=user, organisation=invite.organisation)
-            employee.status = EmployeeStatus.PENDING
-            employee.save(update_fields=['status', 'updated_at'])
+            if employee.status == EmployeeStatus.INVITED:
+                employee.onboarding_status = EmployeeOnboardingStatus.BASIC_DETAILS_PENDING
+                employee.save(update_fields=['onboarding_status', 'updated_at'])
 
         sync_user_role(user)
 

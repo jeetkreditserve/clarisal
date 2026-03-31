@@ -1,9 +1,10 @@
 import type {
+  LicenceSummary,
   OrganisationAccessState,
   OrganisationOnboardingStage,
   OrganisationStatus,
 } from '@/types/organisation'
-import type { EmployeeStatus } from '@/types/hr'
+import type { EmployeeOnboardingStatus, EmployeeStatus } from '@/types/hr'
 
 export type AccountType = 'CONTROL_TOWER' | 'WORKFORCE'
 export type UserRole = 'CONTROL_TOWER' | 'ORG_ADMIN' | 'EMPLOYEE'
@@ -24,7 +25,17 @@ export interface EmployeeWorkspaceSummary {
   organisation_id: string
   organisation_name: string
   employee_status: EmployeeStatus
+  onboarding_status: EmployeeOnboardingStatus
   is_active_context: boolean
+}
+
+export interface OrgOperationsGuard {
+  licence_expired: boolean
+  admin_mutations_blocked: boolean
+  approval_actions_blocked: boolean
+  seat_assignment_blocked: boolean
+  reason: string
+  summary: LicenceSummary
 }
 
 export interface AuthUser {
@@ -47,6 +58,9 @@ export interface AuthUser {
   has_employee_access: boolean
   admin_organisations: AdminOrganisationSummary[]
   employee_workspaces: EmployeeWorkspaceSummary[]
+  active_employee_status?: EmployeeStatus | null
+  active_employee_onboarding_status?: EmployeeOnboardingStatus | null
+  org_operations_guard?: OrgOperationsGuard | null
   is_active: boolean
 }
 

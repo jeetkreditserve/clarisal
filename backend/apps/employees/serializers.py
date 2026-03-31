@@ -1,13 +1,18 @@
 from rest_framework import serializers
 
 from .models import (
+    BloodTypeChoice,
     EducationRecord,
     Employee,
     EmployeeBankAccount,
+    EmployeeEmergencyContact,
+    EmployeeFamilyMember,
     EmployeeGovernmentId,
+    EmployeeOnboardingStatus,
     EmployeeProfile,
     EmployeeStatus,
     EmploymentType,
+    FamilyRelationChoice,
     GovernmentIdType,
 )
 
@@ -43,6 +48,7 @@ class EmployeeInviteSerializer(serializers.Serializer):
     date_of_joining = serializers.DateField(required=False, allow_null=True)
     department_id = serializers.UUIDField(required=False, allow_null=True)
     office_location_id = serializers.UUIDField(required=False, allow_null=True)
+    required_document_type_ids = serializers.ListField(child=serializers.UUIDField(), required=False, default=list)
 
 
 class EmployeeUpdateSerializer(serializers.Serializer):
@@ -56,6 +62,8 @@ class EmployeeUpdateSerializer(serializers.Serializer):
 class EmployeeMarkJoinedSerializer(serializers.Serializer):
     employee_code = serializers.CharField(max_length=20)
     date_of_joining = serializers.DateField()
+    designation = serializers.CharField(max_length=255)
+    reporting_to_employee_id = serializers.UUIDField()
 
 
 class EmployeeEndEmploymentSerializer(serializers.Serializer):
@@ -143,6 +151,54 @@ class ProfileCompletionSerializer(serializers.Serializer):
     missing_sections = serializers.ListField(child=serializers.CharField())
 
 
+class EmergencyContactSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EmployeeEmergencyContact
+        fields = [
+            'id',
+            'full_name',
+            'relation',
+            'phone_number',
+            'alternate_phone_number',
+            'address',
+            'is_primary',
+            'created_at',
+            'updated_at',
+        ]
+
+
+class FamilyMemberSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EmployeeFamilyMember
+        fields = [
+            'id',
+            'full_name',
+            'relation',
+            'date_of_birth',
+            'contact_number',
+            'is_dependent',
+            'created_at',
+            'updated_at',
+        ]
+
+
+class OnboardingBasicDetailsSerializer(serializers.Serializer):
+    date_of_birth = serializers.DateField(required=False, allow_null=True)
+    gender = serializers.CharField(required=False, allow_blank=True)
+    marital_status = serializers.CharField(required=False, allow_blank=True)
+    nationality = serializers.CharField(required=False, allow_blank=True)
+    blood_type = serializers.ChoiceField(choices=BloodTypeChoice.choices, required=False, allow_blank=True)
+    phone_personal = serializers.CharField(required=False, allow_blank=True)
+    address_line1 = serializers.CharField(required=False, allow_blank=True)
+    address_line2 = serializers.CharField(required=False, allow_blank=True)
+    city = serializers.CharField(required=False, allow_blank=True)
+    state = serializers.CharField(required=False, allow_blank=True)
+    country = serializers.CharField(required=False, allow_blank=True)
+    pincode = serializers.CharField(required=False, allow_blank=True)
+    pan_identifier = serializers.CharField(required=False, allow_blank=True)
+    aadhaar_identifier = serializers.CharField(required=False, allow_blank=True)
+
+
 class EmployeeDetailSerializer(serializers.ModelSerializer):
     full_name = serializers.CharField(source='user.full_name', read_only=True)
     email = serializers.EmailField(source='user.email', read_only=True)
@@ -151,6 +207,8 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
     education_records = EducationRecordSerializer(many=True, read_only=True)
     government_ids = GovernmentIdSerializer(many=True, read_only=True)
     bank_accounts = BankAccountSerializer(many=True, read_only=True)
+    family_members = FamilyMemberSerializer(many=True, read_only=True)
+    emergency_contacts = EmergencyContactSerializer(many=True, read_only=True)
 
     class Meta:
         model = Employee
@@ -165,12 +223,16 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
             'date_of_joining',
             'date_of_exit',
             'status',
+            'onboarding_status',
             'department',
             'office_location',
+            'reporting_to',
             'profile',
             'education_records',
             'government_ids',
             'bank_accounts',
+            'family_members',
+            'emergency_contacts',
         ]
 
     def get_suggested_employee_code(self, obj):

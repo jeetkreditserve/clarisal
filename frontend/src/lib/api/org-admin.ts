@@ -6,11 +6,22 @@ import type {
   PaginatedResponse,
 } from '@/types/organisation'
 import type {
+  ApprovalActionItem,
+  ApprovalWorkflowConfig,
   Department,
   DocumentRecord,
+  EmployeeDocumentRequest,
   EmployeeDetail,
   EmployeeListItem,
+  HolidayCalendar,
+  LeaveCycle,
+  LeavePlan,
+  LeaveRequestRecord,
   Location,
+  NoticeItem,
+  OnDutyPolicy,
+  OnDutyRequestRecord,
+  OnboardingDocumentType,
 } from '@/types/hr'
 
 export async function fetchOrgDashboard() {
@@ -148,6 +159,7 @@ export async function inviteEmployee(payload: {
   date_of_joining?: string | null
   department_id?: string | null
   office_location_id?: string | null
+  required_document_type_ids?: string[]
 }) {
   const { data } = await api.post<{
     employee: EmployeeDetail
@@ -175,8 +187,34 @@ export async function updateEmployee(
   return data
 }
 
-export async function markEmployeeJoined(id: string, payload: { employee_code: string; date_of_joining: string }) {
+export async function markEmployeeJoined(
+  id: string,
+  payload: {
+    employee_code: string
+    date_of_joining: string
+    designation: string
+    reporting_to_employee_id: string
+  }
+) {
   const { data } = await api.post<EmployeeDetail>(`/org/employees/${id}/mark-joined/`, payload)
+  return data
+}
+
+export async function fetchOnboardingDocumentTypes() {
+  const { data } = await api.get<OnboardingDocumentType[]>('/org/document-types/')
+  return data
+}
+
+export async function fetchEmployeeDocumentRequests(employeeId: string) {
+  const { data } = await api.get<EmployeeDocumentRequest[]>(`/org/employees/${employeeId}/document-requests/`)
+  return data
+}
+
+export async function assignEmployeeDocumentRequests(employeeId: string, documentTypeIds: string[]) {
+  const { data } = await api.post<EmployeeDocumentRequest[]>(
+    `/org/employees/${employeeId}/document-requests/`,
+    { document_type_ids: documentTypeIds }
+  )
   return data
 }
 
@@ -212,5 +250,130 @@ export async function rejectEmployeeDocument(employeeId: string, documentId: str
 
 export async function getEmployeeDocumentDownloadUrl(employeeId: string, documentId: string) {
   const { data } = await api.get<{ url: string }>(`/org/employees/${employeeId}/documents/${documentId}/download/`)
+  return data
+}
+
+export async function fetchApprovalWorkflows() {
+  const { data } = await api.get<ApprovalWorkflowConfig[]>('/org/approvals/workflows/')
+  return data
+}
+
+export async function createApprovalWorkflow(payload: Record<string, unknown>) {
+  const { data } = await api.post<ApprovalWorkflowConfig>('/org/approvals/workflows/', payload)
+  return data
+}
+
+export async function updateApprovalWorkflow(id: string, payload: Record<string, unknown>) {
+  const { data } = await api.patch<ApprovalWorkflowConfig>(`/org/approvals/workflows/${id}/`, payload)
+  return data
+}
+
+export async function fetchApprovalInbox() {
+  const { data } = await api.get<ApprovalActionItem[]>('/org/approvals/inbox/')
+  return data
+}
+
+export async function approveApprovalAction(actionId: string, comment = '') {
+  const { data } = await api.post<ApprovalActionItem>(`/org/approvals/actions/${actionId}/approve/`, { comment })
+  return data
+}
+
+export async function rejectApprovalAction(actionId: string, comment = '') {
+  const { data } = await api.post<ApprovalActionItem>(`/org/approvals/actions/${actionId}/reject/`, { comment })
+  return data
+}
+
+export async function fetchHolidayCalendars() {
+  const { data } = await api.get<HolidayCalendar[]>('/org/holiday-calendars/')
+  return data
+}
+
+export async function createHolidayCalendar(payload: Record<string, unknown>) {
+  const { data } = await api.post<HolidayCalendar>('/org/holiday-calendars/', payload)
+  return data
+}
+
+export async function updateHolidayCalendar(id: string, payload: Record<string, unknown>) {
+  const { data } = await api.patch<HolidayCalendar>(`/org/holiday-calendars/${id}/`, payload)
+  return data
+}
+
+export async function publishHolidayCalendar(id: string) {
+  const { data } = await api.post<HolidayCalendar>(`/org/holiday-calendars/${id}/publish/`)
+  return data
+}
+
+export async function fetchLeaveCycles() {
+  const { data } = await api.get<LeaveCycle[]>('/org/leave-cycles/')
+  return data
+}
+
+export async function createLeaveCycle(payload: Record<string, unknown>) {
+  const { data } = await api.post<LeaveCycle>('/org/leave-cycles/', payload)
+  return data
+}
+
+export async function updateLeaveCycle(id: string, payload: Record<string, unknown>) {
+  const { data } = await api.patch<LeaveCycle>(`/org/leave-cycles/${id}/`, payload)
+  return data
+}
+
+export async function fetchLeavePlans() {
+  const { data } = await api.get<LeavePlan[]>('/org/leave-plans/')
+  return data
+}
+
+export async function createLeavePlan(payload: Record<string, unknown>) {
+  const { data } = await api.post<LeavePlan>('/org/leave-plans/', payload)
+  return data
+}
+
+export async function updateLeavePlan(id: string, payload: Record<string, unknown>) {
+  const { data } = await api.patch<LeavePlan>(`/org/leave-plans/${id}/`, payload)
+  return data
+}
+
+export async function fetchOnDutyPolicies() {
+  const { data } = await api.get<OnDutyPolicy[]>('/org/on-duty-policies/')
+  return data
+}
+
+export async function createOnDutyPolicy(payload: Record<string, unknown>) {
+  const { data } = await api.post<OnDutyPolicy>('/org/on-duty-policies/', payload)
+  return data
+}
+
+export async function updateOnDutyPolicy(id: string, payload: Record<string, unknown>) {
+  const { data } = await api.patch<OnDutyPolicy>(`/org/on-duty-policies/${id}/`, payload)
+  return data
+}
+
+export async function fetchOrgLeaveRequests() {
+  const { data } = await api.get<LeaveRequestRecord[]>('/org/leave-requests/')
+  return data
+}
+
+export async function fetchOrgOnDutyRequests() {
+  const { data } = await api.get<OnDutyRequestRecord[]>('/org/on-duty-requests/')
+  return data
+}
+
+export async function fetchNotices() {
+  const { data } = await api.get<NoticeItem[]>('/org/notices/')
+  return data
+}
+
+export async function createNotice(payload: Record<string, unknown>) {
+  const { data } = await api.post<NoticeItem>('/org/notices/', payload)
+  return data
+}
+
+export async function updateNotice(id: string, payload: Record<string, unknown>) {
+  const { data } = await api.patch<NoticeItem>(`/org/notices/${id}/`, payload)
+  return data
+}
+
+export async function publishNotice(id: string) {
+  const { data } = await api.post<NoticeItem>(`/org/notices/${id}/publish/`)
   return data
 }

@@ -4,11 +4,11 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.accounts.permissions import BelongsToActiveOrg, IsEmployee, IsOrgAdmin, OrgAdminMutationAllowed
 from apps.accounts.workspaces import get_active_admin_organisation, get_active_employee
-from apps.accounts.permissions import BelongsToActiveOrg, IsEmployee, IsOrgAdmin
-from apps.employees.models import EducationRecord, Employee, EmployeeBankAccount
 
-from .repositories import get_employee, get_employee_self, list_employees
+from .models import EducationRecord, Employee, EmployeeBankAccount, EmployeeEmergencyContact, EmployeeFamilyMember
+from .repositories import list_employees
 from .serializers import (
     BankAccountSerializer,
     BankAccountWriteSerializer,
@@ -20,25 +20,34 @@ from .serializers import (
     EmployeeMarkJoinedSerializer,
     EmployeeProfileSerializer,
     EmployeeUpdateSerializer,
+    EmergencyContactSerializer,
+    FamilyMemberSerializer,
     GovernmentIdSerializer,
     GovernmentIdWriteSerializer,
-    ProfileCompletionSerializer,
+    OnboardingBasicDetailsSerializer,
 )
 from .services import (
     create_bank_account,
     create_education_record,
+    create_or_update_emergency_contact,
+    create_or_update_family_member,
     delete_bank_account,
     delete_education_record,
+    delete_emergency_contact,
     delete_employee,
+    delete_family_member,
     end_employment,
     get_employee_dashboard,
+    get_onboarding_summary,
     get_profile_completion,
     invite_employee,
     mark_employee_joined,
+    refresh_employee_onboarding_status,
     update_bank_account,
     update_education_record,
     update_employee,
     update_employee_profile,
+    update_onboarding_basics,
     upsert_government_id,
 )
 
@@ -58,7 +67,7 @@ def _get_self_employee(request):
 
 
 class EmployeeListInviteView(APIView):
-    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
 
     def get(self, request):
         organisation = _get_admin_organisation(request)
@@ -94,11 +103,12 @@ class EmployeeListInviteView(APIView):
 
 
 class EmployeeDetailView(APIView):
-    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
 
     def get(self, request, pk):
         organisation = _get_admin_organisation(request)
         employee = get_object_or_404(Employee.objects.select_related('user', 'profile'), organisation=organisation, id=pk)
+        refresh_employee_onboarding_status(employee)
         return Response(EmployeeDetailSerializer(employee).data)
 
     def patch(self, request, pk):
@@ -114,7 +124,7 @@ class EmployeeDetailView(APIView):
 
 
 class EmployeeMarkJoinedView(APIView):
-    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
 
     def post(self, request, pk):
         organisation = _get_admin_organisation(request)
@@ -129,7 +139,7 @@ class EmployeeMarkJoinedView(APIView):
 
 
 class EmployeeEndEmploymentView(APIView):
-    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
 
     def post(self, request, pk):
         organisation = _get_admin_organisation(request)
@@ -149,7 +159,7 @@ class EmployeeEndEmploymentView(APIView):
 
 
 class EmployeeDeleteView(APIView):
-    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
 
     def delete(self, request, pk):
         organisation = _get_admin_organisation(request)
@@ -161,12 +171,52 @@ class EmployeeDeleteView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+class MyOnboardingView(APIView):
+    permission_classes = [IsEmployee, BelongsToActiveOrg]
+
+    def get(self, request):
+        employee = _get_self_employee(request)
+        return Response(
+            {
+                'summary': get_onboarding_summary(employee),
+                'employee': EmployeeDetailSerializer(employee).data,
+                'profile': EmployeeProfileSerializer(getattr(employee, 'profile', None)).data,
+                'family_members': FamilyMemberSerializer(employee.family_members.all(), many=True).data,
+                'emergency_contacts': EmergencyContactSerializer(employee.emergency_contacts.all(), many=True).data,
+                'government_ids': GovernmentIdSerializer(employee.government_ids.all(), many=True).data,
+            }
+        )
+
+    def patch(self, request):
+        employee = _get_self_employee(request)
+        serializer = OnboardingBasicDetailsSerializer(data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        profile_fields = {key: value for key, value in serializer.validated_data.items() if key not in {'pan_identifier', 'aadhaar_identifier'}}
+        try:
+            profile = update_onboarding_basics(
+                employee,
+                actor=request.user,
+                profile_fields=profile_fields,
+                pan_identifier=serializer.validated_data.get('pan_identifier', ''),
+                aadhaar_identifier=serializer.validated_data.get('aadhaar_identifier', ''),
+            )
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {
+                'profile': EmployeeProfileSerializer(profile).data,
+                'summary': get_onboarding_summary(employee),
+            }
+        )
+
+
 class MyDashboardView(APIView):
     permission_classes = [IsEmployee, BelongsToActiveOrg]
 
     def get(self, request):
         employee = _get_self_employee(request)
-        return Response(get_employee_dashboard(employee))
+        calendar_month = request.query_params.get('month')
+        return Response(get_employee_dashboard(employee, calendar_month=calendar_month))
 
 
 class MyProfileView(APIView):
@@ -189,12 +239,79 @@ class MyProfileView(APIView):
         serializer = EmployeeProfileSerializer(data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         profile = update_employee_profile(employee, actor=request.user, **serializer.validated_data)
+        refresh_employee_onboarding_status(employee, actor=request.user)
         return Response(
             {
                 'profile': EmployeeProfileSerializer(profile).data,
                 'profile_completion': get_profile_completion(employee),
             }
         )
+
+
+class MyFamilyMemberListCreateView(APIView):
+    permission_classes = [IsEmployee, BelongsToActiveOrg]
+
+    def get(self, request):
+        employee = _get_self_employee(request)
+        return Response(FamilyMemberSerializer(employee.family_members.all(), many=True).data)
+
+    def post(self, request):
+        employee = _get_self_employee(request)
+        serializer = FamilyMemberSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        member = create_or_update_family_member(employee, actor=request.user, **serializer.validated_data)
+        return Response(FamilyMemberSerializer(member).data, status=status.HTTP_201_CREATED)
+
+
+class MyFamilyMemberDetailView(APIView):
+    permission_classes = [IsEmployee, BelongsToActiveOrg]
+
+    def patch(self, request, pk):
+        employee = _get_self_employee(request)
+        member = get_object_or_404(EmployeeFamilyMember, employee=employee, id=pk)
+        serializer = FamilyMemberSerializer(data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        member = create_or_update_family_member(employee, actor=request.user, member_id=member.id, **serializer.validated_data)
+        return Response(FamilyMemberSerializer(member).data)
+
+    def delete(self, request, pk):
+        employee = _get_self_employee(request)
+        member = get_object_or_404(EmployeeFamilyMember, employee=employee, id=pk)
+        delete_family_member(member, actor=request.user)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class MyEmergencyContactListCreateView(APIView):
+    permission_classes = [IsEmployee, BelongsToActiveOrg]
+
+    def get(self, request):
+        employee = _get_self_employee(request)
+        return Response(EmergencyContactSerializer(employee.emergency_contacts.all(), many=True).data)
+
+    def post(self, request):
+        employee = _get_self_employee(request)
+        serializer = EmergencyContactSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        contact = create_or_update_emergency_contact(employee, actor=request.user, **serializer.validated_data)
+        return Response(EmergencyContactSerializer(contact).data, status=status.HTTP_201_CREATED)
+
+
+class MyEmergencyContactDetailView(APIView):
+    permission_classes = [IsEmployee, BelongsToActiveOrg]
+
+    def patch(self, request, pk):
+        employee = _get_self_employee(request)
+        contact = get_object_or_404(EmployeeEmergencyContact, employee=employee, id=pk)
+        serializer = EmergencyContactSerializer(data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        contact = create_or_update_emergency_contact(employee, actor=request.user, contact_id=contact.id, **serializer.validated_data)
+        return Response(EmergencyContactSerializer(contact).data)
+
+    def delete(self, request, pk):
+        employee = _get_self_employee(request)
+        contact = get_object_or_404(EmployeeEmergencyContact, employee=employee, id=pk)
+        delete_emergency_contact(contact, actor=request.user)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class MyEducationListCreateView(APIView):

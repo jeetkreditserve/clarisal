@@ -3,7 +3,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
 from django.shortcuts import get_object_or_404
-from apps.accounts.permissions import BelongsToActiveOrg, IsControlTowerUser, IsOrgAdmin
+from apps.accounts.permissions import BelongsToActiveOrg, IsControlTowerUser, IsOrgAdmin, OrgAdminMutationAllowed
 from apps.accounts.workspaces import get_active_admin_organisation
 from .models import Organisation, OrganisationAddress, OrganisationLicenceBatch, OrganisationStatus
 from .repositories import get_organisations, get_organisation_by_id, get_org_admins
@@ -200,7 +200,7 @@ class OrgDashboardStatsView(APIView):
 
 
 class OrgProfileView(APIView):
-    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
 
     def get(self, request):
         organisation = get_active_admin_organisation(request, request.user)
@@ -222,7 +222,7 @@ class OrgProfileView(APIView):
 
 
 class OrgProfileAddressListCreateView(APIView):
-    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
 
     def post(self, request):
         organisation = get_active_admin_organisation(request, request.user)
@@ -243,7 +243,7 @@ class OrgProfileAddressListCreateView(APIView):
 
 
 class OrgProfileAddressDetailView(APIView):
-    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
 
     def patch(self, request, address_id):
         organisation = get_active_admin_organisation(request, request.user)

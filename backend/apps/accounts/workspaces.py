@@ -14,6 +14,7 @@ from apps.organisations.models import (
 from .models import AccountType, User, UserRole
 
 ACTIVE_EMPLOYEE_STATUSES = [
+    EmployeeStatus.INVITED,
     EmployeeStatus.PENDING,
     EmployeeStatus.ACTIVE,
 ]
@@ -196,5 +197,8 @@ def get_default_route(user: User, request=None):
     if state.admin_memberships:
         return '/org/dashboard'
     if state.employee_records:
+        employee = state.active_employee or state.employee_records[0]
+        if employee.status == EmployeeStatus.INVITED or employee.onboarding_status != 'COMPLETE':
+            return '/me/onboarding'
         return '/me/dashboard'
     return '/auth/login'

@@ -3,7 +3,7 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.accounts.permissions import BelongsToActiveOrg, IsOrgAdmin
+from apps.accounts.permissions import BelongsToActiveOrg, IsOrgAdmin, OrgAdminMutationAllowed
 from apps.accounts.workspaces import get_active_admin_organisation
 
 from .models import Department
@@ -13,7 +13,7 @@ from .services import create_department, deactivate_department, update_departmen
 
 
 class DepartmentListCreateView(APIView):
-    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
 
     def get(self, request):
         organisation = get_active_admin_organisation(request, request.user)
@@ -35,7 +35,7 @@ class DepartmentListCreateView(APIView):
 
 
 class DepartmentDetailView(APIView):
-    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
 
     def patch(self, request, pk):
         organisation = get_active_admin_organisation(request, request.user)
@@ -50,7 +50,7 @@ class DepartmentDetailView(APIView):
 
 
 class DepartmentDeactivateView(APIView):
-    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
 
     def post(self, request, pk):
         organisation = get_active_admin_organisation(request, request.user)
