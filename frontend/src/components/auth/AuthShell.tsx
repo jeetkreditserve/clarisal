@@ -57,29 +57,29 @@ export function AuthShell({
 
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-6 sm:px-6">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_0%_0%,hsla(var(--brand),0.18),transparent_28%),radial-gradient(circle_at_100%_0%,hsla(var(--accent),0.14),transparent_24%),radial-gradient(circle_at_100%_100%,hsla(var(--brand),0.1),transparent_22%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_0%_0%,hsl(var(--brand)_/_0.18),transparent_28%),radial-gradient(circle_at_100%_0%,hsl(var(--accent)_/_0.14),transparent_24%),radial-gradient(circle_at_100%_100%,hsl(var(--brand)_/_0.1),transparent_22%)]" />
       <motion.div
         aria-hidden
         initial={reduceMotion ? false : { opacity: 0, scale: 0.92 }}
         animate={reduceMotion ? undefined : { opacity: 1, scale: 1 }}
         transition={{ duration: 0.45, ease: 'easeOut' }}
-        className="pointer-events-none absolute left-[8%] top-[10%] h-56 w-56 rounded-full bg-[radial-gradient(circle,hsla(var(--brand),0.28),transparent_68%)] blur-3xl"
+        className="pointer-events-none absolute left-[8%] top-[10%] h-56 w-56 rounded-full bg-[radial-gradient(circle,hsl(var(--brand)_/_0.28),transparent_68%)] blur-3xl"
       />
       <motion.div
         aria-hidden
         initial={reduceMotion ? false : { opacity: 0, scale: 0.92 }}
         animate={reduceMotion ? undefined : { opacity: 1, scale: 1 }}
         transition={{ duration: 0.55, ease: 'easeOut', delay: 0.08 }}
-        className="pointer-events-none absolute bottom-[8%] right-[8%] h-64 w-64 rounded-full bg-[radial-gradient(circle,hsla(var(--accent),0.26),transparent_70%)] blur-3xl"
+        className="pointer-events-none absolute bottom-[8%] right-[8%] h-64 w-64 rounded-full bg-[radial-gradient(circle,hsl(var(--accent)_/_0.26),transparent_70%)] blur-3xl"
       />
 
       <div className="absolute right-5 top-5 z-20">
         <ThemeToggle />
       </div>
 
-      <div className="grid w-full max-w-7xl overflow-hidden rounded-[40px] border border-[hsla(var(--border),0.82)] bg-[hsla(var(--surface),0.72)] shadow-[var(--shadow-card)] backdrop-blur-[20px] lg:grid-cols-[minmax(0,1.08fr)_minmax(430px,0.92fr)]">
-        <section className="sidebar-surface relative overflow-hidden px-8 py-10 sm:px-10 lg:px-12">
-          <div className="absolute inset-0 bg-[linear-gradient(145deg,transparent,hsla(var(--brand),0.08))]" />
+      <div className="grid w-full max-w-7xl overflow-hidden rounded-[40px] border border-[hsl(var(--border)_/_0.82)] bg-[hsl(var(--surface)_/_0.72)] shadow-[var(--shadow-card)] backdrop-blur-[20px] lg:grid-cols-[minmax(0,1.08fr)_minmax(430px,0.92fr)]">
+        <section className="auth-hero-surface relative overflow-hidden px-8 py-10 sm:px-10 lg:px-12">
+          <div className="absolute inset-0 bg-[linear-gradient(145deg,transparent,hsl(var(--brand)_/_0.08))]" />
           <div className="relative flex h-full flex-col justify-between gap-10">
             <div className="space-y-8">
               <motion.div
@@ -87,14 +87,14 @@ export function AuthShell({
                 animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
                 transition={{ duration: 0.36, ease: 'easeOut' }}
               >
-                <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[hsl(var(--sidebar-muted))]">Calrisal</p>
-                <p className="mt-4 text-xs font-semibold uppercase tracking-[0.26em] text-[hsla(var(--sidebar-foreground),0.72)]">
+                <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[hsl(var(--auth-hero-muted))]">Calrisal</p>
+                <p className="mt-4 text-xs font-semibold uppercase tracking-[0.26em] text-[hsl(var(--auth-hero-foreground)_/_0.72)]">
                   {content.eyebrow}
                 </p>
-                <h1 className="mt-4 max-w-xl text-balance text-4xl font-semibold tracking-tight text-[hsl(var(--sidebar-foreground))] sm:text-[3.15rem]">
+                <h1 className="mt-4 max-w-xl text-balance text-4xl font-semibold tracking-tight text-[hsl(var(--auth-hero-foreground))] sm:text-[3.15rem]">
                   {content.headline}
                 </h1>
-                <p className="mt-5 max-w-2xl text-sm leading-7 text-[hsl(var(--sidebar-muted))]">
+                <p className="mt-5 max-w-2xl text-sm leading-7 text-[hsl(var(--auth-hero-muted))]">
                   {content.body}
                 </p>
               </motion.div>
@@ -106,17 +106,17 @@ export function AuthShell({
                     initial={reduceMotion ? false : { opacity: 0, y: 24 }}
                     animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
                     transition={{ duration: 0.28, delay: 0.08 + index * 0.06, ease: 'easeOut' }}
-                    className="rounded-[28px] border border-white/10 bg-white/6 p-4 backdrop-blur-md"
+                    className="auth-hero-panel rounded-[28px] p-4"
                   >
                     <div className="flex items-center justify-between gap-3">
-                      <span className="rounded-2xl bg-white/10 p-3 text-[hsl(var(--sidebar-foreground))]">
+                      <span className="auth-hero-chip rounded-2xl p-3 text-[hsl(var(--auth-hero-foreground))]">
                         <Icon className="h-4 w-4" />
                       </span>
-                      <span className="font-mono text-xs uppercase tracking-[0.18em] text-[hsl(var(--sidebar-muted))]">
+                      <span className="font-mono text-xs uppercase tracking-[0.18em] text-[hsl(var(--auth-hero-muted))]">
                         {value}
                       </span>
                     </div>
-                    <p className="mt-4 text-sm font-medium text-[hsl(var(--sidebar-foreground))]">{label}</p>
+                    <p className="mt-4 text-sm font-medium text-[hsl(var(--auth-hero-foreground))]">{label}</p>
                   </motion.div>
                 ))}
               </div>
@@ -126,19 +126,19 @@ export function AuthShell({
                   initial={reduceMotion ? false : { opacity: 0, y: 24 }}
                   animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
                   transition={{ duration: 0.34, delay: 0.26, ease: 'easeOut' }}
-                  className="rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.09),rgba(255,255,255,0.04))] p-5 backdrop-blur-md"
+                  className="auth-hero-panel rounded-[30px] p-5"
                 >
                   <div className="flex items-center justify-between">
-                    <p className="text-sm font-semibold text-[hsl(var(--sidebar-foreground))]">Platform preview</p>
-                    <span className="status-pill border-white/10 bg-white/10 text-[hsl(var(--sidebar-foreground))]">Live context</span>
+                    <p className="text-sm font-semibold text-[hsl(var(--auth-hero-foreground))]">Platform preview</p>
+                    <span className="auth-hero-chip status-pill">Live context</span>
                   </div>
                   <div className="mt-5 grid gap-3">
-                    <div className="rounded-[24px] border border-white/10 bg-white/8 p-4">
-                      <div className="flex items-center justify-between text-xs uppercase tracking-[0.18em] text-[hsl(var(--sidebar-muted))]">
+                    <div className="auth-hero-panel-soft rounded-[24px] p-4">
+                      <div className="flex items-center justify-between text-xs uppercase tracking-[0.18em] text-[hsl(var(--auth-hero-muted))]">
                         <span>Activation state</span>
                         <span>Paid</span>
                       </div>
-                      <div className="mt-3 h-2 rounded-full bg-white/10">
+                      <div className="mt-3 h-2 rounded-full bg-[hsl(var(--auth-hero-foreground)_/_0.1)]">
                         <motion.div
                           initial={reduceMotion ? false : { width: 0 }}
                           animate={reduceMotion ? undefined : { width: '74%' }}
@@ -154,10 +154,10 @@ export function AuthShell({
                           initial={reduceMotion ? false : { opacity: 0, y: 12 }}
                           animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
                           transition={{ duration: 0.22, delay: 0.38 + index * 0.04, ease: 'easeOut' }}
-                          className="rounded-[22px] border border-white/10 bg-black/10 px-3 py-4"
+                          className="auth-hero-panel-soft rounded-[22px] px-3 py-4"
                         >
-                          <p className="text-xs uppercase tracking-[0.18em] text-[hsl(var(--sidebar-muted))]">{item}</p>
-                          <p className="mt-2 text-sm font-semibold text-[hsl(var(--sidebar-foreground))]">
+                          <p className="text-xs uppercase tracking-[0.18em] text-[hsl(var(--auth-hero-muted))]">{item}</p>
+                          <p className="mt-2 text-sm font-semibold text-[hsl(var(--auth-hero-foreground))]">
                             {index % 2 === 0 ? 'Structured' : 'Verified'}
                           </p>
                         </motion.div>
@@ -170,9 +170,9 @@ export function AuthShell({
                   initial={reduceMotion ? false : { opacity: 0, x: 24 }}
                   animate={reduceMotion ? undefined : { opacity: 1, x: 0 }}
                   transition={{ duration: 0.38, delay: 0.18, ease: 'easeOut' }}
-                  className="rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.03))] p-5 backdrop-blur-md"
+                  className="auth-hero-panel rounded-[30px] p-5"
                 >
-                  <p className="text-sm font-semibold text-[hsl(var(--sidebar-foreground))]">Design principles</p>
+                  <p className="text-sm font-semibold text-[hsl(var(--auth-hero-foreground))]">Design principles</p>
                   <div className="mt-5 space-y-4">
                     {[
                       'Trust-forward hierarchy with clear commercial and operational status.',
@@ -181,7 +181,7 @@ export function AuthShell({
                     ].map((item) => (
                       <div key={item} className="flex gap-3">
                         <span className="mt-1 h-2.5 w-2.5 rounded-full bg-[hsl(var(--accent))]" />
-                        <p className="text-sm leading-6 text-[hsl(var(--sidebar-muted))]">{item}</p>
+                        <p className="text-sm leading-6 text-[hsl(var(--auth-hero-muted))]">{item}</p>
                       </div>
                     ))}
                   </div>
@@ -193,7 +193,7 @@ export function AuthShell({
               initial={reduceMotion ? false : { opacity: 0, y: 18 }}
               animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
               transition={{ duration: 0.34, delay: 0.4, ease: 'easeOut' }}
-              className="rounded-[30px] border border-white/10 bg-white/6 p-5 text-sm leading-6 text-[hsl(var(--sidebar-muted))]"
+              className="auth-hero-panel rounded-[30px] p-5 text-sm leading-6 text-[hsl(var(--auth-hero-muted))]"
             >
               Control Tower activates tenants. Organisation admins structure the workforce. Employees complete verified self-service. One product language spans the whole platform.
             </motion.div>

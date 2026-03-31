@@ -47,6 +47,11 @@
     --sidebar-border: 214 28% 25%;
     --sidebar-active-bg: 214 92% 83%;
     --sidebar-active-fg: 222 47% 11%;
+    --auth-hero-start: 220 57% 16%;
+    --auth-hero-end: 225 52% 11%;
+    --auth-hero-foreground: 214 33% 97%;
+    --auth-hero-muted: 215 19% 79%;
+    --auth-hero-border: 216 32% 27%;
     --skeleton-base: rgba(214, 226, 240, 0.72);
     --skeleton-highlight: rgba(255, 255, 255, 0.98);
   }
@@ -93,6 +98,11 @@
     --sidebar-border: 216 30% 20%;
     --sidebar-active-bg: 214 58% 78%;
     --sidebar-active-fg: 222 47% 11%;
+    --auth-hero-start: 221 54% 10%;
+    --auth-hero-end: 225 50% 8%;
+    --auth-hero-foreground: 210 40% 97%;
+    --auth-hero-muted: 214 19% 74%;
+    --auth-hero-border: 216 30% 20%;
     --skeleton-base: rgba(39, 53, 78, 0.92);
     --skeleton-highlight: rgba(97, 123, 177, 0.32);
   }
@@ -105,8 +115,8 @@
   html {
     min-height: 100%;
     background:
-      radial-gradient(circle at top left, hsla(var(--brand), 0.12), transparent 30%),
-      radial-gradient(circle at top right, hsla(var(--accent), 0.08), transparent 24%),
+      radial-gradient(circle at top left, hsl(var(--brand) / 0.12), transparent 30%),
+      radial-gradient(circle at top right, hsl(var(--accent) / 0.08), transparent 24%),
       linear-gradient(180deg, hsl(var(--background)) 0%, hsl(var(--background-secondary)) 100%);
     scroll-behavior: smooth;
   }
@@ -115,8 +125,8 @@
     min-height: 100vh;
     margin: 0;
     background:
-      radial-gradient(circle at 20% 0%, hsla(var(--brand), 0.07), transparent 24%),
-      radial-gradient(circle at 100% 0%, hsla(var(--accent), 0.06), transparent 20%),
+      radial-gradient(circle at 20% 0%, hsl(var(--brand) / 0.07), transparent 24%),
+      radial-gradient(circle at 100% 0%, hsl(var(--accent) / 0.06), transparent 20%),
       linear-gradient(180deg, hsl(var(--background)) 0%, hsl(var(--background-secondary)) 100%);
     color: hsl(var(--foreground));
     font-family: 'Plus Jakarta Sans', 'Segoe UI Variable Text', 'Segoe UI', sans-serif;
@@ -151,50 +161,78 @@
   }
 
   ::selection {
-    background: hsla(var(--brand), 0.24);
+    background: hsl(var(--brand) / 0.24);
     color: hsl(var(--foreground-strong));
   }
 }
 
 @layer components {
   .surface-card {
-    border: 1px solid hsla(var(--border), 0.86);
+    border: 1px solid hsl(var(--border) / 0.86);
     background:
-      linear-gradient(180deg, hsla(var(--surface), 0.98), hsla(var(--surface-elevated), 0.96)),
+      linear-gradient(180deg, hsl(var(--surface) / 0.98), hsl(var(--surface-elevated) / 0.96)),
       hsl(var(--surface));
     box-shadow: var(--shadow-card);
     backdrop-filter: blur(18px);
   }
 
   .surface-muted {
-    border: 1px solid hsla(var(--border), 0.86);
+    border: 1px solid hsl(var(--border) / 0.86);
     background:
-      linear-gradient(180deg, hsla(var(--surface-elevated), 0.94), hsla(var(--surface-subtle), 0.92)),
+      linear-gradient(180deg, hsl(var(--surface-elevated) / 0.94), hsl(var(--surface-subtle) / 0.92)),
       hsl(var(--surface-elevated));
     box-shadow: var(--shadow-soft);
   }
 
   .surface-shell {
-    border: 1px solid hsla(var(--border), 0.76);
+    border: 1px solid hsl(var(--border) / 0.76);
     background:
-      linear-gradient(180deg, hsla(var(--surface), 0.86), hsla(var(--surface-elevated), 0.82)),
+      linear-gradient(180deg, hsl(var(--surface) / 0.86), hsl(var(--surface-elevated) / 0.82)),
       hsl(var(--surface));
     box-shadow: var(--shadow-soft);
     backdrop-filter: blur(18px);
   }
 
   .sidebar-surface {
-    border: 1px solid hsla(var(--sidebar-border), 0.92);
+    border: 1px solid hsl(var(--sidebar-border) / 0.92);
     background:
-      linear-gradient(180deg, hsla(var(--sidebar-start), 0.98), hsla(var(--sidebar-end), 0.98));
+      linear-gradient(180deg, hsl(var(--sidebar-start) / 0.98), hsl(var(--sidebar-end) / 0.98));
     color: hsl(var(--sidebar-foreground));
     box-shadow: var(--shadow-contrast);
   }
 
-  .shell-topbar {
-    border: 1px solid hsla(var(--border), 0.76);
+  .auth-hero-surface {
+    border: 1px solid hsl(var(--auth-hero-border) / 0.94);
     background:
-      linear-gradient(180deg, hsla(var(--surface), 0.86), hsla(var(--surface-elevated), 0.82)),
+      radial-gradient(circle at 18% 14%, hsl(var(--brand) / 0.22), transparent 26%),
+      radial-gradient(circle at 92% 0%, hsl(var(--accent) / 0.16), transparent 22%),
+      linear-gradient(180deg, hsl(var(--auth-hero-start) / 0.98), hsl(var(--auth-hero-end) / 0.98));
+    color: hsl(var(--auth-hero-foreground));
+    box-shadow: var(--shadow-contrast);
+  }
+
+  .auth-hero-panel {
+    border: 1px solid hsl(var(--auth-hero-foreground) / 0.1);
+    background: linear-gradient(180deg, hsl(var(--auth-hero-foreground) / 0.08), hsl(var(--auth-hero-foreground) / 0.04));
+    backdrop-filter: blur(18px);
+  }
+
+  .auth-hero-panel-soft {
+    border: 1px solid hsl(var(--auth-hero-foreground) / 0.1);
+    background: hsl(var(--auth-hero-foreground) / 0.08);
+    backdrop-filter: blur(14px);
+  }
+
+  .auth-hero-chip {
+    border: 1px solid hsl(var(--auth-hero-foreground) / 0.1);
+    background: hsl(var(--auth-hero-foreground) / 0.1);
+    color: hsl(var(--auth-hero-foreground));
+  }
+
+  .shell-topbar {
+    border: 1px solid hsl(var(--border) / 0.76);
+    background:
+      linear-gradient(180deg, hsl(var(--surface) / 0.86), hsl(var(--surface-elevated) / 0.82)),
       hsl(var(--surface));
     box-shadow: var(--shadow-soft);
     backdrop-filter: blur(18px);
@@ -202,8 +240,8 @@
   }
 
   .shell-user-card {
-    border: 1px solid hsla(var(--border), 0.78);
-    background: linear-gradient(180deg, hsla(var(--surface-contrast), 0.96), hsla(var(--surface-contrast), 0.88));
+    border: 1px solid hsl(var(--border) / 0.78);
+    background: linear-gradient(180deg, hsl(var(--surface-contrast) / 0.96), hsl(var(--surface-contrast) / 0.88));
     color: hsl(var(--surface-contrast-foreground));
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
   }
@@ -251,14 +289,14 @@
   }
 
   .btn-secondary {
-    border: 1px solid hsla(var(--border-strong), 0.88);
-    background: hsla(var(--surface), 0.72);
+    border: 1px solid hsl(var(--border-strong) / 0.88);
+    background: hsl(var(--surface) / 0.72);
     color: hsl(var(--foreground));
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
   }
 
   .btn-secondary:hover:not(:disabled) {
-    background: hsla(var(--surface-elevated), 0.92);
+    background: hsl(var(--surface-elevated) / 0.92);
     transform: translateY(-1px);
   }
 
@@ -267,7 +305,7 @@
   }
 
   .btn-ghost:hover:not(:disabled) {
-    background: hsla(var(--surface-subtle), 0.92);
+    background: hsl(var(--surface-subtle) / 0.92);
     color: hsl(var(--foreground));
   }
 
@@ -302,8 +340,8 @@
   .field-select {
     width: 100%;
     border-radius: 1.15rem;
-    border: 1px solid hsla(var(--border-strong), 0.84);
-    background: hsla(var(--surface), 0.92);
+    border: 1px solid hsl(var(--border-strong) / 0.84);
+    background: hsl(var(--surface) / 0.92);
     color: hsl(var(--foreground));
     padding: 0.88rem 1rem;
     transition:
@@ -324,7 +362,7 @@
     outline: none;
     border-color: hsl(var(--ring));
     box-shadow:
-      0 0 0 4px hsla(var(--ring), 0.16),
+      0 0 0 4px hsl(var(--ring) / 0.16),
       var(--shadow-soft);
     background: hsl(var(--surface));
     transform: translateY(-1px);
@@ -341,26 +379,26 @@
   }
 
   .notice-error {
-    border: 1px solid hsla(var(--destructive), 0.22);
+    border: 1px solid hsl(var(--destructive) / 0.22);
     background: hsl(var(--destructive-soft));
     color: hsl(var(--destructive));
   }
 
   .notice-info {
-    border: 1px solid hsla(var(--info), 0.18);
+    border: 1px solid hsl(var(--info) / 0.18);
     background: hsl(var(--info-soft));
     color: hsl(var(--muted-foreground-strong));
   }
 
   .table-shell {
     overflow-x: auto;
-    border: 1px solid hsla(var(--border), 0.86);
+    border: 1px solid hsl(var(--border) / 0.86);
     border-radius: 1.6rem;
-    background: hsla(var(--surface), 0.78);
+    background: hsl(var(--surface) / 0.78);
   }
 
   .table-head-row {
-    border-bottom: 1px solid hsla(var(--border), 0.92);
+    border-bottom: 1px solid hsl(var(--border) / 0.92);
     color: hsl(var(--muted-foreground));
     @apply text-left text-[11px] font-semibold uppercase tracking-[0.18em];
   }
@@ -374,7 +412,7 @@
   }
 
   .table-row:hover {
-    background: hsla(var(--surface-subtle), 0.86);
+    background: hsl(var(--surface-subtle) / 0.86);
   }
 
   .table-primary {
@@ -386,22 +424,22 @@
   }
 
   .theme-toggle-button {
-    border: 1px solid hsla(var(--border-strong), 0.82);
-    background: hsla(var(--surface), 0.72);
+    border: 1px solid hsl(var(--border-strong) / 0.82);
+    background: hsl(var(--surface) / 0.72);
     color: hsl(var(--foreground));
     box-shadow: var(--shadow-soft);
     @apply inline-flex items-center gap-2 rounded-2xl px-3 py-2 text-sm font-semibold;
   }
 
   .theme-toggle-button:hover {
-    background: hsla(var(--surface-elevated), 0.96);
+    background: hsl(var(--surface-elevated) / 0.96);
   }
 
   .theme-menu-content {
     min-width: 12rem;
     border-radius: 1.25rem;
-    border: 1px solid hsla(var(--border), 0.92);
-    background: hsla(var(--surface), 0.96);
+    border: 1px solid hsl(var(--border) / 0.92);
+    background: hsl(var(--surface) / 0.96);
     color: hsl(var(--foreground));
     padding: 0.35rem;
     box-shadow: var(--shadow-card);
@@ -416,11 +454,11 @@
 
   .theme-menu-item:hover,
   .theme-menu-item:focus {
-    background: hsla(var(--surface-subtle), 0.92);
+    background: hsl(var(--surface-subtle) / 0.92);
   }
 
   .theme-menu-item-active {
-    background: hsla(var(--brand), 0.12);
+    background: hsl(var(--brand) / 0.12);
     color: hsl(var(--foreground-strong));
   }
 
@@ -430,9 +468,9 @@
   }
 
   .empty-state-shell {
-    border: 1px solid hsla(var(--border), 0.86);
+    border: 1px solid hsl(var(--border) / 0.86);
     background:
-      linear-gradient(180deg, hsla(var(--surface), 0.98), hsla(var(--surface-elevated), 0.96)),
+      linear-gradient(180deg, hsl(var(--surface) / 0.98), hsl(var(--surface-elevated) / 0.96)),
       hsl(var(--surface));
     box-shadow: var(--shadow-card);
     backdrop-filter: blur(18px);
