@@ -15,7 +15,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge'
 import { formatDate } from '@/lib/format'
 import { getErrorMessage } from '@/lib/errors'
 
-const emptyForm = { name: '', description: '' }
+const emptyForm = { name: '', description: '', parent_department_id: '' }
 
 export function DepartmentsPage() {
   const [includeInactive, setIncludeInactive] = useState(false)
@@ -34,12 +34,16 @@ export function DepartmentsPage() {
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
+    const payload = {
+      ...form,
+      parent_department_id: form.parent_department_id || null,
+    }
     try {
       if (editingId) {
-        await updateMutation.mutateAsync({ id: editingId, payload: form })
+        await updateMutation.mutateAsync({ id: editingId, payload })
         toast.success('Department updated.')
       } else {
-        await createMutation.mutateAsync(form)
+        await createMutation.mutateAsync(payload)
         toast.success('Department created.')
       }
       resetForm()
@@ -50,7 +54,11 @@ export function DepartmentsPage() {
 
   const handleEdit = (department: NonNullable<typeof data>[number]) => {
     setEditingId(department.id)
-    setForm({ name: department.name, description: department.description })
+    setForm({
+      name: department.name,
+      description: department.description,
+      parent_department_id: department.parent_department_id ?? '',
+    })
   }
 
   const handleDeactivate = async (id: string) => {
@@ -76,7 +84,7 @@ export function DepartmentsPage() {
       )}
 
       <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-        <SectionCard title={editingId ? 'Edit department' : 'Add department'} description="Use unique department names for reporting and assignment.">
+        <SectionCard title={editingId ? 'Edit department' : 'Add department'} description="Use unique department names and define parent-child structure where needed.">
           <form onSubmit={handleSubmit} className="grid gap-4">
             <div>
               <label className="field-label" htmlFor="department-name">
@@ -100,6 +108,26 @@ export function DepartmentsPage() {
                 onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
                 className="field-textarea"
               />
+            </div>
+            <div>
+              <label className="field-label" htmlFor="department-parent">
+                Parent department
+              </label>
+              <select
+                id="department-parent"
+                className="field-select"
+                value={form.parent_department_id}
+                onChange={(event) => setForm((current) => ({ ...current, parent_department_id: event.target.value }))}
+              >
+                <option value="">No parent department</option>
+                {data
+                  ?.filter((department) => department.is_active && department.id !== editingId)
+                  .map((department) => (
+                    <option key={department.id} value={department.id}>
+                      {department.name}
+                    </option>
+                  ))}
+              </select>
             </div>
             <div className="flex flex-wrap gap-3">
               {editingId ? <button type="button" onClick={resetForm} className="btn-secondary">Cancel</button> : null}
@@ -138,7 +166,12 @@ export function DepartmentsPage() {
                         {department.is_active ? 'Active' : 'Inactive'}
                       </StatusBadge>
                     </div>
-                    <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">{department.description || 'No description provided.'}</p>
+                    <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
+                      {department.description || 'No description provided.'}
+                    </p>
+                    <p className="mt-2 text-xs uppercase tracking-[0.16em] text-[hsl(var(--muted-foreground))]">
+                      Parent {department.parent_department_name || 'Top level'}
+                    </p>
                     <p className="mt-2 text-xs uppercase tracking-[0.16em] text-[hsl(var(--muted-foreground))]">Updated {formatDate(department.updated_at)}</p>
                   </div>
                   <div className="flex gap-3">

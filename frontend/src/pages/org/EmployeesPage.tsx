@@ -13,10 +13,10 @@ import { getErrorMessage } from '@/lib/errors'
 import { getEmployeeStatusTone } from '@/lib/status'
 import type { EmployeeStatus, EmploymentType } from '@/types/hr'
 
-const employeeStatuses: Array<EmployeeStatus | ''> = ['', 'INVITED', 'ACTIVE', 'INACTIVE', 'TERMINATED']
+const employeeStatuses: Array<EmployeeStatus | ''> = ['', 'INVITED', 'PENDING', 'ACTIVE', 'RESIGNED', 'RETIRED', 'TERMINATED']
 
 const inviteDefaults = {
-  email: '',
+  company_email: '',
   first_name: '',
   last_name: '',
   designation: '',
@@ -81,9 +81,9 @@ export function EmployeesPage() {
         <SectionCard title="Invite employee" description="Seat availability is enforced server-side against purchased licences.">
           <form onSubmit={handleInvite} className="grid gap-4 lg:grid-cols-3">
             {[
-              ['email', 'Email'],
               ['first_name', 'First name'],
               ['last_name', 'Last name'],
+              ['company_email', 'Company email'],
               ['designation', 'Designation'],
             ].map(([field, label]) => (
               <div key={field}>
@@ -92,7 +92,7 @@ export function EmployeesPage() {
                 </label>
                 <input
                   id={field}
-                  type={field === 'email' ? 'email' : 'text'}
+                  type={field === 'company_email' ? 'email' : 'text'}
                   className="field-input"
                   required={field !== 'designation'}
                   value={inviteForm[field as keyof typeof inviteForm]}
@@ -171,8 +171,8 @@ export function EmployeesPage() {
               </button>
             </div>
             <div className="surface-muted rounded-[26px] p-5 text-sm leading-6 text-[hsl(var(--muted-foreground))] lg:col-span-3">
-              Invitations consume licence capacity once the employee becomes invited or active. Keep departments and
-              office locations ready to keep downstream onboarding clean.
+              Invitations consume licence capacity immediately. After password setup the employee moves to pending, and
+              only when you mark them as joined do they become active and consume an employee code.
             </div>
           </form>
         </SectionCard>
@@ -230,7 +230,10 @@ export function EmployeesPage() {
                     <tr key={employee.id} className="table-row border-b border-[hsl(var(--border)_/_0.76)] last:border-b-0">
                       <td className="py-4 pr-4">
                         <p className="table-primary font-semibold">{employee.full_name}</p>
-                        <p className="table-secondary mt-1 text-xs">{employee.email} • {employee.employee_code}</p>
+                        <p className="table-secondary mt-1 text-xs">
+                          {employee.email}
+                          {employee.employee_code ? ` • ${employee.employee_code}` : ' • Code assigned on join'}
+                        </p>
                       </td>
                       <td className="table-secondary py-4 pr-4">{employee.designation || 'Not assigned'}</td>
                       <td className="table-secondary py-4 pr-4">{employee.department_name || 'Unassigned'}</td>

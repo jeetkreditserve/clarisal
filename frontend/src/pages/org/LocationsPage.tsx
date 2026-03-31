@@ -1,7 +1,15 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { MapPin } from 'lucide-react'
 import { toast } from 'sonner'
-import { useCreateLocation, useDeactivateLocation, useLocations, useUpdateLocation } from '@/hooks/useOrgAdmin'
+
+import {
+  useCreateLocation,
+  useDeactivateLocation,
+  useLocations,
+  useOrgProfile,
+  useUpdateLocation,
+} from '@/hooks/useOrgAdmin'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
@@ -12,11 +20,8 @@ import { getErrorMessage } from '@/lib/errors'
 
 const emptyForm = {
   name: '',
-  address: '',
-  city: '',
-  state: '',
-  country: '',
-  pincode: '',
+  organisation_address_id: '',
+  is_remote: false,
 }
 
 export function LocationsPage() {
@@ -25,9 +30,12 @@ export function LocationsPage() {
   const [form, setForm] = useState(emptyForm)
 
   const { data, isLoading } = useLocations(includeInactive)
+  const { data: organisation } = useOrgProfile()
   const createMutation = useCreateLocation()
   const updateMutation = useUpdateLocation()
   const deactivateMutation = useDeactivateLocation()
+
+  const activeAddresses = organisation?.addresses.filter((address) => address.is_active) ?? []
 
   const resetForm = () => {
     setEditingId(null)
@@ -54,11 +62,8 @@ export function LocationsPage() {
     setEditingId(location.id)
     setForm({
       name: location.name,
-      address: location.address,
-      city: location.city,
-      state: location.state,
-      country: location.country,
-      pincode: location.pincode,
+      organisation_address_id: location.organisation_address_id ?? '',
+      is_remote: location.is_remote,
     })
   }
 
@@ -80,40 +85,64 @@ export function LocationsPage() {
         <PageHeader
           eyebrow="Master data"
           title="Office locations"
-          description="Maintain the office sites employees can be assigned to."
+          description="Every office location must link to an organisation address. Employees can only be assigned to office locations."
         />
       )}
 
       <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-        <SectionCard title={editingId ? 'Edit location' : 'Add location'} description="Capture a valid worksite or office assignment option.">
+        <SectionCard
+          title={editingId ? 'Edit location' : 'Add location'}
+          description="Choose an active organisation address first, then name the office location."
+        >
           <form onSubmit={handleSubmit} className="grid gap-4">
-            {(['name', 'city', 'state', 'country', 'pincode'] as const).map((field) => (
-              <div key={field}>
-                <label className="field-label" htmlFor={field}>
-                  {field === 'pincode' ? 'Postal code' : field.charAt(0).toUpperCase() + field.slice(1)}
-                </label>
-                <input
-                  id={field}
-                  value={form[field]}
-                  onChange={(event) => setForm((current) => ({ ...current, [field]: event.target.value }))}
-                  className="field-input"
-                  required={field === 'name'}
-                />
-              </div>
-            ))}
             <div>
-              <label className="field-label" htmlFor="address">
-                Address
+              <label className="field-label" htmlFor="location-name">
+                Location name
               </label>
-              <textarea
-                id="address"
-                value={form.address}
-                onChange={(event) => setForm((current) => ({ ...current, address: event.target.value }))}
-                className="field-textarea"
+              <input
+                id="location-name"
+                value={form.name}
+                onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+                className="field-input"
+                required
               />
             </div>
+            <div>
+              <label className="field-label" htmlFor="location-address">
+                Linked address
+              </label>
+              <select
+                id="location-address"
+                className="field-select"
+                value={form.organisation_address_id}
+                onChange={(event) => setForm((current) => ({ ...current, organisation_address_id: event.target.value }))}
+                required
+              >
+                <option value="">Select an organisation address</option>
+                {activeAddresses.map((address) => (
+                  <option key={address.id} value={address.id}>
+                    {address.label} • {address.city}, {address.state}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-2 text-xs text-[hsl(var(--muted-foreground))]">
+                Need another address first? <Link to="/org/profile" className="font-semibold text-[hsl(var(--brand))] hover:underline">Manage organisation addresses</Link>
+              </p>
+            </div>
+            <label className="flex items-center gap-3 rounded-[18px] border border-[hsl(var(--border)_/_0.9)] px-4 py-3 text-sm text-[hsl(var(--foreground))]">
+              <input
+                type="checkbox"
+                checked={form.is_remote}
+                onChange={(event) => setForm((current) => ({ ...current, is_remote: event.target.checked }))}
+              />
+              Mark as remote office location
+            </label>
             <div className="flex flex-wrap gap-3">
-              {editingId ? <button type="button" onClick={resetForm} className="btn-secondary">Cancel</button> : null}
+              {editingId ? (
+                <button type="button" onClick={resetForm} className="btn-secondary">
+                  Cancel
+                </button>
+              ) : null}
               <button type="submit" className="btn-primary" disabled={createMutation.isPending || updateMutation.isPending}>
                 {editingId ? 'Save changes' : 'Create location'}
               </button>
@@ -123,7 +152,7 @@ export function LocationsPage() {
 
         <SectionCard
           title="Location directory"
-          description="Every location can be activated or deactivated without losing historical employee references."
+          description="Inactive locations remain in history but cannot receive invited, pending, or active employees."
           action={
             <label className="flex items-center gap-2 text-sm text-[hsl(var(--muted-foreground))]">
               <input
@@ -142,17 +171,24 @@ export function LocationsPage() {
               {data.map((location) => (
                 <div key={location.id} className="surface-muted flex flex-col gap-4 rounded-[24px] p-5 lg:flex-row lg:items-center lg:justify-between">
                   <div>
-                    <div className="flex items-center gap-3">
-                      <MapPin className="h-4 w-4 text-[hsl(var(--brand))]" />
-                      <p className="font-semibold text-[hsl(var(--foreground-strong))]">{location.name}</p>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <div className="flex items-center gap-2">
+                        <MapPin className="h-4 w-4 text-[hsl(var(--brand))]" />
+                        <p className="font-semibold text-[hsl(var(--foreground-strong))]">{location.name}</p>
+                      </div>
                       <StatusBadge tone={location.is_active ? 'success' : 'warning'}>
                         {location.is_active ? 'Active' : 'Inactive'}
                       </StatusBadge>
+                      {location.is_remote ? <StatusBadge tone="info">Remote</StatusBadge> : null}
                     </div>
                     <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
-                      {[location.address, location.city, location.state, location.country, location.pincode].filter(Boolean).join(', ') || 'No address provided'}
+                      {location.organisation_address
+                        ? `${location.organisation_address.label} • ${[location.address, location.city, location.state, location.country, location.pincode].filter(Boolean).join(', ')}`
+                        : 'No linked address'}
                     </p>
-                    <p className="mt-2 text-xs uppercase tracking-[0.16em] text-[hsl(var(--muted-foreground))]">Updated {formatDate(location.updated_at)}</p>
+                    <p className="mt-2 text-xs uppercase tracking-[0.16em] text-[hsl(var(--muted-foreground))]">
+                      Updated {formatDate(location.updated_at)}
+                    </p>
                   </div>
                   <div className="flex gap-3">
                     <button type="button" onClick={() => handleEdit(location)} className="btn-secondary">
@@ -170,7 +206,7 @@ export function LocationsPage() {
           ) : (
             <EmptyState
               title="No locations added yet"
-              description="Create the first office location so employees can be assigned to a real worksite."
+              description="Create the first office location so invited and active employees can be assigned to a real worksite."
               icon={MapPin}
             />
           )}

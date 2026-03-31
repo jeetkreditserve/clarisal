@@ -1,15 +1,18 @@
 import { useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
-import { ArrowLeft, Download, FileCheck2 } from 'lucide-react'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+import { ArrowLeft, Download, FileCheck2, UserRoundCheck, UserRoundMinus } from 'lucide-react'
 import { toast } from 'sonner'
+
 import {
+  useDeleteEmployee,
   useDepartments,
   useEmployeeDetail,
   useEmployeeDocumentDownload,
   useEmployeeDocuments,
+  useEndEmployeeEmployment,
   useLocations,
+  useMarkEmployeeJoined,
   useRejectEmployeeDocument,
-  useTerminateEmployee,
   useUpdateEmployee,
   useVerifyEmployeeDocument,
 } from '@/hooks/useOrgAdmin'
@@ -18,12 +21,13 @@ import { SectionCard } from '@/components/ui/SectionCard'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { SkeletonFormBlock, SkeletonPageHeader, SkeletonTable } from '@/components/ui/Skeleton'
 import { StatusBadge } from '@/components/ui/StatusBadge'
-import { formatDateTime, startCase } from '@/lib/format'
+import { formatDate, formatDateTime, startCase } from '@/lib/format'
 import { getErrorMessage } from '@/lib/errors'
 import { getDocumentStatusTone, getEmployeeStatusTone } from '@/lib/status'
-import type { EmployeeStatus, EmploymentType } from '@/types/hr'
+import type { EmploymentType } from '@/types/hr'
 
 export function EmployeeDetailPage() {
+  const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
   const employeeId = id ?? ''
   const { data: employee, isLoading } = useEmployeeDetail(employeeId)
@@ -31,7 +35,9 @@ export function EmployeeDetailPage() {
   const { data: locations } = useLocations()
   const { data: documents } = useEmployeeDocuments(employeeId)
   const updateMutation = useUpdateEmployee(employeeId)
-  const terminateMutation = useTerminateEmployee(employeeId)
+  const markJoinedMutation = useMarkEmployeeJoined(employeeId)
+  const endEmploymentMutation = useEndEmployeeEmployment(employeeId)
+  const deleteEmployeeMutation = useDeleteEmployee(employeeId)
   const verifyDocumentMutation = useVerifyEmployeeDocument(employeeId)
   const rejectDocumentMutation = useRejectEmployeeDocument(employeeId)
   const downloadDocumentMutation = useEmployeeDocumentDownload()
@@ -42,8 +48,15 @@ export function EmployeeDetailPage() {
     date_of_joining: string
     department_id: string
     office_location_id: string
-    status: EmployeeStatus
   }>>({})
+  const [joinForm, setJoinForm] = useState({
+    employee_code: '',
+    date_of_joining: '',
+  })
+  const [endEmploymentForm, setEndEmploymentForm] = useState({
+    status: 'RESIGNED' as 'RESIGNED' | 'RETIRED' | 'TERMINATED',
+    date_of_exit: '',
+  })
 
   if (isLoading || !employee) {
     return (
@@ -64,7 +77,6 @@ export function EmployeeDetailPage() {
     date_of_joining: draft.date_of_joining ?? employee.date_of_joining ?? '',
     department_id: draft.department_id ?? employee.department ?? '',
     office_location_id: draft.office_location_id ?? employee.office_location ?? '',
-    status: draft.status ?? employee.status,
   }
 
   const handleSave = async (event: React.FormEvent) => {
@@ -76,7 +88,6 @@ export function EmployeeDetailPage() {
         date_of_joining: formValues.date_of_joining || null,
         department_id: formValues.department_id || null,
         office_location_id: formValues.office_location_id || null,
-        status: formValues.status,
       })
       toast.success('Employee updated.')
       setDraft({})
@@ -85,13 +96,38 @@ export function EmployeeDetailPage() {
     }
   }
 
-  const handleTerminate = async () => {
-    if (!window.confirm('Terminate this employee record?')) return
+  const handleMarkJoined = async (event: React.FormEvent) => {
+    event.preventDefault()
     try {
-      await terminateMutation.mutateAsync()
-      toast.success('Employee terminated.')
+      await markJoinedMutation.mutateAsync({
+        employee_code: joinForm.employee_code || employee.suggested_employee_code,
+        date_of_joining: joinForm.date_of_joining || formValues.date_of_joining,
+      })
+      toast.success('Employee marked as joined.')
+      setJoinForm({ employee_code: '', date_of_joining: '' })
     } catch (error) {
-      toast.error(getErrorMessage(error, 'Unable to terminate employee.'))
+      toast.error(getErrorMessage(error, 'Unable to mark employee as joined.'))
+    }
+  }
+
+  const handleEndEmployment = async (event: React.FormEvent) => {
+    event.preventDefault()
+    try {
+      await endEmploymentMutation.mutateAsync(endEmploymentForm)
+      toast.success('Employment ended.')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to end employment.'))
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!window.confirm('Delete this invited or pending employee record?')) return
+    try {
+      await deleteEmployeeMutation.mutateAsync()
+      toast.success('Employee deleted.')
+      navigate('/org/employees')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to delete employee.'))
     }
   }
 
@@ -124,6 +160,8 @@ export function EmployeeDetailPage() {
     }
   }
 
+  const employeeCodeLabel = employee.employee_code ?? 'Code assigned on join'
+
   return (
     <div className="space-y-6">
       <Link to="/org/employees" className="inline-flex items-center gap-2 text-sm font-medium text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground-strong))]">
@@ -134,21 +172,12 @@ export function EmployeeDetailPage() {
       <PageHeader
         eyebrow="Employee detail"
         title={employee.full_name}
-        description={`${employee.employee_code} • ${employee.email}`}
-        actions={
-          <>
-            <StatusBadge tone={getEmployeeStatusTone(employee.status)}>{employee.status}</StatusBadge>
-            {employee.status !== 'TERMINATED' ? (
-              <button onClick={handleTerminate} className="btn-danger" disabled={terminateMutation.isPending}>
-                Terminate employee
-              </button>
-            ) : null}
-          </>
-        }
+        description={`${employeeCodeLabel} • ${employee.email}`}
+        actions={<StatusBadge tone={getEmployeeStatusTone(employee.status)}>{employee.status}</StatusBadge>}
       />
 
       <div className="grid gap-6 xl:grid-cols-[0.92fr_1.08fr]">
-        <SectionCard title="Employment settings" description="Department, location, dates, and lifecycle state.">
+        <SectionCard title="Employment settings" description="Assignment details stay editable across invited, pending, and active states.">
           <form onSubmit={handleSave} className="grid gap-4">
             <div>
               <label className="field-label" htmlFor="designation">
@@ -230,27 +259,110 @@ export function EmployeeDetailPage() {
                 </select>
               </div>
             </div>
-            <div>
-              <label className="field-label" htmlFor="status">
-                Employee status
-              </label>
-              <select
-                id="status"
-                className="field-select"
-                value={formValues.status}
-                onChange={(event) => setDraft((current) => ({ ...current, status: event.target.value as EmployeeStatus }))}
-              >
-                {['INVITED', 'ACTIVE', 'INACTIVE', 'TERMINATED'].map((status) => (
-                  <option key={status} value={status}>
-                    {startCase(status)}
-                  </option>
-                ))}
-              </select>
-            </div>
             <button type="submit" className="btn-primary" disabled={updateMutation.isPending}>
               Save employee changes
             </button>
           </form>
+
+          <div className="mt-6 grid gap-4">
+            {employee.status === 'PENDING' ? (
+              <form onSubmit={handleMarkJoined} className="surface-muted grid gap-4 rounded-[24px] p-5">
+                <div className="flex items-center gap-2">
+                  <UserRoundCheck className="h-4 w-4 text-[hsl(var(--success))]" />
+                  <p className="font-semibold text-[hsl(var(--foreground-strong))]">Mark employee as joined</p>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="field-label" htmlFor="employee-code">
+                      Employee code
+                    </label>
+                    <input
+                      id="employee-code"
+                      className="field-input"
+                      placeholder={employee.suggested_employee_code}
+                      value={joinForm.employee_code}
+                      onChange={(event) => setJoinForm((current) => ({ ...current, employee_code: event.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="field-label" htmlFor="join-date">
+                      Date of joining
+                    </label>
+                    <input
+                      id="join-date"
+                      type="date"
+                      className="field-input"
+                      value={joinForm.date_of_joining}
+                      onChange={(event) => setJoinForm((current) => ({ ...current, date_of_joining: event.target.value }))}
+                    />
+                  </div>
+                </div>
+                <button type="submit" className="btn-primary" disabled={markJoinedMutation.isPending}>
+                  Mark as joined
+                </button>
+              </form>
+            ) : null}
+
+            {employee.status === 'ACTIVE' ? (
+              <form onSubmit={handleEndEmployment} className="surface-muted grid gap-4 rounded-[24px] p-5">
+                <div className="flex items-center gap-2">
+                  <UserRoundMinus className="h-4 w-4 text-[hsl(var(--warning))]" />
+                  <p className="font-semibold text-[hsl(var(--foreground-strong))]">End employment</p>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="field-label" htmlFor="end-status">
+                      End status
+                    </label>
+                    <select
+                      id="end-status"
+                      className="field-select"
+                      value={endEmploymentForm.status}
+                      onChange={(event) =>
+                        setEndEmploymentForm((current) => ({
+                          ...current,
+                          status: event.target.value as 'RESIGNED' | 'RETIRED' | 'TERMINATED',
+                        }))
+                      }
+                    >
+                      {['RESIGNED', 'RETIRED', 'TERMINATED'].map((status) => (
+                        <option key={status} value={status}>
+                          {startCase(status)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="field-label" htmlFor="date-of-exit">
+                      Date of exit
+                    </label>
+                    <input
+                      id="date-of-exit"
+                      type="date"
+                      className="field-input"
+                      value={endEmploymentForm.date_of_exit}
+                      onChange={(event) => setEndEmploymentForm((current) => ({ ...current, date_of_exit: event.target.value }))}
+                    />
+                  </div>
+                </div>
+                <button type="submit" className="btn-danger" disabled={endEmploymentMutation.isPending}>
+                  End employment
+                </button>
+              </form>
+            ) : null}
+
+            {(employee.status === 'INVITED' || employee.status === 'PENDING') ? (
+              <div className="surface-muted rounded-[24px] p-5">
+                <p className="font-semibold text-[hsl(var(--foreground-strong))]">Delete employee record</p>
+                <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
+                  Invited and pending employees can be deleted and their licence seat will be released.
+                </p>
+                <button onClick={handleDelete} className="btn-danger mt-4" disabled={deleteEmployeeMutation.isPending}>
+                  Delete employee
+                </button>
+              </div>
+            ) : null}
+          </div>
         </SectionCard>
 
         <SectionCard title="Profile snapshot" description="Current self-service details, identity records, and bank setup.">
