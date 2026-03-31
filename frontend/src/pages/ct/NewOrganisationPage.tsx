@@ -1,83 +1,91 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useCreateOrganisation } from '@/hooks/useCtOrganisations'
-import { cn } from '@/lib/utils'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { SectionCard } from '@/components/ui/SectionCard'
+import { getErrorMessage } from '@/lib/errors'
+import { toast } from 'sonner'
 
 export function NewOrganisationPage() {
   const navigate = useNavigate()
   const { mutateAsync, isPending } = useCreateOrganisation()
-  const [form, setForm] = useState({ name: '', licence_count: 1, address: '', phone: '', email: '' })
+  const [form, setForm] = useState({
+    name: '',
+    licence_count: 5,
+    address: '',
+    phone: '',
+    email: '',
+    country_code: 'IN',
+    currency: 'INR',
+  })
   const [error, setError] = useState<string | null>(null)
 
   const set = (field: string) => (e: React.ChangeEvent<HTMLInputElement>) =>
-    setForm(f => ({ ...f, [field]: field === 'licence_count' ? Number(e.target.value) : e.target.value }))
+    setForm((current) => ({ ...current, [field]: field === 'licence_count' ? Number(e.target.value) : e.target.value }))
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
     try {
       const org = await mutateAsync(form)
+      toast.success('Organisation created.')
       navigate(`/ct/organisations/${org.id}`)
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { name?: string[] } } }
-      setError(e.response?.data?.name?.[0] ?? 'Failed to create organisation.')
+      setError(getErrorMessage(err, 'Failed to create organisation.'))
     }
   }
 
   const field = (id: string, label: string, type = 'text', required = false) => (
     <div>
-      <label htmlFor={id} className="block text-sm font-medium text-foreground mb-1.5">
-        {label}{required && <span className="text-destructive ml-1">*</span>}
+      <label htmlFor={id} className="field-label">
+        {label}
+        {required ? <span className="ml-1 text-rose-600">*</span> : null}
       </label>
       <input
-        id={id} type={type} required={required}
+        id={id}
+        type={type}
+        required={required}
         value={String(form[id as keyof typeof form])}
         onChange={set(id)}
-        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+        className="field-input"
       />
     </div>
   )
 
   return (
-    <div className="max-w-xl">
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold text-foreground">New Organisation</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Create a new tenant organisation.</p>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        eyebrow="Provisioning"
+        title="Create organisation"
+        description="Set the commercial and operational baseline before payment confirmation and admin invitation."
+      />
 
-      <form onSubmit={handleSubmit} className="rounded-xl border bg-card p-6 shadow-sm space-y-4">
-        {field('name', 'Organisation name', 'text', true)}
-        {field('licence_count', 'Licence count', 'number', true)}
-        {field('email', 'Contact email', 'email')}
-        {field('phone', 'Phone')}
-        {field('address', 'Address')}
+      <SectionCard title="Organisation details" description="This creates the tenant shell and opening licence balance.">
+        <form onSubmit={handleSubmit} className="grid gap-5 lg:grid-cols-2">
+          <div className="lg:col-span-2">{field('name', 'Organisation name', 'text', true)}</div>
+          {field('licence_count', 'Opening licence count', 'number', true)}
+          {field('email', 'Contact email', 'email')}
+          {field('phone', 'Contact phone')}
+          {field('country_code', 'Country code', 'text', true)}
+          {field('currency', 'Currency', 'text', true)}
+          <div className="lg:col-span-2">{field('address', 'Address')}</div>
 
-        {error && (
-          <div className="rounded-md bg-destructive/10 border border-destructive/20 px-3 py-2 text-sm text-destructive">
-            {error}
+          {error ? (
+            <div className="rounded-[20px] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 lg:col-span-2">
+              {error}
+            </div>
+          ) : null}
+
+          <div className="flex flex-wrap gap-3 lg:col-span-2">
+            <button type="button" onClick={() => navigate(-1)} className="btn-secondary">
+              Cancel
+            </button>
+            <button type="submit" disabled={isPending} className="btn-primary">
+              {isPending ? 'Creating organisation...' : 'Create organisation'}
+            </button>
           </div>
-        )}
-
-        <div className="flex gap-3 pt-2">
-          <button
-            type="button"
-            onClick={() => navigate(-1)}
-            className="rounded-md border px-4 py-2 text-sm font-medium text-foreground hover:bg-muted"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={isPending}
-            className={cn(
-              'rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground',
-              'hover:opacity-90 disabled:opacity-60',
-            )}
-          >
-            {isPending ? 'Creating…' : 'Create Organisation'}
-          </button>
-        </div>
-      </form>
+        </form>
+      </SectionCard>
     </div>
   )
 }

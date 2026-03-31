@@ -1,14 +1,22 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import api from '@/lib/api'
-import { acceptInvite } from '@/lib/api/invitations'
-import { cn } from '@/lib/utils'
+import { acceptInvite, validateInviteToken } from '@/lib/api/invitations'
+import { getDefaultRoute } from '@/lib/rbac'
+import { getErrorMessage } from '@/lib/errors'
+import { AuthShell } from '@/components/auth/AuthShell'
+import { useAuth } from '@/hooks/useAuth'
 
 export function InviteAcceptPage() {
   const { token } = useParams<{ token: string }>()
   const navigate = useNavigate()
+  const { refreshUser } = useAuth()
   const [tokenValid, setTokenValid] = useState<boolean | null>(null)
-  const [inviteInfo, setInviteInfo] = useState<{ email: string; role: string } | null>(null)
+  const [inviteInfo, setInviteInfo] = useState<{
+    email: string
+    role: string
+    organisation_name: string | null
+    requires_password_setup: boolean
+  } | null>(null)
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState('')
@@ -16,128 +24,119 @@ export function InviteAcceptPage() {
 
   useEffect(() => {
     if (!token) return
-    api.get(`/auth/invite/validate/${token}/`)
-      .then((res) => {
+    validateInviteToken(token)
+      .then((data) => {
         setTokenValid(true)
-        setInviteInfo(res.data)
+        setInviteInfo(data)
       })
       .catch(() => setTokenValid(false))
   }, [token])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (password !== confirmPassword) {
+    if (inviteInfo?.requires_password_setup && password !== confirmPassword) {
       setError('Passwords do not match')
       return
     }
-    if (password.length < 8) {
+    if (inviteInfo?.requires_password_setup && password.length < 8) {
       setError('Password must be at least 8 characters')
       return
     }
     setError('')
     setIsLoading(true)
     try {
-      const result = await acceptInvite({ token: token!, password, confirm_password: confirmPassword })
-      localStorage.setItem('access_token', result.access)
-      localStorage.setItem('refresh_token', result.refresh)
-      const roleRoutes: Record<string, string> = {
-        CONTROL_TOWER: '/ct/dashboard',
-        ORG_ADMIN: '/org/dashboard',
-        EMPLOYEE: '/me/dashboard',
-      }
-      navigate(roleRoutes[result.user.role] ?? '/auth/login', { replace: true })
-    } catch (err: unknown) {
-      const axiosError = err as { response?: { data?: { error?: string; token?: string[] } } }
-      setError(
-        axiosError.response?.data?.error ??
-        axiosError.response?.data?.token?.[0] ??
-        'Failed to set password. The link may have expired.'
+      const result = await acceptInvite(
+        inviteInfo?.requires_password_setup
+          ? { token: token!, password, confirm_password: confirmPassword }
+          : { token: token! }
       )
+      await refreshUser()
+      navigate(getDefaultRoute(result.user), { replace: true })
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to accept the invitation. The link may have expired.'))
     } finally {
       setIsLoading(false)
     }
   }
 
   if (tokenValid === null) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-[hsl(var(--sidebar-background))]">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-white border-t-transparent" />
-      </div>
-    )
+    return <AuthShell title="Verifying your invitation" description="Checking that your secure setup link is still valid."><div className="space-y-4"><div className="h-14 rounded-[20px] bg-slate-100" /><div className="h-14 rounded-[20px] bg-slate-100" /><div className="h-14 rounded-[20px] bg-slate-100" /></div></AuthShell>
   }
 
   if (tokenValid === false) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[hsl(var(--sidebar-background))]">
-        <div className="w-full max-w-md rounded-xl bg-white p-8 text-center shadow-2xl">
-          <h2 className="text-xl font-semibold text-foreground">Invitation Expired</h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            This invitation link is invalid or has expired. Please contact your administrator to resend the invite.
-          </p>
-        </div>
-      </div>
+      <AuthShell
+        title="Invitation no longer available"
+        description="This invite is invalid, already used, or has expired. Ask your administrator to send a fresh setup email."
+      >
+        <a href="/auth/login" className="btn-secondary w-full">
+          Return to sign in
+        </a>
+      </AuthShell>
     )
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[hsl(var(--sidebar-background))]">
-      <div className="w-full max-w-md">
-        <div className="mb-8 text-center">
-          <h1 className="text-3xl font-bold text-white tracking-tight">Calrisal</h1>
-          <p className="mt-2 text-sm text-white/60">Set up your account</p>
-        </div>
-        <div className="rounded-xl bg-white p-8 shadow-2xl">
-          <h2 className="text-xl font-semibold text-foreground">Create your password</h2>
-          {inviteInfo && (
-            <p className="mt-1 text-sm text-muted-foreground">
-              Setting up account for <strong>{inviteInfo.email}</strong>
-            </p>
-          )}
-
-          <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+    <AuthShell
+      title={inviteInfo?.requires_password_setup ? 'Set your password' : 'Accept your access'}
+      description={
+        inviteInfo
+          ? inviteInfo.requires_password_setup
+            ? `${inviteInfo.email} was invited to ${inviteInfo.organisation_name || 'Calrisal'}. Create a password to activate the account.`
+            : `${inviteInfo.email} already has a workforce account. Accept access to join ${inviteInfo.organisation_name || 'Calrisal'}.`
+          : 'Create a password to finish your account setup.'
+      }
+    >
+      <form onSubmit={handleSubmit} className="space-y-5">
+        {inviteInfo?.requires_password_setup ? (
+          <>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1.5">New password</label>
+              <label className="field-label" htmlFor="password">
+                New password
+              </label>
               <input
+                id="password"
                 type="password"
                 required
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                onChange={(event) => setPassword(event.target.value)}
+                className="field-input"
                 placeholder="Minimum 8 characters"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1.5">Confirm password</label>
+              <label className="field-label" htmlFor="confirmPassword">
+                Confirm password
+              </label>
               <input
+                id="confirmPassword"
                 type="password"
                 required
                 value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                onChange={(event) => setConfirmPassword(event.target.value)}
+                className="field-input"
                 placeholder="Repeat your password"
               />
             </div>
+          </>
+        ) : (
+          <div className="rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+            This invitation will add the organisation access to your existing workforce account.
+          </div>
+        )}
 
-            {error && (
-              <div className="rounded-md bg-destructive/10 border border-destructive/20 px-3 py-2 text-sm text-destructive">
-                {error}
-              </div>
-            )}
+        {error ? (
+          <div className="rounded-[20px] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{error}</div>
+        ) : null}
 
-            <button
-              type="submit"
-              disabled={isLoading}
-              className={cn(
-                'w-full rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground',
-                'transition-opacity hover:opacity-90',
-                isLoading && 'opacity-60 cursor-not-allowed'
-              )}
-            >
-              {isLoading ? 'Setting password…' : 'Set password & sign in'}
-            </button>
-          </form>
-        </div>
-      </div>
-    </div>
+        <button type="submit" disabled={isLoading} className="btn-primary w-full">
+          {isLoading
+            ? 'Creating secure session...'
+            : inviteInfo?.requires_password_setup
+              ? 'Set password and continue'
+              : 'Accept access and continue'}
+        </button>
+      </form>
+    </AuthShell>
   )
 }

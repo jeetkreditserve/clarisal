@@ -5,7 +5,7 @@ from django.conf import settings
 
 
 @shared_task(bind=True, autoretry_for=(SMTPException, OSError), max_retries=3, default_retry_delay=60)
-def send_invite_email(self, invite_id: str):
+def send_invite_email(self, invite_id: str, raw_token: str):
     from apps.invitations.models import Invitation
     from django.db import transaction
 
@@ -18,17 +18,22 @@ def send_invite_email(self, invite_id: str):
         if invite.email_sent:
             return  # idempotency — already sent
 
-        invite_url = f"{settings.FRONTEND_URL}/auth/invite/{invite.token}"
+        invite_url = f"{settings.FRONTEND_URL}/auth/invite/{raw_token}"
         org_name = invite.organisation.name if invite.organisation else 'Calrisal'
         invited_by_name = invite.invited_by.full_name if invite.invited_by else 'the platform admin'
         expiry_hours = getattr(settings, 'INVITE_TOKEN_EXPIRY_HOURS', 48)
 
         subject = f"You've been invited to join {org_name} on Calrisal"
+        action_copy = (
+            'Click the link below to accept access and continue:'
+            if invite.user_id and getattr(invite.user, 'is_active', False)
+            else 'Click the link below to set your password and get started:'
+        )
         body = (
             f"Hi {invite.email},\n\n"
             f"{invited_by_name} has invited you to join {org_name} on Calrisal "
             f"as {invite.role}.\n\n"
-            f"Click the link below to set your password and get started:\n\n"
+            f"{action_copy}\n\n"
             f"{invite_url}\n\n"
             f"This link expires in {expiry_hours} hours.\n\n"
             f"If you weren't expecting this invitation, you can safely ignore this email.\n\n"
@@ -45,3 +50,6 @@ def send_invite_email(self, invite_id: str):
 
         invite.email_sent = True
         invite.save(update_fields=['email_sent'])
+        if invite.user_id:
+            invite.user.is_onboarding_email_sent = True
+            invite.user.save(update_fields=['is_onboarding_email_sent'])

@@ -1,11 +1,89 @@
+import { Link } from 'react-router-dom'
+import { FileClock, FileWarning, ShieldCheck, UserRound } from 'lucide-react'
+import { useMyDashboard, useMyProfile } from '@/hooks/useEmployeeSelf'
+import { MetricCard } from '@/components/ui/MetricCard'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { SectionCard } from '@/components/ui/SectionCard'
+import { Skeleton } from '@/components/ui/Skeleton'
+import { StatusBadge } from '@/components/ui/StatusBadge'
+import { startCase } from '@/lib/format'
+
 export function EmployeeDashboardPage() {
+  const { data: dashboard, isLoading } = useMyDashboard()
+  const { data: profile } = useMyProfile()
+
   return (
-    <div>
-      <h1 className="text-2xl font-semibold text-foreground">My Dashboard</h1>
-      <p className="mt-1 text-sm text-muted-foreground">Your profile and documents at a glance.</p>
-      <div className="mt-8 rounded-lg border border-dashed border-border p-12 text-center text-muted-foreground">
-        Profile completion card coming in Phase 4
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        eyebrow="Self-service"
+        title="My dashboard"
+        description="Track your profile completion, document review state, and required onboarding sections."
+        actions={
+          <>
+            <Link to="/me/profile" className="btn-primary">
+              Complete profile
+            </Link>
+            <Link to="/me/documents" className="btn-secondary">
+              Upload documents
+            </Link>
+          </>
+        }
+      />
+
+      {isLoading || !dashboard ? (
+        <div className="space-y-5">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <Skeleton key={index} className="h-32" />
+            ))}
+          </div>
+          <div className="grid gap-6 xl:grid-cols-2">
+            <Skeleton className="h-72" />
+            <Skeleton className="h-72" />
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <MetricCard title="Profile completion" value={`${dashboard.profile_completion.percent}%`} hint={`Employee code ${dashboard.employee_code}`} icon={UserRound} tone="primary" />
+            <MetricCard title="Pending documents" value={dashboard.pending_documents} hint="Waiting for organisation review." icon={FileClock} tone="warning" />
+            <MetricCard title="Verified documents" value={dashboard.verified_documents} hint="Documents approved by your administrator." icon={ShieldCheck} tone="success" />
+            <MetricCard title="Rejected documents" value={dashboard.rejected_documents} hint="Review notes and upload corrected copies." icon={FileWarning} tone="danger" />
+          </div>
+
+          <div className="grid gap-6 xl:grid-cols-2">
+            <SectionCard title="Completed sections" description="The sections you have already finished.">
+              <div className="flex flex-wrap gap-2">
+                {dashboard.profile_completion.completed_sections.length > 0 ? (
+                  dashboard.profile_completion.completed_sections.map((section) => (
+                    <StatusBadge key={section} tone="success">
+                      {startCase(section)}
+                    </StatusBadge>
+                  ))
+                ) : (
+                  <p className="text-sm text-slate-500">No profile sections completed yet.</p>
+                )}
+              </div>
+            </SectionCard>
+
+            <SectionCard title="Still required" description="Finish these sections to reach a complete employee record.">
+              <div className="flex flex-wrap gap-2">
+                {dashboard.profile_completion.missing_sections.map((section) => (
+                  <StatusBadge key={section} tone="warning">
+                    {startCase(section)}
+                  </StatusBadge>
+                ))}
+              </div>
+              <div className="mt-5 rounded-[24px] bg-slate-50 p-5 text-sm text-slate-600">
+                <p className="font-medium text-slate-900">Current name</p>
+                <p className="mt-1">{profile?.employee.full_name || 'Employee'}</p>
+                <p className="mt-4 font-medium text-slate-900">Organisation</p>
+                <p className="mt-1">{profile?.employee.email}</p>
+              </div>
+            </SectionCard>
+          </div>
+        </>
+      )}
     </div>
   )
 }

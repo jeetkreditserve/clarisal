@@ -1,7 +1,10 @@
 import api from '@/lib/api'
 import type {
-  Organisation, OrganisationListItem, OrgAdmin,
-  CtDashboardStats, PaginatedResponse,
+  CtDashboardStats,
+  OrgAdmin,
+  OrganisationDetail,
+  OrganisationListItem,
+  PaginatedResponse,
 } from '@/types/organisation'
 
 export async function fetchCtStats(): Promise<CtDashboardStats> {
@@ -18,7 +21,7 @@ export async function fetchOrganisations(params?: {
   return data
 }
 
-export async function fetchOrganisation(id: string): Promise<Organisation> {
+export async function fetchOrganisation(id: string): Promise<OrganisationDetail> {
   const { data } = await api.get(`/ct/organisations/${id}/`)
   return data
 }
@@ -29,7 +32,9 @@ export async function createOrganisation(payload: {
   address?: string
   phone?: string
   email?: string
-}): Promise<Organisation> {
+  country_code?: string
+  currency?: string
+}): Promise<OrganisationDetail> {
   const { data } = await api.post('/ct/organisations/', payload)
   return data
 }
@@ -39,28 +44,45 @@ export async function updateOrganisation(id: string, payload: {
   address?: string
   phone?: string
   email?: string
-}): Promise<Organisation> {
+  country_code?: string
+  currency?: string
+}): Promise<OrganisationDetail> {
   const { data } = await api.patch(`/ct/organisations/${id}/`, payload)
   return data
 }
 
-export async function activateOrganisation(id: string, note?: string): Promise<Organisation> {
+export async function markOrganisationPaid(id: string, note?: string): Promise<OrganisationDetail> {
   const { data } = await api.post(`/ct/organisations/${id}/activate/`, { note: note ?? '' })
   return data
 }
 
-export async function suspendOrganisation(id: string, note?: string): Promise<Organisation> {
+export async function suspendOrganisation(id: string, note?: string): Promise<OrganisationDetail> {
   const { data } = await api.post(`/ct/organisations/${id}/suspend/`, { note: note ?? '' })
   return data
 }
 
-export async function fetchOrgLicences(id: string): Promise<{ total_count: number; used_count: number }> {
+export async function restoreOrganisation(id: string, note?: string): Promise<OrganisationDetail> {
+  const { data } = await api.post(`/ct/organisations/${id}/restore/`, { note: note ?? '' })
+  return data
+}
+
+export async function fetchOrgLicences(id: string): Promise<{
+  total_count: number
+  used_count: number
+  available_count: number
+  utilisation_percent: number
+}> {
   const { data } = await api.get(`/ct/organisations/${id}/licences/`)
   return data
 }
 
-export async function updateOrgLicences(id: string, licence_count: number): Promise<{ total_count: number; used_count: number }> {
-  const { data } = await api.patch(`/ct/organisations/${id}/licences/`, { licence_count })
+export async function updateOrgLicences(id: string, licence_count: number, note = ''): Promise<{
+  total_count: number
+  used_count: number
+  available_count: number
+  utilisation_percent: number
+}> {
+  const { data } = await api.patch(`/ct/organisations/${id}/licences/`, { licence_count, note })
   return data
 }
 

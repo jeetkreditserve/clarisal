@@ -25,6 +25,7 @@ django-ratelimit==4.1.0
 # Utilities
 Pillow==10.4.0
 python-slugify==8.0.4
+cryptography==45.0.7
 
 # Testing
 pytest==8.3.3

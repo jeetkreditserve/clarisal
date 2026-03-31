@@ -1,14 +1,37 @@
+from django.db.models import Prefetch
+
 from .models import Organisation
 
 
 def get_organisations():
-    return Organisation.objects.select_related('created_by').prefetch_related('state_transitions').order_by('-created_at')
+    return (
+        Organisation.objects.select_related(
+            'created_by',
+            'primary_admin_user',
+            'paid_marked_by',
+        )
+        .prefetch_related(
+            'state_transitions',
+            'lifecycle_events',
+            'licence_ledger_entries',
+        )
+        .order_by('-created_at')
+    )
 
 
 def get_organisation_by_id(pk):
-    return Organisation.objects.select_related('created_by').prefetch_related('state_transitions').get(id=pk)
+    return get_organisations().get(id=pk)
 
 
 def get_org_admins(organisation):
-    from apps.accounts.models import User, UserRole
-    return User.objects.filter(organisation=organisation, role=UserRole.ORG_ADMIN)
+    from .models import OrganisationMembership, OrganisationMembershipStatus
+
+    return (
+        OrganisationMembership.objects.select_related('user')
+        .filter(
+            organisation=organisation,
+            is_org_admin=True,
+            status=OrganisationMembershipStatus.ACTIVE,
+        )
+        .order_by('created_at')
+    )

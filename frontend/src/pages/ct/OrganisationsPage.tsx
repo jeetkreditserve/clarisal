@@ -1,15 +1,15 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Search, Plus } from 'lucide-react'
+import { Building2, Plus, Search } from 'lucide-react'
 import { useOrganisations } from '@/hooks/useCtOrganisations'
+import { EmptyState } from '@/components/ui/EmptyState'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { SectionCard } from '@/components/ui/SectionCard'
+import { Skeleton } from '@/components/ui/Skeleton'
+import { StatusBadge } from '@/components/ui/StatusBadge'
+import { formatDate, startCase } from '@/lib/format'
+import { getOrganisationStatusTone } from '@/lib/status'
 import type { OrganisationStatus } from '@/types/organisation'
-
-const STATUS_COLORS: Record<OrganisationStatus, string> = {
-  PENDING: 'bg-yellow-100 text-yellow-800',
-  PAID: 'bg-blue-100 text-blue-800',
-  ACTIVE: 'bg-green-100 text-green-800',
-  SUSPENDED: 'bg-red-100 text-red-800',
-}
 
 const STATUSES: Array<OrganisationStatus | ''> = ['', 'PENDING', 'PAID', 'ACTIVE', 'SUSPENDED']
 
@@ -25,114 +25,120 @@ export function OrganisationsPage() {
   })
 
   return (
-    <div>
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-foreground">Organisations</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {data ? `${data.count} total` : 'Loading…'}
-          </p>
-        </div>
-        <Link
-          to="/ct/organisations/new"
-          className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
-        >
-          <Plus className="h-4 w-4" />
-          New Organisation
-        </Link>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        eyebrow="Tenants"
+        title="Organisations"
+        description={data ? `${data.count} organisations across all lifecycle states.` : 'Review tenant setup, payment state, and capacity.'}
+        actions={
+          <Link to="/ct/organisations/new" className="btn-primary">
+            <Plus className="h-4 w-4" />
+            New organisation
+          </Link>
+        }
+      />
 
-      <div className="mt-6 flex gap-3">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+      <SectionCard title="Search and filter" description="Quickly narrow by name or lifecycle state.">
+        <div className="flex flex-col gap-3 lg:flex-row">
+          <div className="relative max-w-xl flex-1">
+            <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
-            placeholder="Search organisations…"
+            placeholder="Search organisations..."
             value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(1) }}
-            className="w-full rounded-md border border-input bg-background pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            onChange={(event) => {
+              setSearch(event.target.value)
+              setPage(1)
+            }}
+            className="field-input pl-11"
           />
         </div>
         <select
           value={statusFilter}
-          onChange={(e) => { setStatusFilter(e.target.value as OrganisationStatus | ''); setPage(1) }}
-          className="rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          onChange={(event) => {
+            setStatusFilter(event.target.value as OrganisationStatus | '')
+            setPage(1)
+          }}
+          className="field-select max-w-xs"
         >
           {STATUSES.map((s) => (
-            <option key={s} value={s}>{s || 'All statuses'}</option>
+            <option key={s} value={s}>
+              {s ? startCase(s) : 'All statuses'}
+            </option>
           ))}
         </select>
-      </div>
+        </div>
+      </SectionCard>
 
-      <div className="mt-4 rounded-xl border bg-card shadow-sm overflow-hidden">
+      <SectionCard title="Organisation directory" description="Control Tower view of every customer organisation.">
         {isLoading ? (
-          <div className="divide-y">
-            {[...Array(5)].map((_, i) => (
-              <div key={i} className="flex items-center gap-4 p-4">
-                <div className="h-4 w-48 animate-pulse rounded bg-muted" />
-                <div className="h-5 w-16 animate-pulse rounded bg-muted" />
-                <div className="h-4 w-12 animate-pulse rounded bg-muted" />
-              </div>
+          <div className="space-y-3">
+            {Array.from({ length: 6 }).map((_, index) => (
+              <Skeleton key={index} className="h-16" />
             ))}
           </div>
         ) : data?.results.length === 0 ? (
-          <div className="p-16 text-center">
-            <p className="text-muted-foreground text-sm">No organisations found.</p>
-          </div>
+          <EmptyState
+            title="No organisations found"
+            description="Try a different search term or create a new organisation to begin onboarding."
+            icon={Building2}
+          />
         ) : (
-          <table className="w-full text-sm">
-            <thead className="border-b bg-muted/50">
-              <tr>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Name</th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Status</th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Licences</th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Created</th>
-                <th className="px-4 py-3" />
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {data?.results.map((org) => (
-                <tr key={org.id} className="hover:bg-muted/30">
-                  <td className="px-4 py-3 font-medium text-foreground">{org.name}</td>
-                  <td className="px-4 py-3">
-                    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[org.status]}`}>
-                      {org.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">{org.licence_count}</td>
-                  <td className="px-4 py-3 text-muted-foreground">
-                    {new Date(org.created_at).toLocaleDateString()}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <Link
-                      to={`/ct/organisations/${org.id}`}
-                      className="text-sm text-primary hover:underline"
-                    >
-                      View →
-                    </Link>
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-[0.16em] text-slate-500">
+                  <th className="pb-3 pr-4 font-semibold">Organisation</th>
+                  <th className="pb-3 pr-4 font-semibold">Status</th>
+                  <th className="pb-3 pr-4 font-semibold">Billing</th>
+                  <th className="pb-3 pr-4 font-semibold">Stage</th>
+                  <th className="pb-3 pr-4 font-semibold">Licences</th>
+                  <th className="pb-3 pr-4 font-semibold">Created</th>
+                  <th className="pb-3 text-right font-semibold">Action</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-200/80">
+                {data?.results.map((organisation) => (
+                  <tr key={organisation.id} className="transition-colors hover:bg-slate-50/80">
+                    <td className="py-4 pr-4">
+                      <p className="font-semibold text-slate-950">{organisation.name}</p>
+                      <p className="mt-1 text-xs text-slate-500">/{organisation.slug}</p>
+                    </td>
+                    <td className="py-4 pr-4">
+                      <StatusBadge tone={getOrganisationStatusTone(organisation.status)}>{organisation.status}</StatusBadge>
+                    </td>
+                    <td className="py-4 pr-4 text-slate-600">{startCase(organisation.billing_status)}</td>
+                    <td className="py-4 pr-4 text-slate-600">{startCase(organisation.onboarding_stage)}</td>
+                    <td className="py-4 pr-4 text-slate-600">{organisation.licence_count}</td>
+                    <td className="py-4 pr-4 text-slate-600">{formatDate(organisation.created_at)}</td>
+                    <td className="py-4 text-right">
+                      <Link to={`/ct/organisations/${organisation.id}`} className="font-semibold text-[hsl(var(--primary))] hover:underline">
+                        Open
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
-      </div>
+      </SectionCard>
 
       {data && data.count > 20 && (
-        <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground">
+        <div className="surface-card flex items-center justify-between rounded-[24px] px-5 py-4 text-sm text-slate-600">
           <span>Page {page}</span>
           <div className="flex gap-2">
             <button
-              onClick={() => setPage(p => Math.max(1, p - 1))}
+              onClick={() => setPage((previousPage) => Math.max(1, previousPage - 1))}
               disabled={!data.previous}
-              className="rounded-md border px-3 py-1 disabled:opacity-40"
+              className="btn-secondary disabled:opacity-40"
             >
               Previous
             </button>
             <button
-              onClick={() => setPage(p => p + 1)}
+              onClick={() => setPage((previousPage) => previousPage + 1)}
               disabled={!data.next}
-              className="rounded-md border px-3 py-1 disabled:opacity-40"
+              className="btn-secondary disabled:opacity-40"
             >
               Next
             </button>

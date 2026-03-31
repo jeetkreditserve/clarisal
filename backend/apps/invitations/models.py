@@ -1,5 +1,4 @@
 import uuid
-import secrets
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
@@ -19,7 +18,7 @@ class InvitationStatus(models.TextChoices):
 
 class Invitation(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    token = models.CharField(max_length=64, unique=True, blank=True)
+    token_hash = models.CharField(max_length=64, unique=True, null=True, blank=True)
     email = models.EmailField()
     organisation = models.ForeignKey(
         'organisations.Organisation',
@@ -49,16 +48,13 @@ class Invitation(models.Model):
     )
     email_sent = models.BooleanField(default=False)
     expires_at = models.DateTimeField()
+    accepted_at = models.DateTimeField(null=True, blank=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         db_table = 'invitations'
         ordering = ['-created_at']
-
-    def save(self, *args, **kwargs):
-        if not self.token:
-            self.token = secrets.token_urlsafe(48)[:64]
-        super().save(*args, **kwargs)
 
     @property
     def is_expired(self):

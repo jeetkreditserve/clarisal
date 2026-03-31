@@ -1,10 +1,31 @@
 export type OrganisationStatus = 'PENDING' | 'PAID' | 'ACTIVE' | 'SUSPENDED'
+export type OrganisationBillingStatus = 'PENDING_PAYMENT' | 'PAID'
+export type OrganisationAccessState = 'PROVISIONING' | 'ACTIVE' | 'SUSPENDED'
+export type OrganisationOnboardingStage =
+  | 'ORG_CREATED'
+  | 'LICENCES_ASSIGNED'
+  | 'PAYMENT_CONFIRMED'
+  | 'ADMIN_INVITED'
+  | 'ADMIN_ACTIVATED'
+  | 'MASTER_DATA_CONFIGURED'
+  | 'EMPLOYEES_INVITED'
+
+export interface PaginatedResponse<T> {
+  count: number
+  next: string | null
+  previous: string | null
+  results: T[]
+}
 
 export interface OrganisationListItem {
   id: string
   name: string
   slug: string
   status: OrganisationStatus
+  status_label: string
+  billing_status: OrganisationBillingStatus
+  access_state: OrganisationAccessState
+  onboarding_stage: OrganisationOnboardingStage
   licence_count: number
   created_at: string
 }
@@ -18,20 +39,57 @@ export interface StateTransition {
   created_at: string
 }
 
-export interface Organisation {
+export interface LifecycleEvent {
+  id: string
+  event_type: string
+  actor_email: string | null
+  payload: Record<string, unknown>
+  created_at: string
+}
+
+export interface LicenceLedgerEntry {
+  id: string
+  delta: number
+  reason: string
+  note: string
+  effective_from: string
+  created_by_email: string | null
+  created_at: string
+}
+
+export interface LicenceSummary {
+  purchased: number
+  allocated: number
+  available: number
+  utilisation_percent: number
+}
+
+export interface OrganisationDetail {
   id: string
   name: string
   slug: string
   status: OrganisationStatus
+  billing_status: OrganisationBillingStatus
+  access_state: OrganisationAccessState
+  onboarding_stage: OrganisationOnboardingStage
   licence_count: number
+  country_code: string
+  currency: string
   address: string
   phone: string
   email: string
   logo_url: string | null
+  primary_admin_email: string | null
+  paid_marked_at: string | null
+  activated_at: string | null
+  suspended_at: string | null
   created_by_email: string
   created_at: string
   updated_at: string
   state_transitions: StateTransition[]
+  lifecycle_events: LifecycleEvent[]
+  licence_ledger_entries: LicenceLedgerEntry[]
+  licence_summary: LicenceSummary
 }
 
 export interface OrgAdmin {
@@ -51,11 +109,27 @@ export interface CtDashboardStats {
   paid_organisations: number
   suspended_organisations: number
   total_employees: number
+  total_licences: number
+  allocated_licences: number
 }
 
-export interface PaginatedResponse<T> {
-  count: number
-  next: string | null
-  previous: string | null
-  results: T[]
+export interface OrgDashboardStats {
+  total_employees: number
+  active_employees: number
+  invited_employees: number
+  inactive_employees: number
+  terminated_employees: number
+  by_department: Array<{ department_name: string; count: number }>
+  by_location: Array<{ location_name: string; count: number }>
+  recent_joins: Array<{
+    id: string
+    employee_code: string
+    designation: string
+    date_of_joining: string
+    user__first_name: string
+    user__last_name: string
+  }>
+  licence_used: number
+  licence_total: number
+  onboarding_stage: OrganisationOnboardingStage
 }

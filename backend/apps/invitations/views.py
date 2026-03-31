@@ -1,13 +1,19 @@
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status
+from django.contrib.auth import login
+from django.middleware.csrf import get_token
 from django.shortcuts import get_object_or_404
+from rest_framework import status
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
 from apps.accounts.permissions import IsControlTowerUser
-from apps.organisations.models import Organisation
+from apps.accounts.serializers import UserSerializer
+from apps.accounts.workspaces import initialize_workforce_workspace
+from apps.organisations.models import Organisation, OrganisationMembership
 from apps.organisations.repositories import get_org_admins
 from apps.organisations.serializers import OrgAdminSerializer
-from .serializers import InviteOrgAdminSerializer, AcceptInviteSerializer
-from .services import create_org_admin_invitation, validate_invite_token, accept_invitation
+
+from .serializers import AcceptInviteSerializer, InviteOrgAdminSerializer
+from .services import accept_invitation, create_org_admin_invitation, validate_invite_token
 
 
 class InviteOrgAdminView(APIView):
@@ -29,26 +35,33 @@ class InviteOrgAdminView(APIView):
             last_name=serializer.validated_data['last_name'],
             invited_by=request.user,
         )
-        return Response({
-            'user_id': str(user.id),
-            'email': invite.email,
-            'status': invite.status,
-            'expires_at': invite.expires_at,
-        }, status=status.HTTP_201_CREATED)
+        return Response(
+            {
+                'user_id': str(user.id),
+                'email': invite.email,
+                'status': invite.status,
+                'expires_at': invite.expires_at,
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class ResendOrgAdminInviteView(APIView):
     permission_classes = [IsControlTowerUser]
 
     def post(self, request, pk, uid):
-        from apps.accounts.models import User, UserRole
         org = get_object_or_404(Organisation, id=pk)
-        user = get_object_or_404(User, id=uid, organisation=org, role=UserRole.ORG_ADMIN)
+        membership = get_object_or_404(
+            OrganisationMembership.objects.select_related('user'),
+            organisation=org,
+            user_id=uid,
+            is_org_admin=True,
+        )
         _, invite = create_org_admin_invitation(
             organisation=org,
-            email=user.email,
-            first_name=user.first_name,
-            last_name=user.last_name,
+            email=membership.user.email,
+            first_name=membership.user.first_name,
+            last_name=membership.user.last_name,
             invited_by=request.user,
         )
         return Response({'email': invite.email, 'status': invite.status, 'expires_at': invite.expires_at})
@@ -61,15 +74,19 @@ class ValidateInviteTokenView(APIView):
     def get(self, request, token):
         from rest_framework import serializers as drf_serializers
         from rest_framework.exceptions import NotFound
+
         try:
             invite = validate_invite_token(token)
-        except (drf_serializers.ValidationError, NotFound) as e:
-            return Response(getattr(e, 'detail', str(e)), status=status.HTTP_400_BAD_REQUEST)
-        return Response({
-            'email': invite.email,
-            'role': invite.role,
-            'organisation_name': invite.organisation.name if invite.organisation else None,
-        })
+        except (drf_serializers.ValidationError, NotFound) as exc:
+            return Response(getattr(exc, 'detail', str(exc)), status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {
+                'email': invite.email,
+                'role': invite.role,
+                'organisation_name': invite.organisation.name if invite.organisation else None,
+                'requires_password_setup': not bool(invite.user and invite.user.is_active),
+            }
+        )
 
 
 class AcceptInviteView(APIView):
@@ -78,13 +95,19 @@ class AcceptInviteView(APIView):
 
     def post(self, request):
         from rest_framework import serializers as drf_serializers
+
         serializer = AcceptInviteSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         try:
-            result = accept_invitation(
+            user = accept_invitation(
                 token=serializer.validated_data['token'],
-                password=serializer.validated_data['password'],
+                password=serializer.validated_data.get('password', ''),
             )
-        except drf_serializers.ValidationError as e:
-            return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
-        return Response(result)
+        except drf_serializers.ValidationError as exc:
+            return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
+
+        login(request, user)
+        request.session.cycle_key()
+        initialize_workforce_workspace(request, user)
+        get_token(request)
+        return Response({'user': UserSerializer(user, context={'request': request}).data})

@@ -41,6 +41,15 @@ class Document(models.Model):
         related_name='uploaded_documents',
     )
     metadata = models.JSONField(default=dict, blank=True)
+    file_hash = models.CharField(max_length=64, blank=True)
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='reviewed_documents',
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

@@ -1,11 +1,22 @@
+from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
-from django.conf import settings
 from rest_framework import serializers as drf_serializers
 from rest_framework.exceptions import NotFound
-from apps.accounts.models import User, UserRole
-from apps.organisations.models import OrganisationStatus
-from apps.organisations.services import transition_organisation_state
+
+from apps.accounts.models import AccountType, User
+from apps.accounts.workspaces import initialize_workforce_workspace, sync_user_role
+from apps.audit.services import log_audit_event
+from apps.common.security import generate_secure_token, hash_token
+from apps.employees.models import Employee, EmployeeStatus
+from apps.organisations.models import OrganisationMembershipStatus, OrganisationStatus
+from apps.organisations.services import (
+    ensure_org_admin_membership,
+    mark_employee_invited,
+    set_primary_admin,
+    transition_organisation_state,
+)
+
 from .models import Invitation, InvitationRole, InvitationStatus
 
 
@@ -13,33 +24,37 @@ def create_org_admin_invitation(organisation, email, first_name, last_name, invi
     from .tasks import send_invite_email
 
     expiry_hours = getattr(settings, 'INVITE_TOKEN_EXPIRY_HOURS', 48)
+    raw_token = generate_secure_token()
 
     with transaction.atomic():
-        # Revoke any existing pending invitations for this email + org
         Invitation.objects.filter(
             email=email,
             organisation=organisation,
             role=InvitationRole.ORG_ADMIN,
             status=InvitationStatus.PENDING,
-        ).update(status=InvitationStatus.REVOKED)
+        ).update(status=InvitationStatus.REVOKED, revoked_at=timezone.now())
 
-        # Create or get user (may already exist if re-inviting)
         user, created = User.objects.get_or_create(
             email=email,
+            account_type=AccountType.WORKFORCE,
             defaults={
                 'first_name': first_name,
                 'last_name': last_name,
-                'role': UserRole.ORG_ADMIN,
-                'organisation': organisation,
+                'role': 'ORG_ADMIN',
                 'is_active': False,
             },
         )
-        if not created and not user.is_active:
+        if not created:
             user.first_name = first_name
             user.last_name = last_name
-            user.organisation = organisation
-            user.role = UserRole.ORG_ADMIN
-            user.save(update_fields=['first_name', 'last_name', 'organisation', 'role'])
+            user.save(update_fields=['first_name', 'last_name', 'updated_at'])
+
+        ensure_org_admin_membership(
+            organisation,
+            user,
+            invited_by=invited_by,
+            status=OrganisationMembershipStatus.ACTIVE if user.is_active else OrganisationMembershipStatus.INVITED,
+        )
 
         invite = Invitation.objects.create(
             email=email,
@@ -47,18 +62,55 @@ def create_org_admin_invitation(organisation, email, first_name, last_name, invi
             role=InvitationRole.ORG_ADMIN,
             invited_by=invited_by,
             user=user,
+            token_hash=hash_token(raw_token),
             status=InvitationStatus.PENDING,
             expires_at=timezone.now() + timezone.timedelta(hours=expiry_hours),
         )
 
-        transaction.on_commit(lambda: send_invite_email.delay(str(invite.id)))
+        set_primary_admin(organisation, user, invited_by)
+        sync_user_role(user)
+        log_audit_event(
+            invited_by,
+            'organisation.invitation.created',
+            organisation=organisation,
+            target=user,
+            payload={'role': InvitationRole.ORG_ADMIN, 'email': email},
+        )
+        transaction.on_commit(lambda: send_invite_email.delay(str(invite.id), raw_token))
 
     return user, invite
 
 
+def create_employee_invitation(organisation, user, invited_by):
+    from .tasks import send_invite_email
+
+    expiry_hours = getattr(settings, 'INVITE_TOKEN_EXPIRY_HOURS', 48)
+    raw_token = generate_secure_token()
+    with transaction.atomic():
+        Invitation.objects.filter(
+            email=user.email,
+            organisation=organisation,
+            role=InvitationRole.EMPLOYEE,
+            status=InvitationStatus.PENDING,
+        ).update(status=InvitationStatus.REVOKED, revoked_at=timezone.now())
+        invite = Invitation.objects.create(
+            email=user.email,
+            organisation=organisation,
+            role=InvitationRole.EMPLOYEE,
+            invited_by=invited_by,
+            user=user,
+            token_hash=hash_token(raw_token),
+            status=InvitationStatus.PENDING,
+            expires_at=timezone.now() + timezone.timedelta(hours=expiry_hours),
+        )
+        transaction.on_commit(lambda: send_invite_email.delay(str(invite.id), raw_token))
+    return invite
+
+
 def validate_invite_token(token):
+    token_hash = hash_token(token)
     try:
-        invite = Invitation.objects.select_related('organisation', 'user').get(token=token)
+        invite = Invitation.objects.select_related('organisation', 'user').get(token_hash=token_hash)
     except Invitation.DoesNotExist:
         raise NotFound('Invitation not found.')
 
@@ -70,48 +122,54 @@ def validate_invite_token(token):
     return invite
 
 
-def accept_invitation(token, password):
-    from rest_framework_simplejwt.tokens import RefreshToken
-
+def accept_invitation(token, password=''):
     invite = validate_invite_token(token)
     user = invite.user
     if user is None:
         raise drf_serializers.ValidationError({'token': 'Invitation has no associated user.'})
 
+    if not user.is_active and not password:
+        raise drf_serializers.ValidationError({'password': 'Password is required to activate this account.'})
+
     with transaction.atomic():
-        user.set_password(password)
-        user.is_active = True
-        user.save(update_fields=['password', 'is_active'])
+        if not user.is_active:
+            user.set_password(password)
+            user.is_active = True
+            user.save(update_fields=['password', 'is_active', 'updated_at'])
 
         invite.status = InvitationStatus.ACCEPTED
-        invite.save(update_fields=['status'])
+        invite.accepted_at = timezone.now()
+        invite.save(update_fields=['status', 'accepted_at'])
 
-        # Transition org PAID -> ACTIVE when org admin onboards
-        if (invite.role == InvitationRole.ORG_ADMIN
-                and invite.organisation
-                and invite.organisation.status == OrganisationStatus.PAID):
-            transition_organisation_state(
+        if invite.role == InvitationRole.ORG_ADMIN and invite.organisation:
+            ensure_org_admin_membership(
                 invite.organisation,
-                OrganisationStatus.ACTIVE,
-                transitioned_by=user,
-                note='Org admin accepted invitation',
+                user,
+                invited_by=invite.invited_by,
+                status=OrganisationMembershipStatus.ACTIVE,
             )
+            if invite.organisation.status == OrganisationStatus.PAID:
+                transition_organisation_state(
+                    invite.organisation,
+                    OrganisationStatus.ACTIVE,
+                    transitioned_by=user,
+                    note='Org admin accepted invitation',
+                )
+            set_primary_admin(invite.organisation, user, user)
 
-    # Generate JWT tokens with custom claims
-    refresh = RefreshToken.for_user(user)
-    refresh['role'] = user.role
-    refresh['org_id'] = str(user.organisation_id) if user.organisation_id else None
-    refresh['email'] = user.email
+        if invite.role == InvitationRole.EMPLOYEE and invite.organisation:
+            employee = Employee.objects.get(user=user, organisation=invite.organisation)
+            employee.status = EmployeeStatus.ACTIVE
+            employee.save(update_fields=['status', 'updated_at'])
+            mark_employee_invited(invite.organisation, user, employee)
 
-    return {
-        'refresh': str(refresh),
-        'access': str(refresh.access_token),
-        'user': {
-            'id': str(user.id),
-            'email': user.email,
-            'first_name': user.first_name,
-            'last_name': user.last_name,
-            'role': user.role,
-            'org_id': str(user.organisation_id) if user.organisation_id else None,
-        },
-    }
+        sync_user_role(user)
+
+    log_audit_event(
+        user,
+        'invitation.accepted',
+        organisation=invite.organisation,
+        target=user,
+        payload={'role': invite.role},
+    )
+    return user

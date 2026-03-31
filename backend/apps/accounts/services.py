@@ -1,0 +1,73 @@
+from django.conf import settings
+from django.contrib.auth import get_user_model
+from django.db import transaction
+from django.utils import timezone
+from rest_framework import serializers as drf_serializers
+from rest_framework.exceptions import NotFound
+
+from apps.common.security import generate_secure_token, hash_token
+
+from .models import AccountType, PasswordResetToken
+
+User = get_user_model()
+
+
+def create_password_reset_request(
+    email: str,
+    account_type: str = AccountType.WORKFORCE,
+    requested_by_ip: str | None = None,
+):
+    from .tasks import send_password_reset_email
+
+    try:
+        user = User.objects.get(email__iexact=email, account_type=account_type)
+    except User.DoesNotExist:
+        return None
+
+    if not user.is_active:
+        return None
+
+    expiry_minutes = getattr(settings, 'PASSWORD_RESET_TOKEN_EXPIRY_MINUTES', 30)
+    raw_token = generate_secure_token()
+
+    with transaction.atomic():
+        PasswordResetToken.objects.filter(user=user, used_at__isnull=True).delete()
+        reset_token = PasswordResetToken.objects.create(
+            user=user,
+            token_hash=hash_token(raw_token),
+            expires_at=timezone.now() + timezone.timedelta(minutes=expiry_minutes),
+            requested_by_ip=requested_by_ip,
+        )
+        transaction.on_commit(
+            lambda: send_password_reset_email.delay(str(reset_token.id), raw_token)
+        )
+
+    return reset_token
+
+
+def validate_password_reset_token(raw_token: str):
+    token_hash = hash_token(raw_token)
+    try:
+        reset_token = PasswordResetToken.objects.select_related('user').get(token_hash=token_hash)
+    except PasswordResetToken.DoesNotExist as exc:
+        raise NotFound('Password reset link not found.') from exc
+
+    if not reset_token.is_valid:
+        if reset_token.is_expired:
+            raise drf_serializers.ValidationError({'token': 'This password reset link has expired.'})
+        raise drf_serializers.ValidationError({'token': 'This password reset link has already been used.'})
+
+    return reset_token
+
+
+def confirm_password_reset(raw_token: str, password: str):
+    reset_token = validate_password_reset_token(raw_token)
+    user = reset_token.user
+
+    with transaction.atomic():
+        user.set_password(password)
+        user.save(update_fields=['password'])
+        reset_token.used_at = timezone.now()
+        reset_token.save(update_fields=['used_at'])
+
+    return user

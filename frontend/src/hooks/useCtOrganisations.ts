@@ -1,9 +1,17 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  fetchCtStats, fetchOrganisations, fetchOrganisation,
-  createOrganisation, updateOrganisation,
-  activateOrganisation, suspendOrganisation,
-  fetchOrgAdmins, inviteOrgAdmin, updateOrgLicences,
+  createOrganisation,
+  fetchCtStats,
+  fetchOrganisation,
+  fetchOrgAdmins,
+  fetchOrganisations,
+  inviteOrgAdmin,
+  markOrganisationPaid,
+  resendOrgAdminInvite,
+  restoreOrganisation,
+  suspendOrganisation,
+  updateOrganisation,
+  updateOrgLicences,
 } from '@/lib/api/organisations'
 
 export function useCtStats() {
@@ -41,12 +49,13 @@ export function useUpdateOrganisation(id: string) {
   })
 }
 
-export function useActivateOrganisation() {
+export function useMarkOrganisationPaid() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, note }: { id: string; note?: string }) => activateOrganisation(id, note),
+    mutationFn: ({ id, note }: { id: string; note?: string }) => markOrganisationPaid(id, note),
     onSuccess: (_, { id }) => {
       qc.invalidateQueries({ queryKey: ['ct', 'organisations', id] })
+      qc.invalidateQueries({ queryKey: ['ct', 'organisations'] })
       qc.invalidateQueries({ queryKey: ['ct', 'stats'] })
     },
   })
@@ -58,6 +67,19 @@ export function useSuspendOrganisation() {
     mutationFn: ({ id, note }: { id: string; note?: string }) => suspendOrganisation(id, note),
     onSuccess: (_, { id }) => {
       qc.invalidateQueries({ queryKey: ['ct', 'organisations', id] })
+      qc.invalidateQueries({ queryKey: ['ct', 'organisations'] })
+      qc.invalidateQueries({ queryKey: ['ct', 'stats'] })
+    },
+  })
+}
+
+export function useRestoreOrganisation() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, note }: { id: string; note?: string }) => restoreOrganisation(id, note),
+    onSuccess: (_, { id }) => {
+      qc.invalidateQueries({ queryKey: ['ct', 'organisations', id] })
+      qc.invalidateQueries({ queryKey: ['ct', 'organisations'] })
       qc.invalidateQueries({ queryKey: ['ct', 'stats'] })
     },
   })
@@ -79,10 +101,22 @@ export function useInviteOrgAdmin(orgId: string) {
   })
 }
 
+export function useResendOrgAdminInvite(orgId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (userId: string) => resendOrgAdminInvite(orgId, userId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['ct', 'organisations', orgId, 'admins'] }),
+  })
+}
+
 export function useUpdateOrgLicences(orgId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (count: number) => updateOrgLicences(orgId, count),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['ct', 'organisations', orgId] }),
+    mutationFn: ({ count, note }: { count: number; note?: string }) => updateOrgLicences(orgId, count, note),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ct', 'organisations', orgId] })
+      qc.invalidateQueries({ queryKey: ['ct', 'organisations'] })
+      qc.invalidateQueries({ queryKey: ['ct', 'stats'] })
+    },
   })
 }

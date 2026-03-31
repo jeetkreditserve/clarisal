@@ -1,13 +1,16 @@
 from rest_framework.permissions import BasePermission
-from .models import UserRole
-from apps.organisations.models import OrganisationStatus
+
+from apps.organisations.models import OrganisationAccessState, OrganisationBillingStatus
+
+from .models import AccountType
+from .workspaces import get_active_admin_organisation, get_active_employee, get_workspace_state
 
 
 class IsControlTowerUser(BasePermission):
     def has_permission(self, request, view):
         return (
             request.user.is_authenticated
-            and request.user.role == UserRole.CONTROL_TOWER
+            and request.user.account_type == AccountType.CONTROL_TOWER
         )
 
 
@@ -15,7 +18,8 @@ class IsOrgAdmin(BasePermission):
     def has_permission(self, request, view):
         return (
             request.user.is_authenticated
-            and request.user.role == UserRole.ORG_ADMIN
+            and request.user.account_type == AccountType.WORKFORCE
+            and bool(get_workspace_state(request.user, request).admin_memberships)
         )
 
 
@@ -23,30 +27,31 @@ class IsEmployee(BasePermission):
     def has_permission(self, request, view):
         return (
             request.user.is_authenticated
-            and request.user.role == UserRole.EMPLOYEE
+            and request.user.account_type == AccountType.WORKFORCE
+            and bool(get_workspace_state(request.user, request).employee_records)
         )
 
 
 class IsOrgAdminOrAbove(BasePermission):
     def has_permission(self, request, view):
-        return (
-            request.user.is_authenticated
-            and request.user.role in [UserRole.CONTROL_TOWER, UserRole.ORG_ADMIN]
-        )
+        return IsControlTowerUser().has_permission(request, view) or IsOrgAdmin().has_permission(request, view)
 
 
 class BelongsToActiveOrg(BasePermission):
-    """
-    Ensures Org Admin and Employee users can only act if their org is PAID or ACTIVE.
-    Control Tower users always pass.
-    """
     def has_permission(self, request, view):
         if not request.user.is_authenticated:
             return False
-        if request.user.role == UserRole.CONTROL_TOWER:
+
+        if request.user.account_type == AccountType.CONTROL_TOWER:
             return True
-        org = request.user.organisation
-        return org is not None and org.status in [
-            OrganisationStatus.PAID,
-            OrganisationStatus.ACTIVE,
-        ]
+
+        organisation = get_active_admin_organisation(request, request.user)
+        if organisation is None:
+            active_employee = get_active_employee(request, request.user)
+            organisation = active_employee.organisation if active_employee else None
+
+        return (
+            organisation is not None
+            and organisation.billing_status == OrganisationBillingStatus.PAID
+            and organisation.access_state == OrganisationAccessState.ACTIVE
+        )

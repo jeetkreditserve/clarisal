@@ -1,74 +1,92 @@
-import { createContext, useState, useEffect, type ReactNode } from 'react'
-import type { AuthUser, LoginResponse, UserRole } from '@/types/auth'
-import api from '@/lib/api'
-import { getDefaultRoute } from '@/lib/rbac'
-
-interface AuthContextType {
-  user: AuthUser | null
-  isLoading: boolean
-  isAuthenticated: boolean
-  login: (email: string, password: string) => Promise<string>
-  logout: () => Promise<void>
-}
-
-export const AuthContext = createContext<AuthContextType | null>(null)
+import { useEffect, useState, type ReactNode } from 'react'
+import type { AuthUser } from '@/types/auth'
+import api, { ensureCsrfCookie } from '@/lib/api'
+import { loginControlTower, loginWorkforce, switchWorkspace as switchWorkspaceRequest } from '@/lib/api/auth'
+import { AuthContext } from './auth-context'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
+  const refreshUser = async () => {
+    try {
+      await ensureCsrfCookie()
+      const response = await api.get<AuthUser>('/auth/me/')
+      setUser(response.data)
+      return response.data
+    } catch {
+      setUser(null)
+      return null
+    }
+  }
+
   useEffect(() => {
-    const token = localStorage.getItem('access_token')
-    if (token) {
-      api.get('/auth/me/')
-        .then((res) => setUser(res.data))
-        .catch(() => {
-          localStorage.removeItem('access_token')
-          localStorage.removeItem('refresh_token')
-        })
-        .finally(() => setIsLoading(false))
-    } else {
+    let active = true
+
+    async function bootstrap() {
+      setIsLoading(true)
+      const currentUser = await refreshUser()
+      if (!active) return
+      setUser(currentUser)
       setIsLoading(false)
+    }
+
+    void bootstrap()
+
+    const handleAuthLoss = () => {
+      setUser(null)
+    }
+
+    window.addEventListener('calrisal:auth-lost', handleAuthLoss)
+    return () => {
+      active = false
+      window.removeEventListener('calrisal:auth-lost', handleAuthLoss)
     }
   }, [])
 
-  const login = async (email: string, password: string): Promise<string> => {
-    const response = await api.post<LoginResponse>('/auth/login/', { email, password })
-    const { access, refresh, user: userData } = response.data
-    localStorage.setItem('access_token', access)
-    localStorage.setItem('refresh_token', refresh)
-    // Fetch full user object (includes full_name, is_active)
-    const meResponse = await api.get<AuthUser>('/auth/me/', {
-      headers: { Authorization: `Bearer ${access}` },
-    })
-    setUser(meResponse.data)
-    return getDefaultRoute(userData.role as UserRole)
+  const login = async (email: string, password: string) => {
+    await ensureCsrfCookie()
+    const response = await loginWorkforce(email, password)
+    setUser(response.user)
+    return response.user
+  }
+
+  const loginControlTowerAccount = async (email: string, password: string) => {
+    await ensureCsrfCookie()
+    const response = await loginControlTower(email, password)
+    setUser(response.user)
+    return response.user
+  }
+
+  const switchWorkspace = async (payload: { workspace_kind: 'ADMIN' | 'EMPLOYEE'; organisation_id: string }) => {
+    const response = await switchWorkspaceRequest(payload)
+    setUser(response.user)
+    return response.user
   }
 
   const logout = async () => {
-    const refresh = localStorage.getItem('refresh_token')
-    if (refresh) {
-      try {
-        await api.post('/auth/logout/', { refresh })
-      } catch {
-        // Ignore errors on logout
-      }
+    try {
+      await api.post('/auth/logout/', {})
+    } catch {
+      // Ignore logout failures when the session is already gone.
     }
-    localStorage.removeItem('access_token')
-    localStorage.removeItem('refresh_token')
     setUser(null)
   }
 
   return (
-    <AuthContext.Provider value={{
-      user,
-      isLoading,
-      isAuthenticated: !!user,
-      login,
-      logout,
-    }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        isLoading,
+        isAuthenticated: !!user,
+        login,
+        loginControlTower: loginControlTowerAccount,
+        switchWorkspace,
+        logout,
+        refreshUser,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   )
 }
-

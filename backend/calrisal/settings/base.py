@@ -27,8 +27,6 @@ DJANGO_APPS = [
 
 THIRD_PARTY_APPS = [
     'rest_framework',
-    'rest_framework_simplejwt',
-    'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
     'django_celery_results',
     'django_celery_beat',
@@ -105,26 +103,14 @@ MEDIA_ROOT = BASE_DIR / 'media'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 AUTH_USER_MODEL = 'accounts.User'
-
-# JWT
-SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=env.int('JWT_ACCESS_TOKEN_LIFETIME_MINUTES', default=15)),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=env.int('JWT_REFRESH_TOKEN_LIFETIME_DAYS', default=7)),
-    'ROTATE_REFRESH_TOKENS': True,
-    'BLACKLIST_AFTER_ROTATION': True,
-    'UPDATE_LAST_LOGIN': True,
-    'ALGORITHM': 'HS256',
-    'SIGNING_KEY': SECRET_KEY,
-    'AUTH_HEADER_TYPES': ('Bearer',),
-    'USER_ID_FIELD': 'id',
-    'USER_ID_CLAIM': 'user_id',
-    'TOKEN_OBTAIN_SERIALIZER': 'apps.accounts.serializers.CustomTokenObtainPairSerializer',
-}
+AUTHENTICATION_BACKENDS = [
+    'apps.accounts.auth_backends.AudienceEmailBackend',
+]
 
 # DRF
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'rest_framework.authentication.SessionAuthentication',
     ),
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
@@ -140,6 +126,17 @@ REST_FRAMEWORK = {
 # CORS
 CORS_ALLOWED_ORIGINS = env.list('CORS_ALLOWED_ORIGINS', default=['http://localhost:5173'])
 CORS_ALLOW_CREDENTIALS = True
+CSRF_TRUSTED_ORIGINS = env.list(
+    'CSRF_TRUSTED_ORIGINS',
+    default=['http://localhost:5173', 'http://127.0.0.1:5173'],
+)
+SESSION_COOKIE_NAME = 'calrisal_sessionid'
+SESSION_COOKIE_AGE = env.int('SESSION_COOKIE_AGE', default=60 * 60 * 12)
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_HTTPONLY = False
+FIELD_ENCRYPTION_KEY = env('FIELD_ENCRYPTION_KEY', default='')
 
 # Celery
 CELERY_BROKER_URL = env('REDIS_URL', default='redis://localhost:6379/0')
@@ -182,3 +179,4 @@ AWS_S3_FILE_OVERWRITE = False
 # App config
 FRONTEND_URL = env('FRONTEND_URL', default='http://localhost:5173')
 INVITE_TOKEN_EXPIRY_HOURS = env.int('INVITE_TOKEN_EXPIRY_HOURS', default=48)
+PASSWORD_RESET_TOKEN_EXPIRY_MINUTES = env.int('PASSWORD_RESET_TOKEN_EXPIRY_MINUTES', default=30)

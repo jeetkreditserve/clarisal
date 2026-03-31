@@ -15,10 +15,15 @@ class ValidateInviteResponseSerializer(serializers.Serializer):
 
 class AcceptInviteSerializer(serializers.Serializer):
     token = serializers.CharField()
-    password = serializers.CharField(min_length=8)
-    confirm_password = serializers.CharField()
+    password = serializers.CharField(min_length=8, required=False, allow_blank=True, default='')
+    confirm_password = serializers.CharField(required=False, allow_blank=True, default='')
 
     def validate(self, data):
-        if data['password'] != data['confirm_password']:
+        password = data.get('password', '')
+        confirm_password = data.get('confirm_password', '')
+        if password or confirm_password:
+            if password != confirm_password:
+                raise serializers.ValidationError({'confirm_password': 'Passwords do not match.'})
+        elif 'confirm_password' in data and password != confirm_password:
             raise serializers.ValidationError({'confirm_password': 'Passwords do not match.'})
         return data

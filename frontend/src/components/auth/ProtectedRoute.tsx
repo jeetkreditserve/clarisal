@@ -1,35 +1,36 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
-import type { UserRole } from '@/types/auth'
+
+import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import { useAuth } from '@/hooks/useAuth'
+import { getDefaultRoute } from '@/lib/rbac'
 
 interface ProtectedRouteProps {
-  allowedRoles?: UserRole[]
+  requiredAccess?: 'CONTROL_TOWER' | 'ORG_ADMIN' | 'EMPLOYEE'
 }
 
-export function ProtectedRoute({ allowedRoles }: ProtectedRouteProps) {
+export function ProtectedRoute({ requiredAccess }: ProtectedRouteProps) {
   const { user, isLoading } = useAuth()
   const location = useLocation()
 
   if (isLoading) {
-    return (
-      <div className="flex h-screen w-screen items-center justify-center bg-background">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-      </div>
-    )
+    return <LoadingScreen />
   }
 
   if (!user) {
-    return <Navigate to="/auth/login" state={{ from: location }} replace />
+    const loginPath = requiredAccess === 'CONTROL_TOWER' ? '/ct/login' : '/auth/login'
+    return <Navigate to={loginPath} state={{ from: location }} replace />
   }
 
-  if (allowedRoles && !allowedRoles.includes(user.role)) {
-    // Wrong role — send to their correct dashboard
-    const roleRoutes: Record<UserRole, string> = {
-      CONTROL_TOWER: '/ct/dashboard',
-      ORG_ADMIN: '/org/dashboard',
-      EMPLOYEE: '/me/dashboard',
-    }
-    return <Navigate to={roleRoutes[user.role]} replace />
+  if (requiredAccess === 'CONTROL_TOWER' && !user.has_control_tower_access) {
+    return <Navigate to={getDefaultRoute(user)} replace />
+  }
+
+  if (requiredAccess === 'ORG_ADMIN' && !user.has_org_admin_access) {
+    return <Navigate to={getDefaultRoute(user)} replace />
+  }
+
+  if (requiredAccess === 'EMPLOYEE' && !user.has_employee_access) {
+    return <Navigate to={getDefaultRoute(user)} replace />
   }
 
   return <Outlet />

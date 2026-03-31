@@ -14,6 +14,8 @@ SECURE_SSL_REDIRECT = True
 SECURE_HSTS_PRELOAD = True
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
+SECURE_REFERRER_POLICY = 'same-origin'
+SECURE_CROSS_ORIGIN_OPENER_POLICY = 'same-origin'
 
 # Use S3 for media in production
 DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'

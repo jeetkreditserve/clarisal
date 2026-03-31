@@ -2,7 +2,14 @@ import pytest
 from django.urls import reverse
 from rest_framework.test import APIClient
 from apps.accounts.models import User, UserRole
-from apps.organisations.models import Organisation, OrganisationStatus
+from apps.organisations.models import (
+    Organisation,
+    OrganisationAccessState,
+    OrganisationBillingStatus,
+    OrganisationMembership,
+    OrganisationMembershipStatus,
+    OrganisationStatus,
+)
 
 
 @pytest.fixture
@@ -12,8 +19,7 @@ def ct_client(db):
         first_name='Control', last_name='Tower', role=UserRole.CONTROL_TOWER,
     )
     client = APIClient()
-    response = client.post('/api/auth/login/', {'email': 'ct@test.com', 'password': 'pass123!'}, format='json')
-    client.credentials(HTTP_AUTHORIZATION=f"Bearer {response.data['access']}")
+    client.post('/api/auth/control-tower/login/', {'email': 'ct@test.com', 'password': 'pass123!'}, format='json')
     return client, user
 
 
@@ -50,13 +56,27 @@ class TestOrganisationListCreate:
     def test_unauthenticated_returns_401(self):
         client = APIClient()
         response = client.get('/api/ct/organisations/')
-        assert response.status_code == 401
+        assert response.status_code == 403
 
     def test_non_ct_user_returns_403(self, db):
-        user = User.objects.create_user(email='org@test.com', password='pass', role=UserRole.ORG_ADMIN)
+        ct = User.objects.create_superuser(email='seed@test.com', password='pass', role=UserRole.CONTROL_TOWER)
+        org = Organisation.objects.create(
+            name='Org',
+            licence_count=5,
+            created_by=ct,
+            status=OrganisationStatus.ACTIVE,
+            billing_status=OrganisationBillingStatus.PAID,
+            access_state=OrganisationAccessState.ACTIVE,
+        )
+        user = User.objects.create_user(email='org@test.com', password='pass', role=UserRole.ORG_ADMIN, is_active=True)
+        OrganisationMembership.objects.create(
+            user=user,
+            organisation=org,
+            is_org_admin=True,
+            status=OrganisationMembershipStatus.ACTIVE,
+        )
         client = APIClient()
-        response = client.post('/api/auth/login/', {'email': 'org@test.com', 'password': 'pass'}, format='json')
-        client.credentials(HTTP_AUTHORIZATION=f"Bearer {response.data['access']}")
+        client.post('/api/auth/login/', {'email': 'org@test.com', 'password': 'pass'}, format='json')
         response = client.get('/api/ct/organisations/')
         assert response.status_code == 403
 

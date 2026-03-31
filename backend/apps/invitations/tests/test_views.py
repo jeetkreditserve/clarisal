@@ -2,8 +2,9 @@ import pytest
 import secrets
 from django.utils import timezone
 from rest_framework.test import APIClient
-from apps.accounts.models import User, UserRole
-from apps.organisations.models import Organisation, OrganisationStatus
+from apps.accounts.models import AccountType, User, UserRole
+from apps.common.security import hash_token
+from apps.organisations.models import Organisation, OrganisationMembership, OrganisationMembershipStatus, OrganisationStatus
 from apps.invitations.models import Invitation, InvitationRole, InvitationStatus
 from unittest.mock import patch
 
@@ -14,8 +15,7 @@ def ct_client(db):
         email='ct@test.com', password='pass123!', role=UserRole.CONTROL_TOWER,
     )
     client = APIClient()
-    r = client.post('/api/auth/login/', {'email': 'ct@test.com', 'password': 'pass123!'}, format='json')
-    client.credentials(HTTP_AUTHORIZATION=f"Bearer {r.data['access']}")
+    client.post('/api/auth/control-tower/login/', {'email': 'ct@test.com', 'password': 'pass123!'}, format='json')
     return client, user
 
 
@@ -56,14 +56,15 @@ class TestValidateInviteToken:
     def test_valid_token_returns_invite_info(self, db):
         ct = User.objects.create_superuser(email='ct@t.com', password='pass', role=UserRole.CONTROL_TOWER)
         org = Organisation.objects.create(name='Org', licence_count=5, created_by=ct)
+        raw_token = secrets.token_urlsafe(32)
         invite = Invitation.objects.create(
-            token=secrets.token_urlsafe(32), email='a@b.com',
+            token_hash=hash_token(raw_token), email='a@b.com',
             organisation=org, role=InvitationRole.ORG_ADMIN,
             invited_by=ct, status=InvitationStatus.PENDING,
             expires_at=timezone.now() + timezone.timedelta(hours=48),
         )
         client = APIClient()
-        response = client.get(f'/api/auth/invite/validate/{invite.token}/')
+        response = client.get(f'/api/auth/invite/validate/{raw_token}/')
         assert response.status_code == 200
         assert response.data['email'] == 'a@b.com'
 
@@ -78,20 +79,27 @@ class TestAcceptInvite:
     def test_accept_activates_user_and_returns_tokens(self, db):
         ct = User.objects.create_superuser(email='ct@t.com', password='pass', role=UserRole.CONTROL_TOWER)
         org = Organisation.objects.create(name='Org', licence_count=5, created_by=ct, status=OrganisationStatus.PAID)
-        user = User.objects.create(email='admin@org.com', role=UserRole.ORG_ADMIN, organisation=org, is_active=False)
+        user = User.objects.create(email='admin@org.com', role=UserRole.ORG_ADMIN, account_type=AccountType.WORKFORCE, is_active=False)
+        OrganisationMembership.objects.create(
+            user=user,
+            organisation=org,
+            is_org_admin=True,
+            status=OrganisationMembershipStatus.INVITED,
+        )
+        raw_token = secrets.token_urlsafe(32)
         invite = Invitation.objects.create(
-            token=secrets.token_urlsafe(32), email='admin@org.com',
+            token_hash=hash_token(raw_token), email='admin@org.com',
             organisation=org, role=InvitationRole.ORG_ADMIN,
             invited_by=ct, user=user, status=InvitationStatus.PENDING,
             expires_at=timezone.now() + timezone.timedelta(hours=48),
         )
         client = APIClient()
         response = client.post('/api/auth/invite/accept/', {
-            'token': invite.token,
+            'token': raw_token,
             'password': 'SecurePass123!',
             'confirm_password': 'SecurePass123!',
         }, format='json')
         assert response.status_code == 200
-        assert 'access' in response.data
+        assert 'user' in response.data
         user.refresh_from_db()
         assert user.is_active

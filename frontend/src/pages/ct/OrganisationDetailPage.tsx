@@ -1,305 +1,477 @@
-import { useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { Link, useParams } from 'react-router-dom'
+import { ArrowLeft, CreditCard, History, Mail, ShieldAlert, UserPlus } from 'lucide-react'
+import { toast } from 'sonner'
 import {
-  useOrganisation, useActivateOrganisation, useSuspendOrganisation,
-  useOrgAdmins, useInviteOrgAdmin, useUpdateOrgLicences,
+  useInviteOrgAdmin,
+  useMarkOrganisationPaid,
+  useOrganisation,
+  useOrgAdmins,
+  useResendOrgAdminInvite,
+  useRestoreOrganisation,
+  useSuspendOrganisation,
+  useUpdateOrgLicences,
 } from '@/hooks/useCtOrganisations'
-import { cn } from '@/lib/utils'
-import type { OrganisationStatus } from '@/types/organisation'
-
-const STATUS_COLORS: Record<OrganisationStatus, string> = {
-  PENDING: 'bg-yellow-100 text-yellow-800',
-  PAID: 'bg-blue-100 text-blue-800',
-  ACTIVE: 'bg-green-100 text-green-800',
-  SUSPENDED: 'bg-red-100 text-red-800',
-}
-
-type Tab = 'info' | 'licences' | 'admins' | 'history'
-
-function InviteAdminModal({ orgId, onClose }: { orgId: string; onClose: () => void }) {
-  const [form, setForm] = useState({ email: '', first_name: '', last_name: '' })
-  const [error, setError] = useState<string | null>(null)
-  const { mutateAsync, isPending } = useInviteOrgAdmin(orgId)
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError(null)
-    try {
-      await mutateAsync(form)
-      onClose()
-    } catch (err: unknown) {
-      const e = err as { response?: { data?: { error?: string } } }
-      setError(e.response?.data?.error ?? 'Failed to send invite.')
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl">
-        <h3 className="text-lg font-semibold text-foreground mb-4">Invite Organisation Admin</h3>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {(['email', 'first_name', 'last_name'] as const).map((field) => (
-            <div key={field}>
-              <label className="block text-sm font-medium text-foreground mb-1.5 capitalize">
-                {field.replace('_', ' ')}
-              </label>
-              <input
-                type={field === 'email' ? 'email' : 'text'}
-                required
-                value={form[field]}
-                onChange={(e) => setForm(f => ({ ...f, [field]: e.target.value }))}
-                className="w-full rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-            </div>
-          ))}
-          {error && (
-            <div className="rounded-md bg-destructive/10 border border-destructive/20 px-3 py-2 text-sm text-destructive">
-              {error}
-            </div>
-          )}
-          <div className="flex gap-3 pt-2">
-            <button type="button" onClick={onClose} className="rounded-md border px-4 py-2 text-sm">Cancel</button>
-            <button
-              type="submit" disabled={isPending}
-              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-60"
-            >
-              {isPending ? 'Sending…' : 'Send Invite'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  )
-}
+import { EmptyState } from '@/components/ui/EmptyState'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { SectionCard } from '@/components/ui/SectionCard'
+import { Skeleton } from '@/components/ui/Skeleton'
+import { StatusBadge } from '@/components/ui/StatusBadge'
+import { formatDate, formatDateTime, startCase } from '@/lib/format'
+import {
+  getAccessStateTone,
+  getBillingStatusTone,
+  getOrganisationStatusTone,
+  ORG_ONBOARDING_STEPS,
+} from '@/lib/status'
+import { getErrorMessage } from '@/lib/errors'
 
 export function OrganisationDetailPage() {
   const { id } = useParams<{ id: string }>()
-  const navigate = useNavigate()
-  const [tab, setTab] = useState<Tab>('info')
-  const [showInviteModal, setShowInviteModal] = useState(false)
-  const [actionError, setActionError] = useState<string | null>(null)
+  const organisationId = id ?? ''
+  const { data: organisation, isLoading } = useOrganisation(organisationId)
+  const { data: admins } = useOrgAdmins(organisationId)
+  const markPaidMutation = useMarkOrganisationPaid()
+  const suspendMutation = useSuspendOrganisation()
+  const restoreMutation = useRestoreOrganisation()
+  const inviteAdminMutation = useInviteOrgAdmin(organisationId)
+  const resendInviteMutation = useResendOrgAdminInvite(organisationId)
+  const updateLicencesMutation = useUpdateOrgLicences(organisationId)
 
-  const { data: org, isLoading } = useOrganisation(id!)
-  const { data: admins } = useOrgAdmins(id!)
-  const { mutateAsync: activate } = useActivateOrganisation()
-  const { mutateAsync: suspend } = useSuspendOrganisation()
-  const { mutateAsync: updateLicences, isPending: updatingLicences } = useUpdateOrgLicences(id!)
-  const [newLicenceCount, setNewLicenceCount] = useState<number | null>(null)
+  const [actionNote, setActionNote] = useState('')
+  const [licenceCountInput, setLicenceCountInput] = useState('')
+  const [licenceNote, setLicenceNote] = useState('')
+  const [showInviteForm, setShowInviteForm] = useState(false)
+  const [inviteForm, setInviteForm] = useState({ email: '', first_name: '', last_name: '' })
 
-  if (isLoading || !org) {
+  const completedSteps = useMemo(() => {
+    const currentIndex = ORG_ONBOARDING_STEPS.findIndex((step) => step.id === organisation?.onboarding_stage)
+    return currentIndex >= 0 ? currentIndex : 0
+  }, [organisation?.onboarding_stage])
+
+  if (isLoading || !organisation) {
     return (
-      <div className="space-y-4">
-        <div className="h-8 w-64 animate-pulse rounded bg-muted" />
-        <div className="h-48 w-full animate-pulse rounded bg-muted" />
+      <div className="space-y-5">
+        <Skeleton className="h-10 w-72" />
+        <Skeleton className="h-52" />
+        <div className="grid gap-5 lg:grid-cols-2">
+          <Skeleton className="h-80" />
+          <Skeleton className="h-80" />
+        </div>
       </div>
     )
   }
 
-  const handleActivate = async () => {
-    setActionError(null)
-    try { await activate({ id: id! }) } catch { setActionError('Could not activate. Check org status.') }
+  const handleMarkPaid = async () => {
+    try {
+      await markPaidMutation.mutateAsync({ id: organisation.id, note: actionNote })
+      toast.success('Organisation marked as paid.')
+      setActionNote('')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to update payment state.'))
+    }
   }
 
   const handleSuspend = async () => {
-    if (!confirm('Suspend this organisation? Admins will lose access.')) return
-    setActionError(null)
-    try { await suspend({ id: id! }) } catch { setActionError('Could not suspend.') }
+    if (!window.confirm('Suspend this organisation and block admin and employee access?')) return
+    try {
+      await suspendMutation.mutateAsync({ id: organisation.id, note: actionNote })
+      toast.success('Organisation suspended.')
+      setActionNote('')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to suspend organisation.'))
+    }
   }
 
-  const handleLicenceUpdate = async () => {
-    if (newLicenceCount === null) return
-    await updateLicences(newLicenceCount)
-    setNewLicenceCount(null)
+  const handleRestore = async () => {
+    try {
+      await restoreMutation.mutateAsync({ id: organisation.id, note: actionNote })
+      toast.success('Organisation access restored.')
+      setActionNote('')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to restore organisation.'))
+    }
   }
 
-  const TABS: Array<{ id: Tab; label: string }> = [
-    { id: 'info', label: 'Info' },
-    { id: 'licences', label: 'Licences' },
-    { id: 'admins', label: 'Admins' },
-    { id: 'history', label: 'History' },
-  ]
+  const handleInviteAdmin = async (event: React.FormEvent) => {
+    event.preventDefault()
+    try {
+      await inviteAdminMutation.mutateAsync(inviteForm)
+      toast.success('Organisation admin invite sent.')
+      setInviteForm({ email: '', first_name: '', last_name: '' })
+      setShowInviteForm(false)
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to send admin invite.'))
+    }
+  }
+
+  const handleResendInvite = async (userId: string) => {
+    try {
+      await resendInviteMutation.mutateAsync(userId)
+      toast.success('Invite resent.')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to resend invite.'))
+    }
+  }
+
+  const handleUpdateLicences = async () => {
+    try {
+      await updateLicencesMutation.mutateAsync({
+        count: Number(licenceCountInput || organisation.licence_summary.purchased),
+        note: licenceNote,
+      })
+      toast.success('Licence allocation updated.')
+      setLicenceNote('')
+      setLicenceCountInput('')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to update licences.'))
+    }
+  }
 
   return (
-    <div>
-      {showInviteModal && <InviteAdminModal orgId={id!} onClose={() => setShowInviteModal(false)} />}
+    <div className="space-y-6">
+      <Link to="/ct/organisations" className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-slate-950">
+        <ArrowLeft className="h-4 w-4" />
+        Back to organisations
+      </Link>
 
-      <button onClick={() => navigate(-1)} className="mb-4 flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="h-4 w-4" /> Back
-      </button>
+      <PageHeader
+        eyebrow="Organisation detail"
+        title={organisation.name}
+        description={`Tenant ${organisation.slug} is currently ${startCase(organisation.status)} with ${organisation.licence_summary.allocated} of ${organisation.licence_summary.purchased} licences allocated.`}
+        actions={
+          <>
+            {organisation.status === 'PENDING' ? (
+              <button onClick={handleMarkPaid} className="btn-primary" disabled={markPaidMutation.isPending}>
+                Mark payment received
+              </button>
+            ) : null}
+            {organisation.status === 'ACTIVE' ? (
+              <button onClick={handleSuspend} className="btn-danger" disabled={suspendMutation.isPending}>
+                Suspend access
+              </button>
+            ) : null}
+            {organisation.status === 'SUSPENDED' ? (
+              <button onClick={handleRestore} className="btn-primary" disabled={restoreMutation.isPending}>
+                Restore access
+              </button>
+            ) : null}
+            {(organisation.status === 'PAID' || organisation.status === 'ACTIVE') && (
+              <button onClick={() => setShowInviteForm((current) => !current)} className="btn-secondary">
+                <UserPlus className="h-4 w-4" />
+                {showInviteForm ? 'Close invite' : 'Invite admin'}
+              </button>
+            )}
+          </>
+        }
+      />
 
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-foreground">{org.name}</h1>
-          <div className="mt-1 flex items-center gap-2">
-            <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[org.status]}`}>
-              {org.status}
-            </span>
-            <span className="text-sm text-muted-foreground">/{org.slug}</span>
+      <SectionCard title="Access state" description="Commercial readiness and access controls are enforced independently.">
+        <div className="grid gap-5 lg:grid-cols-[1.2fr_0.8fr]">
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="rounded-[24px] bg-slate-50 p-5">
+              <p className="text-sm text-slate-500">Lifecycle status</p>
+              <div className="mt-3">
+                <StatusBadge tone={getOrganisationStatusTone(organisation.status)}>{organisation.status}</StatusBadge>
+              </div>
+            </div>
+            <div className="rounded-[24px] bg-slate-50 p-5">
+              <p className="text-sm text-slate-500">Billing status</p>
+              <div className="mt-3">
+                <StatusBadge tone={getBillingStatusTone(organisation.billing_status)}>{startCase(organisation.billing_status)}</StatusBadge>
+              </div>
+            </div>
+            <div className="rounded-[24px] bg-slate-50 p-5">
+              <p className="text-sm text-slate-500">Access state</p>
+              <div className="mt-3">
+                <StatusBadge tone={getAccessStateTone(organisation.access_state)}>{startCase(organisation.access_state)}</StatusBadge>
+              </div>
+            </div>
+            <div className="rounded-[24px] bg-slate-50 p-5">
+              <p className="text-sm text-slate-500">Primary admin</p>
+              <p className="mt-3 text-sm font-medium text-slate-900">{organisation.primary_admin_email || 'Not assigned'}</p>
+            </div>
+            <div className="rounded-[24px] bg-slate-50 p-5">
+              <p className="text-sm text-slate-500">Paid at</p>
+              <p className="mt-3 text-sm font-medium text-slate-900">{formatDateTime(organisation.paid_marked_at)}</p>
+            </div>
+            <div className="rounded-[24px] bg-slate-50 p-5">
+              <p className="text-sm text-slate-500">Activated at</p>
+              <p className="mt-3 text-sm font-medium text-slate-900">{formatDateTime(organisation.activated_at)}</p>
+            </div>
+          </div>
+
+          <div className="space-y-3 rounded-[24px] bg-slate-50 p-5">
+            <div className="flex items-center gap-2">
+              <History className="h-4 w-4 text-slate-500" />
+              <p className="text-sm font-semibold text-slate-700">Action note</p>
+            </div>
+            <textarea
+              value={actionNote}
+              onChange={(event) => setActionNote(event.target.value)}
+              className="field-textarea"
+              placeholder="Optional note for payment confirmation, suspension, or restoration."
+            />
           </div>
         </div>
-        <div className="flex gap-2">
-          {org.status === 'PENDING' && (
-            <button onClick={handleActivate}
-              className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700">
-              Mark Paid
-            </button>
-          )}
-          {org.status === 'ACTIVE' && (
-            <button onClick={handleSuspend}
-              className="rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700">
-              Suspend
-            </button>
-          )}
-          {(org.status === 'PAID' || org.status === 'ACTIVE') && (
-            <button onClick={() => setShowInviteModal(true)}
-              className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90">
-              Invite Admin
-            </button>
-          )}
-        </div>
-      </div>
+      </SectionCard>
 
-      {actionError && (
-        <div className="mt-3 rounded-md bg-destructive/10 border border-destructive/20 px-3 py-2 text-sm text-destructive">
-          {actionError}
+      <SectionCard title="Onboarding progress" description="The tenant readiness timeline mirrors backend lifecycle events and access rules.">
+        <div className="space-y-4">
+          {ORG_ONBOARDING_STEPS.map((step, index) => {
+            const isCompleted = index <= completedSteps
+            const isCurrent = organisation.onboarding_stage === step.id
+            return (
+              <div
+                key={step.id}
+                className={`flex gap-4 rounded-[24px] border p-4 ${
+                  isCurrent
+                    ? 'border-cyan-200 bg-cyan-50'
+                    : isCompleted
+                      ? 'border-emerald-200 bg-emerald-50'
+                      : 'border-slate-200 bg-white'
+                }`}
+              >
+                <div
+                  className={`mt-1 h-3 w-3 rounded-full ${
+                    isCurrent ? 'bg-cyan-500' : isCompleted ? 'bg-emerald-500' : 'bg-slate-300'
+                  }`}
+                />
+                <div>
+                  <p className="text-sm font-semibold text-slate-950">{step.label}</p>
+                  <p className="mt-1 text-sm leading-6 text-slate-500">{step.description}</p>
+                </div>
+              </div>
+            )
+          })}
         </div>
-      )}
+      </SectionCard>
 
-      <div className="mt-6 border-b">
-        <div className="flex gap-0">
-          {TABS.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className={cn(
-                'px-4 py-2 text-sm font-medium border-b-2 transition-colors',
-                tab === t.id
-                  ? 'border-primary text-primary'
-                  : 'border-transparent text-muted-foreground hover:text-foreground',
-              )}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="mt-6">
-        {tab === 'info' && (
-          <div className="rounded-xl border bg-card p-6 shadow-sm space-y-3">
+      <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+        <SectionCard title="Licence control" description="Seat availability governs employee invitations and active onboarding.">
+          <div className="grid gap-4 md:grid-cols-3">
             {[
-              ['Name', org.name],
-              ['Email', org.email || '—'],
-              ['Phone', org.phone || '—'],
-              ['Address', org.address || '—'],
-              ['Created by', org.created_by_email],
-              ['Created', new Date(org.created_at).toLocaleDateString()],
-            ].map(([label, value]) => (
-              <div key={label} className="flex gap-4 py-2 border-b last:border-0">
-                <span className="w-32 shrink-0 text-sm font-medium text-muted-foreground">{label}</span>
-                <span className="text-sm text-foreground">{value}</span>
+              { label: 'Purchased', value: organisation.licence_summary.purchased },
+              { label: 'Allocated', value: organisation.licence_summary.allocated },
+              { label: 'Available', value: organisation.licence_summary.available },
+            ].map((item) => (
+              <div key={item.label} className="rounded-[24px] bg-slate-50 p-5">
+                <p className="text-sm text-slate-500">{item.label}</p>
+                <p className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">{item.value}</p>
               </div>
             ))}
           </div>
-        )}
 
-        {tab === 'licences' && (
-          <div className="rounded-xl border bg-card p-6 shadow-sm space-y-4">
-            <div className="flex items-center gap-6">
-              <div>
-                <p className="text-sm text-muted-foreground">Total licences</p>
-                <p className="text-3xl font-bold text-foreground">{org.licence_count}</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
+          <div className="mt-5 grid gap-4 lg:grid-cols-[160px_minmax(0,1fr)_auto]">
+            <div>
+              <label htmlFor="licence-count" className="field-label">
+                New total
+              </label>
               <input
-                type="number" min={1}
-                value={newLicenceCount ?? org.licence_count}
-                onChange={(e) => setNewLicenceCount(Number(e.target.value))}
-                className="w-32 rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                id="licence-count"
+                type="number"
+                min={organisation.licence_summary.allocated}
+                value={licenceCountInput || String(organisation.licence_summary.purchased)}
+                onChange={(event) => setLicenceCountInput(event.target.value)}
+                className="field-input"
               />
-              <button
-                onClick={handleLicenceUpdate}
-                disabled={updatingLicences || newLicenceCount === null}
-                className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
-              >
-                {updatingLicences ? 'Saving…' : 'Update'}
+            </div>
+            <div>
+              <label htmlFor="licence-note" className="field-label">
+                Change note
+              </label>
+              <input
+                id="licence-note"
+                value={licenceNote}
+                onChange={(event) => setLicenceNote(event.target.value)}
+                className="field-input"
+                placeholder="Optional context for the ledger entry"
+              />
+            </div>
+            <div className="flex items-end">
+              <button onClick={handleUpdateLicences} disabled={updateLicencesMutation.isPending} className="btn-primary">
+                <CreditCard className="h-4 w-4" />
+                Update licences
               </button>
             </div>
           </div>
-        )}
 
-        {tab === 'admins' && (
-          <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
-            {!admins || admins.length === 0 ? (
-              <div className="p-12 text-center text-sm text-muted-foreground">
-                No admins yet.{' '}
-                {(org.status === 'PAID' || org.status === 'ACTIVE') && (
-                  <button onClick={() => setShowInviteModal(true)} className="text-primary hover:underline">
-                    Invite one
-                  </button>
-                )}
+          <div className="mt-6 overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-[0.16em] text-slate-500">
+                  <th className="pb-3 pr-4 font-semibold">Delta</th>
+                  <th className="pb-3 pr-4 font-semibold">Reason</th>
+                  <th className="pb-3 pr-4 font-semibold">Note</th>
+                  <th className="pb-3 font-semibold">Created</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200/80">
+                {organisation.licence_ledger_entries.map((entry) => (
+                  <tr key={entry.id}>
+                    <td className="py-4 pr-4 font-semibold text-slate-950">{entry.delta > 0 ? `+${entry.delta}` : entry.delta}</td>
+                    <td className="py-4 pr-4 text-slate-600">{startCase(entry.reason)}</td>
+                    <td className="py-4 pr-4 text-slate-600">{entry.note || 'No note'}</td>
+                    <td className="py-4 text-slate-600">{formatDateTime(entry.created_at)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </SectionCard>
+
+        <SectionCard
+          title="Organisation admins"
+          description="Invite the primary organisation administrator after payment is confirmed."
+          action={
+            organisation.status === 'PAID' || organisation.status === 'ACTIVE' ? (
+              <button onClick={() => setShowInviteForm((current) => !current)} className="btn-secondary">
+                <Mail className="h-4 w-4" />
+                {showInviteForm ? 'Hide invite form' : 'Send invite'}
+              </button>
+            ) : null
+          }
+        >
+          {showInviteForm ? (
+            <form onSubmit={handleInviteAdmin} className="mb-6 grid gap-4 rounded-[24px] bg-slate-50 p-5 lg:grid-cols-3">
+              <div>
+                <label className="field-label" htmlFor="invite-email">
+                  Email
+                </label>
+                <input
+                  id="invite-email"
+                  type="email"
+                  required
+                  value={inviteForm.email}
+                  onChange={(event) => setInviteForm((current) => ({ ...current, email: event.target.value }))}
+                  className="field-input"
+                />
               </div>
-            ) : (
-              <table className="w-full text-sm">
-                <thead className="border-b bg-muted/50">
-                  <tr>
-                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">Name</th>
-                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">Email</th>
-                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">Status</th>
+              <div>
+                <label className="field-label" htmlFor="invite-first-name">
+                  First name
+                </label>
+                <input
+                  id="invite-first-name"
+                  required
+                  value={inviteForm.first_name}
+                  onChange={(event) => setInviteForm((current) => ({ ...current, first_name: event.target.value }))}
+                  className="field-input"
+                />
+              </div>
+              <div>
+                <label className="field-label" htmlFor="invite-last-name">
+                  Last name
+                </label>
+                <input
+                  id="invite-last-name"
+                  required
+                  value={inviteForm.last_name}
+                  onChange={(event) => setInviteForm((current) => ({ ...current, last_name: event.target.value }))}
+                  className="field-input"
+                />
+              </div>
+              <div className="lg:col-span-3">
+                <button type="submit" disabled={inviteAdminMutation.isPending} className="btn-primary">
+                  Send admin invitation
+                </button>
+              </div>
+            </form>
+          ) : null}
+
+          {!admins || admins.length === 0 ? (
+            <EmptyState
+              title="No organisation admins yet"
+              description="After payment is marked, invite the primary admin so the organisation can activate its workspace."
+              icon={UserPlus}
+            />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-[0.16em] text-slate-500">
+                    <th className="pb-3 pr-4 font-semibold">Admin</th>
+                    <th className="pb-3 pr-4 font-semibold">Email</th>
+                    <th className="pb-3 pr-4 font-semibold">State</th>
+                    <th className="pb-3 text-right font-semibold">Action</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y">
+                <tbody className="divide-y divide-slate-200/80">
                   {admins.map((admin) => (
                     <tr key={admin.id}>
-                      <td className="px-4 py-3 font-medium">{admin.full_name}</td>
-                      <td className="px-4 py-3 text-muted-foreground">{admin.email}</td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${admin.is_active ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                          {admin.is_active ? 'Active' : 'Pending'}
-                        </span>
+                      <td className="py-4 pr-4 font-semibold text-slate-950">{admin.full_name}</td>
+                      <td className="py-4 pr-4 text-slate-600">{admin.email}</td>
+                      <td className="py-4 pr-4">
+                        <StatusBadge tone={admin.is_active ? 'success' : 'warning'}>
+                          {admin.is_active ? 'Active' : 'Pending activation'}
+                        </StatusBadge>
+                      </td>
+                      <td className="py-4 text-right">
+                        {!admin.is_active ? (
+                          <button onClick={() => handleResendInvite(admin.id)} className="btn-ghost">
+                            Resend invite
+                          </button>
+                        ) : (
+                          <span className="text-xs font-medium uppercase tracking-[0.16em] text-slate-400">Active</span>
+                        )}
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-            )}
-          </div>
-        )}
+            </div>
+          )}
+        </SectionCard>
+      </div>
 
-        {tab === 'history' && (
-          <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
-            {org.state_transitions.length === 0 ? (
-              <div className="p-12 text-center text-sm text-muted-foreground">No state changes yet.</div>
-            ) : (
-              <table className="w-full text-sm">
-                <thead className="border-b bg-muted/50">
-                  <tr>
-                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">From</th>
-                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">To</th>
-                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">By</th>
-                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">Note</th>
-                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">When</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {org.state_transitions.map((t) => (
-                    <tr key={t.id}>
-                      <td className="px-4 py-3 text-muted-foreground">{t.from_status}</td>
-                      <td className="px-4 py-3 font-medium">{t.to_status}</td>
-                      <td className="px-4 py-3 text-muted-foreground">{t.transitioned_by_email}</td>
-                      <td className="px-4 py-3 text-muted-foreground">{t.note || '—'}</td>
-                      <td className="px-4 py-3 text-muted-foreground">
-                        {new Date(t.created_at).toLocaleDateString()}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        )}
+      <div className="grid gap-6 xl:grid-cols-2">
+        <SectionCard title="Lifecycle events" description="Append-only event feed for payment, activation, and onboarding changes.">
+          {organisation.lifecycle_events.length === 0 ? (
+            <EmptyState
+              title="No lifecycle events"
+              description="Events will appear here as Control Tower updates payment or onboarding state."
+              icon={History}
+            />
+          ) : (
+            <div className="space-y-3">
+              {organisation.lifecycle_events.map((event) => (
+                <div key={event.id} className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="font-semibold text-slate-950">{startCase(event.event_type)}</p>
+                    <p className="text-xs uppercase tracking-[0.16em] text-slate-500">{formatDateTime(event.created_at)}</p>
+                  </div>
+                  <p className="mt-2 text-sm text-slate-500">Actor: {event.actor_email || 'System'}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </SectionCard>
+
+        <SectionCard title="State transitions" description="Legacy state transitions remain visible for operational traceability.">
+          {organisation.state_transitions.length === 0 ? (
+            <EmptyState
+              title="No transitions recorded"
+              description="Status transitions will appear once payment or access state changes are applied."
+              icon={ShieldAlert}
+            />
+          ) : (
+            <div className="space-y-3">
+              {organisation.state_transitions.map((transition) => (
+                <div key={transition.id} className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <StatusBadge tone={getOrganisationStatusTone(transition.from_status)}>{transition.from_status}</StatusBadge>
+                    <span className="text-slate-400">to</span>
+                    <StatusBadge tone={getOrganisationStatusTone(transition.to_status)}>{transition.to_status}</StatusBadge>
+                  </div>
+                  <p className="mt-3 text-sm text-slate-600">{transition.note || 'No note provided.'}</p>
+                  <p className="mt-2 text-xs uppercase tracking-[0.16em] text-slate-500">
+                    {transition.transitioned_by_email} • {formatDate(transition.created_at)}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </SectionCard>
       </div>
     </div>
   )

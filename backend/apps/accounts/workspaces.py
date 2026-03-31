@@ -1,0 +1,201 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from django.utils import timezone
+
+from apps.employees.models import Employee, EmployeeStatus
+from apps.organisations.models import (
+    Organisation,
+    OrganisationMembership,
+    OrganisationMembershipStatus,
+)
+
+from .models import AccountType, User, UserRole
+
+ACTIVE_EMPLOYEE_STATUSES = [
+    EmployeeStatus.INVITED,
+    EmployeeStatus.ACTIVE,
+    EmployeeStatus.INACTIVE,
+]
+
+
+@dataclass
+class WorkspaceState:
+    admin_memberships: list[OrganisationMembership]
+    employee_records: list[Employee]
+    active_admin_membership: OrganisationMembership | None
+    active_employee: Employee | None
+    active_kind: str | None
+
+
+def list_admin_memberships(user: User):
+    if user.account_type != AccountType.WORKFORCE:
+        return []
+    return list(
+        OrganisationMembership.objects.select_related('organisation')
+        .filter(
+            user=user,
+            is_org_admin=True,
+            status=OrganisationMembershipStatus.ACTIVE,
+        )
+        .order_by('organisation__name')
+    )
+
+
+def list_employee_records(user: User):
+    if user.account_type != AccountType.WORKFORCE:
+        return []
+    return list(
+        Employee.objects.select_related('organisation')
+        .filter(
+            user=user,
+            status__in=ACTIVE_EMPLOYEE_STATUSES,
+        )
+        .order_by('organisation__name', 'employee_code')
+    )
+
+
+def get_workspace_state(user: User, request=None) -> WorkspaceState:
+    admin_memberships = list_admin_memberships(user)
+    employee_records = list_employee_records(user)
+
+    active_admin_membership = None
+    active_employee = None
+    active_kind = None
+
+    if request is not None:
+        admin_org_id = request.session.get('active_admin_org_id')
+        employee_org_id = request.session.get('active_employee_org_id')
+        active_kind = request.session.get('active_workspace_kind')
+
+        if admin_org_id:
+            active_admin_membership = next(
+                (membership for membership in admin_memberships if str(membership.organisation_id) == str(admin_org_id)),
+                None,
+            )
+        if employee_org_id:
+            active_employee = next(
+                (employee for employee in employee_records if str(employee.organisation_id) == str(employee_org_id)),
+                None,
+            )
+
+    if active_admin_membership is None and admin_memberships:
+        active_admin_membership = admin_memberships[0]
+    if active_employee is None and employee_records:
+        active_employee = employee_records[0]
+
+    if not active_kind:
+        if admin_memberships:
+            active_kind = 'ADMIN'
+        elif employee_records:
+            active_kind = 'EMPLOYEE'
+
+    return WorkspaceState(
+        admin_memberships=admin_memberships,
+        employee_records=employee_records,
+        active_admin_membership=active_admin_membership,
+        active_employee=active_employee,
+        active_kind=active_kind,
+    )
+
+
+def sync_user_role(user: User):
+    if user.account_type == AccountType.CONTROL_TOWER:
+        new_role = UserRole.CONTROL_TOWER
+    elif OrganisationMembership.objects.filter(
+        user=user,
+        is_org_admin=True,
+        status__in=[OrganisationMembershipStatus.ACTIVE, OrganisationMembershipStatus.INVITED],
+    ).exists():
+        new_role = UserRole.ORG_ADMIN
+    elif Employee.objects.filter(user=user, status__in=ACTIVE_EMPLOYEE_STATUSES).exists():
+        new_role = UserRole.EMPLOYEE
+    else:
+        new_role = UserRole.EMPLOYEE
+
+    if user.role != new_role:
+        user.role = new_role
+        user.save(update_fields=['role', 'updated_at'])
+    return user
+
+
+def initialize_workforce_workspace(request, user: User):
+    state = get_workspace_state(user, request)
+    if state.admin_memberships:
+        set_active_admin_organisation(request, user, state.active_admin_membership.organisation_id)
+    elif state.employee_records:
+        set_active_employee_workspace(request, user, state.active_employee.organisation_id)
+    else:
+        request.session.pop('active_workspace_kind', None)
+        request.session.pop('active_admin_org_id', None)
+        request.session.pop('active_employee_org_id', None)
+
+
+def set_active_admin_organisation(request, user: User, organisation_id):
+    membership = OrganisationMembership.objects.select_related('organisation').filter(
+        user=user,
+        organisation_id=organisation_id,
+        is_org_admin=True,
+        status=OrganisationMembershipStatus.ACTIVE,
+    ).first()
+    if membership is None:
+        raise ValueError('You do not have administrator access to that organisation.')
+
+    membership.last_used_at = timezone.now()
+    membership.save(update_fields=['last_used_at', 'updated_at'])
+
+    request.session['active_workspace_kind'] = 'ADMIN'
+    request.session['active_admin_org_id'] = str(membership.organisation_id)
+    request.session.modified = True
+    return membership
+
+
+def set_active_employee_workspace(request, user: User, organisation_id):
+    employee = Employee.objects.select_related('organisation').filter(
+        user=user,
+        organisation_id=organisation_id,
+        status__in=ACTIVE_EMPLOYEE_STATUSES,
+    ).first()
+    if employee is None:
+        raise ValueError('You do not have employee access to that organisation.')
+
+    request.session['active_workspace_kind'] = 'EMPLOYEE'
+    request.session['active_employee_org_id'] = str(employee.organisation_id)
+    request.session.modified = True
+    return employee
+
+
+def get_active_admin_organisation(request, user: User) -> Organisation | None:
+    state = get_workspace_state(user, request)
+    return state.active_admin_membership.organisation if state.active_admin_membership else None
+
+
+def get_active_employee(request, user: User) -> Employee | None:
+    state = get_workspace_state(user, request)
+    return state.active_employee
+
+
+def get_current_organisation(request, user: User) -> Organisation | None:
+    state = get_workspace_state(user, request)
+    if state.active_kind == 'ADMIN' and state.active_admin_membership:
+        return state.active_admin_membership.organisation
+    if state.active_kind == 'EMPLOYEE' and state.active_employee:
+        return state.active_employee.organisation
+    if state.active_admin_membership:
+        return state.active_admin_membership.organisation
+    if state.active_employee:
+        return state.active_employee.organisation
+    return None
+
+
+def get_default_route(user: User, request=None):
+    if user.account_type == AccountType.CONTROL_TOWER:
+        return '/ct/dashboard'
+
+    state = get_workspace_state(user, request)
+    if state.admin_memberships:
+        return '/org/dashboard'
+    if state.employee_records:
+        return '/me/dashboard'
+    return '/auth/login'

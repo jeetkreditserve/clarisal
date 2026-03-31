@@ -4,8 +4,11 @@ INSTALLED_APPS += ['django_extensions']
 
 DEBUG = True
 
-# Use console email in development (override with file-based for Playwright tests)
-EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+EMAIL_HOST = env('EMAIL_HOST', default='mailpit')
+EMAIL_PORT = env.int('EMAIL_PORT', default=1025)
+EMAIL_USE_TLS = env.bool('EMAIL_USE_TLS', default=False)
+SESSION_COOKIE_SECURE = False
+CSRF_COOKIE_SECURE = False
 
 LOGGING = {
     'version': 1,

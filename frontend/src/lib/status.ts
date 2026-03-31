@@ -1,0 +1,113 @@
+import type { DocumentStatus, EmployeeStatus } from '@/types/hr'
+import type {
+  OrganisationAccessState,
+  OrganisationBillingStatus,
+  OrganisationOnboardingStage,
+  OrganisationStatus,
+} from '@/types/organisation'
+
+type Tone = 'neutral' | 'info' | 'success' | 'warning' | 'danger'
+
+export function getOrganisationStatusTone(status?: OrganisationStatus | null): Tone {
+  switch (status) {
+    case 'ACTIVE':
+      return 'success'
+    case 'PAID':
+      return 'info'
+    case 'SUSPENDED':
+      return 'danger'
+    case 'PENDING':
+    default:
+      return 'warning'
+  }
+}
+
+export function getBillingStatusTone(status?: OrganisationBillingStatus | null): Tone {
+  switch (status) {
+    case 'PAID':
+      return 'success'
+    case 'PENDING_PAYMENT':
+    default:
+      return 'warning'
+  }
+}
+
+export function getAccessStateTone(status?: OrganisationAccessState | null): Tone {
+  switch (status) {
+    case 'ACTIVE':
+      return 'success'
+    case 'SUSPENDED':
+      return 'danger'
+    case 'PROVISIONING':
+    default:
+      return 'info'
+  }
+}
+
+export function getEmployeeStatusTone(status?: EmployeeStatus | null): Tone {
+  switch (status) {
+    case 'ACTIVE':
+      return 'success'
+    case 'INVITED':
+      return 'info'
+    case 'TERMINATED':
+      return 'danger'
+    case 'INACTIVE':
+    default:
+      return 'warning'
+  }
+}
+
+export function getDocumentStatusTone(status?: DocumentStatus | null): Tone {
+  switch (status) {
+    case 'VERIFIED':
+      return 'success'
+    case 'REJECTED':
+      return 'danger'
+    case 'PENDING':
+    default:
+      return 'warning'
+  }
+}
+
+export const ORG_ONBOARDING_STEPS: Array<{
+  id: OrganisationOnboardingStage
+  label: string
+  description: string
+}> = [
+  {
+    id: 'ORG_CREATED',
+    label: 'Organisation created',
+    description: 'Control Tower provisioned the tenant shell.',
+  },
+  {
+    id: 'LICENCES_ASSIGNED',
+    label: 'Licences assigned',
+    description: 'Purchased seats are available for onboarding.',
+  },
+  {
+    id: 'PAYMENT_CONFIRMED',
+    label: 'Payment confirmed',
+    description: 'External invoice payment has been acknowledged.',
+  },
+  {
+    id: 'ADMIN_INVITED',
+    label: 'Primary admin invited',
+    description: 'Organisation administrator has received the invite.',
+  },
+  {
+    id: 'ADMIN_ACTIVATED',
+    label: 'Admin activated',
+    description: 'The primary admin set a password and accessed the portal.',
+  },
+  {
+    id: 'MASTER_DATA_CONFIGURED',
+    label: 'Master data configured',
+    description: 'Locations and departments are ready for employee setup.',
+  },
+  {
+    id: 'EMPLOYEES_INVITED',
+    label: 'Employees invited',
+    description: 'At least one employee has entered the onboarding funnel.',
+  },
+]
