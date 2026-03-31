@@ -57,7 +57,7 @@ export function NoticesPage() {
             <select className="field-select" value={form.audience_type} onChange={(event) => setForm((current) => ({ ...current, audience_type: event.target.value }))}>
               {['ALL_EMPLOYEES', 'DEPARTMENTS'].map((type) => (
                 <option key={type} value={type}>
-                  {type.replaceAll('_', ' ')}
+                  {type.replace(/_/g, ' ')}
                 </option>
               ))}
             </select>

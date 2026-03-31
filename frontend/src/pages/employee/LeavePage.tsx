@@ -96,14 +96,14 @@ export function LeavePage() {
                 <select className="field-select" value={form.start_session} onChange={(event) => setForm((current) => ({ ...current, start_session: event.target.value }))}>
                   {['FULL_DAY', 'FIRST_HALF', 'SECOND_HALF'].map((session) => (
                     <option key={session} value={session}>
-                      {session.replaceAll('_', ' ')}
+                      {session.replace(/_/g, ' ')}
                     </option>
                   ))}
                 </select>
                 <select className="field-select" value={form.end_session} onChange={(event) => setForm((current) => ({ ...current, end_session: event.target.value }))}>
                   {['FULL_DAY', 'FIRST_HALF', 'SECOND_HALF'].map((session) => (
                     <option key={session} value={session}>
-                      {session.replaceAll('_', ' ')}
+                      {session.replace(/_/g, ' ')}
                     </option>
                   ))}
                 </select>

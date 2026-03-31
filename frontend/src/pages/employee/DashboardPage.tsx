@@ -59,12 +59,12 @@ export function EmployeeDashboardPage() {
                 <StatusBadge tone={getOnboardingStatusTone(dashboard.onboarding_status)}>{dashboard.onboarding_status}</StatusBadge>
                 {dashboard.profile_completion.completed_sections.map((section) => (
                   <StatusBadge key={section} tone="success">
-                    {section.replaceAll('_', ' ')}
+                    {section.replace(/_/g, ' ')}
                   </StatusBadge>
                 ))}
                 {dashboard.profile_completion.missing_sections.map((section) => (
                   <StatusBadge key={section} tone="warning">
-                    {section.replaceAll('_', ' ')}
+                    {section.replace(/_/g, ' ')}
                   </StatusBadge>
                 ))}
               </div>
@@ -86,7 +86,7 @@ export function EmployeeDashboardPage() {
                         <StatusBadge tone={getApprovalActionTone('PENDING')}>Pending</StatusBadge>
                       </div>
                       <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
-                        {item.request_kind.replaceAll('_', ' ')} • {item.stage_name}
+                        {item.request_kind.replace(/_/g, ' ')} • {item.stage_name}
                       </p>
                     </div>
                   ))
@@ -112,7 +112,7 @@ export function EmployeeDashboardPage() {
               <div className="flex flex-wrap gap-2">
                 {dashboard.events.map((event) => (
                   <StatusBadge key={`${event.kind}-${event.date}`} tone="info">
-                    {event.kind.replaceAll('_', ' ')} • {event.label}
+                    {event.kind.replace(/_/g, ' ')} • {event.label}
                   </StatusBadge>
                 ))}
               </div>

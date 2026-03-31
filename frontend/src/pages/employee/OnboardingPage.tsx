@@ -238,12 +238,12 @@ export function OnboardingPage() {
             <div className="mt-5 flex flex-wrap gap-2">
               {data.summary.profile_completion.completed_sections.map((section) => (
                 <StatusBadge key={section} tone="success">
-                  {section.replaceAll('_', ' ')}
+                  {section.replace(/_/g, ' ')}
                 </StatusBadge>
               ))}
               {data.summary.profile_completion.missing_sections.map((section) => (
                 <StatusBadge key={section} tone="warning">
-                  {section.replaceAll('_', ' ')}
+                  {section.replace(/_/g, ' ')}
                 </StatusBadge>
               ))}
             </div>
@@ -255,7 +255,7 @@ export function OnboardingPage() {
               <select className="field-select" value={familyForm.relation} onChange={(event) => setFamilyForm((current) => ({ ...current, relation: event.target.value as FamilyRelation }))}>
                 {['SPOUSE', 'FATHER', 'MOTHER', 'SON', 'DAUGHTER', 'BROTHER', 'SISTER', 'OTHER'].map((relation) => (
                   <option key={relation} value={relation}>
-                    {relation.replaceAll('_', ' ')}
+                    {relation.replace(/_/g, ' ')}
                   </option>
                 ))}
               </select>
@@ -277,7 +277,7 @@ export function OnboardingPage() {
                   <div key={member.id} className="surface-muted flex items-center justify-between rounded-[20px] px-4 py-3">
                     <div>
                       <p className="font-medium text-[hsl(var(--foreground-strong))]">{member.full_name}</p>
-                      <p className="text-sm text-[hsl(var(--muted-foreground))]">{member.relation.replaceAll('_', ' ')}</p>
+                    <p className="text-sm text-[hsl(var(--muted-foreground))]">{member.relation.replace(/_/g, ' ')}</p>
                     </div>
                     <button className="btn-secondary" onClick={() => void deleteFamilyMutation.mutateAsync(member.id)}>
                       Remove
@@ -338,7 +338,7 @@ export function OnboardingPage() {
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="font-semibold text-[hsl(var(--foreground-strong))]">{request.document_type.name}</p>
-                    <p className="text-sm text-[hsl(var(--muted-foreground))]">{request.document_type.category.replaceAll('_', ' ')}</p>
+                      <p className="text-sm text-[hsl(var(--muted-foreground))]">{request.document_type.category.replace(/_/g, ' ')}</p>
                   </div>
                   <StatusBadge tone={getDocumentRequestStatusTone(request.status)}>{request.status}</StatusBadge>
                 </div>

@@ -55,7 +55,7 @@ export function ApprovalsPage() {
                 <div>
                   <p className="font-semibold text-[hsl(var(--foreground-strong))]">{action.subject_label}</p>
                   <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                    {action.requester_name} • {action.request_kind.replaceAll('_', ' ')} • {action.stage_name}
+                    {action.requester_name} • {action.request_kind.replace(/_/g, ' ')} • {action.stage_name}
                   </p>
                 </div>
                 <div className="flex items-center gap-3">

@@ -92,7 +92,7 @@ export function ApprovalWorkflowsPage() {
                     <div className="mt-2 space-y-2">
                       {workflow.rules.map((rule) => (
                         <div key={rule.id} className="surface-shell rounded-[16px] px-3 py-2 text-sm text-[hsl(var(--foreground-strong))]">
-                          {rule.name} • {rule.request_kind.replaceAll('_', ' ')}
+                          {rule.name} • {rule.request_kind.replace(/_/g, ' ')}
                         </div>
                       ))}
                     </div>

@@ -223,7 +223,12 @@ export interface EmployeeDashboard {
   onboarding_status: EmployeeOnboardingStatus
   approvals: {
     count: number
-    items: ApprovalActionItem[]
+    items: Array<{
+      action_id: string
+      label: string
+      request_kind: string
+      stage_name: string
+    }>
   }
   notices: NoticeItem[]
   events: EmployeeEvent[]

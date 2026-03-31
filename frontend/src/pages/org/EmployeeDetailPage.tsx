@@ -1,29 +1,28 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Download, FileCheck2, UserRoundCheck, UserRoundMinus } from 'lucide-react'
+import { ArrowLeft, Download } from 'lucide-react'
 import { toast } from 'sonner'
 
+import { EmptyState } from '@/components/ui/EmptyState'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { SectionCard } from '@/components/ui/SectionCard'
+import { SkeletonFormBlock, SkeletonPageHeader, SkeletonTable } from '@/components/ui/Skeleton'
+import { StatusBadge } from '@/components/ui/StatusBadge'
 import {
   useDeleteEmployee,
   useDepartments,
   useEmployeeDetail,
   useEmployeeDocumentDownload,
+  useEmployeeDocumentRequests,
   useEmployeeDocuments,
+  useEmployees,
   useEndEmployeeEmployment,
   useLocations,
   useMarkEmployeeJoined,
-  useRejectEmployeeDocument,
   useUpdateEmployee,
-  useVerifyEmployeeDocument,
 } from '@/hooks/useOrgAdmin'
-import { PageHeader } from '@/components/ui/PageHeader'
-import { SectionCard } from '@/components/ui/SectionCard'
-import { EmptyState } from '@/components/ui/EmptyState'
-import { SkeletonFormBlock, SkeletonPageHeader, SkeletonTable } from '@/components/ui/Skeleton'
-import { StatusBadge } from '@/components/ui/StatusBadge'
-import { formatDateTime, startCase } from '@/lib/format'
 import { getErrorMessage } from '@/lib/errors'
-import { getDocumentStatusTone, getEmployeeStatusTone } from '@/lib/status'
+import { getDocumentRequestStatusTone, getDocumentStatusTone, getEmployeeStatusTone } from '@/lib/status'
 import type { EmploymentType } from '@/types/hr'
 
 export function EmployeeDetailPage() {
@@ -33,13 +32,13 @@ export function EmployeeDetailPage() {
   const { data: employee, isLoading } = useEmployeeDetail(employeeId)
   const { data: departments } = useDepartments()
   const { data: locations } = useLocations()
+  const { data: managerOptions } = useEmployees({ status: 'ACTIVE', page: 1 })
+  const { data: documentRequests } = useEmployeeDocumentRequests(employeeId)
   const { data: documents } = useEmployeeDocuments(employeeId)
   const updateMutation = useUpdateEmployee(employeeId)
   const markJoinedMutation = useMarkEmployeeJoined(employeeId)
   const endEmploymentMutation = useEndEmployeeEmployment(employeeId)
   const deleteEmployeeMutation = useDeleteEmployee(employeeId)
-  const verifyDocumentMutation = useVerifyEmployeeDocument(employeeId)
-  const rejectDocumentMutation = useRejectEmployeeDocument(employeeId)
   const downloadDocumentMutation = useEmployeeDocumentDownload()
 
   const [draft, setDraft] = useState<Partial<{
@@ -52,6 +51,8 @@ export function EmployeeDetailPage() {
   const [joinForm, setJoinForm] = useState({
     employee_code: '',
     date_of_joining: '',
+    designation: '',
+    reporting_to_employee_id: '',
   })
   const [endEmploymentForm, setEndEmploymentForm] = useState({
     status: 'RESIGNED' as 'RESIGNED' | 'RETIRED' | 'TERMINATED',
@@ -63,10 +64,7 @@ export function EmployeeDetailPage() {
       <div className="space-y-5">
         <SkeletonPageHeader />
         <SkeletonFormBlock rows={6} />
-        <div className="grid gap-6 xl:grid-cols-2">
-          <SkeletonTable rows={5} />
-          <SkeletonTable rows={5} />
-        </div>
+        <SkeletonTable rows={6} />
       </div>
     )
   }
@@ -102,9 +100,11 @@ export function EmployeeDetailPage() {
       await markJoinedMutation.mutateAsync({
         employee_code: joinForm.employee_code || employee.suggested_employee_code,
         date_of_joining: joinForm.date_of_joining || formValues.date_of_joining,
+        designation: joinForm.designation || formValues.designation,
+        reporting_to_employee_id: joinForm.reporting_to_employee_id || employee.id,
       })
       toast.success('Employee marked as joined.')
-      setJoinForm({ employee_code: '', date_of_joining: '' })
+      setJoinForm({ employee_code: '', date_of_joining: '', designation: '', reporting_to_employee_id: '' })
     } catch (error) {
       toast.error(getErrorMessage(error, 'Unable to mark employee as joined.'))
     }
@@ -131,26 +131,6 @@ export function EmployeeDetailPage() {
     }
   }
 
-  const handleVerifyDocument = async (documentId: string) => {
-    try {
-      await verifyDocumentMutation.mutateAsync(documentId)
-      toast.success('Document verified.')
-    } catch (error) {
-      toast.error(getErrorMessage(error, 'Unable to verify document.'))
-    }
-  }
-
-  const handleRejectDocument = async (documentId: string) => {
-    const note = window.prompt('Add a rejection note for the employee:', '')
-    if (note === null) return
-    try {
-      await rejectDocumentMutation.mutateAsync({ documentId, note })
-      toast.success('Document rejected.')
-    } catch (error) {
-      toast.error(getErrorMessage(error, 'Unable to reject document.'))
-    }
-  }
-
   const handleDownload = async (documentId: string) => {
     try {
       const response = await downloadDocumentMutation.mutateAsync({ employeeId, documentId })
@@ -159,8 +139,6 @@ export function EmployeeDetailPage() {
       toast.error(getErrorMessage(error, 'Unable to open document.'))
     }
   }
-
-  const employeeCodeLabel = employee.employee_code ?? 'Code assigned on join'
 
   return (
     <div className="space-y-6">
@@ -172,92 +150,48 @@ export function EmployeeDetailPage() {
       <PageHeader
         eyebrow="Employee detail"
         title={employee.full_name}
-        description={`${employeeCodeLabel} • ${employee.email}`}
-        actions={<StatusBadge tone={getEmployeeStatusTone(employee.status)}>{employee.status}</StatusBadge>}
+        description={`${employee.email} • ${employee.employee_code || 'Code assigned on join'}`}
+        actions={
+          <div className="flex items-center gap-3">
+            <StatusBadge tone={getEmployeeStatusTone(employee.status)}>{employee.status}</StatusBadge>
+            <StatusBadge tone={employee.onboarding_status === 'COMPLETE' ? 'success' : 'warning'}>
+              {employee.onboarding_status}
+            </StatusBadge>
+          </div>
+        }
       />
 
-      <div className="grid gap-6 xl:grid-cols-[0.92fr_1.08fr]">
-        <SectionCard title="Employment settings" description="Assignment details stay editable across invited, pending, and active states.">
+      <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+        <SectionCard title="Employment settings" description="Assignments stay editable while the employee progresses through invited, pending, active, and end-of-employment states.">
           <form onSubmit={handleSave} className="grid gap-4">
-            <div>
-              <label className="field-label" htmlFor="designation">
-                Designation
-              </label>
-              <input
-                id="designation"
-                className="field-input"
-                value={formValues.designation}
-                onChange={(event) => setDraft((current) => ({ ...current, designation: event.target.value }))}
-              />
+            <input className="field-input" value={formValues.designation} onChange={(event) => setDraft((current) => ({ ...current, designation: event.target.value }))} placeholder="Designation" />
+            <div className="grid gap-4 md:grid-cols-2">
+              <select className="field-select" value={formValues.employment_type} onChange={(event) => setDraft((current) => ({ ...current, employment_type: event.target.value as EmploymentType }))}>
+                {['FULL_TIME', 'PART_TIME', 'CONTRACT', 'INTERN'].map((type) => (
+                  <option key={type} value={type}>
+                    {type.replace(/_/g, ' ')}
+                  </option>
+                ))}
+              </select>
+              <input className="field-input" type="date" value={formValues.date_of_joining} onChange={(event) => setDraft((current) => ({ ...current, date_of_joining: event.target.value }))} />
             </div>
             <div className="grid gap-4 md:grid-cols-2">
-              <div>
-                <label className="field-label" htmlFor="employment-type">
-                  Employment type
-                </label>
-                <select
-                  id="employment-type"
-                  className="field-select"
-                  value={formValues.employment_type}
-                  onChange={(event) => setDraft((current) => ({ ...current, employment_type: event.target.value as EmploymentType }))}
-                >
-                  {['FULL_TIME', 'PART_TIME', 'CONTRACT', 'INTERN'].map((type) => (
-                    <option key={type} value={type}>
-                      {startCase(type)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="field-label" htmlFor="date-of-joining">
-                  Date of joining
-                </label>
-                <input
-                  id="date-of-joining"
-                  type="date"
-                  className="field-input"
-                  value={formValues.date_of_joining}
-                  onChange={(event) => setDraft((current) => ({ ...current, date_of_joining: event.target.value }))}
-                />
-              </div>
-            </div>
-            <div className="grid gap-4 md:grid-cols-2">
-              <div>
-                <label className="field-label" htmlFor="department">
-                  Department
-                </label>
-                <select
-                  id="department"
-                  className="field-select"
-                  value={formValues.department_id}
-                  onChange={(event) => setDraft((current) => ({ ...current, department_id: event.target.value }))}
-                >
-                  <option value="">Unassigned</option>
-                  {departments?.filter((department) => department.is_active).map((department) => (
-                    <option key={department.id} value={department.id}>
-                      {department.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="field-label" htmlFor="office-location">
-                  Office location
-                </label>
-                <select
-                  id="office-location"
-                  className="field-select"
-                  value={formValues.office_location_id}
-                  onChange={(event) => setDraft((current) => ({ ...current, office_location_id: event.target.value }))}
-                >
-                  <option value="">Unassigned</option>
-                  {locations?.filter((location) => location.is_active).map((location) => (
-                    <option key={location.id} value={location.id}>
-                      {location.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <select className="field-select" value={formValues.department_id} onChange={(event) => setDraft((current) => ({ ...current, department_id: event.target.value }))}>
+                <option value="">Unassigned department</option>
+                {departments?.filter((department) => department.is_active).map((department) => (
+                  <option key={department.id} value={department.id}>
+                    {department.name}
+                  </option>
+                ))}
+              </select>
+              <select className="field-select" value={formValues.office_location_id} onChange={(event) => setDraft((current) => ({ ...current, office_location_id: event.target.value }))}>
+                <option value="">Unassigned location</option>
+                {locations?.filter((location) => location.is_active).map((location) => (
+                  <option key={location.id} value={location.id}>
+                    {location.name}
+                  </option>
+                ))}
+              </select>
             </div>
             <button type="submit" className="btn-primary" disabled={updateMutation.isPending}>
               Save employee changes
@@ -267,36 +201,21 @@ export function EmployeeDetailPage() {
           <div className="mt-6 grid gap-4">
             {employee.status === 'PENDING' ? (
               <form onSubmit={handleMarkJoined} className="surface-muted grid gap-4 rounded-[24px] p-5">
-                <div className="flex items-center gap-2">
-                  <UserRoundCheck className="h-4 w-4 text-[hsl(var(--success))]" />
-                  <p className="font-semibold text-[hsl(var(--foreground-strong))]">Mark employee as joined</p>
-                </div>
+                <p className="font-semibold text-[hsl(var(--foreground-strong))]">Mark employee as joined</p>
+                <input className="field-input" placeholder={employee.suggested_employee_code} value={joinForm.employee_code} onChange={(event) => setJoinForm((current) => ({ ...current, employee_code: event.target.value }))} />
                 <div className="grid gap-4 md:grid-cols-2">
-                  <div>
-                    <label className="field-label" htmlFor="employee-code">
-                      Employee code
-                    </label>
-                    <input
-                      id="employee-code"
-                      className="field-input"
-                      placeholder={employee.suggested_employee_code}
-                      value={joinForm.employee_code}
-                      onChange={(event) => setJoinForm((current) => ({ ...current, employee_code: event.target.value }))}
-                    />
-                  </div>
-                  <div>
-                    <label className="field-label" htmlFor="join-date">
-                      Date of joining
-                    </label>
-                    <input
-                      id="join-date"
-                      type="date"
-                      className="field-input"
-                      value={joinForm.date_of_joining}
-                      onChange={(event) => setJoinForm((current) => ({ ...current, date_of_joining: event.target.value }))}
-                    />
-                  </div>
+                  <input className="field-input" type="date" value={joinForm.date_of_joining} onChange={(event) => setJoinForm((current) => ({ ...current, date_of_joining: event.target.value }))} />
+                  <input className="field-input" placeholder={formValues.designation || 'Designation'} value={joinForm.designation} onChange={(event) => setJoinForm((current) => ({ ...current, designation: event.target.value }))} />
                 </div>
+                <select className="field-select" value={joinForm.reporting_to_employee_id} onChange={(event) => setJoinForm((current) => ({ ...current, reporting_to_employee_id: event.target.value }))}>
+                  <option value="">Use self as manager</option>
+                  <option value={employee.id}>Self-managed / top-level employee</option>
+                  {managerOptions?.results.map((manager) => (
+                    <option key={manager.id} value={manager.id}>
+                      {manager.full_name}
+                    </option>
+                  ))}
+                </select>
                 <button type="submit" className="btn-primary" disabled={markJoinedMutation.isPending}>
                   Mark as joined
                 </button>
@@ -305,45 +224,16 @@ export function EmployeeDetailPage() {
 
             {employee.status === 'ACTIVE' ? (
               <form onSubmit={handleEndEmployment} className="surface-muted grid gap-4 rounded-[24px] p-5">
-                <div className="flex items-center gap-2">
-                  <UserRoundMinus className="h-4 w-4 text-[hsl(var(--warning))]" />
-                  <p className="font-semibold text-[hsl(var(--foreground-strong))]">End employment</p>
-                </div>
+                <p className="font-semibold text-[hsl(var(--foreground-strong))]">End employment</p>
                 <div className="grid gap-4 md:grid-cols-2">
-                  <div>
-                    <label className="field-label" htmlFor="end-status">
-                      End status
-                    </label>
-                    <select
-                      id="end-status"
-                      className="field-select"
-                      value={endEmploymentForm.status}
-                      onChange={(event) =>
-                        setEndEmploymentForm((current) => ({
-                          ...current,
-                          status: event.target.value as 'RESIGNED' | 'RETIRED' | 'TERMINATED',
-                        }))
-                      }
-                    >
-                      {['RESIGNED', 'RETIRED', 'TERMINATED'].map((status) => (
-                        <option key={status} value={status}>
-                          {startCase(status)}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="field-label" htmlFor="date-of-exit">
-                      Date of exit
-                    </label>
-                    <input
-                      id="date-of-exit"
-                      type="date"
-                      className="field-input"
-                      value={endEmploymentForm.date_of_exit}
-                      onChange={(event) => setEndEmploymentForm((current) => ({ ...current, date_of_exit: event.target.value }))}
-                    />
-                  </div>
+                  <select className="field-select" value={endEmploymentForm.status} onChange={(event) => setEndEmploymentForm((current) => ({ ...current, status: event.target.value as 'RESIGNED' | 'RETIRED' | 'TERMINATED' }))}>
+                    {['RESIGNED', 'RETIRED', 'TERMINATED'].map((status) => (
+                      <option key={status} value={status}>
+                        {status}
+                      </option>
+                    ))}
+                  </select>
+                  <input className="field-input" type="date" value={endEmploymentForm.date_of_exit} onChange={(event) => setEndEmploymentForm((current) => ({ ...current, date_of_exit: event.target.value }))} />
                 </div>
                 <button type="submit" className="btn-danger" disabled={endEmploymentMutation.isPending}>
                   End employment
@@ -354,9 +244,7 @@ export function EmployeeDetailPage() {
             {(employee.status === 'INVITED' || employee.status === 'PENDING') ? (
               <div className="surface-muted rounded-[24px] p-5">
                 <p className="font-semibold text-[hsl(var(--foreground-strong))]">Delete employee record</p>
-                <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
-                  Invited and pending employees can be deleted and their licence seat will be released.
-                </p>
+                <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">Invited and pending employees can be deleted to release the consumed licence seat.</p>
                 <button onClick={handleDelete} className="btn-danger mt-4" disabled={deleteEmployeeMutation.isPending}>
                   Delete employee
                 </button>
@@ -365,121 +253,64 @@ export function EmployeeDetailPage() {
           </div>
         </SectionCard>
 
-        <SectionCard title="Profile snapshot" description="Current self-service details, identity records, and bank setup.">
+        <SectionCard title="Employee snapshot" description="Onboarding checklist, profile summary, and uploaded files.">
           <div className="grid gap-4 md:grid-cols-2">
-            {[
-              ['Phone', employee.profile.phone_personal || 'Not provided'],
-              ['Emergency contact', employee.profile.emergency_contact_name || 'Not provided'],
-              ['Emergency relation', employee.profile.emergency_contact_relation || 'Not provided'],
-              ['Address', [employee.profile.address_line1, employee.profile.city, employee.profile.state, employee.profile.country].filter(Boolean).join(', ') || 'Not provided'],
-            ].map(([label, value]) => (
-              <div key={label} className="surface-muted rounded-[24px] p-5">
-                <p className="text-sm text-[hsl(var(--muted-foreground))]">{label}</p>
-                <p className="mt-2 text-sm font-medium text-[hsl(var(--foreground-strong))]">{value}</p>
-              </div>
-            ))}
+            <div className="surface-muted rounded-[24px] p-5">
+              <p className="text-sm text-[hsl(var(--muted-foreground))]">Phone</p>
+              <p className="mt-2 text-sm font-medium text-[hsl(var(--foreground-strong))]">{employee.profile.phone_personal || 'Not provided'}</p>
+            </div>
+            <div className="surface-muted rounded-[24px] p-5">
+              <p className="text-sm text-[hsl(var(--muted-foreground))]">Address</p>
+              <p className="mt-2 text-sm font-medium text-[hsl(var(--foreground-strong))]">
+                {[employee.profile.address_line1, employee.profile.city, employee.profile.state, employee.profile.country].filter(Boolean).join(', ') || 'Not provided'}
+              </p>
+            </div>
           </div>
 
-          <div className="mt-5 grid gap-5 md:grid-cols-2">
-            <div>
-              <p className="text-sm font-semibold text-[hsl(var(--foreground-strong))]">Government IDs</p>
-              <div className="mt-3 space-y-3">
-                {employee.government_ids.length > 0 ? (
-                  employee.government_ids.map((record) => (
-                    <div key={record.id} className="surface-shell rounded-[20px] px-4 py-3">
-                      <div className="flex items-center justify-between">
-                        <p className="font-medium text-[hsl(var(--foreground-strong))]">{record.id_type}</p>
-                        <StatusBadge tone={record.status === 'VERIFIED' ? 'success' : record.status === 'REJECTED' ? 'danger' : 'warning'}>
-                          {record.status}
-                        </StatusBadge>
-                      </div>
-                      <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">{record.identifier}</p>
+          <div className="mt-6 grid gap-6 xl:grid-cols-2">
+            <div className="space-y-3">
+              <p className="text-sm font-semibold text-[hsl(var(--foreground-strong))]">Requested documents</p>
+              {documentRequests && documentRequests.length > 0 ? (
+                documentRequests.map((request) => (
+                  <div key={request.id} className="surface-muted rounded-[20px] px-4 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="font-medium text-[hsl(var(--foreground-strong))]">{request.document_type.name}</p>
+                      <StatusBadge tone={getDocumentRequestStatusTone(request.status)}>{request.status}</StatusBadge>
                     </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-[hsl(var(--muted-foreground))]">No government IDs submitted yet.</p>
-                )}
-              </div>
+                    {request.rejection_note ? (
+                      <p className="mt-2 text-sm text-[hsl(var(--danger))]">{request.rejection_note}</p>
+                    ) : null}
+                  </div>
+                ))
+              ) : (
+                <EmptyState title="No requested documents" description="Assign onboarding documents from the employee invite or document checklist flow." />
+              )}
             </div>
-            <div>
-              <p className="text-sm font-semibold text-[hsl(var(--foreground-strong))]">Bank accounts</p>
-              <div className="mt-3 space-y-3">
-                {employee.bank_accounts.length > 0 ? (
-                  employee.bank_accounts.map((account) => (
-                    <div key={account.id} className="surface-shell rounded-[20px] px-4 py-3">
-                      <div className="flex items-center justify-between">
-                        <p className="font-medium text-[hsl(var(--foreground-strong))]">{account.bank_name || 'Bank account'}</p>
-                        {account.is_primary ? <StatusBadge tone="success">Primary</StatusBadge> : null}
-                      </div>
-                      <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
-                        {account.account_holder_name} • {account.account_number} • {account.ifsc}
-                      </p>
+
+            <div className="space-y-3">
+              <p className="text-sm font-semibold text-[hsl(var(--foreground-strong))]">Submitted files</p>
+              {documents && documents.length > 0 ? (
+                documents.map((document) => (
+                  <div key={document.id} className="surface-muted flex items-center justify-between gap-3 rounded-[20px] px-4 py-3">
+                    <div>
+                      <p className="font-medium text-[hsl(var(--foreground-strong))]">{document.document_type}</p>
+                      <p className="text-sm text-[hsl(var(--muted-foreground))]">{document.file_name}</p>
                     </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-[hsl(var(--muted-foreground))]">No bank accounts submitted yet.</p>
-                )}
-              </div>
+                    <div className="flex items-center gap-3">
+                      <StatusBadge tone={getDocumentStatusTone(document.status)}>{document.status}</StatusBadge>
+                      <button className="btn-secondary" onClick={() => void handleDownload(document.id)}>
+                        <Download className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <EmptyState title="No submitted files yet" description="Uploaded documents will appear here after the employee starts their checklist." />
+              )}
             </div>
           </div>
         </SectionCard>
       </div>
-
-      <SectionCard title="Documents" description="Review and act on employee-uploaded documents.">
-        {documents && documents.length > 0 ? (
-          <div className="table-shell">
-            <table className="min-w-full text-sm">
-              <thead>
-                <tr className="table-head-row">
-                  <th className="pb-3 pr-4 font-semibold">Document</th>
-                  <th className="pb-3 pr-4 font-semibold">Status</th>
-                  <th className="pb-3 pr-4 font-semibold">Uploaded</th>
-                  <th className="pb-3 text-right font-semibold">Action</th>
-                </tr>
-              </thead>
-              <tbody className="table-body">
-                {documents.map((document) => (
-                  <tr key={document.id} className="table-row border-b border-[hsl(var(--border)_/_0.76)] last:border-b-0">
-                    <td className="py-4 pr-4">
-                      <p className="table-primary font-semibold">{startCase(document.document_type)}</p>
-                      <p className="table-secondary mt-1 text-xs">{document.file_name}</p>
-                    </td>
-                    <td className="py-4 pr-4">
-                      <StatusBadge tone={getDocumentStatusTone(document.status)}>{document.status}</StatusBadge>
-                    </td>
-                    <td className="table-secondary py-4 pr-4">{formatDateTime(document.created_at)}</td>
-                    <td className="py-4 text-right">
-                      <div className="flex justify-end gap-2">
-                        <button type="button" onClick={() => handleDownload(document.id)} className="btn-secondary">
-                          <Download className="h-4 w-4" />
-                          Open
-                        </button>
-                        {document.status !== 'VERIFIED' ? (
-                          <button type="button" onClick={() => handleVerifyDocument(document.id)} className="btn-primary">
-                            <FileCheck2 className="h-4 w-4" />
-                            Verify
-                          </button>
-                        ) : null}
-                        {document.status !== 'REJECTED' ? (
-                          <button type="button" onClick={() => handleRejectDocument(document.id)} className="btn-danger">
-                            Reject
-                          </button>
-                        ) : null}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <EmptyState
-            title="No documents uploaded yet"
-            description="This employee has not submitted any files for review yet."
-            icon={FileCheck2}
-          />
-        )}
-      </SectionCard>
     </div>
   )
 }

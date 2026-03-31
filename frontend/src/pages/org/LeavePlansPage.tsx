@@ -130,7 +130,7 @@ export function LeavePlansPage() {
             <select className="field-select" value={cycleForm.cycle_type} onChange={(event) => setCycleForm((current) => ({ ...current, cycle_type: event.target.value }))}>
               {['CALENDAR_YEAR', 'FINANCIAL_YEAR', 'CUSTOM_FIXED_START', 'EMPLOYEE_JOINING_DATE'].map((type) => (
                 <option key={type} value={type}>
-                  {type.replaceAll('_', ' ')}
+                  {type.replace(/_/g, ' ')}
                 </option>
               ))}
             </select>
@@ -142,7 +142,7 @@ export function LeavePlansPage() {
             {cycles?.map((cycle) => (
               <div key={cycle.id} className="surface-muted rounded-[18px] px-3 py-3">
                 <p className="font-medium text-[hsl(var(--foreground-strong))]">{cycle.name}</p>
-                <p className="text-sm text-[hsl(var(--muted-foreground))]">{cycle.cycle_type.replaceAll('_', ' ')}</p>
+                <p className="text-sm text-[hsl(var(--muted-foreground))]">{cycle.cycle_type.replace(/_/g, ' ')}</p>
               </div>
             ))}
           </div>
@@ -164,7 +164,7 @@ export function LeavePlansPage() {
             <select className="field-select" value={planForm.leave_types[0].credit_frequency} onChange={(event) => setPlanForm((current) => ({ ...current, leave_types: [{ ...current.leave_types[0], credit_frequency: event.target.value }] }))}>
               {['MANUAL', 'MONTHLY', 'QUARTERLY', 'HALF_YEARLY', 'YEARLY'].map((frequency) => (
                 <option key={frequency} value={frequency}>
-                  {frequency.replaceAll('_', ' ')}
+                  {frequency.replace(/_/g, ' ')}
                 </option>
               ))}
             </select>

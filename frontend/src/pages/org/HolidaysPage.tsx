@@ -93,7 +93,7 @@ export function HolidaysPage() {
                   <select className="field-select" value={holiday.session} onChange={(event) => setForm((current) => ({ ...current, holidays: current.holidays.map((item, itemIndex) => itemIndex === index ? { ...item, session: event.target.value } : item) }))}>
                     {['FULL_DAY', 'FIRST_HALF', 'SECOND_HALF'].map((session) => (
                       <option key={session} value={session}>
-                        {session.replaceAll('_', ' ')}
+                        {session.replace(/_/g, ' ')}
                       </option>
                     ))}
                   </select>

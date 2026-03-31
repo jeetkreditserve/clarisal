@@ -2,14 +2,21 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Search, UserPlus } from 'lucide-react'
 import { toast } from 'sonner'
-import { useDepartments, useEmployees, useInviteEmployee, useLocations } from '@/hooks/useOrgAdmin'
+
 import { EmptyState } from '@/components/ui/EmptyState'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { SkeletonPageHeader, SkeletonTable } from '@/components/ui/Skeleton'
 import { StatusBadge } from '@/components/ui/StatusBadge'
-import { formatDate, startCase } from '@/lib/format'
+import {
+  useDepartments,
+  useEmployees,
+  useInviteEmployee,
+  useLocations,
+  useOnboardingDocumentTypes,
+} from '@/hooks/useOrgAdmin'
 import { getErrorMessage } from '@/lib/errors'
+import { formatDate, startCase } from '@/lib/format'
 import { getEmployeeStatusTone } from '@/lib/status'
 import type { EmployeeStatus, EmploymentType } from '@/types/hr'
 
@@ -32,6 +39,7 @@ export function EmployeesPage() {
   const [page, setPage] = useState(1)
   const [showInviteForm, setShowInviteForm] = useState(false)
   const [inviteForm, setInviteForm] = useState(inviteDefaults)
+  const [selectedDocumentTypeIds, setSelectedDocumentTypeIds] = useState<string[]>([])
 
   const { data, isLoading } = useEmployees({
     search: search || undefined,
@@ -40,6 +48,7 @@ export function EmployeesPage() {
   })
   const { data: departments } = useDepartments()
   const { data: locations } = useLocations()
+  const { data: documentTypes } = useOnboardingDocumentTypes()
   const inviteMutation = useInviteEmployee()
 
   const handleInvite = async (event: React.FormEvent) => {
@@ -50,9 +59,11 @@ export function EmployeesPage() {
         date_of_joining: inviteForm.date_of_joining || null,
         department_id: inviteForm.department_id || null,
         office_location_id: inviteForm.office_location_id || null,
+        required_document_type_ids: selectedDocumentTypeIds,
       })
       toast.success('Employee invited.')
       setInviteForm(inviteDefaults)
+      setSelectedDocumentTypeIds([])
       setShowInviteForm(false)
     } catch (error) {
       toast.error(getErrorMessage(error, 'Unable to invite employee.'))
@@ -67,7 +78,7 @@ export function EmployeesPage() {
         <PageHeader
           eyebrow="Workforce"
           title="Employees"
-          description="Invite employees, monitor activation state, and manage assignments."
+          description="Invite employees, define onboarding documents, and manage lifecycle progression from invite to active join."
           actions={
             <button onClick={() => setShowInviteForm((current) => !current)} className="btn-primary">
               <UserPlus className="h-4 w-4" />
@@ -78,7 +89,7 @@ export function EmployeesPage() {
       )}
 
       {showInviteForm ? (
-        <SectionCard title="Invite employee" description="Seat availability is enforced server-side against purchased licences.">
+        <SectionCard title="Invite employee" description="Invites consume licence capacity immediately, so collect only the documents you genuinely need for onboarding.">
           <form onSubmit={handleInvite} className="grid gap-4 lg:grid-cols-3">
             {[
               ['first_name', 'First name'],
@@ -104,12 +115,7 @@ export function EmployeesPage() {
               <label className="field-label" htmlFor="employment-type">
                 Employment type
               </label>
-              <select
-                id="employment-type"
-                className="field-select"
-                value={inviteForm.employment_type}
-                onChange={(event) => setInviteForm((current) => ({ ...current, employment_type: event.target.value as EmploymentType }))}
-              >
+              <select id="employment-type" className="field-select" value={inviteForm.employment_type} onChange={(event) => setInviteForm((current) => ({ ...current, employment_type: event.target.value as EmploymentType }))}>
                 {['FULL_TIME', 'PART_TIME', 'CONTRACT', 'INTERN'].map((type) => (
                   <option key={type} value={type}>
                     {startCase(type)}
@@ -119,26 +125,15 @@ export function EmployeesPage() {
             </div>
             <div>
               <label className="field-label" htmlFor="date-of-joining">
-                Joining date
+                Planned joining date
               </label>
-              <input
-                id="date-of-joining"
-                type="date"
-                className="field-input"
-                value={inviteForm.date_of_joining}
-                onChange={(event) => setInviteForm((current) => ({ ...current, date_of_joining: event.target.value }))}
-              />
+              <input id="date-of-joining" type="date" className="field-input" value={inviteForm.date_of_joining} onChange={(event) => setInviteForm((current) => ({ ...current, date_of_joining: event.target.value }))} />
             </div>
             <div>
               <label className="field-label" htmlFor="department">
                 Department
               </label>
-              <select
-                id="department"
-                className="field-select"
-                value={inviteForm.department_id}
-                onChange={(event) => setInviteForm((current) => ({ ...current, department_id: event.target.value }))}
-              >
+              <select id="department" className="field-select" value={inviteForm.department_id} onChange={(event) => setInviteForm((current) => ({ ...current, department_id: event.target.value }))}>
                 <option value="">Unassigned</option>
                 {departments?.filter((department) => department.is_active).map((department) => (
                   <option key={department.id} value={department.id}>
@@ -151,12 +146,7 @@ export function EmployeesPage() {
               <label className="field-label" htmlFor="location">
                 Office location
               </label>
-              <select
-                id="location"
-                className="field-select"
-                value={inviteForm.office_location_id}
-                onChange={(event) => setInviteForm((current) => ({ ...current, office_location_id: event.target.value }))}
-              >
+              <select id="location" className="field-select" value={inviteForm.office_location_id} onChange={(event) => setInviteForm((current) => ({ ...current, office_location_id: event.target.value }))}>
                 <option value="">Unassigned</option>
                 {locations?.filter((location) => location.is_active).map((location) => (
                   <option key={location.id} value={location.id}>
@@ -170,9 +160,30 @@ export function EmployeesPage() {
                 {inviteMutation.isPending ? 'Sending invite...' : 'Invite employee'}
               </button>
             </div>
+            <div className="lg:col-span-3">
+              <p className="mb-3 text-sm font-semibold text-[hsl(var(--foreground-strong))]">Requested onboarding documents</p>
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {documentTypes?.map((documentType) => (
+                  <label key={documentType.id} className="surface-muted flex items-start gap-3 rounded-[18px] px-4 py-3 text-sm text-[hsl(var(--muted-foreground))]">
+                    <input
+                      type="checkbox"
+                      checked={selectedDocumentTypeIds.includes(documentType.id)}
+                      onChange={(event) =>
+                        setSelectedDocumentTypeIds((current) =>
+                          event.target.checked ? [...current, documentType.id] : current.filter((item) => item !== documentType.id),
+                        )
+                      }
+                    />
+                    <div>
+                      <p className="font-medium text-[hsl(var(--foreground-strong))]">{documentType.name}</p>
+                      <p className="text-xs">{documentType.category.replace(/_/g, ' ')}</p>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </div>
             <div className="surface-muted rounded-[26px] p-5 text-sm leading-6 text-[hsl(var(--muted-foreground))] lg:col-span-3">
-              Invitations consume licence capacity immediately. After password setup the employee moves to pending, and
-              only when you mark them as joined do they become active and consume an employee code.
+              Employee codes are assigned only when you mark a pending employee as joined. If the invite is accepted but the employee never joins, you do not waste a code.
             </div>
           </form>
         </SectionCard>
@@ -182,24 +193,9 @@ export function EmployeesPage() {
         <div className="mb-5 flex flex-col gap-3 lg:flex-row">
           <div className="relative max-w-xl flex-1">
             <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[hsl(var(--muted-foreground))]" />
-            <input
-              value={search}
-              onChange={(event) => {
-                setSearch(event.target.value)
-                setPage(1)
-              }}
-              className="field-input pl-11"
-              placeholder="Search employees by name or email"
-            />
+            <input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1) }} className="field-input pl-11" placeholder="Search employees by name or email" />
           </div>
-          <select
-            className="field-select max-w-xs"
-            value={status}
-            onChange={(event) => {
-              setStatus(event.target.value as EmployeeStatus | '')
-              setPage(1)
-            }}
-          >
+          <select className="field-select max-w-xs" value={status} onChange={(event) => { setStatus(event.target.value as EmployeeStatus | ''); setPage(1) }}>
             {employeeStatuses.map((employeeStatus) => (
               <option key={employeeStatus} value={employeeStatus}>
                 {employeeStatus ? startCase(employeeStatus) : 'All statuses'}
@@ -268,11 +264,7 @@ export function EmployeesPage() {
             ) : null}
           </>
         ) : (
-          <EmptyState
-            title="No employees match the current filter"
-            description="Adjust the search term or status filter, or send the first invite to begin workforce onboarding."
-            icon={UserPlus}
-          />
+          <EmptyState title="No employees match the current filter" description="Adjust the filters or send the first invite to begin employee onboarding." icon={UserPlus} />
         )}
       </SectionCard>
     </div>

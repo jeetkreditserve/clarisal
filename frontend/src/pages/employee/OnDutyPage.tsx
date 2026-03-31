@@ -74,7 +74,7 @@ export function OnDutyPage() {
             <select className="field-select" value={form.duration_type} onChange={(event) => setForm((current) => ({ ...current, duration_type: event.target.value }))}>
               {['FULL_DAY', 'FIRST_HALF', 'SECOND_HALF', 'TIME_RANGE'].map((type) => (
                 <option key={type} value={type}>
-                  {type.replaceAll('_', ' ')}
+                  {type.replace(/_/g, ' ')}
                 </option>
               ))}
             </select>
@@ -99,7 +99,7 @@ export function OnDutyPage() {
                 <div>
                   <p className="font-semibold text-[hsl(var(--foreground-strong))]">{request.policy_name}</p>
                   <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                    {request.start_date} to {request.end_date} • {request.duration_type.replaceAll('_', ' ')}
+                    {request.start_date} to {request.end_date} • {request.duration_type.replace(/_/g, ' ')}
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
