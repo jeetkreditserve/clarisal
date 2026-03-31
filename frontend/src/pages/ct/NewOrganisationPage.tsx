@@ -85,13 +85,13 @@ export function NewOrganisationPage() {
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="grid gap-5 lg:grid-cols-2">
             {[
-              ['name', 'Organisation name', true],
-              ['pan_number', 'PAN number', true],
-              ['email', 'Contact email', false],
-              ['phone', 'Contact phone', false],
-              ['country_code', 'Country code', true],
-              ['currency', 'Currency', true],
-            ].map(([field, label, required]) => (
+              { field: 'name', label: 'Organisation name', required: true },
+              { field: 'pan_number', label: 'PAN number', required: true },
+              { field: 'email', label: 'Contact email', required: false },
+              { field: 'phone', label: 'Contact phone', required: false },
+              { field: 'country_code', label: 'Country code', required: true },
+              { field: 'currency', label: 'Currency', required: true },
+            ].map(({ field, label, required }) => (
               <div key={field}>
                 <label htmlFor={field} className="field-label">
                   {label}
@@ -118,14 +118,14 @@ export function NewOrganisationPage() {
               >
                 <div className="grid gap-4">
                   {[
-                    ['line1', 'Address line 1', true],
-                    ['line2', 'Address line 2', false],
-                    ['city', 'City', true],
-                    ['state', 'State', true],
-                    ['country', 'Country', false],
-                    ['pincode', 'Pincode', true],
-                    ['gstin', 'GSTIN', false],
-                  ].map(([field, label, required]) => (
+                    { field: 'line1', label: 'Address line 1', required: true },
+                    { field: 'line2', label: 'Address line 2', required: false },
+                    { field: 'city', label: 'City', required: true },
+                    { field: 'state', label: 'State', required: true },
+                    { field: 'country', label: 'Country', required: false },
+                    { field: 'pincode', label: 'Pincode', required: true },
+                    { field: 'gstin', label: 'GSTIN', required: false },
+                  ].map(({ field, label, required }) => (
                     <div key={field}>
                       <label className="field-label" htmlFor={`${addressType}-${field}`}>
                         {label}
@@ -134,7 +134,7 @@ export function NewOrganisationPage() {
                         id={`${addressType}-${field}`}
                         className="field-input"
                         required={Boolean(required)}
-                        value={String(form.addresses[addressType][field as keyof OrganisationAddressInput] ?? '')}
+                    value={String(form.addresses[addressType][field as keyof OrganisationAddressInput] ?? '')}
                         onChange={setAddressField(addressType, field as keyof OrganisationAddressInput)}
                       />
                     </div>

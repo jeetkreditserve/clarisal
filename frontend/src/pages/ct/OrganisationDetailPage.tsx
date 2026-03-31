@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ArrowLeft, CreditCard, History, Mail, ShieldAlert, UserPlus } from 'lucide-react'
 import { toast } from 'sonner'
@@ -86,32 +86,34 @@ export function OrganisationDetailPage() {
   const [batchForm, setBatchForm] = useState<BatchFormState>(emptyBatchForm)
   const [editingBatchId, setEditingBatchId] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (!organisation) return
-    if (editingBatchId) return
-    setBatchForm({
-      quantity: '1',
-      price_per_licence_per_month: organisation.batch_defaults.price_per_licence_per_month,
-      start_date: organisation.batch_defaults.start_date,
-      end_date: organisation.batch_defaults.end_date,
-      note: '',
-    })
-  }, [editingBatchId, organisation])
-
   const completedSteps = useMemo(() => {
     const currentIndex = ORG_ONBOARDING_STEPS.findIndex((step) => step.id === organisation?.onboarding_stage)
     return currentIndex >= 0 ? currentIndex : 0
   }, [organisation?.onboarding_stage])
 
+  const effectiveBatchForm = useMemo<BatchFormState>(() => {
+    if (!organisation || editingBatchId) {
+      return batchForm
+    }
+    return {
+      quantity: batchForm.quantity || '1',
+      price_per_licence_per_month:
+        batchForm.price_per_licence_per_month || organisation.batch_defaults.price_per_licence_per_month,
+      start_date: batchForm.start_date || organisation.batch_defaults.start_date,
+      end_date: batchForm.end_date || organisation.batch_defaults.end_date,
+      note: batchForm.note,
+    }
+  }, [batchForm, editingBatchId, organisation])
+
   const pricingPreview = useMemo(() => {
-    const months = calculateBillingMonths(batchForm.start_date, batchForm.end_date)
-    const quantity = Number(batchForm.quantity || 0)
-    const price = Number(batchForm.price_per_licence_per_month || 0)
+    const months = calculateBillingMonths(effectiveBatchForm.start_date, effectiveBatchForm.end_date)
+    const quantity = Number(effectiveBatchForm.quantity || 0)
+    const price = Number(effectiveBatchForm.price_per_licence_per_month || 0)
     return {
       billingMonths: months,
       totalAmount: quantity * price * months,
     }
-  }, [batchForm])
+  }, [effectiveBatchForm])
 
   if (isLoading || !organisation) {
     return (
@@ -128,13 +130,7 @@ export function OrganisationDetailPage() {
 
   const resetBatchForm = () => {
     setEditingBatchId(null)
-    setBatchForm({
-      quantity: '1',
-      price_per_licence_per_month: organisation.batch_defaults.price_per_licence_per_month,
-      start_date: organisation.batch_defaults.start_date,
-      end_date: organisation.batch_defaults.end_date,
-      note: '',
-    })
+    setBatchForm(emptyBatchForm())
   }
 
   const handleMarkPaid = async () => {
@@ -203,11 +199,11 @@ export function OrganisationDetailPage() {
   const handleSaveBatch = async (event: React.FormEvent) => {
     event.preventDefault()
     const payload = {
-      quantity: Number(batchForm.quantity),
-      price_per_licence_per_month: batchForm.price_per_licence_per_month,
-      start_date: batchForm.start_date,
-      end_date: batchForm.end_date,
-      note: batchForm.note,
+      quantity: Number(effectiveBatchForm.quantity),
+      price_per_licence_per_month: effectiveBatchForm.price_per_licence_per_month,
+      start_date: effectiveBatchForm.start_date,
+      end_date: effectiveBatchForm.end_date,
+      note: effectiveBatchForm.note,
     }
 
     try {
@@ -391,7 +387,7 @@ export function OrganisationDetailPage() {
                 id="batch-quantity"
                 type="number"
                 min={1}
-                value={batchForm.quantity}
+                value={effectiveBatchForm.quantity}
                 onChange={(event) => setBatchForm((current) => ({ ...current, quantity: event.target.value }))}
                 className="field-input"
               />
@@ -405,7 +401,7 @@ export function OrganisationDetailPage() {
                 type="number"
                 min={0}
                 step="0.01"
-                value={batchForm.price_per_licence_per_month}
+                value={effectiveBatchForm.price_per_licence_per_month}
                 onChange={(event) => setBatchForm((current) => ({ ...current, price_per_licence_per_month: event.target.value }))}
                 className="field-input"
               />
@@ -417,7 +413,7 @@ export function OrganisationDetailPage() {
               <input
                 id="batch-start-date"
                 type="date"
-                value={batchForm.start_date}
+                value={effectiveBatchForm.start_date}
                 onChange={(event) => setBatchForm((current) => ({ ...current, start_date: event.target.value }))}
                 className="field-input"
               />
@@ -429,7 +425,7 @@ export function OrganisationDetailPage() {
               <input
                 id="batch-end-date"
                 type="date"
-                value={batchForm.end_date}
+                value={effectiveBatchForm.end_date}
                 onChange={(event) => setBatchForm((current) => ({ ...current, end_date: event.target.value }))}
                 className="field-input"
               />
@@ -440,7 +436,7 @@ export function OrganisationDetailPage() {
               </label>
               <input
                 id="batch-note"
-                value={batchForm.note}
+                value={effectiveBatchForm.note}
                 onChange={(event) => setBatchForm((current) => ({ ...current, note: event.target.value }))}
                 className="field-input"
                 placeholder="Optional context for the commercial batch"

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Building2, Landmark } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -39,28 +39,16 @@ export function OrgProfilePage() {
   const updateAddressMutation = useUpdateOrgAddress()
   const deactivateAddressMutation = useDeactivateOrgAddress()
 
-  const [profileForm, setProfileForm] = useState({
-    name: '',
-    pan_number: '',
-    email: '',
-    phone: '',
-    country_code: 'IN',
-    currency: 'INR',
-  })
+  const [profileDraft, setProfileDraft] = useState<Partial<{
+    name: string
+    pan_number: string
+    email: string
+    phone: string
+    country_code: string
+    currency: string
+  }>>({})
   const [editingAddressId, setEditingAddressId] = useState<string | null>(null)
   const [addressForm, setAddressForm] = useState(emptyAddressForm)
-
-  useEffect(() => {
-    if (!data) return
-    setProfileForm({
-      name: data.name,
-      pan_number: data.pan_number ?? '',
-      email: data.email,
-      phone: data.phone,
-      country_code: data.country_code,
-      currency: data.currency,
-    })
-  }, [data])
 
   if (isLoading || !data) {
     return (
@@ -70,6 +58,15 @@ export function OrgProfilePage() {
         <SkeletonTable rows={5} />
       </div>
     )
+  }
+
+  const profileForm = {
+    name: profileDraft.name ?? data.name,
+    pan_number: profileDraft.pan_number ?? data.pan_number ?? '',
+    email: profileDraft.email ?? data.email,
+    phone: profileDraft.phone ?? data.phone,
+    country_code: profileDraft.country_code ?? data.country_code,
+    currency: profileDraft.currency ?? data.currency,
   }
 
   const handleProfileSave = async (event: React.FormEvent) => {
@@ -158,7 +155,7 @@ export function OrgProfilePage() {
                   id={field}
                   className="field-input"
                   value={profileForm[field as keyof typeof profileForm]}
-                  onChange={(event) => setProfileForm((current) => ({ ...current, [field]: event.target.value }))}
+                  onChange={(event) => setProfileDraft((current) => ({ ...current, [field]: event.target.value }))}
                   required={field === 'name' || field === 'pan_number'}
                 />
               </div>
@@ -172,7 +169,7 @@ export function OrgProfilePage() {
                   id="country_code"
                   className="field-input"
                   value={profileForm.country_code}
-                  onChange={(event) => setProfileForm((current) => ({ ...current, country_code: event.target.value }))}
+                  onChange={(event) => setProfileDraft((current) => ({ ...current, country_code: event.target.value }))}
                   required
                 />
               </div>
@@ -184,7 +181,7 @@ export function OrgProfilePage() {
                   id="currency"
                   className="field-input"
                   value={profileForm.currency}
-                  onChange={(event) => setProfileForm((current) => ({ ...current, currency: event.target.value }))}
+                  onChange={(event) => setProfileDraft((current) => ({ ...current, currency: event.target.value }))}
                   required
                 />
               </div>
