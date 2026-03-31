@@ -18,7 +18,7 @@ export function SectionCard({ title, description, action, children, className }:
       transition={{ duration: 0.24, ease: 'easeOut' }}
       className={cn('surface-card rounded-[30px] p-6', className)}
     >
-      <div className="flex flex-col gap-4 border-b border-[hsla(var(--border),0.84)] pb-5 lg:flex-row lg:items-center lg:justify-between">
+      <div className="flex flex-col gap-4 border-b border-[hsl(var(--border)_/_0.84)] pb-5 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h2 className="section-title">{title}</h2>
           {description ? <p className="section-copy mt-1">{description}</p> : null}

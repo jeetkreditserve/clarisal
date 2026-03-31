@@ -17,7 +17,7 @@ export function EmptyState({ title, description, action, icon: Icon }: EmptyStat
       className="empty-state-shell"
     >
       {Icon ? (
-        <div className="mb-5 rounded-[24px] bg-[hsl(var(--brand-soft))] p-4 text-[hsl(var(--brand))] ring-1 ring-[hsla(var(--brand),0.14)]">
+        <div className="mb-5 rounded-[24px] bg-[hsl(var(--brand-soft))] p-4 text-[hsl(var(--brand))] ring-1 ring-[hsl(var(--brand)_/_0.14)]">
           <Icon className="h-6 w-6" />
         </div>
       ) : null}

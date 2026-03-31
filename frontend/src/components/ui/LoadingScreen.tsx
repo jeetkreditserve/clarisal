@@ -9,7 +9,7 @@ interface LoadingScreenProps {
 export function LoadingScreen({ message = 'Preparing your workspace' }: LoadingScreenProps) {
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden px-6 py-8">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,hsla(var(--brand),0.14),transparent_26%),radial-gradient(circle_at_bottom_right,hsla(var(--accent),0.12),transparent_22%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,hsl(var(--brand)_/_0.14),transparent_26%),radial-gradient(circle_at_bottom_right,hsl(var(--accent)_/_0.12),transparent_22%)]" />
       <div className="absolute right-6 top-6 z-20">
         <ThemeToggle />
       </div>

@@ -5,12 +5,12 @@ import { cn } from '@/lib/utils'
 type MetricTone = 'primary' | 'success' | 'warning' | 'danger' | 'neutral' | 'info'
 
 const toneClasses: Record<MetricTone, string> = {
-  primary: 'bg-[hsl(var(--brand-soft))] text-[hsl(var(--brand))] ring-[hsla(var(--brand),0.18)]',
-  info: 'bg-[hsl(var(--info-soft))] text-[hsl(var(--info))] ring-[hsla(var(--info),0.2)]',
-  success: 'bg-[hsl(var(--success-soft))] text-[hsl(var(--success))] ring-[hsla(var(--success),0.2)]',
-  warning: 'bg-[hsl(var(--warning-soft))] text-[hsl(var(--warning))] ring-[hsla(var(--warning),0.2)]',
-  danger: 'bg-[hsl(var(--destructive-soft))] text-[hsl(var(--destructive))] ring-[hsla(var(--destructive),0.2)]',
-  neutral: 'bg-[hsl(var(--surface-subtle))] text-[hsl(var(--foreground))] ring-[hsla(var(--border),0.8)]',
+  primary: 'bg-[hsl(var(--brand-soft))] text-[hsl(var(--brand))] ring-[hsl(var(--brand)_/_0.18)]',
+  info: 'bg-[hsl(var(--info-soft))] text-[hsl(var(--info))] ring-[hsl(var(--info)_/_0.2)]',
+  success: 'bg-[hsl(var(--success-soft))] text-[hsl(var(--success))] ring-[hsl(var(--success)_/_0.2)]',
+  warning: 'bg-[hsl(var(--warning-soft))] text-[hsl(var(--warning))] ring-[hsl(var(--warning)_/_0.2)]',
+  danger: 'bg-[hsl(var(--destructive-soft))] text-[hsl(var(--destructive))] ring-[hsl(var(--destructive)_/_0.2)]',
+  neutral: 'bg-[hsl(var(--surface-subtle))] text-[hsl(var(--foreground))] ring-[hsl(var(--border)_/_0.8)]',
 }
 
 interface MetricCardProps {
