@@ -25,6 +25,37 @@ async function run(name, fn) {
 }
 
 try {
+  await run('light_theme_auth_surface', async (page) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('calrisal-theme', 'light')
+    })
+    await page.goto(`${baseUrl}/ct/login`, { waitUntil: 'networkidle' })
+
+    const styles = await page.evaluate(() => {
+      const hero = document.querySelector('section.auth-hero-surface')
+      const body = document.body
+
+      if (!hero) {
+        throw new Error('Auth hero surface not found')
+      }
+
+      return {
+        theme: document.documentElement.dataset.theme,
+        bodyBackground: getComputedStyle(body).backgroundImage,
+        heroBackground: getComputedStyle(hero).backgroundImage,
+        heroColor: getComputedStyle(hero).color,
+      }
+    })
+
+    if (styles.theme !== 'light') {
+      throw new Error(`Expected light theme, received ${styles.theme}`)
+    }
+
+    if (styles.bodyBackground === 'none' || styles.heroBackground === 'none') {
+      throw new Error(`Expected gradient backgrounds in light theme, received ${JSON.stringify(styles)}`)
+    }
+  })
+
   await run('landing_and_theme_toggle', async (page) => {
     await page.goto(`${baseUrl}/`, { waitUntil: 'networkidle' })
     if (!page.url().includes('/auth/login')) {

@@ -94,7 +94,7 @@ export function OrgDashboardPage() {
                         <span className="font-medium text-[hsl(var(--foreground-strong))]">{department.department_name}</span>
                         <span className="text-[hsl(var(--muted-foreground))]">{department.count}</span>
                       </div>
-                      <div className="h-3 rounded-full bg-[hsla(var(--border),0.55)]">
+                      <div className="h-3 rounded-full bg-[hsl(var(--border)_/_0.55)]">
                         <div
                           className="h-3 rounded-full bg-[linear-gradient(90deg,hsl(var(--brand)),hsl(var(--brand-strong)))]"
                           style={{ width: `${Math.max((department.count / Math.max(data.active_employees, 1)) * 100, 10)}%` }}
@@ -148,7 +148,7 @@ export function OrgDashboardPage() {
                   </thead>
                   <tbody className="table-body">
                     {data.recent_joins.map((employee) => (
-                      <tr key={employee.id} className="table-row border-b border-[hsla(var(--border),0.76)] last:border-b-0">
+                      <tr key={employee.id} className="table-row border-b border-[hsl(var(--border)_/_0.76)] last:border-b-0">
                         <td className="py-4 pr-4">
                           <Link to={`/org/employees/${employee.id}`} className="font-semibold text-[hsl(var(--foreground-strong))] hover:text-[hsl(var(--brand))]">
                             {employee.user__first_name} {employee.user__last_name}

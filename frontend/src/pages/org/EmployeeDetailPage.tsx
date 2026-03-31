@@ -327,7 +327,7 @@ export function EmployeeDetailPage() {
               </thead>
               <tbody className="table-body">
                 {documents.map((document) => (
-                  <tr key={document.id} className="table-row border-b border-[hsla(var(--border),0.76)] last:border-b-0">
+                  <tr key={document.id} className="table-row border-b border-[hsl(var(--border)_/_0.76)] last:border-b-0">
                     <td className="py-4 pr-4">
                       <p className="table-primary font-semibold">{startCase(document.document_type)}</p>
                       <p className="table-secondary mt-1 text-xs">{document.file_name}</p>

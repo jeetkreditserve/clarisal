@@ -110,7 +110,7 @@ export function CTDashboardPage() {
                   <th className="pb-3 font-semibold">Created</th>
                 </tr>
               </thead>
-              <tbody className="table-body divide-y divide-[hsla(var(--border),0.84)]">
+              <tbody className="table-body divide-y divide-[hsl(var(--border)_/_0.84)]">
                 {recent.results.slice(0, 6).map((organisation) => (
                   <tr key={organisation.id} className="table-row">
                     <td className="py-4 pr-4">

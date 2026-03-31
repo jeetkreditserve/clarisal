@@ -99,7 +99,7 @@ export function OrganisationsPage() {
               </thead>
               <tbody className="table-body">
                 {data?.results.map((organisation) => (
-                  <tr key={organisation.id} className="table-row border-b border-[hsla(var(--border),0.76)] last:border-b-0">
+                  <tr key={organisation.id} className="table-row border-b border-[hsl(var(--border)_/_0.76)] last:border-b-0">
                     <td className="py-4 pr-4">
                       <p className="table-primary font-semibold">{organisation.name}</p>
                       <p className="table-secondary mt-1 text-xs">/{organisation.slug}</p>
