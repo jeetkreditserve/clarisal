@@ -75,9 +75,6 @@ The most significant persistent issue is the complete absence of rate limiting. 
 | **Leave Management** | `timeoff` | ✅ **9 org + 7 self-service** | ✅ **LeavePlansPage, HolidaysPage, LeavePage** |
 | **On-Duty Requests** | `timeoff` | ✅ **Included above** | ✅ **OnDutyPage** |
 | **Notices/Communications** | `communications` | ✅ **3 org + 2 self-service** | ✅ **NoticesPage, visible on dashboard** |
-| Attendance & Time Tracking | — | ❌ Not started | ❌ Not started |
-| Performance Management | — | ❌ Not started | ❌ Not started |
-| Reports & Analytics | — | ❌ Not started | ❌ Minimal dashboards only |
 | Org Chart | — | ❌ Not started | ❌ Not started |
 | Employee Directory | — | ❌ Not started | ❌ Not started |
 
@@ -105,29 +102,9 @@ Benchmark: **Zoho People** (primary), supplemented by Darwinbox, GreytHR, Keka, 
 | Custom employee fields | ❌ Missing | Absent entirely | Core Zoho differentiator |
 | Offboarding workflow | ⚠️ Partial | End employment endpoint exists; no checklist/exit interview | Full offboarding checklist, exit survey, clearance workflow |
 | Probation / confirmation | ❌ Missing | Not started | Probation period tracking |
-| Asset management | ❌ Missing | Not started | Asset assignment and return tracking |
 | Prior work experience | ❌ Missing | Not started | Previous employer records |
 
 ---
-
-### Attendance & Time Tracking
-
-| Sub-feature | Status | Gap | Zoho People Benchmark |
-|---|---|---|---|
-| Check-in / check-out | ❌ Missing | Entirely absent | Web/mobile/kiosk, geotagging |
-| Shift management | ❌ Missing | Entirely absent | Configurable shifts, rotational schedules |
-| Attendance policies | ❌ Missing | Entirely absent | Late marks, grace periods, minimum hours |
-| Overtime tracking | ❌ Missing | Entirely absent | Auto-OT calculation with approval |
-| Regularization requests | ❌ Missing | Entirely absent | Missing punch regularization with approval |
-| Biometric integration | ❌ Missing | Entirely absent | 20+ device brand integrations |
-| Mobile attendance | ❌ Missing | Entirely absent | GPS-based punch with selfie |
-| Timesheet management | ❌ Missing | Entirely absent | Project-wise timesheet entry |
-| WFH tracking | ❌ Missing | Entirely absent | WFH day marking with calendar view |
-
-**Summary:** Attendance is entirely absent. This is a daily-use feature that drives HRMS adoption. GreytHR and Keka ship it in their base product.
-
----
-
 ### Leave Management
 
 | Sub-feature | Status | Gap | Zoho People Benchmark |
@@ -148,7 +125,6 @@ Benchmark: **Zoho People** (primary), supplemented by Darwinbox, GreytHR, Keka, 
 | Leave encashment | ❌ Missing | Not started | Configurable per leave type |
 | Compensatory off | ❌ Missing | Not started | Auto-CO from overtime/holiday work |
 | Leave reports | ❌ Missing | Org request list only | Department-wise analytics |
-| Calendar sync | ❌ Missing | Not started | Google/Outlook integration |
 
 **Summary:** Leave management has gone from zero to near-complete in one sprint. The data model, service layer, APIs, and frontend pages are all in place. The main gaps are conflict validation (critical correctness issue) and advanced features like encashment.
 
@@ -270,7 +246,6 @@ Benchmark: **Zoho People** (primary), supplemented by Darwinbox, GreytHR, Keka, 
 | Calendar view | ✅ Complete | MonthCalendar on dashboard + LeavePage | — |
 | Payslip access | ❌ Out of scope | — | — |
 | Employee directory | ❌ Missing | Not started | Searchable with org hierarchy |
-| IT declaration / tax forms | ❌ Missing | Not started | Investment declaration workflow |
 | Asset / letter requests | ❌ Missing | Not started | Self-service request types |
 
 **Summary:** ESS has jumped from near-empty to substantially functional. Employees can now manage their full leave lifecycle, submit on-duty requests, act on approvals, and complete onboarding. This directly drives daily active use.
@@ -306,22 +281,7 @@ Benchmark: **Zoho People** (primary), supplemented by Darwinbox, GreytHR, Keka, 
 
 ---
 
-### Integrations
-
-| Integration | Status | Zoho People Benchmark |
-|---|---|---|
-| Email (SMTP) | ✅ Complete | Same |
-| AWS S3 | ✅ Complete | AWS + GCP + Azure |
-| SSO (Google/Microsoft/SAML) | ❌ Missing | Full SSO marketplace |
-| Payroll connectors | ❌ Out of scope | Native + 15 third-party |
-| ATS (hiring) | ❌ Missing | Zoho Recruit |
-| Biometric devices | ❌ Missing | 20+ brands |
-| Calendar sync | ❌ Missing | Google/Outlook |
-| Webhooks / Open API | ❌ Missing | REST API + Zapier |
-| Slack / Teams bots | ❌ Missing | Notification bots |
-
 ---
-
 ## Architecture Review
 
 ### Separation of Concerns
