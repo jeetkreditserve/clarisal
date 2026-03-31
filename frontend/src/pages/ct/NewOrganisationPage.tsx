@@ -39,7 +39,7 @@ export function NewOrganisationPage() {
     <div>
       <label htmlFor={id} className="field-label">
         {label}
-        {required ? <span className="ml-1 text-rose-600">*</span> : null}
+        {required ? <span className="ml-1 text-[hsl(var(--destructive))]">*</span> : null}
       </label>
       <input
         id={id}
@@ -70,10 +70,16 @@ export function NewOrganisationPage() {
           {field('currency', 'Currency', 'text', true)}
           <div className="lg:col-span-2">{field('address', 'Address')}</div>
 
+          <div className="surface-muted rounded-[26px] p-5 text-sm leading-6 text-[hsl(var(--muted-foreground))] lg:col-span-2">
+            <p className="font-semibold text-[hsl(var(--foreground-strong))]">Provisioning note</p>
+            <p className="mt-2">
+              Creating an organisation only provisions the tenant shell and opening licence balance. Payment confirmation,
+              activation, and admin invitation are completed on the organisation detail screen.
+            </p>
+          </div>
+
           {error ? (
-            <div className="rounded-[20px] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 lg:col-span-2">
-              {error}
-            </div>
+            <div className="notice-error lg:col-span-2">{error}</div>
           ) : null}
 
           <div className="flex flex-wrap gap-3 lg:col-span-2">

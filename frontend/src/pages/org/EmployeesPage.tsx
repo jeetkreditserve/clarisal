@@ -3,9 +3,10 @@ import { Link } from 'react-router-dom'
 import { Search, UserPlus } from 'lucide-react'
 import { toast } from 'sonner'
 import { useDepartments, useEmployees, useInviteEmployee, useLocations } from '@/hooks/useOrgAdmin'
+import { EmptyState } from '@/components/ui/EmptyState'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
-import { Skeleton } from '@/components/ui/Skeleton'
+import { SkeletonPageHeader, SkeletonTable } from '@/components/ui/Skeleton'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { formatDate, startCase } from '@/lib/format'
 import { getErrorMessage } from '@/lib/errors'
@@ -60,17 +61,21 @@ export function EmployeesPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        eyebrow="Workforce"
-        title="Employees"
-        description="Invite employees, monitor activation state, and manage assignments."
-        actions={
-          <button onClick={() => setShowInviteForm((current) => !current)} className="btn-primary">
-            <UserPlus className="h-4 w-4" />
-            {showInviteForm ? 'Close invite form' : 'Invite employee'}
-          </button>
-        }
-      />
+      {isLoading && !data ? (
+        <SkeletonPageHeader />
+      ) : (
+        <PageHeader
+          eyebrow="Workforce"
+          title="Employees"
+          description="Invite employees, monitor activation state, and manage assignments."
+          actions={
+            <button onClick={() => setShowInviteForm((current) => !current)} className="btn-primary">
+              <UserPlus className="h-4 w-4" />
+              {showInviteForm ? 'Close invite form' : 'Invite employee'}
+            </button>
+          }
+        />
+      )}
 
       {showInviteForm ? (
         <SectionCard title="Invite employee" description="Seat availability is enforced server-side against purchased licences.">
@@ -165,6 +170,10 @@ export function EmployeesPage() {
                 {inviteMutation.isPending ? 'Sending invite...' : 'Invite employee'}
               </button>
             </div>
+            <div className="surface-muted rounded-[26px] p-5 text-sm leading-6 text-[hsl(var(--muted-foreground))] lg:col-span-3">
+              Invitations consume licence capacity once the employee becomes invited or active. Keep departments and
+              office locations ready to keep downstream onboarding clean.
+            </div>
           </form>
         </SectionCard>
       ) : null}
@@ -172,7 +181,7 @@ export function EmployeesPage() {
       <SectionCard title="Employee directory" description="Search by name or email and filter by lifecycle state.">
         <div className="mb-5 flex flex-col gap-3 lg:flex-row">
           <div className="relative max-w-xl flex-1">
-            <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[hsl(var(--muted-foreground))]" />
             <input
               value={search}
               onChange={(event) => {
@@ -200,17 +209,13 @@ export function EmployeesPage() {
         </div>
 
         {isLoading ? (
-          <div className="space-y-3">
-            {Array.from({ length: 6 }).map((_, index) => (
-              <Skeleton key={index} className="h-16" />
-            ))}
-          </div>
+          <SkeletonTable rows={6} />
         ) : data && data.results.length > 0 ? (
           <>
-            <div className="overflow-x-auto">
+            <div className="table-shell">
               <table className="min-w-full text-sm">
                 <thead>
-                  <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-[0.16em] text-slate-500">
+                  <tr className="table-head-row">
                     <th className="pb-3 pr-4 font-semibold">Employee</th>
                     <th className="pb-3 pr-4 font-semibold">Designation</th>
                     <th className="pb-3 pr-4 font-semibold">Department</th>
@@ -220,22 +225,22 @@ export function EmployeesPage() {
                     <th className="pb-3 text-right font-semibold">Action</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-200/80">
+                <tbody className="table-body">
                   {data.results.map((employee) => (
-                    <tr key={employee.id}>
+                    <tr key={employee.id} className="table-row border-b border-[hsla(var(--border),0.76)] last:border-b-0">
                       <td className="py-4 pr-4">
-                        <p className="font-semibold text-slate-950">{employee.full_name}</p>
-                        <p className="mt-1 text-xs text-slate-500">{employee.email} • {employee.employee_code}</p>
+                        <p className="table-primary font-semibold">{employee.full_name}</p>
+                        <p className="table-secondary mt-1 text-xs">{employee.email} • {employee.employee_code}</p>
                       </td>
-                      <td className="py-4 pr-4 text-slate-600">{employee.designation || 'Not assigned'}</td>
-                      <td className="py-4 pr-4 text-slate-600">{employee.department_name || 'Unassigned'}</td>
-                      <td className="py-4 pr-4 text-slate-600">{employee.office_location_name || 'Unassigned'}</td>
+                      <td className="table-secondary py-4 pr-4">{employee.designation || 'Not assigned'}</td>
+                      <td className="table-secondary py-4 pr-4">{employee.department_name || 'Unassigned'}</td>
+                      <td className="table-secondary py-4 pr-4">{employee.office_location_name || 'Unassigned'}</td>
                       <td className="py-4 pr-4">
                         <StatusBadge tone={getEmployeeStatusTone(employee.status)}>{employee.status}</StatusBadge>
                       </td>
-                      <td className="py-4 pr-4 text-slate-600">{formatDate(employee.date_of_joining)}</td>
+                      <td className="table-secondary py-4 pr-4">{formatDate(employee.date_of_joining)}</td>
                       <td className="py-4 text-right">
-                        <Link to={`/org/employees/${employee.id}`} className="font-semibold text-[hsl(var(--primary))] hover:underline">
+                        <Link to={`/org/employees/${employee.id}`} className="font-semibold text-[hsl(var(--brand))] hover:underline">
                           Open
                         </Link>
                       </td>
@@ -246,7 +251,7 @@ export function EmployeesPage() {
             </div>
 
             {data.count > 20 ? (
-              <div className="mt-5 flex items-center justify-between text-sm text-slate-600">
+              <div className="mt-5 flex items-center justify-between text-sm text-[hsl(var(--muted-foreground))]">
                 <span>Page {page}</span>
                 <div className="flex gap-2">
                   <button type="button" className="btn-secondary disabled:opacity-40" disabled={!data.previous} onClick={() => setPage((current) => Math.max(1, current - 1))}>
@@ -260,7 +265,11 @@ export function EmployeesPage() {
             ) : null}
           </>
         ) : (
-          <p className="text-sm text-slate-500">No employees match the current filter.</p>
+          <EmptyState
+            title="No employees match the current filter"
+            description="Adjust the search term or status filter, or send the first invite to begin workforce onboarding."
+            icon={UserPlus}
+          />
         )}
       </SectionCard>
     </div>

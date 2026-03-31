@@ -11,9 +11,10 @@ import {
   useUpdateMyProfile,
   useUpsertGovernmentId,
 } from '@/hooks/useEmployeeSelf'
+import { EmptyState } from '@/components/ui/EmptyState'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
-import { Skeleton } from '@/components/ui/Skeleton'
+import { SkeletonFormBlock, SkeletonPageHeader, SkeletonTable } from '@/components/ui/Skeleton'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { getErrorMessage } from '@/lib/errors'
 import type { GovernmentIdType } from '@/types/hr'
@@ -144,10 +145,10 @@ export function ProfilePage() {
   if (isLoading || !profileData) {
     return (
       <div className="space-y-5">
-        <Skeleton className="h-10 w-72" />
+        <SkeletonPageHeader />
         <div className="grid gap-6 xl:grid-cols-2">
-          <Skeleton className="h-[32rem]" />
-          <Skeleton className="h-[32rem]" />
+          <SkeletonFormBlock rows={8} />
+          <SkeletonTable rows={7} />
         </div>
       </div>
     )
@@ -241,19 +242,35 @@ export function ProfilePage() {
         </SectionCard>
 
         <div className="space-y-6">
+          <SectionCard title="Completion snapshot" description="A quick view of the sections still shaping payroll readiness.">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="surface-muted rounded-[24px] p-5">
+                <p className="text-sm text-[hsl(var(--muted-foreground))]">Profile completion</p>
+                <p className="mt-3 text-3xl font-semibold tracking-tight text-[hsl(var(--foreground-strong))]">
+                  {profileData.profile_completion.percent}%
+                </p>
+              </div>
+              <div className="surface-muted rounded-[24px] p-5">
+                <p className="text-sm text-[hsl(var(--muted-foreground))]">Employee record</p>
+                <p className="mt-3 text-sm font-medium text-[hsl(var(--foreground-strong))]">{profileData.employee.full_name}</p>
+                <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">{profileData.employee.email}</p>
+              </div>
+            </div>
+          </SectionCard>
+
           <SectionCard title="Government IDs" description="Enter the full value again when updating a masked identifier.">
             <div className="space-y-6">
-              <div className="rounded-[24px] bg-slate-50 p-5">
+              <div className="surface-muted rounded-[24px] p-5">
                 <div className="flex items-center gap-3">
-                  <IdCard className="h-4 w-4 text-cyan-700" />
-                  <p className="font-semibold text-slate-950">PAN</p>
+                  <IdCard className="h-4 w-4 text-[hsl(var(--brand))]" />
+                  <p className="font-semibold text-[hsl(var(--foreground-strong))]">PAN</p>
                   {currentPan ? (
                     <StatusBadge tone={currentPan.status === 'VERIFIED' ? 'success' : currentPan.status === 'REJECTED' ? 'danger' : 'warning'}>
                       {currentPan.status}
                     </StatusBadge>
                   ) : null}
                 </div>
-                <p className="mt-2 text-sm text-slate-500">Current value: {currentPan?.identifier || 'Not provided'}</p>
+                <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">Current value: {currentPan?.identifier || 'Not provided'}</p>
                 <div className="mt-4 grid gap-4">
                   <div>
                     <label className="field-label" htmlFor="pan-identifier">
@@ -285,17 +302,17 @@ export function ProfilePage() {
                 </div>
               </div>
 
-              <div className="rounded-[24px] bg-slate-50 p-5">
+              <div className="surface-muted rounded-[24px] p-5">
                 <div className="flex items-center gap-3">
-                  <IdCard className="h-4 w-4 text-cyan-700" />
-                  <p className="font-semibold text-slate-950">Aadhaar</p>
+                  <IdCard className="h-4 w-4 text-[hsl(var(--brand))]" />
+                  <p className="font-semibold text-[hsl(var(--foreground-strong))]">Aadhaar</p>
                   {currentAadhaar ? (
                     <StatusBadge tone={currentAadhaar.status === 'VERIFIED' ? 'success' : currentAadhaar.status === 'REJECTED' ? 'danger' : 'warning'}>
                       {currentAadhaar.status}
                     </StatusBadge>
                   ) : null}
                 </div>
-                <p className="mt-2 text-sm text-slate-500">Current value: {currentAadhaar?.identifier || 'Not provided'}</p>
+                <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">Current value: {currentAadhaar?.identifier || 'Not provided'}</p>
                 <div className="mt-4 grid gap-4">
                   <div>
                     <label className="field-label" htmlFor="aadhaar-identifier">
@@ -333,11 +350,11 @@ export function ProfilePage() {
             {bankAccounts && bankAccounts.length > 0 ? (
               <div className="mb-5 space-y-3">
                 {bankAccounts.map((account) => (
-                  <div key={account.id} className="rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-3">
+                  <div key={account.id} className="surface-muted rounded-[24px] px-4 py-3">
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-3">
-                        <CreditCard className="h-4 w-4 text-cyan-700" />
-                        <p className="font-medium text-slate-950">{account.bank_name || 'Bank account'}</p>
+                        <CreditCard className="h-4 w-4 text-[hsl(var(--brand))]" />
+                        <p className="font-medium text-[hsl(var(--foreground-strong))]">{account.bank_name || 'Bank account'}</p>
                         {account.is_primary ? <StatusBadge tone="success">Primary</StatusBadge> : null}
                       </div>
                       <div className="flex gap-2">
@@ -349,7 +366,7 @@ export function ProfilePage() {
                         </button>
                       </div>
                     </div>
-                    <p className="mt-2 text-sm text-slate-600">
+                    <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
                       {account.account_holder_name} • {account.account_number} • {account.ifsc}
                     </p>
                   </div>
@@ -395,7 +412,7 @@ export function ProfilePage() {
                   ))}
                 </select>
               </div>
-              <label className="flex items-center gap-2 text-sm text-slate-600">
+              <label className="flex items-center gap-2 text-sm text-[hsl(var(--muted-foreground))]">
                 <input
                   type="checkbox"
                   checked={bankForm.is_primary}
@@ -417,6 +434,15 @@ export function ProfilePage() {
                 </button>
               </div>
             </form>
+            {!bankAccounts || bankAccounts.length === 0 ? (
+              <div className="mt-5">
+                <EmptyState
+                  title="No bank accounts saved yet"
+                  description="Add a primary bank account now so future payroll disbursement can be configured without more profile cleanup."
+                  icon={CreditCard}
+                />
+              </div>
+            ) : null}
           </SectionCard>
         </div>
       </div>

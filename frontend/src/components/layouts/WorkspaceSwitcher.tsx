@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { BriefcaseBusiness, Building2, UserRound } from 'lucide-react'
 
 import { useAuth } from '@/hooks/useAuth'
 
@@ -33,13 +34,14 @@ export function WorkspaceSwitcher({ currentMode }: WorkspaceSwitcherProps) {
   return (
     <div className="flex flex-wrap items-center gap-3">
       {user.has_org_admin_access ? (
-        <label className="flex items-center gap-2 rounded-[20px] border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
-          <span className="font-medium text-slate-500">Admin</span>
+        <label className="surface-shell flex items-center gap-2 rounded-[20px] px-3 py-2 text-sm text-[hsl(var(--muted-foreground-strong))]">
+          <BriefcaseBusiness className="h-4 w-4 text-[hsl(var(--brand))]" />
+          <span className="font-medium text-[hsl(var(--muted-foreground))]">Admin</span>
           <select
             value={activeAdmin?.organisation_id ?? ''}
             onChange={(event) => void handleSwitch('ADMIN', event.target.value)}
             disabled={isSwitching || user.admin_organisations.length === 0}
-            className="bg-transparent text-sm font-medium text-slate-900 outline-none"
+            className="bg-transparent text-sm font-medium text-[hsl(var(--foreground-strong))] outline-none"
           >
             {user.admin_organisations.map((workspace) => (
               <option key={workspace.organisation_id} value={workspace.organisation_id}>
@@ -51,13 +53,14 @@ export function WorkspaceSwitcher({ currentMode }: WorkspaceSwitcherProps) {
       ) : null}
 
       {user.has_employee_access ? (
-        <label className="flex items-center gap-2 rounded-[20px] border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
-          <span className="font-medium text-slate-500">Employee</span>
+        <label className="surface-shell flex items-center gap-2 rounded-[20px] px-3 py-2 text-sm text-[hsl(var(--muted-foreground-strong))]">
+          <UserRound className="h-4 w-4 text-[hsl(var(--accent))]" />
+          <span className="font-medium text-[hsl(var(--muted-foreground))]">Employee</span>
           <select
             value={activeEmployee?.organisation_id ?? ''}
             onChange={(event) => void handleSwitch('EMPLOYEE', event.target.value)}
             disabled={isSwitching || user.employee_workspaces.length === 0}
-            className="bg-transparent text-sm font-medium text-slate-900 outline-none"
+            className="bg-transparent text-sm font-medium text-[hsl(var(--foreground-strong))] outline-none"
           >
             {user.employee_workspaces.map((workspace) => (
               <option key={workspace.employee_id} value={workspace.organisation_id}>
@@ -75,6 +78,7 @@ export function WorkspaceSwitcher({ currentMode }: WorkspaceSwitcherProps) {
           disabled={isSwitching}
           className="btn-secondary"
         >
+          <UserRound className="h-4 w-4" />
           Open employee workspace
         </button>
       ) : null}
@@ -86,6 +90,7 @@ export function WorkspaceSwitcher({ currentMode }: WorkspaceSwitcherProps) {
           disabled={isSwitching}
           className="btn-secondary"
         >
+          <Building2 className="h-4 w-4" />
           Open admin workspace
         </button>
       ) : null}

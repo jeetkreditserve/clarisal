@@ -3,11 +3,11 @@ import { cn } from '@/lib/utils'
 type StatusTone = 'neutral' | 'info' | 'success' | 'warning' | 'danger'
 
 const toneClasses: Record<StatusTone, string> = {
-  neutral: 'bg-slate-100 text-slate-700 border-slate-200',
-  info: 'bg-sky-100 text-sky-800 border-sky-200',
-  success: 'bg-emerald-100 text-emerald-800 border-emerald-200',
-  warning: 'bg-amber-100 text-amber-900 border-amber-200',
-  danger: 'bg-rose-100 text-rose-800 border-rose-200',
+  neutral: 'bg-[hsl(var(--surface-subtle))] text-[hsl(var(--muted-foreground-strong))] border-[hsla(var(--border),0.92)]',
+  info: 'bg-[hsl(var(--info-soft))] text-[hsl(var(--info))] border-[hsla(var(--info),0.2)]',
+  success: 'bg-[hsl(var(--success-soft))] text-[hsl(var(--success))] border-[hsla(var(--success),0.2)]',
+  warning: 'bg-[hsl(var(--warning-soft))] text-[hsl(var(--warning))] border-[hsla(var(--warning),0.2)]',
+  danger: 'bg-[hsl(var(--destructive-soft))] text-[hsl(var(--destructive))] border-[hsla(var(--destructive),0.2)]',
 }
 
 interface StatusBadgeProps {
@@ -20,7 +20,7 @@ export function StatusBadge({ children, tone = 'neutral', className }: StatusBad
   return (
     <span
       className={cn(
-        'inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold tracking-wide',
+        'status-pill',
         toneClasses[tone],
         className
       )}

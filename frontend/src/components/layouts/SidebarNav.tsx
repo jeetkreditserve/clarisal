@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom'
+import { motion } from 'motion/react'
 import { cn } from '@/lib/utils'
-import { ChevronRight, Shield } from 'lucide-react'
+import { ChevronRight, Shield, Sparkles } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 export interface NavItem {
@@ -17,48 +18,68 @@ interface SidebarNavProps {
 
 export function SidebarNav({ items, title, subtitle }: SidebarNavProps) {
   return (
-    <aside className="surface-card m-4 flex shrink-0 flex-col rounded-[32px] bg-[linear-gradient(180deg,#0a1422_0%,#0d2133_50%,#15334c_100%)] p-4 text-[hsl(var(--sidebar-foreground))] lg:sticky lg:top-4 lg:h-[calc(100vh-2rem)] lg:w-[280px]">
-      <div className="rounded-[24px] border border-white/10 bg-white/7 p-5">
+    <aside className="sidebar-surface m-4 flex shrink-0 flex-col rounded-[34px] p-4 lg:sticky lg:top-4 lg:h-[calc(100vh-2rem)] lg:w-[292px]">
+      <motion.div
+        initial={{ opacity: 0, y: 18 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.24, ease: 'easeOut' }}
+        className="rounded-[28px] border border-white/10 bg-white/6 p-5"
+      >
         <div className="flex items-center gap-3">
-          <div className="rounded-2xl bg-cyan-300/14 p-3 text-cyan-200 ring-1 ring-cyan-200/12">
+          <div className="rounded-2xl bg-white/10 p-3 text-[hsl(var(--sidebar-foreground))] ring-1 ring-white/10">
             <Shield className="h-5 w-5" />
           </div>
           <div>
             <p className="text-base font-semibold">{title}</p>
-            {subtitle ? <p className="text-xs text-slate-300">{subtitle}</p> : null}
+            {subtitle ? <p className="text-xs text-[hsl(var(--sidebar-muted))]">{subtitle}</p> : null}
           </div>
         </div>
-        <p className="mt-4 text-sm leading-6 text-slate-300">
+        <p className="mt-4 text-sm leading-6 text-[hsl(var(--sidebar-muted))]">
           Govern onboarding, people operations, and document state from a single controlled workspace.
         </p>
-      </div>
+      </motion.div>
 
       <nav className="mt-4 grid gap-2 sm:grid-cols-2 lg:flex lg:flex-1 lg:flex-col">
-        {items.map((item) => (
-          <NavLink
+        {items.map((item, index) => (
+          <motion.div
             key={item.href}
-            to={item.href}
-            className={({ isActive }) =>
-              cn(
-                'group flex items-center justify-between rounded-[20px] px-4 py-3 text-sm transition-all duration-150',
-                isActive
-                  ? 'bg-cyan-300/90 text-slate-950 shadow-[0_10px_22px_rgba(103,232,249,0.22)]'
-                  : 'border border-transparent text-slate-200 hover:border-white/8 hover:bg-white/7 hover:text-white'
-              )
-            }
+            initial={{ opacity: 0, x: -14 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.22, delay: 0.05 + index * 0.03, ease: 'easeOut' }}
           >
-            <span className="flex items-center gap-3">
-              <item.icon className="h-4 w-4 shrink-0" />
-              {item.label}
-            </span>
-            <ChevronRight className="h-4 w-4 opacity-40 transition-transform group-hover:translate-x-0.5 group-hover:opacity-70" />
-          </NavLink>
+            <NavLink
+              to={item.href}
+              className={({ isActive }) =>
+                cn(
+                  'group flex items-center justify-between rounded-[22px] px-4 py-3 text-sm transition-all duration-150',
+                  isActive
+                    ? 'bg-[hsl(var(--sidebar-active-bg))] text-[hsl(var(--sidebar-active-fg))] shadow-[0_18px_34px_rgba(96,165,250,0.22)]'
+                    : 'border border-transparent text-[hsl(var(--sidebar-foreground))] hover:border-white/10 hover:bg-white/7'
+                )
+              }
+            >
+              <span className="flex items-center gap-3">
+                <item.icon className="h-4 w-4 shrink-0" />
+                {item.label}
+              </span>
+              <ChevronRight className="h-4 w-4 opacity-40 transition-transform group-hover:translate-x-0.5 group-hover:opacity-80" />
+            </NavLink>
+          </motion.div>
         ))}
       </nav>
 
-      <div className="mt-4 rounded-[24px] border border-white/10 bg-white/7 p-5 text-sm leading-6 text-slate-300">
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.28, delay: 0.22, ease: 'easeOut' }}
+        className="mt-4 rounded-[28px] border border-white/10 bg-white/6 p-5 text-sm leading-6 text-[hsl(var(--sidebar-muted))]"
+      >
+        <div className="mb-3 flex items-center gap-2 text-[hsl(var(--sidebar-foreground))]">
+          <Sparkles className="h-4 w-4" />
+          <span className="text-xs font-semibold uppercase tracking-[0.18em]">Guardrails</span>
+        </div>
         Organisation access is enforced by session auth, tenant scoping, and backend role checks.
-      </div>
+      </motion.div>
     </aside>
   )
 }

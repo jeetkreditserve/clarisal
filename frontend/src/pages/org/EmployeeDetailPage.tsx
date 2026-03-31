@@ -15,7 +15,8 @@ import {
 } from '@/hooks/useOrgAdmin'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
-import { Skeleton } from '@/components/ui/Skeleton'
+import { EmptyState } from '@/components/ui/EmptyState'
+import { SkeletonFormBlock, SkeletonPageHeader, SkeletonTable } from '@/components/ui/Skeleton'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { formatDateTime, startCase } from '@/lib/format'
 import { getErrorMessage } from '@/lib/errors'
@@ -47,11 +48,11 @@ export function EmployeeDetailPage() {
   if (isLoading || !employee) {
     return (
       <div className="space-y-5">
-        <Skeleton className="h-10 w-72" />
-        <Skeleton className="h-52" />
+        <SkeletonPageHeader />
+        <SkeletonFormBlock rows={6} />
         <div className="grid gap-6 xl:grid-cols-2">
-          <Skeleton className="h-80" />
-          <Skeleton className="h-80" />
+          <SkeletonTable rows={5} />
+          <SkeletonTable rows={5} />
         </div>
       </div>
     )
@@ -125,7 +126,7 @@ export function EmployeeDetailPage() {
 
   return (
     <div className="space-y-6">
-      <Link to="/org/employees" className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-slate-950">
+      <Link to="/org/employees" className="inline-flex items-center gap-2 text-sm font-medium text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground-strong))]">
         <ArrowLeft className="h-4 w-4" />
         Back to employees
       </Link>
@@ -260,51 +261,51 @@ export function EmployeeDetailPage() {
               ['Emergency relation', employee.profile.emergency_contact_relation || 'Not provided'],
               ['Address', [employee.profile.address_line1, employee.profile.city, employee.profile.state, employee.profile.country].filter(Boolean).join(', ') || 'Not provided'],
             ].map(([label, value]) => (
-              <div key={label} className="rounded-[24px] bg-slate-50 p-5">
-                <p className="text-sm text-slate-500">{label}</p>
-                <p className="mt-2 text-sm font-medium text-slate-900">{value}</p>
+              <div key={label} className="surface-muted rounded-[24px] p-5">
+                <p className="text-sm text-[hsl(var(--muted-foreground))]">{label}</p>
+                <p className="mt-2 text-sm font-medium text-[hsl(var(--foreground-strong))]">{value}</p>
               </div>
             ))}
           </div>
 
           <div className="mt-5 grid gap-5 md:grid-cols-2">
             <div>
-              <p className="text-sm font-semibold text-slate-700">Government IDs</p>
+              <p className="text-sm font-semibold text-[hsl(var(--foreground-strong))]">Government IDs</p>
               <div className="mt-3 space-y-3">
                 {employee.government_ids.length > 0 ? (
                   employee.government_ids.map((record) => (
-                    <div key={record.id} className="rounded-[20px] border border-slate-200 bg-white px-4 py-3">
+                    <div key={record.id} className="surface-shell rounded-[20px] px-4 py-3">
                       <div className="flex items-center justify-between">
-                        <p className="font-medium text-slate-950">{record.id_type}</p>
+                        <p className="font-medium text-[hsl(var(--foreground-strong))]">{record.id_type}</p>
                         <StatusBadge tone={record.status === 'VERIFIED' ? 'success' : record.status === 'REJECTED' ? 'danger' : 'warning'}>
                           {record.status}
                         </StatusBadge>
                       </div>
-                      <p className="mt-2 text-sm text-slate-600">{record.identifier}</p>
+                      <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">{record.identifier}</p>
                     </div>
                   ))
                 ) : (
-                  <p className="text-sm text-slate-500">No government IDs submitted yet.</p>
+                  <p className="text-sm text-[hsl(var(--muted-foreground))]">No government IDs submitted yet.</p>
                 )}
               </div>
             </div>
             <div>
-              <p className="text-sm font-semibold text-slate-700">Bank accounts</p>
+              <p className="text-sm font-semibold text-[hsl(var(--foreground-strong))]">Bank accounts</p>
               <div className="mt-3 space-y-3">
                 {employee.bank_accounts.length > 0 ? (
                   employee.bank_accounts.map((account) => (
-                    <div key={account.id} className="rounded-[20px] border border-slate-200 bg-white px-4 py-3">
+                    <div key={account.id} className="surface-shell rounded-[20px] px-4 py-3">
                       <div className="flex items-center justify-between">
-                        <p className="font-medium text-slate-950">{account.bank_name || 'Bank account'}</p>
+                        <p className="font-medium text-[hsl(var(--foreground-strong))]">{account.bank_name || 'Bank account'}</p>
                         {account.is_primary ? <StatusBadge tone="success">Primary</StatusBadge> : null}
                       </div>
-                      <p className="mt-2 text-sm text-slate-600">
+                      <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
                         {account.account_holder_name} • {account.account_number} • {account.ifsc}
                       </p>
                     </div>
                   ))
                 ) : (
-                  <p className="text-sm text-slate-500">No bank accounts submitted yet.</p>
+                  <p className="text-sm text-[hsl(var(--muted-foreground))]">No bank accounts submitted yet.</p>
                 )}
               </div>
             </div>
@@ -314,27 +315,27 @@ export function EmployeeDetailPage() {
 
       <SectionCard title="Documents" description="Review and act on employee-uploaded documents.">
         {documents && documents.length > 0 ? (
-          <div className="overflow-x-auto">
+          <div className="table-shell">
             <table className="min-w-full text-sm">
               <thead>
-                <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-[0.16em] text-slate-500">
+                <tr className="table-head-row">
                   <th className="pb-3 pr-4 font-semibold">Document</th>
                   <th className="pb-3 pr-4 font-semibold">Status</th>
                   <th className="pb-3 pr-4 font-semibold">Uploaded</th>
                   <th className="pb-3 text-right font-semibold">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200/80">
+              <tbody className="table-body">
                 {documents.map((document) => (
-                  <tr key={document.id}>
+                  <tr key={document.id} className="table-row border-b border-[hsla(var(--border),0.76)] last:border-b-0">
                     <td className="py-4 pr-4">
-                      <p className="font-semibold text-slate-950">{startCase(document.document_type)}</p>
-                      <p className="mt-1 text-xs text-slate-500">{document.file_name}</p>
+                      <p className="table-primary font-semibold">{startCase(document.document_type)}</p>
+                      <p className="table-secondary mt-1 text-xs">{document.file_name}</p>
                     </td>
                     <td className="py-4 pr-4">
                       <StatusBadge tone={getDocumentStatusTone(document.status)}>{document.status}</StatusBadge>
                     </td>
-                    <td className="py-4 pr-4 text-slate-600">{formatDateTime(document.created_at)}</td>
+                    <td className="table-secondary py-4 pr-4">{formatDateTime(document.created_at)}</td>
                     <td className="py-4 text-right">
                       <div className="flex justify-end gap-2">
                         <button type="button" onClick={() => handleDownload(document.id)} className="btn-secondary">
@@ -360,9 +361,11 @@ export function EmployeeDetailPage() {
             </table>
           </div>
         ) : (
-          <div className="rounded-[24px] border border-dashed border-slate-300 bg-slate-50 px-6 py-8 text-sm text-slate-500">
-            No documents uploaded yet for this employee.
-          </div>
+          <EmptyState
+            title="No documents uploaded yet"
+            description="This employee has not submitted any files for review yet."
+            icon={FileCheck2}
+          />
         )}
       </SectionCard>
     </div>

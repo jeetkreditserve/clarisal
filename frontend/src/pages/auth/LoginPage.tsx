@@ -31,14 +31,15 @@ export function LoginPage() {
 
   return (
     <AuthShell
+      variant="workforce"
       title="Sign in to your workplace"
       description="Default sign-in for organisation admins and employees. Access your collated admin workspace or employee self-service."
       footer={
         <div className="flex items-center justify-between gap-4">
-          <a href="/auth/reset-password" className="font-medium text-[hsl(var(--primary))] hover:underline">
+          <a href="/auth/reset-password" className="auth-link">
             Forgot your password?
           </a>
-          <a href="/ct/login" className="font-medium text-slate-500 hover:text-slate-900 hover:underline">
+          <a href="/ct/login" className="font-medium text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground-strong))] hover:underline">
             Control Tower login
           </a>
         </div>
@@ -77,7 +78,7 @@ export function LoginPage() {
         </div>
 
         {error ? (
-          <div className="rounded-[20px] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{error}</div>
+          <div className="notice-error">{error}</div>
         ) : null}
 
         <button type="submit" disabled={isLoading} className="btn-primary w-full">

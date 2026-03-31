@@ -2,9 +2,10 @@ import { useState } from 'react'
 import { MapPin } from 'lucide-react'
 import { toast } from 'sonner'
 import { useCreateLocation, useDeactivateLocation, useLocations, useUpdateLocation } from '@/hooks/useOrgAdmin'
+import { EmptyState } from '@/components/ui/EmptyState'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
-import { Skeleton } from '@/components/ui/Skeleton'
+import { SkeletonPageHeader, SkeletonTable } from '@/components/ui/Skeleton'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { formatDate } from '@/lib/format'
 import { getErrorMessage } from '@/lib/errors'
@@ -73,11 +74,15 @@ export function LocationsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        eyebrow="Master data"
-        title="Office locations"
-        description="Maintain the office sites employees can be assigned to."
-      />
+      {isLoading && !data ? (
+        <SkeletonPageHeader />
+      ) : (
+        <PageHeader
+          eyebrow="Master data"
+          title="Office locations"
+          description="Maintain the office sites employees can be assigned to."
+        />
+      )}
 
       <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
         <SectionCard title={editingId ? 'Edit location' : 'Add location'} description="Capture a valid worksite or office assignment option.">
@@ -120,7 +125,7 @@ export function LocationsPage() {
           title="Location directory"
           description="Every location can be activated or deactivated without losing historical employee references."
           action={
-            <label className="flex items-center gap-2 text-sm text-slate-600">
+            <label className="flex items-center gap-2 text-sm text-[hsl(var(--muted-foreground))]">
               <input
                 type="checkbox"
                 checked={includeInactive}
@@ -131,27 +136,23 @@ export function LocationsPage() {
           }
         >
           {isLoading ? (
-            <div className="space-y-3">
-              {Array.from({ length: 5 }).map((_, index) => (
-                <Skeleton key={index} className="h-16" />
-              ))}
-            </div>
+            <SkeletonTable rows={5} />
           ) : data && data.length > 0 ? (
             <div className="space-y-3">
               {data.map((location) => (
-                <div key={location.id} className="flex flex-col gap-4 rounded-[24px] border border-slate-200 bg-slate-50 p-5 lg:flex-row lg:items-center lg:justify-between">
+                <div key={location.id} className="surface-muted flex flex-col gap-4 rounded-[24px] p-5 lg:flex-row lg:items-center lg:justify-between">
                   <div>
                     <div className="flex items-center gap-3">
-                      <MapPin className="h-4 w-4 text-cyan-700" />
-                      <p className="font-semibold text-slate-950">{location.name}</p>
+                      <MapPin className="h-4 w-4 text-[hsl(var(--brand))]" />
+                      <p className="font-semibold text-[hsl(var(--foreground-strong))]">{location.name}</p>
                       <StatusBadge tone={location.is_active ? 'success' : 'warning'}>
                         {location.is_active ? 'Active' : 'Inactive'}
                       </StatusBadge>
                     </div>
-                    <p className="mt-2 text-sm text-slate-600">
+                    <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
                       {[location.address, location.city, location.state, location.country, location.pincode].filter(Boolean).join(', ') || 'No address provided'}
                     </p>
-                    <p className="mt-2 text-xs uppercase tracking-[0.16em] text-slate-500">Updated {formatDate(location.updated_at)}</p>
+                    <p className="mt-2 text-xs uppercase tracking-[0.16em] text-[hsl(var(--muted-foreground))]">Updated {formatDate(location.updated_at)}</p>
                   </div>
                   <div className="flex gap-3">
                     <button type="button" onClick={() => handleEdit(location)} className="btn-secondary">
@@ -167,7 +168,11 @@ export function LocationsPage() {
               ))}
             </div>
           ) : (
-            <p className="text-sm text-slate-500">No locations added yet.</p>
+            <EmptyState
+              title="No locations added yet"
+              description="Create the first office location so employees can be assigned to a real worksite."
+              icon={MapPin}
+            />
           )}
         </SectionCard>
       </div>

@@ -23,13 +23,14 @@ export function ControlTowerRequestPasswordResetPage() {
 
   return (
     <AuthShell
+      variant="control-tower"
       title={submitted ? 'Check your inbox' : 'Reset Control Tower password'}
       description={
         submitted
           ? `If ${email} is registered for Control Tower, a password reset email has been sent.`
           : 'Enter your Control Tower email and we will send a secure password reset link.'
       }
-      footer={<a href="/ct/login" className="font-medium text-[hsl(var(--primary))] hover:underline">Back to Control Tower sign in</a>}
+      footer={<a href="/ct/login" className="auth-link">Back to Control Tower sign in</a>}
     >
       {submitted ? null : (
         <form onSubmit={handleSubmit} className="space-y-5">

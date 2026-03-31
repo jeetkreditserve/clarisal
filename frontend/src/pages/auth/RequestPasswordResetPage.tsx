@@ -22,13 +22,14 @@ export function RequestPasswordResetPage() {
 
   return (
     <AuthShell
+      variant="setup"
       title={submitted ? 'Check your inbox' : 'Reset your password'}
       description={
         submitted
           ? `If ${email} is registered, a password reset email has been sent.`
           : 'Enter your work email and we will send a secure password reset link.'
       }
-      footer={<a href="/auth/login" className="font-medium text-[hsl(var(--primary))] hover:underline">Back to sign in</a>}
+      footer={<a href="/auth/login" className="auth-link">Back to sign in</a>}
     >
       {submitted ? null : (
         <form onSubmit={handleSubmit} className="space-y-5">

@@ -32,14 +32,15 @@ export function ControlTowerLoginPage() {
 
   return (
     <AuthShell
+      variant="control-tower"
       title="Control Tower sign in"
       description="Separate secure access for Calrisal platform operators and Django admin users."
       footer={
         <div className="flex items-center justify-between gap-4">
-          <a href="/ct/reset-password" className="font-medium text-[hsl(var(--primary))] hover:underline">
+          <a href="/ct/reset-password" className="auth-link">
             Forgot your password?
           </a>
-          <a href="/auth/login" className="font-medium text-slate-500 hover:text-slate-900 hover:underline">
+          <a href="/auth/login" className="font-medium text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground-strong))] hover:underline">
             Workforce login
           </a>
         </div>
@@ -78,7 +79,7 @@ export function ControlTowerLoginPage() {
         </div>
 
         {error ? (
-          <div className="rounded-[20px] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{error}</div>
+          <div className="notice-error">{error}</div>
         ) : null}
 
         <button type="submit" disabled={isLoading} className="btn-primary w-full">

@@ -2,9 +2,10 @@ import { useState } from 'react'
 import { Download, FileUp } from 'lucide-react'
 import { toast } from 'sonner'
 import { useMyDocumentDownload, useMyDocuments, useUploadMyDocument } from '@/hooks/useEmployeeSelf'
+import { EmptyState } from '@/components/ui/EmptyState'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
-import { Skeleton } from '@/components/ui/Skeleton'
+import { SkeletonPageHeader, SkeletonTable } from '@/components/ui/Skeleton'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { formatDateTime, startCase } from '@/lib/format'
 import { getErrorMessage } from '@/lib/errors'
@@ -55,11 +56,15 @@ export function DocumentsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        eyebrow="Documents"
-        title="My documents"
-        description="Upload PAN, Aadhaar, education, or other onboarding documents for verification."
-      />
+      {isLoading && !data ? (
+        <SkeletonPageHeader />
+      ) : (
+        <PageHeader
+          eyebrow="Documents"
+          title="My documents"
+          description="Upload PAN, Aadhaar, education, or other onboarding documents for verification."
+        />
+      )}
 
       <div className="grid gap-6 xl:grid-cols-[0.85fr_1.15fr]">
         <SectionCard title="Upload document" description="Files are stored privately and shared through secure signed links.">
@@ -105,6 +110,9 @@ export function DocumentsPage() {
                 placeholder="Optional context for the reviewer"
               />
             </div>
+            <div className="notice-info">
+              Upload clear scans or PDFs. Review status updates are reflected here after your organisation administrator verifies or rejects the file.
+            </div>
             <button type="submit" className="btn-primary" disabled={uploadMutation.isPending}>
               <FileUp className="h-4 w-4" />
               {uploadMutation.isPending ? 'Uploading...' : 'Upload document'}
@@ -114,33 +122,29 @@ export function DocumentsPage() {
 
         <SectionCard title="Uploaded documents" description="Track review progress and re-open approved or rejected files.">
           {isLoading ? (
-            <div className="space-y-3">
-              {Array.from({ length: 4 }).map((_, index) => (
-                <Skeleton key={index} className="h-16" />
-              ))}
-            </div>
+            <SkeletonTable rows={4} />
           ) : data && data.length > 0 ? (
-            <div className="overflow-x-auto">
+            <div className="table-shell">
               <table className="min-w-full text-sm">
                 <thead>
-                  <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-[0.16em] text-slate-500">
+                  <tr className="table-head-row">
                     <th className="pb-3 pr-4 font-semibold">Document</th>
                     <th className="pb-3 pr-4 font-semibold">Status</th>
                     <th className="pb-3 pr-4 font-semibold">Uploaded</th>
                     <th className="pb-3 text-right font-semibold">Action</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-200/80">
+                <tbody className="table-body">
                   {data.map((document) => (
-                    <tr key={document.id}>
+                    <tr key={document.id} className="table-row border-b border-[hsla(var(--border),0.76)] last:border-b-0">
                       <td className="py-4 pr-4">
-                        <p className="font-semibold text-slate-950">{startCase(document.document_type)}</p>
-                        <p className="mt-1 text-xs text-slate-500">{document.file_name}</p>
+                        <p className="table-primary font-semibold">{startCase(document.document_type)}</p>
+                        <p className="table-secondary mt-1 text-xs">{document.file_name}</p>
                       </td>
                       <td className="py-4 pr-4">
                         <StatusBadge tone={getDocumentStatusTone(document.status)}>{document.status}</StatusBadge>
                       </td>
-                      <td className="py-4 pr-4 text-slate-600">{formatDateTime(document.created_at)}</td>
+                      <td className="table-secondary py-4 pr-4">{formatDateTime(document.created_at)}</td>
                       <td className="py-4 text-right">
                         <button type="button" className="btn-secondary" onClick={() => handleDownload(document.id)}>
                           <Download className="h-4 w-4" />
@@ -153,7 +157,11 @@ export function DocumentsPage() {
               </table>
             </div>
           ) : (
-            <p className="text-sm text-slate-500">No documents uploaded yet.</p>
+            <EmptyState
+              title="No documents uploaded yet"
+              description="Upload your first onboarding document so your administrator can begin verification."
+              icon={FileUp}
+            />
           )}
         </SectionCard>
       </div>

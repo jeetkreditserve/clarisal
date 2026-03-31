@@ -7,9 +7,10 @@ import {
   useDepartments,
   useUpdateDepartment,
 } from '@/hooks/useOrgAdmin'
+import { EmptyState } from '@/components/ui/EmptyState'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
-import { Skeleton } from '@/components/ui/Skeleton'
+import { SkeletonPageHeader, SkeletonTable } from '@/components/ui/Skeleton'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { formatDate } from '@/lib/format'
 import { getErrorMessage } from '@/lib/errors'
@@ -64,11 +65,15 @@ export function DepartmentsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        eyebrow="Master data"
-        title="Departments"
-        description="Define the organisation structure employees will belong to."
-      />
+      {isLoading && !data ? (
+        <SkeletonPageHeader />
+      ) : (
+        <PageHeader
+          eyebrow="Master data"
+          title="Departments"
+          description="Define the organisation structure employees will belong to."
+        />
+      )}
 
       <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
         <SectionCard title={editingId ? 'Edit department' : 'Add department'} description="Use unique department names for reporting and assignment.">
@@ -109,7 +114,7 @@ export function DepartmentsPage() {
           title="Department directory"
           description="Inactive departments remain in history but cannot receive active employees."
           action={
-            <label className="flex items-center gap-2 text-sm text-slate-600">
+            <label className="flex items-center gap-2 text-sm text-[hsl(var(--muted-foreground))]">
               <input
                 type="checkbox"
                 checked={includeInactive}
@@ -120,25 +125,21 @@ export function DepartmentsPage() {
           }
         >
           {isLoading ? (
-            <div className="space-y-3">
-              {Array.from({ length: 5 }).map((_, index) => (
-                <Skeleton key={index} className="h-16" />
-              ))}
-            </div>
+            <SkeletonTable rows={5} />
           ) : data && data.length > 0 ? (
             <div className="space-y-3">
               {data.map((department) => (
-                <div key={department.id} className="flex flex-col gap-4 rounded-[24px] border border-slate-200 bg-slate-50 p-5 lg:flex-row lg:items-center lg:justify-between">
+                <div key={department.id} className="surface-muted flex flex-col gap-4 rounded-[24px] p-5 lg:flex-row lg:items-center lg:justify-between">
                   <div>
                     <div className="flex items-center gap-3">
-                      <Building className="h-4 w-4 text-cyan-700" />
-                      <p className="font-semibold text-slate-950">{department.name}</p>
+                      <Building className="h-4 w-4 text-[hsl(var(--brand))]" />
+                      <p className="font-semibold text-[hsl(var(--foreground-strong))]">{department.name}</p>
                       <StatusBadge tone={department.is_active ? 'success' : 'warning'}>
                         {department.is_active ? 'Active' : 'Inactive'}
                       </StatusBadge>
                     </div>
-                    <p className="mt-2 text-sm text-slate-600">{department.description || 'No description provided.'}</p>
-                    <p className="mt-2 text-xs uppercase tracking-[0.16em] text-slate-500">Updated {formatDate(department.updated_at)}</p>
+                    <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">{department.description || 'No description provided.'}</p>
+                    <p className="mt-2 text-xs uppercase tracking-[0.16em] text-[hsl(var(--muted-foreground))]">Updated {formatDate(department.updated_at)}</p>
                   </div>
                   <div className="flex gap-3">
                     <button type="button" onClick={() => handleEdit(department)} className="btn-secondary">
@@ -154,7 +155,11 @@ export function DepartmentsPage() {
               ))}
             </div>
           ) : (
-            <p className="text-sm text-slate-500">No departments added yet.</p>
+            <EmptyState
+              title="No departments added yet"
+              description="Create the first department so employees can be grouped for reporting and assignment."
+              icon={Building}
+            />
           )}
         </SectionCard>
       </div>

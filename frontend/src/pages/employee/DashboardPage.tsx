@@ -4,7 +4,7 @@ import { useMyDashboard, useMyProfile } from '@/hooks/useEmployeeSelf'
 import { MetricCard } from '@/components/ui/MetricCard'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
-import { Skeleton } from '@/components/ui/Skeleton'
+import { SkeletonMetricCard, SkeletonTable } from '@/components/ui/Skeleton'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { startCase } from '@/lib/format'
 
@@ -34,12 +34,12 @@ export function EmployeeDashboardPage() {
         <div className="space-y-5">
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             {Array.from({ length: 4 }).map((_, index) => (
-              <Skeleton key={index} className="h-32" />
+              <SkeletonMetricCard key={index} />
             ))}
           </div>
           <div className="grid gap-6 xl:grid-cols-2">
-            <Skeleton className="h-72" />
-            <Skeleton className="h-72" />
+            <SkeletonTable rows={4} />
+            <SkeletonTable rows={4} />
           </div>
         </div>
       ) : (
@@ -61,7 +61,7 @@ export function EmployeeDashboardPage() {
                     </StatusBadge>
                   ))
                 ) : (
-                  <p className="text-sm text-slate-500">No profile sections completed yet.</p>
+                  <p className="text-sm text-[hsl(var(--muted-foreground))]">No profile sections completed yet.</p>
                 )}
               </div>
             </SectionCard>
@@ -74,10 +74,10 @@ export function EmployeeDashboardPage() {
                   </StatusBadge>
                 ))}
               </div>
-              <div className="mt-5 rounded-[24px] bg-slate-50 p-5 text-sm text-slate-600">
-                <p className="font-medium text-slate-900">Current name</p>
+              <div className="surface-muted mt-5 rounded-[24px] p-5 text-sm text-[hsl(var(--muted-foreground))]">
+                <p className="font-medium text-[hsl(var(--foreground-strong))]">Current name</p>
                 <p className="mt-1">{profile?.employee.full_name || 'Employee'}</p>
-                <p className="mt-4 font-medium text-slate-900">Organisation</p>
+                <p className="mt-4 font-medium text-[hsl(var(--foreground-strong))]">Organisation</p>
                 <p className="mt-1">{profile?.employee.email}</p>
               </div>
             </SectionCard>

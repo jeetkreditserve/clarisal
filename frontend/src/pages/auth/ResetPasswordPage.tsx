@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { AuthShell } from '@/components/auth/AuthShell'
+import { Skeleton } from '@/components/ui/Skeleton'
 import { confirmPasswordReset, validatePasswordResetToken } from '@/lib/api/auth'
 import { getErrorMessage } from '@/lib/errors'
 import { getDefaultRoute } from '@/lib/rbac'
@@ -63,11 +64,11 @@ export function ResetPasswordPage() {
 
   if (isLoading) {
     return (
-      <AuthShell title="Validating reset link" description="Checking your secure password reset request.">
+      <AuthShell variant="setup" title="Validating reset link" description="Checking your secure password reset request.">
         <div className="space-y-4">
-          <div className="h-14 rounded-[20px] bg-slate-100" />
-          <div className="h-14 rounded-[20px] bg-slate-100" />
-          <div className="h-14 rounded-[20px] bg-slate-100" />
+          <Skeleton className="h-14" />
+          <Skeleton className="h-14" />
+          <Skeleton className="h-14" />
         </div>
       </AuthShell>
     )
@@ -78,9 +79,10 @@ export function ResetPasswordPage() {
     const requestLink = location.pathname.startsWith('/ct/') ? '/ct/reset-password' : '/auth/reset-password'
     return (
       <AuthShell
+        variant={location.pathname.startsWith('/ct/') ? 'control-tower' : 'setup'}
         title="Reset link unavailable"
         description={error || 'The reset link is invalid, expired, or already used.'}
-        footer={<a href={requestLink} className="font-medium text-[hsl(var(--primary))] hover:underline">Request a new reset link</a>}
+        footer={<a href={requestLink} className="auth-link">Request a new reset link</a>}
       >
         <a href={backLink} className="btn-secondary w-full">
           Return to sign in
@@ -93,9 +95,10 @@ export function ResetPasswordPage() {
 
   return (
     <AuthShell
+      variant={accountType === 'CONTROL_TOWER' ? 'control-tower' : 'setup'}
       title="Create a new password"
       description={`Resetting access for ${email}. Set a strong password to continue.`}
-      footer={<a href={backLink} className="font-medium text-[hsl(var(--primary))] hover:underline">Back to sign in</a>}
+      footer={<a href={backLink} className="auth-link">Back to sign in</a>}
     >
       <form onSubmit={handleSubmit} className="space-y-5">
         <div>
@@ -128,7 +131,7 @@ export function ResetPasswordPage() {
         </div>
 
         {error ? (
-          <div className="rounded-[20px] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{error}</div>
+          <div className="notice-error">{error}</div>
         ) : null}
 
         <button type="submit" disabled={isSubmitting} className="btn-primary w-full">

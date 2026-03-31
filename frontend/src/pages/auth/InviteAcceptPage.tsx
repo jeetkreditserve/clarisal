@@ -4,6 +4,7 @@ import { acceptInvite, validateInviteToken } from '@/lib/api/invitations'
 import { getDefaultRoute } from '@/lib/rbac'
 import { getErrorMessage } from '@/lib/errors'
 import { AuthShell } from '@/components/auth/AuthShell'
+import { Skeleton } from '@/components/ui/Skeleton'
 import { useAuth } from '@/hooks/useAuth'
 
 export function InviteAcceptPage() {
@@ -60,12 +61,21 @@ export function InviteAcceptPage() {
   }
 
   if (tokenValid === null) {
-    return <AuthShell title="Verifying your invitation" description="Checking that your secure setup link is still valid."><div className="space-y-4"><div className="h-14 rounded-[20px] bg-slate-100" /><div className="h-14 rounded-[20px] bg-slate-100" /><div className="h-14 rounded-[20px] bg-slate-100" /></div></AuthShell>
+    return (
+      <AuthShell variant="setup" title="Verifying your invitation" description="Checking that your secure setup link is still valid.">
+        <div className="space-y-4">
+          <Skeleton className="h-14" />
+          <Skeleton className="h-14" />
+          <Skeleton className="h-14" />
+        </div>
+      </AuthShell>
+    )
   }
 
   if (tokenValid === false) {
     return (
       <AuthShell
+        variant="setup"
         title="Invitation no longer available"
         description="This invite is invalid, already used, or has expired. Ask your administrator to send a fresh setup email."
       >
@@ -78,6 +88,7 @@ export function InviteAcceptPage() {
 
   return (
     <AuthShell
+      variant="setup"
       title={inviteInfo?.requires_password_setup ? 'Set your password' : 'Accept your access'}
       description={
         inviteInfo
@@ -120,13 +131,13 @@ export function InviteAcceptPage() {
             </div>
           </>
         ) : (
-          <div className="rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+          <div className="notice-info">
             This invitation will add the organisation access to your existing workforce account.
           </div>
         )}
 
         {error ? (
-          <div className="rounded-[20px] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{error}</div>
+          <div className="notice-error">{error}</div>
         ) : null}
 
         <button type="submit" disabled={isLoading} className="btn-primary w-full">
