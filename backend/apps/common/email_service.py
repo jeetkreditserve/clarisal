@@ -28,7 +28,7 @@ def _parse_sender():
 def _zeptomail_is_configured():
     return bool(
         _normalized_zeptomail_api_url()
-        and getattr(settings, 'ZEPTOMAIL_API_KEY', '')
+        and _normalized_zeptomail_api_key()
     )
 
 
@@ -44,6 +44,15 @@ def _normalized_zeptomail_api_url():
     if not path or path == '/':
         path = '/v1.1/email'
     return urlunsplit((parsed.scheme or 'https', netloc, path, parsed.query, parsed.fragment))
+
+
+def _normalized_zeptomail_api_key():
+    configured = (getattr(settings, 'ZEPTOMAIL_API_KEY', '') or '').strip()
+    if not configured:
+        return ''
+    if configured.lower().startswith('zoho-enczapikey '):
+        return configured
+    return f'Zoho-enczapikey {configured}'
 
 
 def _send_via_zeptomail(*, subject, recipient_email, text_body, html_body=''):
@@ -71,7 +80,7 @@ def _send_via_zeptomail(*, subject, recipient_email, text_body, html_body=''):
         headers={
             'Accept': 'application/json',
             'Content-Type': 'application/json',
-            'Authorization': f'Zoho-enczapikey {getattr(settings, "ZEPTOMAIL_API_KEY")}',
+            'Authorization': _normalized_zeptomail_api_key(),
         },
         method='POST',
     )
