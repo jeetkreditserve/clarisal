@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
 
+import { AppDatePicker } from '@/components/ui/AppDatePicker'
+import { AppSelect } from '@/components/ui/AppSelect'
 import { FieldErrorText } from '@/components/ui/FieldErrorText'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
@@ -68,34 +70,42 @@ export function OnDutyPage() {
         <SectionCard title="Request on duty" description="Use on-duty for work travel, field visits, client meetings, or other approved business duty.">
           <form onSubmit={handleSubmit} className="grid gap-4">
             <div>
-              <select className="field-select" value={form.policy_id} onChange={(event) => setForm((current) => ({ ...current, policy_id: event.target.value }))}>
-                <option value="">Default policy</option>
-                {policies?.map((policy) => (
-                  <option key={policy.id} value={policy.id}>
-                    {policy.name}
-                  </option>
-                ))}
-              </select>
+              <AppSelect
+                value={form.policy_id}
+                onValueChange={(value) => setForm((current) => ({ ...current, policy_id: value }))}
+                options={(policies ?? []).map((policy) => ({ value: policy.id, label: policy.name }))}
+                placeholder="Default policy"
+              />
               <FieldErrorText message={fieldErrors.policy_id} />
             </div>
             <div className="grid gap-4 md:grid-cols-2">
               <div>
-                <input className="field-input" type="date" value={form.start_date} onChange={(event) => setForm((current) => ({ ...current, start_date: event.target.value }))} required />
+                <AppDatePicker
+                  value={form.start_date}
+                  onValueChange={(value) => setForm((current) => ({ ...current, start_date: value }))}
+                  placeholder="Select start date"
+                />
                 <FieldErrorText message={fieldErrors.start_date} />
               </div>
               <div>
-                <input className="field-input" type="date" value={form.end_date} onChange={(event) => setForm((current) => ({ ...current, end_date: event.target.value }))} required />
+                <AppDatePicker
+                  value={form.end_date}
+                  onValueChange={(value) => setForm((current) => ({ ...current, end_date: value }))}
+                  placeholder="Select end date"
+                />
                 <FieldErrorText message={fieldErrors.end_date} />
               </div>
             </div>
             <div>
-              <select className="field-select" value={form.duration_type} onChange={(event) => setForm((current) => ({ ...current, duration_type: event.target.value }))}>
-                {OD_DURATION_OPTIONS.map((type) => (
-                  <option key={type} value={type}>
-                    {type.replace(/_/g, ' ')}
-                  </option>
-                ))}
-              </select>
+              <AppSelect
+                value={form.duration_type}
+                onValueChange={(value) => setForm((current) => ({ ...current, duration_type: value }))}
+                options={OD_DURATION_OPTIONS.map((type) => ({
+                  value: type,
+                  label: type.replace(/_/g, ' '),
+                }))}
+                placeholder="Select duration"
+              />
               <FieldErrorText message={fieldErrors.duration_type} />
             </div>
             {form.duration_type === 'TIME_RANGE' ? (

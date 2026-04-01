@@ -1,6 +1,9 @@
 import { useState } from 'react'
 import { CreditCard, IdCard } from 'lucide-react'
 import { toast } from 'sonner'
+import { AppCheckbox } from '@/components/ui/AppCheckbox'
+import { AppDatePicker } from '@/components/ui/AppDatePicker'
+import { AppSelect } from '@/components/ui/AppSelect'
 import {
   useBankAccounts,
   useCreateBankAccount,
@@ -11,13 +14,23 @@ import {
   useUpdateMyProfile,
   useUpsertGovernmentId,
 } from '@/hooks/useEmployeeSelf'
+import {
+  getAddressCountryName,
+  getAddressCountryOption,
+  getAddressCountryRule,
+  getSubdivisionName,
+  getSubdivisionOptions,
+  resolveCountryCode,
+  resolveSubdivisionCode,
+} from '@/lib/addressMetadata'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { SkeletonFormBlock, SkeletonPageHeader, SkeletonTable } from '@/components/ui/Skeleton'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { getErrorMessage } from '@/lib/errors'
-import type { GovernmentIdType } from '@/types/hr'
+import { COUNTRY_OPTIONS, DEFAULT_COUNTRY_OPTION } from '@/lib/organisationMetadata'
+import type { BankAccountType, GovernmentIdType } from '@/types/hr'
 
 type ProfileDraft = {
   date_of_birth?: string
@@ -32,7 +45,9 @@ type ProfileDraft = {
   address_line2?: string
   city?: string
   state?: string
+  state_code?: string
   country?: string
+  country_code?: string
   pincode?: string
 }
 
@@ -45,6 +60,19 @@ const emptyBankForm = {
   branch_name: '',
   is_primary: true,
 }
+
+const COUNTRY_SELECT_OPTIONS = COUNTRY_OPTIONS.map((country) => ({
+  value: country.code,
+  label: country.name,
+  hint: `${country.dialCode} • ${country.defaultCurrency}`,
+  keywords: [country.dialCode, country.defaultCurrency],
+}))
+
+const BANK_ACCOUNT_TYPE_OPTIONS: Array<{ value: BankAccountType; label: string }> = [
+  { value: 'SALARY', label: 'Salary' },
+  { value: 'SAVINGS', label: 'Savings' },
+  { value: 'CURRENT', label: 'Current' },
+]
 
 export function ProfilePage() {
   const { data: profileData, isLoading } = useMyProfile()
@@ -169,9 +197,14 @@ export function ProfilePage() {
     address_line2: profileDraft.address_line2 ?? profileData.profile.address_line2 ?? '',
     city: profileDraft.city ?? profileData.profile.city ?? '',
     state: profileDraft.state ?? profileData.profile.state ?? '',
-    country: profileDraft.country ?? profileData.profile.country ?? '',
+    state_code: profileDraft.state_code ?? profileData.profile.state_code ?? '',
+    country: profileDraft.country ?? profileData.profile.country ?? DEFAULT_COUNTRY_OPTION.name,
+    country_code: profileDraft.country_code ?? profileData.profile.country_code ?? resolveCountryCode(profileData.profile.country),
     pincode: profileDraft.pincode ?? profileData.profile.pincode ?? '',
   }
+  const addressCountry = getAddressCountryOption(profileValues.country_code || profileValues.country) ?? DEFAULT_COUNTRY_OPTION
+  const addressRule = getAddressCountryRule(addressCountry.code)
+  const addressSubdivisions = getSubdivisionOptions(addressCountry.code)
 
   return (
     <div className="space-y-6">
@@ -184,33 +217,103 @@ export function ProfilePage() {
       <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
         <SectionCard title="Personal details" description="These fields are used for onboarding and future payroll setup.">
           <form onSubmit={handleProfileSave} className="grid gap-4 lg:grid-cols-2">
+            <div>
+              <label className="field-label" htmlFor="date_of_birth">
+                Date of birth
+              </label>
+              <AppDatePicker
+                id="date_of_birth"
+                value={profileValues.date_of_birth}
+                onValueChange={(value) => setProfileDraft((current) => ({ ...current, date_of_birth: value }))}
+                placeholder="Select date of birth"
+              />
+            </div>
             {[
-              ['date_of_birth', 'Date of birth', 'date'],
-              ['gender', 'Gender', 'text'],
-              ['marital_status', 'Marital status', 'text'],
-              ['nationality', 'Nationality', 'text'],
-              ['phone_personal', 'Personal phone', 'text'],
-              ['phone_emergency', 'Emergency phone', 'text'],
-              ['emergency_contact_name', 'Emergency contact name', 'text'],
-              ['emergency_contact_relation', 'Emergency relation', 'text'],
-              ['city', 'City', 'text'],
-              ['state', 'State', 'text'],
-              ['country', 'Country', 'text'],
-              ['pincode', 'Postal code', 'text'],
-            ].map(([field, label, type]) => (
+              ['gender', 'Gender'],
+              ['marital_status', 'Marital status'],
+              ['nationality', 'Nationality'],
+              ['phone_personal', 'Personal phone'],
+              ['phone_emergency', 'Emergency phone'],
+              ['emergency_contact_name', 'Emergency contact name'],
+              ['emergency_contact_relation', 'Emergency relation'],
+              ['city', 'City'],
+            ].map(([field, label]) => (
               <div key={field}>
                 <label className="field-label" htmlFor={field}>
                   {label}
                 </label>
                 <input
                   id={field}
-                  type={type}
                   className="field-input"
                   value={profileValues[field as keyof typeof profileValues]}
                   onChange={(event) => setProfileDraft((current) => ({ ...current, [field]: event.target.value }))}
                 />
               </div>
             ))}
+            <div>
+              <label className="field-label" htmlFor="country">
+                Country
+              </label>
+              <AppSelect
+                id="country"
+                value={addressCountry.code}
+                onValueChange={(value) =>
+                  setProfileDraft((current) => ({
+                    ...current,
+                    country_code: value,
+                    country: getAddressCountryName(value),
+                    state_code: '',
+                    state: '',
+                    pincode: '',
+                  }))
+                }
+                options={COUNTRY_SELECT_OPTIONS}
+                placeholder="Select country"
+              />
+            </div>
+            <div>
+              <label className="field-label" htmlFor="state">
+                {addressRule.subdivisionLabel}
+              </label>
+              {addressSubdivisions.length > 0 ? (
+                <AppSelect
+                  id="state"
+                  value={resolveSubdivisionCode(addressCountry.code, profileValues.state, profileValues.state_code)}
+                  onValueChange={(value) =>
+                    setProfileDraft((current) => ({
+                      ...current,
+                      state_code: value,
+                      state: getSubdivisionName(addressCountry.code, value, ''),
+                    }))
+                  }
+                  options={addressSubdivisions.map((option) => ({
+                    value: option.code,
+                    label: option.label,
+                    hint: option.taxRegionCode ? `Tax region ${option.taxRegionCode}` : undefined,
+                  }))}
+                  placeholder={`Select ${addressRule.subdivisionLabel.toLowerCase()}`}
+                />
+              ) : (
+                <input
+                  id="state"
+                  className="field-input"
+                  value={profileValues.state}
+                  onChange={(event) => setProfileDraft((current) => ({ ...current, state: event.target.value }))}
+                />
+              )}
+            </div>
+            <div>
+              <label className="field-label" htmlFor="pincode">
+                {addressRule.postalLabel}
+              </label>
+              <input
+                id="pincode"
+                className="field-input"
+                value={profileValues.pincode}
+                placeholder={addressRule.postalPlaceholder}
+                onChange={(event) => setProfileDraft((current) => ({ ...current, pincode: event.target.value }))}
+              />
+            </div>
             <div className="lg:col-span-2">
               <label className="field-label" htmlFor="address_line1">
                 Address line 1
@@ -399,27 +502,20 @@ export function ProfilePage() {
                 <label className="field-label" htmlFor="account-type">
                   Account type
                 </label>
-                <select
+                <AppSelect
                   id="account-type"
-                  className="field-select"
                   value={bankForm.account_type}
-                  onChange={(event) => setBankForm((current) => ({ ...current, account_type: event.target.value }))}
-                >
-                  {['SALARY', 'SAVINGS', 'CURRENT'].map((type) => (
-                    <option key={type} value={type}>
-                      {type}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <label className="flex items-center gap-2 text-sm text-[hsl(var(--muted-foreground))]">
-                <input
-                  type="checkbox"
-                  checked={bankForm.is_primary}
-                  onChange={(event) => setBankForm((current) => ({ ...current, is_primary: event.target.checked }))}
+                  onValueChange={(value) => setBankForm((current) => ({ ...current, account_type: value }))}
+                  options={BANK_ACCOUNT_TYPE_OPTIONS}
+                  placeholder="Select account type"
                 />
-                Set as primary account
-              </label>
+              </div>
+              <AppCheckbox
+                checked={bankForm.is_primary}
+                onCheckedChange={(checked) => setBankForm((current) => ({ ...current, is_primary: checked }))}
+                label="Set as primary account"
+                description="Primary bank accounts are used first for future payroll disbursement flows."
+              />
               <div className="flex flex-wrap gap-3">
                 {editingBankId ? (
                   <button type="button" className="btn-secondary" onClick={() => {

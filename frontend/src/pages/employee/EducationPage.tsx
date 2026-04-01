@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { GraduationCap } from 'lucide-react'
 import { toast } from 'sonner'
+import { AppCheckbox } from '@/components/ui/AppCheckbox'
 import {
   useCreateEducation,
   useDeleteEducation,
@@ -116,14 +117,11 @@ export function EducationPage() {
                 />
               </div>
             ))}
-            <label className="flex items-center gap-2 text-sm text-[hsl(var(--muted-foreground))]">
-              <input
-                type="checkbox"
-                checked={form.is_current}
-                onChange={(event) => setForm((current) => ({ ...current, is_current: event.target.checked }))}
-              />
-              Currently pursuing
-            </label>
+            <AppCheckbox
+              checked={form.is_current}
+              onCheckedChange={(checked) => setForm((current) => ({ ...current, is_current: checked }))}
+              label="Currently pursuing"
+            />
             <div className="flex flex-wrap gap-3">
               {editingId ? (
                 <button

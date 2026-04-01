@@ -12,14 +12,27 @@ import {
   useUpdateMyOnboarding,
   useUploadRequestedDocument,
 } from '@/hooks/useEmployeeSelf'
+import { AppCheckbox } from '@/components/ui/AppCheckbox'
+import { AppDatePicker } from '@/components/ui/AppDatePicker'
+import { AppSelect } from '@/components/ui/AppSelect'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { FieldErrorText } from '@/components/ui/FieldErrorText'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { SkeletonFormBlock, SkeletonPageHeader, SkeletonTable } from '@/components/ui/Skeleton'
 import { StatusBadge } from '@/components/ui/StatusBadge'
+import {
+  getAddressCountryName,
+  getAddressCountryOption,
+  getAddressCountryRule,
+  getSubdivisionName,
+  getSubdivisionOptions,
+  resolveCountryCode,
+  resolveSubdivisionCode,
+} from '@/lib/addressMetadata'
 import { getErrorMessage, getFieldErrors } from '@/lib/errors'
 import { FAMILY_RELATION_OPTIONS } from '@/lib/constants'
+import { COUNTRY_OPTIONS, DEFAULT_COUNTRY_OPTION } from '@/lib/organisationMetadata'
 import { getDocumentRequestStatusTone, getEmployeeStatusTone, getOnboardingStatusTone } from '@/lib/status'
 import type { FamilyRelation } from '@/types/hr'
 
@@ -39,6 +52,13 @@ const emptyEmergencyForm = {
   address: '',
   is_primary: true,
 }
+
+const COUNTRY_SELECT_OPTIONS = COUNTRY_OPTIONS.map((country) => ({
+  value: country.code,
+  label: country.name,
+  hint: `${country.dialCode} • ${country.defaultCurrency}`,
+  keywords: [country.dialCode, country.defaultCurrency],
+}))
 
 export function OnboardingPage() {
   const { data, isLoading } = useMyOnboarding()
@@ -89,11 +109,16 @@ export function OnboardingPage() {
     address_line2: draft.address_line2 ?? data.profile.address_line2 ?? '',
     city: draft.city ?? data.profile.city ?? '',
     state: draft.state ?? data.profile.state ?? '',
-    country: draft.country ?? data.profile.country ?? 'India',
+    state_code: draft.state_code ?? data.profile.state_code ?? '',
+    country: draft.country ?? data.profile.country ?? DEFAULT_COUNTRY_OPTION.name,
+    country_code: draft.country_code ?? data.profile.country_code ?? resolveCountryCode(data.profile.country),
     pincode: draft.pincode ?? data.profile.pincode ?? '',
     pan_identifier: draft.pan_identifier ?? '',
     aadhaar_identifier: draft.aadhaar_identifier ?? '',
   }
+  const addressCountry = getAddressCountryOption(profile.country_code || profile.country) ?? DEFAULT_COUNTRY_OPTION
+  const addressRule = getAddressCountryRule(addressCountry.code)
+  const addressSubdivisions = getSubdivisionOptions(addressCountry.code)
 
   const handleSaveBasics = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -192,27 +217,34 @@ export function OnboardingPage() {
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <SectionCard title="Basic details" description="These details are required before your employee record can move forward for joining.">
           <form onSubmit={handleSaveBasics} className="grid gap-4 lg:grid-cols-2">
+            <div>
+              <label className="field-label" htmlFor="date_of_birth">
+                Date of birth
+              </label>
+              <AppDatePicker
+                id="date_of_birth"
+                value={profile.date_of_birth}
+                onValueChange={(value) => setDraft((current) => ({ ...current, date_of_birth: value }))}
+                placeholder="Select date of birth"
+              />
+              <FieldErrorText message={basicFieldErrors.date_of_birth} />
+            </div>
             {[
-              ['date_of_birth', 'Date of birth', 'date'],
-              ['gender', 'Gender', 'text'],
-              ['marital_status', 'Marital status', 'text'],
-              ['nationality', 'Nationality', 'text'],
-              ['blood_type', 'Blood type', 'text'],
-              ['phone_personal', 'Personal phone', 'text'],
-              ['city', 'City', 'text'],
-              ['state', 'State', 'text'],
-              ['country', 'Country', 'text'],
-              ['pincode', 'Pincode', 'text'],
-              ['pan_identifier', `PAN number${governmentIds.pan ? ` • ${governmentIds.pan.identifier}` : ''}`, 'text'],
-              ['aadhaar_identifier', `Aadhaar number${governmentIds.aadhaar ? ` • ${governmentIds.aadhaar.identifier}` : ''}`, 'text'],
-            ].map(([field, label, type]) => (
+              ['gender', 'Gender'],
+              ['marital_status', 'Marital status'],
+              ['nationality', 'Nationality'],
+              ['blood_type', 'Blood type'],
+              ['phone_personal', 'Personal phone'],
+              ['city', 'City'],
+              ['pan_identifier', `PAN number${governmentIds.pan ? ` • ${governmentIds.pan.identifier}` : ''}`],
+              ['aadhaar_identifier', `Aadhaar number${governmentIds.aadhaar ? ` • ${governmentIds.aadhaar.identifier}` : ''}`],
+            ].map(([field, label]) => (
               <div key={field}>
                 <label className="field-label" htmlFor={field}>
                   {label}
                 </label>
                 <input
                   id={field}
-                  type={type}
                   className="field-input"
                   value={profile[field as keyof typeof profile]}
                   onChange={(event) => setDraft((current) => ({ ...current, [field]: event.target.value }))}
@@ -220,6 +252,73 @@ export function OnboardingPage() {
                 <FieldErrorText message={basicFieldErrors[field]} />
               </div>
             ))}
+            <div>
+              <label className="field-label" htmlFor="country">
+                Country
+              </label>
+              <AppSelect
+                id="country"
+                value={addressCountry.code}
+                onValueChange={(value) =>
+                  setDraft((current) => ({
+                    ...current,
+                    country_code: value,
+                    country: getAddressCountryName(value),
+                    state_code: '',
+                    state: '',
+                    pincode: '',
+                  }))
+                }
+                options={COUNTRY_SELECT_OPTIONS}
+                placeholder="Select country"
+              />
+              <FieldErrorText message={basicFieldErrors.country_code ?? basicFieldErrors.country} />
+            </div>
+            <div>
+              <label className="field-label" htmlFor="state">
+                {addressRule.subdivisionLabel}
+              </label>
+              {addressSubdivisions.length > 0 ? (
+                <AppSelect
+                  id="state"
+                  value={resolveSubdivisionCode(addressCountry.code, profile.state, profile.state_code)}
+                  onValueChange={(value) =>
+                    setDraft((current) => ({
+                      ...current,
+                      state_code: value,
+                      state: getSubdivisionName(addressCountry.code, value, ''),
+                    }))
+                  }
+                  options={addressSubdivisions.map((option) => ({
+                    value: option.code,
+                    label: option.label,
+                    hint: option.taxRegionCode ? `Tax region ${option.taxRegionCode}` : undefined,
+                  }))}
+                  placeholder={`Select ${addressRule.subdivisionLabel.toLowerCase()}`}
+                />
+              ) : (
+                <input
+                  id="state"
+                  className="field-input"
+                  value={profile.state}
+                  onChange={(event) => setDraft((current) => ({ ...current, state: event.target.value }))}
+                />
+              )}
+              <FieldErrorText message={basicFieldErrors.state_code ?? basicFieldErrors.state} />
+            </div>
+            <div>
+              <label className="field-label" htmlFor="pincode">
+                {addressRule.postalLabel}
+              </label>
+              <input
+                id="pincode"
+                className="field-input"
+                value={profile.pincode}
+                placeholder={addressRule.postalPlaceholder}
+                onChange={(event) => setDraft((current) => ({ ...current, pincode: event.target.value }))}
+              />
+              <FieldErrorText message={basicFieldErrors.pincode} />
+            </div>
             <div className="lg:col-span-2">
               <label className="field-label" htmlFor="address_line1">
                 Address line 1
@@ -289,18 +388,24 @@ export function OnboardingPage() {
                 <FieldErrorText message={familyFieldErrors.full_name} />
               </div>
               <div>
-                <select className="field-select" value={familyForm.relation} onChange={(event) => setFamilyForm((current) => ({ ...current, relation: event.target.value as FamilyRelation }))}>
-                {FAMILY_RELATION_OPTIONS.map((relation) => (
-                  <option key={relation} value={relation}>
-                    {relation.replace(/_/g, ' ')}
-                  </option>
-                ))}
-              </select>
+                <AppSelect
+                  value={familyForm.relation}
+                  onValueChange={(value) => setFamilyForm((current) => ({ ...current, relation: value as FamilyRelation }))}
+                  options={FAMILY_RELATION_OPTIONS.map((relation) => ({
+                    value: relation,
+                    label: relation.replace(/_/g, ' '),
+                  }))}
+                  placeholder="Select relation"
+                />
                 <FieldErrorText message={familyFieldErrors.relation} />
               </div>
               <div className="grid gap-4 md:grid-cols-2">
                 <div>
-                  <input className="field-input" type="date" value={familyForm.date_of_birth} onChange={(event) => setFamilyForm((current) => ({ ...current, date_of_birth: event.target.value }))} />
+                  <AppDatePicker
+                    value={familyForm.date_of_birth}
+                    onValueChange={(value) => setFamilyForm((current) => ({ ...current, date_of_birth: value }))}
+                    placeholder="Select date of birth"
+                  />
                   <FieldErrorText message={familyFieldErrors.date_of_birth} />
                 </div>
                 <div>
@@ -308,10 +413,12 @@ export function OnboardingPage() {
                   <FieldErrorText message={familyFieldErrors.contact_number} />
                 </div>
               </div>
-              <label className="inline-flex items-center gap-2 text-sm text-[hsl(var(--muted-foreground))]">
-                <input type="checkbox" checked={familyForm.is_dependent} onChange={(event) => setFamilyForm((current) => ({ ...current, is_dependent: event.target.checked }))} />
-                Is dependent
-              </label>
+              <AppCheckbox
+                checked={familyForm.is_dependent}
+                onCheckedChange={(checked) => setFamilyForm((current) => ({ ...current, is_dependent: checked }))}
+                label="Is dependent"
+                description="Mark this family member as dependent for records and benefits purposes."
+              />
               <button type="submit" className="btn-secondary" disabled={createFamilyMutation.isPending}>
                 Add family member
               </button>
@@ -359,10 +466,12 @@ export function OnboardingPage() {
                 <textarea className="field-textarea" placeholder="Address" value={emergencyForm.address} onChange={(event) => setEmergencyForm((current) => ({ ...current, address: event.target.value }))} />
                 <FieldErrorText message={emergencyFieldErrors.address} />
               </div>
-              <label className="inline-flex items-center gap-2 text-sm text-[hsl(var(--muted-foreground))]">
-                <input type="checkbox" checked={emergencyForm.is_primary} onChange={(event) => setEmergencyForm((current) => ({ ...current, is_primary: event.target.checked }))} />
-                Primary contact
-              </label>
+              <AppCheckbox
+                checked={emergencyForm.is_primary}
+                onCheckedChange={(checked) => setEmergencyForm((current) => ({ ...current, is_primary: checked }))}
+                label="Primary contact"
+                description="Primary emergency contacts are used in onboarding completion and escalation flows."
+              />
               <button type="submit" className="btn-secondary" disabled={createEmergencyMutation.isPending}>
                 Add emergency contact
               </button>

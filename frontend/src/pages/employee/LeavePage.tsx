@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
 
+import { AppDatePicker } from '@/components/ui/AppDatePicker'
+import { AppSelect } from '@/components/ui/AppSelect'
 import { FieldErrorText } from '@/components/ui/FieldErrorText'
 import { MonthCalendar } from '@/components/ui/MonthCalendar'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -89,41 +91,53 @@ export function LeavePage() {
           {data.leave_plan ? (
             <form onSubmit={handleSubmit} className="grid gap-4">
               <div>
-                <select className="field-select" value={form.leave_type_id} onChange={(event) => setForm((current) => ({ ...current, leave_type_id: event.target.value }))} required>
-                  <option value="">Select leave type</option>
-                  {data.leave_plan.leave_types.filter((type) => type.is_active).map((type) => (
-                    <option key={type.id} value={type.id}>
-                      {type.name}
-                    </option>
-                  ))}
-                </select>
+                <AppSelect
+                  value={form.leave_type_id}
+                  onValueChange={(value) => setForm((current) => ({ ...current, leave_type_id: value }))}
+                  options={data.leave_plan.leave_types
+                    .filter((type) => type.is_active)
+                    .map((type) => ({ value: type.id, label: type.name }))}
+                  placeholder="Select leave type"
+                />
                 <FieldErrorText message={fieldErrors.leave_type_id} />
               </div>
               <div className="grid gap-4 md:grid-cols-2">
                 <div>
-                  <input className="field-input" type="date" value={form.start_date} onChange={(event) => setForm((current) => ({ ...current, start_date: event.target.value }))} required />
+                  <AppDatePicker
+                    value={form.start_date}
+                    onValueChange={(value) => setForm((current) => ({ ...current, start_date: value }))}
+                    placeholder="Select start date"
+                  />
                   <FieldErrorText message={fieldErrors.start_date} />
                 </div>
                 <div>
-                  <input className="field-input" type="date" value={form.end_date} onChange={(event) => setForm((current) => ({ ...current, end_date: event.target.value }))} required />
+                  <AppDatePicker
+                    value={form.end_date}
+                    onValueChange={(value) => setForm((current) => ({ ...current, end_date: value }))}
+                    placeholder="Select end date"
+                  />
                   <FieldErrorText message={fieldErrors.end_date} />
                 </div>
               </div>
               <div className="grid gap-4 md:grid-cols-2">
-                <select className="field-select" value={form.start_session} onChange={(event) => setForm((current) => ({ ...current, start_session: event.target.value }))}>
-                  {DAY_SESSION_OPTIONS.map((session) => (
-                    <option key={session} value={session}>
-                      {session.replace(/_/g, ' ')}
-                    </option>
-                  ))}
-                </select>
-                <select className="field-select" value={form.end_session} onChange={(event) => setForm((current) => ({ ...current, end_session: event.target.value }))}>
-                  {DAY_SESSION_OPTIONS.map((session) => (
-                    <option key={session} value={session}>
-                      {session.replace(/_/g, ' ')}
-                    </option>
-                  ))}
-                </select>
+                <AppSelect
+                  value={form.start_session}
+                  onValueChange={(value) => setForm((current) => ({ ...current, start_session: value }))}
+                  options={DAY_SESSION_OPTIONS.map((session) => ({
+                    value: session,
+                    label: session.replace(/_/g, ' '),
+                  }))}
+                  placeholder="Select start session"
+                />
+                <AppSelect
+                  value={form.end_session}
+                  onValueChange={(value) => setForm((current) => ({ ...current, end_session: value }))}
+                  options={DAY_SESSION_OPTIONS.map((session) => ({
+                    value: session,
+                    label: session.replace(/_/g, ' '),
+                  }))}
+                  placeholder="Select end session"
+                />
               </div>
               <div>
                 <textarea className="field-textarea" placeholder="Reason" value={form.reason} onChange={(event) => setForm((current) => ({ ...current, reason: event.target.value }))} />

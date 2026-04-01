@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Building2, Plus, Search } from 'lucide-react'
+import { AppSelect } from '@/components/ui/AppSelect'
 import { useOrganisations } from '@/hooks/useCtOrganisations'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -57,20 +58,19 @@ export function OrganisationsPage() {
               className="field-input pl-11"
             />
           </div>
-          <select
+          <AppSelect
             value={statusFilter}
-            onChange={(event) => {
-              setStatusFilter(event.target.value as OrganisationStatus | '')
+            onValueChange={(value) => {
+              setStatusFilter(value as OrganisationStatus | '')
               setPage(1)
             }}
-            className="field-select max-w-xs"
-          >
-            {STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {s ? startCase(s) : 'All statuses'}
-              </option>
-            ))}
-          </select>
+            options={STATUSES.map((status) => ({
+              value: status,
+              label: status ? startCase(status) : 'All statuses',
+            }))}
+            placeholder="All statuses"
+            triggerClassName="max-w-xs"
+          />
         </div>
       </SectionCard>
 

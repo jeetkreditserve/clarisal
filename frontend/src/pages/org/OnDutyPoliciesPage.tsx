@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
 
+import { AppCheckbox } from '@/components/ui/AppCheckbox'
 import { FieldErrorText } from '@/components/ui/FieldErrorText'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
@@ -75,30 +76,21 @@ export function OnDutyPoliciesPage() {
                 onChange={(event) => setPolicyForm((current) => ({ ...current, description: event.target.value }))}
               />
             </div>
-            <label className="inline-flex items-center gap-2 text-sm text-[hsl(var(--muted-foreground))]">
-              <input
-                type="checkbox"
-                checked={policyForm.allow_time_range}
-                onChange={(event) => setPolicyForm((current) => ({ ...current, allow_time_range: event.target.checked }))}
-              />
-              Allow time-range requests
-            </label>
-            <label className="inline-flex items-center gap-2 text-sm text-[hsl(var(--muted-foreground))]">
-              <input
-                type="checkbox"
-                checked={policyForm.allow_half_day}
-                onChange={(event) => setPolicyForm((current) => ({ ...current, allow_half_day: event.target.checked }))}
-              />
-              Allow half-day OD
-            </label>
-            <label className="inline-flex items-center gap-2 text-sm text-[hsl(var(--muted-foreground))]">
-              <input
-                type="checkbox"
-                checked={policyForm.requires_attachment}
-                onChange={(event) => setPolicyForm((current) => ({ ...current, requires_attachment: event.target.checked }))}
-              />
-              Require attachment on submission
-            </label>
+            <AppCheckbox
+              checked={policyForm.allow_time_range}
+              onCheckedChange={(checked) => setPolicyForm((current) => ({ ...current, allow_time_range: checked }))}
+              label="Allow time-range requests"
+            />
+            <AppCheckbox
+              checked={policyForm.allow_half_day}
+              onCheckedChange={(checked) => setPolicyForm((current) => ({ ...current, allow_half_day: checked }))}
+              label="Allow half-day OD"
+            />
+            <AppCheckbox
+              checked={policyForm.requires_attachment}
+              onCheckedChange={(checked) => setPolicyForm((current) => ({ ...current, requires_attachment: checked }))}
+              label="Require attachment on submission"
+            />
             <button type="submit" className="btn-primary" disabled={createPolicyMutation.isPending}>
               Save OD policy
             </button>

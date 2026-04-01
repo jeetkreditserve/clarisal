@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 
 import { ApprovalDecisionDialog } from '@/components/ui/ApprovalDecisionDialog'
+import { AppCheckbox } from '@/components/ui/AppCheckbox'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { SkeletonPageHeader, SkeletonTable } from '@/components/ui/Skeleton'
@@ -47,10 +48,12 @@ export function ApprovalWorkflowsPage() {
           <form onSubmit={handleCreate} className="grid gap-4">
             <input className="field-input" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} />
             <textarea className="field-textarea" value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} placeholder="Description" />
-            <label className="inline-flex items-center gap-2 text-sm text-[hsl(var(--muted-foreground))]">
-              <input type="checkbox" checked={form.is_default} onChange={(event) => setForm((current) => ({ ...current, is_default: event.target.checked }))} />
-              Default workflow
-            </label>
+            <AppCheckbox
+              checked={form.is_default}
+              onCheckedChange={(checked) => setForm((current) => ({ ...current, is_default: checked }))}
+              label="Default workflow"
+              description="A default workflow is mandatory before org admins can invite employees."
+            />
             <button type="submit" className="btn-primary" disabled={createMutation.isPending}>
               Save workflow
             </button>

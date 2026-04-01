@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { BriefcaseBusiness, Building2, UserRound } from 'lucide-react'
 
+import { AppSelect } from '@/components/ui/AppSelect'
 import { useAuth } from '@/hooks/useAuth'
 
 interface WorkspaceSwitcherProps {
@@ -46,18 +47,17 @@ export function WorkspaceSwitcher({ currentMode }: WorkspaceSwitcherProps) {
         <label className="surface-shell flex items-center gap-2 rounded-[20px] px-3 py-2 text-sm text-[hsl(var(--muted-foreground-strong))]">
           <BriefcaseBusiness className="h-4 w-4 text-[hsl(var(--brand))]" />
           <span className="font-medium text-[hsl(var(--muted-foreground))]">Admin</span>
-          <select
+          <AppSelect
             value={activeAdmin?.organisation_id ?? ''}
-            onChange={(event) => void handleSwitch('ADMIN', event.target.value)}
+            onValueChange={(value) => void handleSwitch('ADMIN', value)}
             disabled={isSwitching || user.admin_organisations.length === 0}
-            className="bg-transparent text-sm font-medium text-[hsl(var(--foreground-strong))] outline-none"
-          >
-            {user.admin_organisations.map((workspace) => (
-              <option key={workspace.organisation_id} value={workspace.organisation_id}>
-                {workspace.organisation_name}
-              </option>
-            ))}
-          </select>
+            options={user.admin_organisations.map((workspace) => ({
+              value: workspace.organisation_id,
+              label: workspace.organisation_name,
+            }))}
+            triggerClassName="min-w-[12rem] border-0 bg-transparent px-0 py-0 shadow-none focus:translate-y-0 focus:bg-transparent focus:shadow-none"
+            contentClassName="min-w-[15rem]"
+          />
         </label>
       ) : null}
 
@@ -65,18 +65,17 @@ export function WorkspaceSwitcher({ currentMode }: WorkspaceSwitcherProps) {
         <label className="surface-shell flex items-center gap-2 rounded-[20px] px-3 py-2 text-sm text-[hsl(var(--muted-foreground-strong))]">
           <UserRound className="h-4 w-4 text-[hsl(var(--accent))]" />
           <span className="font-medium text-[hsl(var(--muted-foreground))]">Employee</span>
-          <select
+          <AppSelect
             value={activeEmployee?.organisation_id ?? ''}
-            onChange={(event) => void handleSwitch('EMPLOYEE', event.target.value)}
+            onValueChange={(value) => void handleSwitch('EMPLOYEE', value)}
             disabled={isSwitching || user.employee_workspaces.length === 0}
-            className="bg-transparent text-sm font-medium text-[hsl(var(--foreground-strong))] outline-none"
-          >
-            {user.employee_workspaces.map((workspace) => (
-              <option key={workspace.employee_id} value={workspace.organisation_id}>
-                {workspace.organisation_name}
-              </option>
-            ))}
-          </select>
+            options={user.employee_workspaces.map((workspace) => ({
+              value: workspace.organisation_id,
+              label: workspace.organisation_name,
+            }))}
+            triggerClassName="min-w-[12rem] border-0 bg-transparent px-0 py-0 shadow-none focus:translate-y-0 focus:bg-transparent focus:shadow-none"
+            contentClassName="min-w-[15rem]"
+          />
         </label>
       ) : null}
 

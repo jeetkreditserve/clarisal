@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
 
+import { AppCheckbox } from '@/components/ui/AppCheckbox'
+import { AppSelect } from '@/components/ui/AppSelect'
 import { FieldErrorText } from '@/components/ui/FieldErrorText'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
@@ -68,18 +70,15 @@ export function LeaveCyclesPage() {
               <label className="field-label" htmlFor="leave-cycle-type">
                 Cycle type
               </label>
-              <select
+              <AppSelect
                 id="leave-cycle-type"
-                className="field-select"
                 value={cycleForm.cycle_type}
-                onChange={(event) => setCycleForm((current) => ({ ...current, cycle_type: event.target.value }))}
-              >
-                {LEAVE_CYCLE_TYPE_OPTIONS.map((type) => (
-                  <option key={type} value={type}>
-                    {type.replace(/_/g, ' ')}
-                  </option>
-                ))}
-              </select>
+                onValueChange={(value) => setCycleForm((current) => ({ ...current, cycle_type: value }))}
+                options={LEAVE_CYCLE_TYPE_OPTIONS.map((type) => ({
+                  value: type,
+                  label: type.replace(/_/g, ' '),
+                }))}
+              />
               <FieldErrorText message={fieldErrors.cycle_type} />
             </div>
             <div className="grid gap-4 md:grid-cols-2">
@@ -112,14 +111,12 @@ export function LeaveCyclesPage() {
                 />
               </div>
             </div>
-            <label className="inline-flex items-center gap-2 text-sm text-[hsl(var(--muted-foreground))]">
-              <input
-                type="checkbox"
-                checked={cycleForm.is_default}
-                onChange={(event) => setCycleForm((current) => ({ ...current, is_default: event.target.checked }))}
-              />
-              Default leave cycle
-            </label>
+            <AppCheckbox
+              checked={cycleForm.is_default}
+              onCheckedChange={(checked) => setCycleForm((current) => ({ ...current, is_default: checked }))}
+              label="Default leave cycle"
+              description="This cycle becomes the default option for leave plans that do not specify another leave year."
+            />
             <button type="submit" className="btn-primary" disabled={createCycleMutation.isPending}>
               Save leave cycle
             </button>
