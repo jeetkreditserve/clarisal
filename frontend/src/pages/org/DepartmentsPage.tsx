@@ -8,6 +8,8 @@ import {
   useUpdateDepartment,
 } from '@/hooks/useOrgAdmin'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { AppCheckbox } from '@/components/ui/AppCheckbox'
+import { AppSelect } from '@/components/ui/AppSelect'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { SkeletonPageHeader, SkeletonTable } from '@/components/ui/Skeleton'
@@ -26,6 +28,15 @@ export function DepartmentsPage() {
   const createMutation = useCreateDepartment()
   const updateMutation = useUpdateDepartment()
   const deactivateMutation = useDeactivateDepartment()
+  const departmentOptions = [
+    { value: '', label: 'No parent department' },
+    ...(data
+      ?.filter((department) => department.is_active && department.id !== editingId)
+      .map((department) => ({
+        value: department.id,
+        label: department.name,
+      })) ?? []),
+  ]
 
   const resetForm = () => {
     setEditingId(null)
@@ -113,21 +124,15 @@ export function DepartmentsPage() {
               <label className="field-label" htmlFor="department-parent">
                 Parent department
               </label>
-              <select
+              <AppSelect
                 id="department-parent"
-                className="field-select"
                 value={form.parent_department_id}
-                onChange={(event) => setForm((current) => ({ ...current, parent_department_id: event.target.value }))}
-              >
-                <option value="">No parent department</option>
-                {data
-                  ?.filter((department) => department.is_active && department.id !== editingId)
-                  .map((department) => (
-                    <option key={department.id} value={department.id}>
-                      {department.name}
-                    </option>
-                  ))}
-              </select>
+                onValueChange={(value) =>
+                  setForm((current) => ({ ...current, parent_department_id: value }))
+                }
+                options={departmentOptions}
+                placeholder="No parent department"
+              />
             </div>
             <div className="flex flex-wrap gap-3">
               {editingId ? <button type="button" onClick={resetForm} className="btn-secondary">Cancel</button> : null}
@@ -142,14 +147,12 @@ export function DepartmentsPage() {
           title="Department directory"
           description="Inactive departments remain in history but cannot receive active employees."
           action={
-            <label className="flex items-center gap-2 text-sm text-[hsl(var(--muted-foreground))]">
-              <input
-                type="checkbox"
-                checked={includeInactive}
-                onChange={(event) => setIncludeInactive(event.target.checked)}
-              />
-              Show inactive
-            </label>
+            <AppCheckbox
+              id="departments-include-inactive"
+              checked={includeInactive}
+              onCheckedChange={setIncludeInactive}
+              label="Show inactive"
+            />
           }
         >
           {isLoading ? (

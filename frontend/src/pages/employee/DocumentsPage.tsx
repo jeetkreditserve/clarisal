@@ -3,6 +3,7 @@ import { Download, FileUp } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { EmptyState } from '@/components/ui/EmptyState'
+import { AppSelect } from '@/components/ui/AppSelect'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { SkeletonPageHeader, SkeletonTable } from '@/components/ui/Skeleton'
@@ -33,6 +34,10 @@ export function DocumentsPage() {
   const [requestFiles, setRequestFiles] = useState<Record<string, File | null>>({})
   const [uploadProgress, setUploadProgress] = useState(0)
   const [requestedUploadProgress, setRequestedUploadProgress] = useState<Record<string, number>>({})
+  const documentTypeOptions = DOCUMENT_TYPE_OPTIONS.map((type) => ({
+    value: type,
+    label: startCase(type),
+  }))
 
   const handleUpload = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -144,13 +149,12 @@ export function DocumentsPage() {
               <label className="field-label" htmlFor="document-type">
                 Document type
               </label>
-              <select id="document-type" className="field-select" value={documentType} onChange={(event) => setDocumentType(event.target.value as DocumentType)}>
-                {DOCUMENT_TYPE_OPTIONS.map((type) => (
-                  <option key={type} value={type}>
-                    {startCase(type)}
-                  </option>
-                ))}
-              </select>
+              <AppSelect
+                id="document-type"
+                value={documentType}
+                onValueChange={(value) => setDocumentType(value as DocumentType)}
+                options={documentTypeOptions}
+              />
             </div>
             <div>
               <label className="field-label" htmlFor="document-file">

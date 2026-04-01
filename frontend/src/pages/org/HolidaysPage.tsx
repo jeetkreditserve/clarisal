@@ -3,6 +3,9 @@ import { MinusCircle, PlusCircle } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { FieldErrorText } from '@/components/ui/FieldErrorText'
+import { AppCheckbox } from '@/components/ui/AppCheckbox'
+import { AppDatePicker } from '@/components/ui/AppDatePicker'
+import { AppSelect } from '@/components/ui/AppSelect'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { SkeletonPageHeader, SkeletonTable } from '@/components/ui/Skeleton'
@@ -10,6 +13,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge'
 import { useCreateHolidayCalendar, useHolidayCalendars, useLocations, usePublishHolidayCalendar } from '@/hooks/useOrgAdmin'
 import { createDefaultHolidayCalendarForm, HOLIDAY_CLASSIFICATION_OPTIONS, HOLIDAY_SESSION_OPTIONS } from '@/lib/constants'
 import { getErrorMessage, getFieldErrors } from '@/lib/errors'
+import { startCase } from '@/lib/format'
 
 export function HolidaysPage() {
   const { data, isLoading } = useHolidayCalendars()
@@ -18,6 +22,19 @@ export function HolidaysPage() {
   const publishMutation = usePublishHolidayCalendar()
   const [form, setForm] = useState(createDefaultHolidayCalendarForm)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+  const locationOptions =
+    locations?.filter((location) => location.is_active).map((location) => ({
+      value: location.id,
+      label: location.name,
+    })) ?? []
+  const holidayClassificationOptions = HOLIDAY_CLASSIFICATION_OPTIONS.map((classification) => ({
+    value: classification,
+    label: startCase(classification),
+  }))
+  const holidaySessionOptions = HOLIDAY_SESSION_OPTIONS.map((session) => ({
+    value: session,
+    label: startCase(session),
+  }))
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -63,28 +80,29 @@ export function HolidaysPage() {
               <textarea className="field-textarea" placeholder="Description" value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} />
               <FieldErrorText message={fieldErrors.description} />
             </div>
-            <label className="inline-flex items-center gap-2 text-sm text-[hsl(var(--muted-foreground))]">
-              <input type="checkbox" checked={form.is_default} onChange={(event) => setForm((current) => ({ ...current, is_default: event.target.checked }))} />
-              Default calendar for this year
-            </label>
+            <AppCheckbox
+              id="holiday-default"
+              checked={form.is_default}
+              onCheckedChange={(checked) => setForm((current) => ({ ...current, is_default: checked }))}
+              label="Default calendar for this year"
+            />
             <div className="grid gap-2">
               <p className="text-sm font-semibold text-[hsl(var(--foreground-strong))]">Assigned office locations</p>
-              {locations?.filter((location) => location.is_active).map((location) => (
-                <label key={location.id} className="inline-flex items-center gap-2 text-sm text-[hsl(var(--muted-foreground))]">
-                  <input
-                    type="checkbox"
-                    checked={form.location_ids.includes(location.id)}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        location_ids: event.target.checked
-                          ? [...current.location_ids, location.id]
-                          : current.location_ids.filter((id) => id !== location.id),
-                      }))
-                    }
-                  />
-                  {location.name}
-                </label>
+              {locationOptions.map((location) => (
+                <AppCheckbox
+                  key={location.value}
+                  id={`holiday-location-${location.value}`}
+                  checked={form.location_ids.includes(location.value)}
+                  onCheckedChange={(checked) =>
+                    setForm((current) => ({
+                      ...current,
+                      location_ids: checked
+                        ? [...current.location_ids, location.value]
+                        : current.location_ids.filter((id) => id !== location.value),
+                    }))
+                  }
+                  label={location.label}
+                />
               ))}
             </div>
             {form.holidays.map((holiday, index) => (
@@ -110,23 +128,44 @@ export function HolidaysPage() {
                   <input className="field-input" placeholder="Holiday name" value={holiday.name} onChange={(event) => setForm((current) => ({ ...current, holidays: current.holidays.map((item, itemIndex) => itemIndex === index ? { ...item, name: event.target.value } : item) }))} required />
                 </div>
                 <div>
-                  <input className="field-input" type="date" value={holiday.holiday_date} onChange={(event) => setForm((current) => ({ ...current, holidays: current.holidays.map((item, itemIndex) => itemIndex === index ? { ...item, holiday_date: event.target.value } : item) }))} required />
+                  <AppDatePicker
+                    value={holiday.holiday_date}
+                    onValueChange={(value) =>
+                      setForm((current) => ({
+                        ...current,
+                        holidays: current.holidays.map((item, itemIndex) =>
+                          itemIndex === index ? { ...item, holiday_date: value } : item,
+                        ),
+                      }))
+                    }
+                    placeholder="Select holiday date"
+                  />
                 </div>
                 <div className="grid gap-3 md:grid-cols-2">
-                  <select className="field-select" value={holiday.classification} onChange={(event) => setForm((current) => ({ ...current, holidays: current.holidays.map((item, itemIndex) => itemIndex === index ? { ...item, classification: event.target.value } : item) }))}>
-                    {HOLIDAY_CLASSIFICATION_OPTIONS.map((classification) => (
-                      <option key={classification} value={classification}>
-                        {classification}
-                      </option>
-                    ))}
-                  </select>
-                  <select className="field-select" value={holiday.session} onChange={(event) => setForm((current) => ({ ...current, holidays: current.holidays.map((item, itemIndex) => itemIndex === index ? { ...item, session: event.target.value } : item) }))}>
-                    {HOLIDAY_SESSION_OPTIONS.map((session) => (
-                      <option key={session} value={session}>
-                        {session.replace(/_/g, ' ')}
-                      </option>
-                    ))}
-                  </select>
+                  <AppSelect
+                    value={holiday.classification}
+                    onValueChange={(value) =>
+                      setForm((current) => ({
+                        ...current,
+                        holidays: current.holidays.map((item, itemIndex) =>
+                          itemIndex === index ? { ...item, classification: value } : item,
+                        ),
+                      }))
+                    }
+                    options={holidayClassificationOptions}
+                  />
+                  <AppSelect
+                    value={holiday.session}
+                    onValueChange={(value) =>
+                      setForm((current) => ({
+                        ...current,
+                        holidays: current.holidays.map((item, itemIndex) =>
+                          itemIndex === index ? { ...item, session: value } : item,
+                        ),
+                      }))
+                    }
+                    options={holidaySessionOptions}
+                  />
                 </div>
               </div>
             ))}

@@ -2,12 +2,15 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 
 import { FieldErrorText } from '@/components/ui/FieldErrorText'
+import { AppCheckbox } from '@/components/ui/AppCheckbox'
+import { AppSelect } from '@/components/ui/AppSelect'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { SkeletonPageHeader, SkeletonTable } from '@/components/ui/Skeleton'
 import { useCreateLeavePlan, useLeaveCycles, useLeavePlans } from '@/hooks/useOrgAdmin'
 import { createDefaultLeavePlanForm, LEAVE_CREDIT_FREQUENCY_OPTIONS } from '@/lib/constants'
 import { getErrorMessage, getFieldErrors } from '@/lib/errors'
+import { startCase } from '@/lib/format'
 
 export function LeavePlansPage() {
   const { data: cycles, isLoading } = useLeaveCycles()
@@ -15,6 +18,14 @@ export function LeavePlansPage() {
   const createPlanMutation = useCreateLeavePlan()
   const [planForm, setPlanForm] = useState(createDefaultLeavePlanForm)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+  const leaveCycleOptions = [
+    { value: '', label: 'Select leave cycle' },
+    ...(cycles?.map((cycle) => ({ value: cycle.id, label: cycle.name })) ?? []),
+  ]
+  const creditFrequencyOptions = LEAVE_CREDIT_FREQUENCY_OPTIONS.map((frequency) => ({
+    value: frequency,
+    label: startCase(frequency),
+  }))
 
   const handlePlanSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -59,20 +70,13 @@ export function LeavePlansPage() {
               <label className="field-label" htmlFor="leave-cycle-id">
                 Leave cycle
               </label>
-              <select
+              <AppSelect
                 id="leave-cycle-id"
-                className="field-select"
                 value={planForm.leave_cycle_id}
-                onChange={(event) => setPlanForm((current) => ({ ...current, leave_cycle_id: event.target.value }))}
-                required
-              >
-                <option value="">Select leave cycle</option>
-                {cycles?.map((cycle) => (
-                  <option key={cycle.id} value={cycle.id}>
-                    {cycle.name}
-                  </option>
-                ))}
-              </select>
+                onValueChange={(value) => setPlanForm((current) => ({ ...current, leave_cycle_id: value }))}
+                options={leaveCycleOptions}
+                placeholder="Select leave cycle"
+              />
               <FieldErrorText message={fieldErrors.leave_cycle_id} />
             </div>
             <div>
@@ -143,33 +147,25 @@ export function LeavePlansPage() {
                 <label className="field-label" htmlFor="credit-frequency">
                   Credit frequency
                 </label>
-                <select
+                <AppSelect
                   id="credit-frequency"
-                  className="field-select"
                   value={planForm.leave_types[0].credit_frequency}
-                  onChange={(event) =>
+                  onValueChange={(value) =>
                     setPlanForm((current) => ({
                       ...current,
-                      leave_types: [{ ...current.leave_types[0], credit_frequency: event.target.value }],
+                      leave_types: [{ ...current.leave_types[0], credit_frequency: value }],
                     }))
                   }
-                >
-                  {LEAVE_CREDIT_FREQUENCY_OPTIONS.map((frequency) => (
-                    <option key={frequency} value={frequency}>
-                      {frequency.replace(/_/g, ' ')}
-                    </option>
-                  ))}
-                </select>
+                  options={creditFrequencyOptions}
+                />
               </div>
             </div>
-            <label className="inline-flex items-center gap-2 text-sm text-[hsl(var(--muted-foreground))]">
-              <input
-                type="checkbox"
-                checked={planForm.is_default}
-                onChange={(event) => setPlanForm((current) => ({ ...current, is_default: event.target.checked }))}
-              />
-              Default leave plan
-            </label>
+            <AppCheckbox
+              id="leave-plan-default"
+              checked={planForm.is_default}
+              onCheckedChange={(checked) => setPlanForm((current) => ({ ...current, is_default: checked }))}
+              label="Default leave plan"
+            />
             <button type="submit" className="btn-primary" disabled={createPlanMutation.isPending}>
               Save leave plan
             </button>

@@ -4,6 +4,8 @@ import { ArrowLeft, Download } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { EmptyState } from '@/components/ui/EmptyState'
+import { AppDatePicker } from '@/components/ui/AppDatePicker'
+import { AppSelect } from '@/components/ui/AppSelect'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { SkeletonFormBlock, SkeletonPageHeader, SkeletonTable } from '@/components/ui/Skeleton'
@@ -22,6 +24,7 @@ import {
   useUpdateEmployee,
 } from '@/hooks/useOrgAdmin'
 import { getErrorMessage } from '@/lib/errors'
+import { startCase } from '@/lib/format'
 import { getDocumentRequestStatusTone, getDocumentStatusTone, getEmployeeStatusTone } from '@/lib/status'
 import type { EmploymentType } from '@/types/hr'
 
@@ -58,6 +61,39 @@ export function EmployeeDetailPage() {
     status: 'RESIGNED' as 'RESIGNED' | 'RETIRED' | 'TERMINATED',
     date_of_exit: '',
   })
+
+  const employmentTypeOptions = ['FULL_TIME', 'PART_TIME', 'CONTRACT', 'INTERN'].map((type) => ({
+    value: type,
+    label: startCase(type),
+  }))
+  const departmentOptions = [
+    { value: '', label: 'Unassigned department' },
+    ...(departments?.filter((department) => department.is_active).map((department) => ({
+      value: department.id,
+      label: department.name,
+    })) ?? []),
+  ]
+  const locationOptions = [
+    { value: '', label: 'Unassigned location' },
+    ...(locations?.filter((location) => location.is_active).map((location) => ({
+      value: location.id,
+      label: location.name,
+    })) ?? []),
+  ]
+  const managerSelectOptions = [
+    { value: '', label: 'Use self as manager' },
+    { value: employee.id, label: 'Self-managed / top-level employee' },
+    ...(managerOptions?.results
+      .filter((manager) => manager.id !== employee.id)
+      .map((manager) => ({
+        value: manager.id,
+        label: manager.full_name,
+      })) ?? []),
+  ]
+  const terminalStatusOptions = ['RESIGNED', 'RETIRED', 'TERMINATED'].map((status) => ({
+    value: status,
+    label: startCase(status),
+  }))
 
   if (isLoading || !employee) {
     return (
@@ -166,32 +202,32 @@ export function EmployeeDetailPage() {
           <form onSubmit={handleSave} className="grid gap-4">
             <input className="field-input" value={formValues.designation} onChange={(event) => setDraft((current) => ({ ...current, designation: event.target.value }))} placeholder="Designation" />
             <div className="grid gap-4 md:grid-cols-2">
-              <select className="field-select" value={formValues.employment_type} onChange={(event) => setDraft((current) => ({ ...current, employment_type: event.target.value as EmploymentType }))}>
-                {['FULL_TIME', 'PART_TIME', 'CONTRACT', 'INTERN'].map((type) => (
-                  <option key={type} value={type}>
-                    {type.replace(/_/g, ' ')}
-                  </option>
-                ))}
-              </select>
-              <input className="field-input" type="date" value={formValues.date_of_joining} onChange={(event) => setDraft((current) => ({ ...current, date_of_joining: event.target.value }))} />
+              <AppSelect
+                value={formValues.employment_type}
+                onValueChange={(value) =>
+                  setDraft((current) => ({ ...current, employment_type: value as EmploymentType }))
+                }
+                options={employmentTypeOptions}
+              />
+              <AppDatePicker
+                value={formValues.date_of_joining}
+                onValueChange={(value) => setDraft((current) => ({ ...current, date_of_joining: value }))}
+                placeholder="Select joining date"
+              />
             </div>
             <div className="grid gap-4 md:grid-cols-2">
-              <select className="field-select" value={formValues.department_id} onChange={(event) => setDraft((current) => ({ ...current, department_id: event.target.value }))}>
-                <option value="">Unassigned department</option>
-                {departments?.filter((department) => department.is_active).map((department) => (
-                  <option key={department.id} value={department.id}>
-                    {department.name}
-                  </option>
-                ))}
-              </select>
-              <select className="field-select" value={formValues.office_location_id} onChange={(event) => setDraft((current) => ({ ...current, office_location_id: event.target.value }))}>
-                <option value="">Unassigned location</option>
-                {locations?.filter((location) => location.is_active).map((location) => (
-                  <option key={location.id} value={location.id}>
-                    {location.name}
-                  </option>
-                ))}
-              </select>
+              <AppSelect
+                value={formValues.department_id}
+                onValueChange={(value) => setDraft((current) => ({ ...current, department_id: value }))}
+                options={departmentOptions}
+              />
+              <AppSelect
+                value={formValues.office_location_id}
+                onValueChange={(value) =>
+                  setDraft((current) => ({ ...current, office_location_id: value }))
+                }
+                options={locationOptions}
+              />
             </div>
             <button type="submit" className="btn-primary" disabled={updateMutation.isPending}>
               Save employee changes
@@ -204,18 +240,22 @@ export function EmployeeDetailPage() {
                 <p className="font-semibold text-[hsl(var(--foreground-strong))]">Mark employee as joined</p>
                 <input className="field-input" placeholder={employee.suggested_employee_code} value={joinForm.employee_code} onChange={(event) => setJoinForm((current) => ({ ...current, employee_code: event.target.value }))} />
                 <div className="grid gap-4 md:grid-cols-2">
-                  <input className="field-input" type="date" value={joinForm.date_of_joining} onChange={(event) => setJoinForm((current) => ({ ...current, date_of_joining: event.target.value }))} />
+                  <AppDatePicker
+                    value={joinForm.date_of_joining}
+                    onValueChange={(value) =>
+                      setJoinForm((current) => ({ ...current, date_of_joining: value }))
+                    }
+                    placeholder="Select joining date"
+                  />
                   <input className="field-input" placeholder={formValues.designation || 'Designation'} value={joinForm.designation} onChange={(event) => setJoinForm((current) => ({ ...current, designation: event.target.value }))} />
                 </div>
-                <select className="field-select" value={joinForm.reporting_to_employee_id} onChange={(event) => setJoinForm((current) => ({ ...current, reporting_to_employee_id: event.target.value }))}>
-                  <option value="">Use self as manager</option>
-                  <option value={employee.id}>Self-managed / top-level employee</option>
-                  {managerOptions?.results.map((manager) => (
-                    <option key={manager.id} value={manager.id}>
-                      {manager.full_name}
-                    </option>
-                  ))}
-                </select>
+                <AppSelect
+                  value={joinForm.reporting_to_employee_id}
+                  onValueChange={(value) =>
+                    setJoinForm((current) => ({ ...current, reporting_to_employee_id: value }))
+                  }
+                  options={managerSelectOptions}
+                />
                 <button type="submit" className="btn-primary" disabled={markJoinedMutation.isPending}>
                   Mark as joined
                 </button>
@@ -226,14 +266,23 @@ export function EmployeeDetailPage() {
               <form onSubmit={handleEndEmployment} className="surface-muted grid gap-4 rounded-[24px] p-5">
                 <p className="font-semibold text-[hsl(var(--foreground-strong))]">End employment</p>
                 <div className="grid gap-4 md:grid-cols-2">
-                  <select className="field-select" value={endEmploymentForm.status} onChange={(event) => setEndEmploymentForm((current) => ({ ...current, status: event.target.value as 'RESIGNED' | 'RETIRED' | 'TERMINATED' }))}>
-                    {['RESIGNED', 'RETIRED', 'TERMINATED'].map((status) => (
-                      <option key={status} value={status}>
-                        {status}
-                      </option>
-                    ))}
-                  </select>
-                  <input className="field-input" type="date" value={endEmploymentForm.date_of_exit} onChange={(event) => setEndEmploymentForm((current) => ({ ...current, date_of_exit: event.target.value }))} />
+                  <AppSelect
+                    value={endEmploymentForm.status}
+                    onValueChange={(value) =>
+                      setEndEmploymentForm((current) => ({
+                        ...current,
+                        status: value as 'RESIGNED' | 'RETIRED' | 'TERMINATED',
+                      }))
+                    }
+                    options={terminalStatusOptions}
+                  />
+                  <AppDatePicker
+                    value={endEmploymentForm.date_of_exit}
+                    onValueChange={(value) =>
+                      setEndEmploymentForm((current) => ({ ...current, date_of_exit: value }))
+                    }
+                    placeholder="Select exit date"
+                  />
                 </div>
                 <button type="submit" className="btn-danger" disabled={endEmploymentMutation.isPending}>
                   End employment

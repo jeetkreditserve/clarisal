@@ -11,6 +11,8 @@ import {
   useUpdateLocation,
 } from '@/hooks/useOrgAdmin'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { AppCheckbox } from '@/components/ui/AppCheckbox'
+import { AppSelect } from '@/components/ui/AppSelect'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { SkeletonPageHeader, SkeletonTable } from '@/components/ui/Skeleton'
@@ -36,6 +38,13 @@ export function LocationsPage() {
   const deactivateMutation = useDeactivateLocation()
 
   const activeAddresses = organisation?.addresses.filter((address) => address.is_active) ?? []
+  const addressOptions = [
+    { value: '', label: 'Select an organisation address' },
+    ...activeAddresses.map((address) => ({
+      value: address.id,
+      label: `${address.label} • ${address.city}, ${address.state}`,
+    })),
+  ]
 
   const resetForm = () => {
     setEditingId(null)
@@ -111,32 +120,25 @@ export function LocationsPage() {
               <label className="field-label" htmlFor="location-address">
                 Linked address
               </label>
-              <select
+              <AppSelect
                 id="location-address"
-                className="field-select"
                 value={form.organisation_address_id}
-                onChange={(event) => setForm((current) => ({ ...current, organisation_address_id: event.target.value }))}
-                required
-              >
-                <option value="">Select an organisation address</option>
-                {activeAddresses.map((address) => (
-                  <option key={address.id} value={address.id}>
-                    {address.label} • {address.city}, {address.state}
-                  </option>
-                ))}
-              </select>
+                onValueChange={(value) =>
+                  setForm((current) => ({ ...current, organisation_address_id: value }))
+                }
+                options={addressOptions}
+                placeholder="Select an organisation address"
+              />
               <p className="mt-2 text-xs text-[hsl(var(--muted-foreground))]">
                 Need another address first? <Link to="/org/profile" className="font-semibold text-[hsl(var(--brand))] hover:underline">Manage organisation addresses</Link>
               </p>
             </div>
-            <label className="flex items-center gap-3 rounded-[18px] border border-[hsl(var(--border)_/_0.9)] px-4 py-3 text-sm text-[hsl(var(--foreground))]">
-              <input
-                type="checkbox"
-                checked={form.is_remote}
-                onChange={(event) => setForm((current) => ({ ...current, is_remote: event.target.checked }))}
-              />
-              Mark as remote office location
-            </label>
+            <AppCheckbox
+              id="location-remote"
+              checked={form.is_remote}
+              onCheckedChange={(checked) => setForm((current) => ({ ...current, is_remote: checked }))}
+              label="Mark as remote office location"
+            />
             <div className="flex flex-wrap gap-3">
               {editingId ? (
                 <button type="button" onClick={resetForm} className="btn-secondary">
@@ -154,14 +156,12 @@ export function LocationsPage() {
           title="Location directory"
           description="Inactive locations remain in history but cannot receive invited, pending, or active employees."
           action={
-            <label className="flex items-center gap-2 text-sm text-[hsl(var(--muted-foreground))]">
-              <input
-                type="checkbox"
-                checked={includeInactive}
-                onChange={(event) => setIncludeInactive(event.target.checked)}
-              />
-              Show inactive
-            </label>
+            <AppCheckbox
+              id="locations-include-inactive"
+              checked={includeInactive}
+              onCheckedChange={setIncludeInactive}
+              label="Show inactive"
+            />
           }
         >
           {isLoading ? (

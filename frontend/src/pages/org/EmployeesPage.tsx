@@ -4,6 +4,9 @@ import { Search, UserPlus } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { EmptyState } from '@/components/ui/EmptyState'
+import { AppCheckbox } from '@/components/ui/AppCheckbox'
+import { AppDatePicker } from '@/components/ui/AppDatePicker'
+import { AppSelect } from '@/components/ui/AppSelect'
 import { FieldErrorText } from '@/components/ui/FieldErrorText'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
@@ -32,6 +35,16 @@ const inviteDefaults = {
   department_id: '',
   office_location_id: '',
 }
+
+const EMPLOYMENT_TYPE_SELECT_OPTIONS = EMPLOYMENT_TYPE_OPTIONS.map((type) => ({
+  value: type,
+  label: startCase(type),
+}))
+
+const EMPLOYEE_STATUS_SELECT_OPTIONS = EMPLOYEE_STATUS_OPTIONS.map((employeeStatus) => ({
+  value: employeeStatus,
+  label: employeeStatus ? startCase(employeeStatus) : 'All statuses',
+}))
 
 export function EmployeesPage() {
   const [search, setSearch] = useState('')
@@ -122,48 +135,66 @@ export function EmployeesPage() {
               <label className="field-label" htmlFor="employment-type">
                 Employment type
               </label>
-              <select id="employment-type" className="field-select" value={inviteForm.employment_type} onChange={(event) => setInviteForm((current) => ({ ...current, employment_type: event.target.value as EmploymentType }))}>
-                {EMPLOYMENT_TYPE_OPTIONS.map((type) => (
-                  <option key={type} value={type}>
-                    {startCase(type)}
-                  </option>
-                ))}
-              </select>
+              <AppSelect
+                id="employment-type"
+                value={inviteForm.employment_type}
+                onValueChange={(value) =>
+                  setInviteForm((current) => ({ ...current, employment_type: value as EmploymentType }))
+                }
+                options={EMPLOYMENT_TYPE_SELECT_OPTIONS}
+              />
               <FieldErrorText message={inviteFieldErrors.employment_type} />
             </div>
             <div>
               <label className="field-label" htmlFor="date-of-joining">
                 Planned joining date
               </label>
-              <input id="date-of-joining" type="date" className="field-input" value={inviteForm.date_of_joining} onChange={(event) => setInviteForm((current) => ({ ...current, date_of_joining: event.target.value }))} />
+              <AppDatePicker
+                id="date-of-joining"
+                value={inviteForm.date_of_joining}
+                onValueChange={(value) => setInviteForm((current) => ({ ...current, date_of_joining: value }))}
+                placeholder="Select planned joining date"
+              />
               <FieldErrorText message={inviteFieldErrors.date_of_joining} />
             </div>
             <div>
               <label className="field-label" htmlFor="department">
                 Department
               </label>
-              <select id="department" className="field-select" value={inviteForm.department_id} onChange={(event) => setInviteForm((current) => ({ ...current, department_id: event.target.value }))}>
-                <option value="">Unassigned</option>
-                {departments?.filter((department) => department.is_active).map((department) => (
-                  <option key={department.id} value={department.id}>
-                    {department.name}
-                  </option>
-                ))}
-              </select>
+              <AppSelect
+                id="department"
+                value={inviteForm.department_id}
+                onValueChange={(value) => setInviteForm((current) => ({ ...current, department_id: value }))}
+                placeholder="Unassigned"
+                options={[
+                  { value: '', label: 'Unassigned' },
+                  ...(departments?.filter((department) => department.is_active).map((department) => ({
+                    value: department.id,
+                    label: department.name,
+                  })) ?? []),
+                ]}
+              />
               <FieldErrorText message={inviteFieldErrors.department_id} />
             </div>
             <div>
               <label className="field-label" htmlFor="location">
                 Office location
               </label>
-              <select id="location" className="field-select" value={inviteForm.office_location_id} onChange={(event) => setInviteForm((current) => ({ ...current, office_location_id: event.target.value }))}>
-                <option value="">Unassigned</option>
-                {locations?.filter((location) => location.is_active).map((location) => (
-                  <option key={location.id} value={location.id}>
-                    {location.name}
-                  </option>
-                ))}
-              </select>
+              <AppSelect
+                id="location"
+                value={inviteForm.office_location_id}
+                onValueChange={(value) =>
+                  setInviteForm((current) => ({ ...current, office_location_id: value }))
+                }
+                placeholder="Unassigned"
+                options={[
+                  { value: '', label: 'Unassigned' },
+                  ...(locations?.filter((location) => location.is_active).map((location) => ({
+                    value: location.id,
+                    label: location.name,
+                  })) ?? []),
+                ]}
+              />
               <FieldErrorText message={inviteFieldErrors.office_location_id} />
             </div>
             <div className="flex items-end">
@@ -175,21 +206,18 @@ export function EmployeesPage() {
               <p className="mb-3 text-sm font-semibold text-[hsl(var(--foreground-strong))]">Requested onboarding documents</p>
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {documentTypes?.map((documentType) => (
-                  <label key={documentType.id} className="surface-muted flex items-start gap-3 rounded-[18px] px-4 py-3 text-sm text-[hsl(var(--muted-foreground))]">
-                    <input
-                      type="checkbox"
-                      checked={selectedDocumentTypeIds.includes(documentType.id)}
-                      onChange={(event) =>
-                        setSelectedDocumentTypeIds((current) =>
-                          event.target.checked ? [...current, documentType.id] : current.filter((item) => item !== documentType.id),
-                        )
-                      }
-                    />
-                    <div>
-                      <p className="font-medium text-[hsl(var(--foreground-strong))]">{documentType.name}</p>
-                      <p className="text-xs">{documentType.category.replace(/_/g, ' ')}</p>
-                    </div>
-                  </label>
+                  <AppCheckbox
+                    key={documentType.id}
+                    id={`document-type-${documentType.id}`}
+                    checked={selectedDocumentTypeIds.includes(documentType.id)}
+                    onCheckedChange={(checked) =>
+                      setSelectedDocumentTypeIds((current) =>
+                        checked ? [...current, documentType.id] : current.filter((item) => item !== documentType.id),
+                      )
+                    }
+                    label={documentType.name}
+                    description={documentType.category.replace(/_/g, ' ')}
+                  />
                 ))}
               </div>
             </div>
@@ -206,13 +234,15 @@ export function EmployeesPage() {
             <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[hsl(var(--muted-foreground))]" />
             <input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1) }} className="field-input pl-11" placeholder="Search employees by name or email" />
           </div>
-          <select className="field-select max-w-xs" value={status} onChange={(event) => { setStatus(event.target.value as EmployeeStatus | ''); setPage(1) }}>
-            {EMPLOYEE_STATUS_OPTIONS.map((employeeStatus) => (
-              <option key={employeeStatus} value={employeeStatus}>
-                {employeeStatus ? startCase(employeeStatus) : 'All statuses'}
-              </option>
-            ))}
-          </select>
+          <AppSelect
+            value={status}
+            onValueChange={(value) => {
+              setStatus(value as EmployeeStatus | '')
+              setPage(1)
+            }}
+            options={EMPLOYEE_STATUS_SELECT_OPTIONS}
+            triggerClassName="max-w-xs"
+          />
         </div>
 
         {isLoading ? (

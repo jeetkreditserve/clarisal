@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 
 import { FieldErrorText } from '@/components/ui/FieldErrorText'
+import { AppCheckbox } from '@/components/ui/AppCheckbox'
+import { AppSelect } from '@/components/ui/AppSelect'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { SkeletonPageHeader, SkeletonTable } from '@/components/ui/Skeleton'
@@ -9,6 +11,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge'
 import { useCreateNotice, useDepartments, useNotices, usePublishNotice } from '@/hooks/useOrgAdmin'
 import { createDefaultNoticeForm, NOTICE_AUDIENCE_TYPE_OPTIONS } from '@/lib/constants'
 import { getErrorMessage, getFieldErrors } from '@/lib/errors'
+import { startCase } from '@/lib/format'
 
 export function NoticesPage() {
   const { data, isLoading } = useNotices()
@@ -17,6 +20,10 @@ export function NoticesPage() {
   const publishMutation = usePublishNotice()
   const [form, setForm] = useState(createDefaultNoticeForm)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+  const audienceTypeOptions = NOTICE_AUDIENCE_TYPE_OPTIONS.map((type) => ({
+    value: type,
+    label: startCase(type),
+  }))
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -59,33 +66,30 @@ export function NoticesPage() {
               <FieldErrorText message={fieldErrors.body} />
             </div>
             <div>
-              <select className="field-select" value={form.audience_type} onChange={(event) => setForm((current) => ({ ...current, audience_type: event.target.value }))}>
-              {NOTICE_AUDIENCE_TYPE_OPTIONS.map((type) => (
-                <option key={type} value={type}>
-                  {type.replace(/_/g, ' ')}
-                </option>
-              ))}
-            </select>
+              <AppSelect
+                value={form.audience_type}
+                onValueChange={(value) => setForm((current) => ({ ...current, audience_type: value }))}
+                options={audienceTypeOptions}
+              />
               <FieldErrorText message={fieldErrors.audience_type} />
             </div>
             {form.audience_type === 'DEPARTMENTS' ? (
               <div className="grid gap-2">
                 {departments?.filter((department) => department.is_active).map((department) => (
-                  <label key={department.id} className="inline-flex items-center gap-2 text-sm text-[hsl(var(--muted-foreground))]">
-                    <input
-                      type="checkbox"
-                      checked={form.department_ids.includes(department.id)}
-                      onChange={(event) =>
-                        setForm((current) => ({
-                          ...current,
-                          department_ids: event.target.checked
-                            ? [...current.department_ids, department.id]
-                            : current.department_ids.filter((id) => id !== department.id),
-                        }))
-                      }
-                    />
-                    {department.name}
-                  </label>
+                  <AppCheckbox
+                    key={department.id}
+                    id={`notice-department-${department.id}`}
+                    checked={form.department_ids.includes(department.id)}
+                    onCheckedChange={(checked) =>
+                      setForm((current) => ({
+                        ...current,
+                        department_ids: checked
+                          ? [...current.department_ids, department.id]
+                          : current.department_ids.filter((id) => id !== department.id),
+                      }))
+                    }
+                    label={department.name}
+                  />
                 ))}
               </div>
             ) : null}

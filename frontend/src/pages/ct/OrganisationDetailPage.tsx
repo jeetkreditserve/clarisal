@@ -17,6 +17,7 @@ import {
 } from '@/hooks/useCtOrganisations'
 import type { LicenceBatch } from '@/types/organisation'
 import { AuditTimeline } from '@/components/ui/AuditTimeline'
+import { AppDatePicker } from '@/components/ui/AppDatePicker'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
@@ -421,24 +422,22 @@ export function OrganisationDetailPage() {
               <label htmlFor="batch-start-date" className="field-label">
                 Start date
               </label>
-              <input
+              <AppDatePicker
                 id="batch-start-date"
-                type="date"
                 value={effectiveBatchForm.start_date}
-                onChange={(event) => setBatchForm((current) => ({ ...current, start_date: event.target.value }))}
-                className="field-input"
+                onValueChange={(value) => setBatchForm((current) => ({ ...current, start_date: value }))}
+                placeholder="Select start date"
               />
             </div>
             <div>
               <label htmlFor="batch-end-date" className="field-label">
                 End date
               </label>
-              <input
+              <AppDatePicker
                 id="batch-end-date"
-                type="date"
                 value={effectiveBatchForm.end_date}
-                onChange={(event) => setBatchForm((current) => ({ ...current, end_date: event.target.value }))}
-                className="field-input"
+                onValueChange={(value) => setBatchForm((current) => ({ ...current, end_date: value }))}
+                placeholder="Select end date"
               />
             </div>
             <div className="lg:col-span-2">
