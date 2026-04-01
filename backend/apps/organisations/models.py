@@ -94,6 +94,28 @@ class OrganisationEntityType(models.TextChoices):
     OTHER = 'OTHER', 'Other'
 
 
+class BootstrapAdminStatus(models.TextChoices):
+    DRAFT = 'DRAFT', 'Draft'
+    INVITE_PENDING = 'INVITE_PENDING', 'Invite Pending'
+    INVITE_ACCEPTED = 'INVITE_ACCEPTED', 'Invite Accepted'
+
+
+class OrganisationLegalIdentifierType(models.TextChoices):
+    PAN = 'PAN', 'PAN'
+    EIN = 'EIN', 'EIN'
+    ABN = 'ABN', 'ABN'
+    UEN = 'UEN', 'UEN'
+    OTHER = 'OTHER', 'Other'
+
+
+class OrganisationTaxRegistrationType(models.TextChoices):
+    GSTIN = 'GSTIN', 'GSTIN'
+    VAT = 'VAT', 'VAT'
+    TRN = 'TRN', 'TRN'
+    GST_HST = 'GST_HST', 'GST/HST'
+    OTHER = 'OTHER', 'Other'
+
+
 class Organisation(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=255)
@@ -197,7 +219,14 @@ class OrganisationAddress(models.Model):
     country = models.CharField(max_length=100, default='India')
     country_code = models.CharField(max_length=2, default='IN')
     pincode = models.CharField(max_length=20)
-    gstin = models.CharField(max_length=15, null=True, blank=True, unique=True)
+    gstin = models.CharField(max_length=64, null=True, blank=True)
+    tax_registration = models.ForeignKey(
+        'OrganisationTaxRegistration',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='addresses',
+    )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -220,6 +249,140 @@ class OrganisationAddress(models.Model):
 
     def __str__(self):
         return f'{self.organisation.name} - {self.label or self.get_address_type_display()}'
+
+
+class OrganisationBootstrapAdmin(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organisation = models.OneToOneField(
+        Organisation,
+        on_delete=models.CASCADE,
+        related_name='bootstrap_admin',
+    )
+    first_name = models.CharField(max_length=100)
+    last_name = models.CharField(max_length=100)
+    person = models.ForeignKey(
+        'accounts.Person',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='bootstrap_admin_profiles',
+    )
+    email_address = models.ForeignKey(
+        'accounts.EmailAddress',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='bootstrap_admin_profiles',
+    )
+    phone_number = models.ForeignKey(
+        'accounts.PhoneNumber',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='bootstrap_admin_profiles',
+    )
+    email = models.EmailField()
+    phone = models.CharField(max_length=20, blank=True)
+    status = models.CharField(
+        max_length=20,
+        choices=BootstrapAdminStatus.choices,
+        default=BootstrapAdminStatus.DRAFT,
+    )
+    invited_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='bootstrap_admin_assignments',
+    )
+    invitation_sent_at = models.DateTimeField(null=True, blank=True)
+    accepted_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'organisation_bootstrap_admins'
+
+    def __str__(self):
+        return f'{self.organisation.name} bootstrap admin <{self.email}>'
+
+
+class OrganisationLegalIdentifier(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organisation = models.ForeignKey(
+        Organisation,
+        on_delete=models.CASCADE,
+        related_name='legal_identifiers',
+    )
+    country_code = models.CharField(max_length=2, default='IN')
+    identifier_type = models.CharField(
+        max_length=20,
+        choices=OrganisationLegalIdentifierType.choices,
+    )
+    identifier = models.CharField(max_length=64)
+    is_primary = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'organisation_legal_identifiers'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['country_code', 'identifier_type', 'identifier'],
+                name='unique_legal_identifier_globally',
+            ),
+            models.UniqueConstraint(
+                fields=['organisation', 'identifier_type'],
+                condition=Q(is_primary=True),
+                name='unique_primary_legal_identifier_per_org_type',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.organisation.name} {self.identifier_type} {self.identifier}'
+
+
+class OrganisationTaxRegistration(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organisation = models.ForeignKey(
+        Organisation,
+        on_delete=models.CASCADE,
+        related_name='tax_registrations',
+    )
+    legal_identifier = models.ForeignKey(
+        OrganisationLegalIdentifier,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='tax_registrations',
+    )
+    country_code = models.CharField(max_length=2, default='IN')
+    registration_type = models.CharField(
+        max_length=20,
+        choices=OrganisationTaxRegistrationType.choices,
+    )
+    identifier = models.CharField(max_length=64)
+    state_code = models.CharField(max_length=16, blank=True, default='')
+    is_primary_billing = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'organisation_tax_registrations'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['country_code', 'registration_type', 'identifier'],
+                name='unique_tax_registration_globally',
+            ),
+            models.UniqueConstraint(
+                fields=['organisation'],
+                condition=Q(is_primary_billing=True),
+                name='unique_primary_billing_tax_registration_per_org',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.organisation.name} {self.registration_type} {self.identifier}'
 
 
 class OrganisationStateTransition(models.Model):
@@ -393,3 +556,26 @@ class OrganisationMembership(models.Model):
 
     def __str__(self):
         return f'{self.user.email} -> {self.organisation.name}'
+
+
+class OrganisationNote(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organisation = models.ForeignKey(
+        Organisation,
+        on_delete=models.CASCADE,
+        related_name='notes',
+    )
+    body = models.TextField()
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='organisation_notes',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'organisation_notes'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'Note for {self.organisation.name} by {self.created_by.email}'

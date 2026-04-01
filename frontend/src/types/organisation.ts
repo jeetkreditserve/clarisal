@@ -70,6 +70,31 @@ export interface OrganisationAddress {
   updated_at: string
 }
 
+export interface BootstrapAdminSummary {
+  first_name: string
+  last_name: string
+  full_name: string
+  email: string
+  phone: string
+  status: 'DRAFT' | 'INVITE_PENDING' | 'INVITE_ACCEPTED'
+  invited_user_id: string | null
+  invited_user_email: string | null
+  invitation_sent_at: string | null
+  accepted_at: string | null
+  updated_at: string
+}
+
+export interface OrganisationNote {
+  id: string
+  body: string
+  created_at: string
+  created_by: {
+    id: string
+    full_name: string
+    email: string
+  }
+}
+
 export interface StateTransition {
   id: string
   from_status: OrganisationStatus
@@ -151,13 +176,45 @@ export interface OrganisationDetail {
   email: string
   logo_url: string | null
   primary_admin_email: string | null
+  primary_admin: BootstrapAdminSummary | null
+  bootstrap_admin: BootstrapAdminSummary | null
   paid_marked_at: string | null
   activated_at: string | null
   suspended_at: string | null
   created_by_email: string
   created_at: string
   updated_at: string
+  admin_count: number
+  employee_count: number
+  holiday_calendar_count: number
+  note_count: number
+  configuration_summary: {
+    locations: number
+    departments: number
+    leave_cycles: number
+    leave_plans: number
+    on_duty_policies: number
+    approval_workflows: number
+    notices: number
+  }
   addresses: OrganisationAddress[]
+  legal_identifiers: Array<{
+    id: string
+    country_code: string
+    identifier_type: string
+    identifier_type_label: string
+    identifier: string
+    is_primary: boolean
+  }>
+  tax_registrations: Array<{
+    id: string
+    country_code: string
+    registration_type: string
+    registration_type_label: string
+    identifier: string
+    state_code: string
+    is_primary_billing: boolean
+  }>
   state_transitions: StateTransition[]
   lifecycle_events: LifecycleEvent[]
   licence_ledger_entries: LicenceLedgerEntry[]

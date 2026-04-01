@@ -1,10 +1,10 @@
-from smtplib import SMTPException
 from celery import shared_task
-from django.core.mail import send_mail
 from django.conf import settings
 
+from apps.common.email_service import EmailDeliveryError, send_transactional_email
 
-@shared_task(bind=True, autoretry_for=(SMTPException, OSError), max_retries=3, default_retry_delay=60)
+
+@shared_task(bind=True, autoretry_for=(EmailDeliveryError, OSError), max_retries=3, default_retry_delay=60)
 def send_invite_email(self, invite_id: str, raw_token: str):
     from apps.invitations.models import Invitation
     from django.db import transaction
@@ -39,13 +39,21 @@ def send_invite_email(self, invite_id: str, raw_token: str):
             f"If you weren't expecting this invitation, you can safely ignore this email.\n\n"
             f"— The Calrisal Team"
         )
+        html_body = (
+            f"<p>Hi {invite.email},</p>"
+            f"<p>{invited_by_name} has invited you to join <strong>{org_name}</strong> on Calrisal as {invite.role}.</p>"
+            f"<p>{action_copy}</p>"
+            f"<p><a href=\"{invite_url}\">{invite_url}</a></p>"
+            f"<p>This link expires in {expiry_hours} hours.</p>"
+            "<p>If you weren't expecting this invitation, you can safely ignore this email.</p>"
+            "<p>— The Calrisal Team</p>"
+        )
 
-        send_mail(
+        send_transactional_email(
             subject=subject,
-            message=body,
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[invite.email],
-            fail_silently=False,
+            recipient_email=invite.email,
+            text_body=body,
+            html_body=html_body,
         )
 
         invite.email_sent = True

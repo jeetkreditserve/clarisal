@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 
-from .models import AccountType, PasswordResetToken, User
+from .models import AccountType, EmailAddress, PasswordResetToken, Person, PhoneNumber, User
 
 
 @admin.register(User)
@@ -9,6 +9,7 @@ class UserAdmin(DjangoUserAdmin):
     ordering = ('email', 'account_type')
     list_display = (
         'email',
+        'person',
         'account_type',
         'role',
         'is_active',
@@ -20,7 +21,7 @@ class UserAdmin(DjangoUserAdmin):
     readonly_fields = ('created_at', 'updated_at', 'last_login')
     fieldsets = (
         (None, {'fields': ('email', 'password')}),
-        ('Profile', {'fields': ('first_name', 'last_name', 'account_type', 'role', 'organisation')}),
+        ('Profile', {'fields': ('first_name', 'last_name', 'person', 'account_type', 'role', 'organisation')}),
         ('Access', {'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')}),
         ('Metadata', {'fields': ('is_onboarding_email_sent', 'last_login', 'created_at', 'updated_at')}),
     )
@@ -44,7 +45,30 @@ class UserAdmin(DjangoUserAdmin):
     )
 
     def get_queryset(self, request):
-        return super().get_queryset(request).select_related('organisation')
+        return super().get_queryset(request).select_related('organisation', 'person')
+
+
+@admin.register(Person)
+class PersonAdmin(admin.ModelAdmin):
+    list_display = ('id', 'created_at', 'updated_at')
+    search_fields = ('id', 'email_addresses__email', 'phone_numbers__e164_number')
+    readonly_fields = ('created_at', 'updated_at')
+
+
+@admin.register(EmailAddress)
+class EmailAddressAdmin(admin.ModelAdmin):
+    list_display = ('email', 'person', 'kind', 'is_primary', 'is_login', 'is_verified')
+    list_filter = ('kind', 'is_primary', 'is_login', 'is_verified')
+    search_fields = ('email', 'normalized_email')
+    readonly_fields = ('normalized_email', 'created_at', 'updated_at')
+
+
+@admin.register(PhoneNumber)
+class PhoneNumberAdmin(admin.ModelAdmin):
+    list_display = ('e164_number', 'person', 'kind', 'is_primary', 'is_verified')
+    list_filter = ('kind', 'is_primary', 'is_verified')
+    search_fields = ('e164_number', 'display_number')
+    readonly_fields = ('created_at', 'updated_at')
 
 
 @admin.register(PasswordResetToken)

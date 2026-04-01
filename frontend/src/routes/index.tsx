@@ -12,6 +12,7 @@ import { ResetPasswordPage } from '@/pages/auth/ResetPasswordPage'
 import { CTDashboardPage } from '@/pages/ct/DashboardPage'
 import { OrganisationsPage } from '@/pages/ct/OrganisationsPage'
 import { NewOrganisationPage } from '@/pages/ct/NewOrganisationPage'
+import { FirstLicenceBatchPage } from '@/pages/ct/FirstLicenceBatchPage'
 import { OrganisationDetailPage } from '@/pages/ct/OrganisationDetailPage'
 import { OrgDashboardPage } from '@/pages/org/DashboardPage'
 import { OrgProfilePage } from '@/pages/org/ProfilePage'
@@ -75,6 +76,7 @@ export const router = createBrowserRouter([
           { path: '/ct/dashboard', element: <CTDashboardPage /> },
           { path: '/ct/organisations', element: <OrganisationsPage /> },
           { path: '/ct/organisations/new', element: <NewOrganisationPage /> },
+          { path: '/ct/organisations/:id/first-licence-batch', element: <FirstLicenceBatchPage /> },
           { path: '/ct/organisations/:id', element: <OrganisationDetailPage /> },
         ],
       },

@@ -9,9 +9,12 @@ def get_organisations():
             'created_by',
             'primary_admin_user',
             'paid_marked_by',
+            'bootstrap_admin',
         )
         .prefetch_related(
             'addresses',
+            'legal_identifiers',
+            'tax_registrations',
             'state_transitions',
             'lifecycle_events',
             'licence_ledger_entries',

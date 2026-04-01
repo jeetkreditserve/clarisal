@@ -1,19 +1,28 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { fetchCtAuditLogs } from '@/lib/api/audit'
 import {
+  createCtHolidayCalendar,
+  createCtOrgNote,
   createLicenceBatch,
   createOrganisation,
+  fetchCtHolidayCalendars,
+  fetchCtOrgConfiguration,
+  fetchCtOrgEmployeeDetail,
+  fetchCtOrgEmployees,
+  fetchCtOrgNotes,
   fetchCtStats,
   fetchLicenceBatches,
   fetchOrganisation,
   fetchOrgAdmins,
   fetchOrganisations,
   inviteOrgAdmin,
+  publishCtHolidayCalendar,
   markLicenceBatchPaid,
   markOrganisationPaid,
   resendOrgAdminInvite,
   restoreOrganisation,
   suspendOrganisation,
+  updateCtHolidayCalendar,
   updateLicenceBatch,
   updateOrganisation,
 } from '@/lib/api/organisations'
@@ -37,10 +46,11 @@ export function useOrganisation(id: string) {
   })
 }
 
-export function useCtAuditLogs(organisationId?: string) {
+export function useCtAuditLogs(organisationId?: string, enabled = true) {
   return useQuery({
     queryKey: ['ct', 'audit', organisationId],
     queryFn: () => fetchCtAuditLogs(organisationId),
+    enabled,
   })
 }
 
@@ -104,11 +114,96 @@ export function useRestoreOrganisation() {
   })
 }
 
-export function useOrgAdmins(orgId: string) {
+export function useOrgAdmins(orgId: string, enabled = true) {
   return useQuery({
     queryKey: ['ct', 'organisations', orgId, 'admins'],
     queryFn: () => fetchOrgAdmins(orgId),
-    enabled: !!orgId,
+    enabled: !!orgId && enabled,
+  })
+}
+
+export function useCtOrgEmployees(orgId: string, params?: { status?: string; search?: string; page?: number }, enabled = true) {
+  return useQuery({
+    queryKey: ['ct', 'organisations', orgId, 'employees', params],
+    queryFn: () => fetchCtOrgEmployees(orgId, params),
+    enabled: !!orgId && enabled,
+  })
+}
+
+export function useCtOrgEmployeeDetail(orgId: string, employeeId: string, enabled = true) {
+  return useQuery({
+    queryKey: ['ct', 'organisations', orgId, 'employees', employeeId],
+    queryFn: () => fetchCtOrgEmployeeDetail(orgId, employeeId),
+    enabled: Boolean(orgId && employeeId && enabled),
+  })
+}
+
+export function useCtHolidayCalendars(orgId: string, enabled = true) {
+  return useQuery({
+    queryKey: ['ct', 'organisations', orgId, 'holiday-calendars'],
+    queryFn: () => fetchCtHolidayCalendars(orgId),
+    enabled: !!orgId && enabled,
+  })
+}
+
+export function useCreateCtHolidayCalendar(orgId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: Record<string, unknown>) => createCtHolidayCalendar(orgId, payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ct', 'organisations', orgId, 'holiday-calendars'] })
+      qc.invalidateQueries({ queryKey: ['ct', 'organisations', orgId] })
+    },
+  })
+}
+
+export function useUpdateCtHolidayCalendar(orgId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ calendarId, payload }: { calendarId: string; payload: Record<string, unknown> }) =>
+      updateCtHolidayCalendar(orgId, calendarId, payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ct', 'organisations', orgId, 'holiday-calendars'] })
+      qc.invalidateQueries({ queryKey: ['ct', 'organisations', orgId] })
+    },
+  })
+}
+
+export function usePublishCtHolidayCalendar(orgId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (calendarId: string) => publishCtHolidayCalendar(orgId, calendarId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ct', 'organisations', orgId, 'holiday-calendars'] })
+      qc.invalidateQueries({ queryKey: ['ct', 'organisations', orgId] })
+    },
+  })
+}
+
+export function useCtOrgConfiguration(orgId: string, enabled = true) {
+  return useQuery({
+    queryKey: ['ct', 'organisations', orgId, 'configuration'],
+    queryFn: () => fetchCtOrgConfiguration(orgId),
+    enabled: !!orgId && enabled,
+  })
+}
+
+export function useCtOrgNotes(orgId: string, enabled = true) {
+  return useQuery({
+    queryKey: ['ct', 'organisations', orgId, 'notes'],
+    queryFn: () => fetchCtOrgNotes(orgId),
+    enabled: !!orgId && enabled,
+  })
+}
+
+export function useCreateCtOrgNote(orgId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: string) => createCtOrgNote(orgId, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ct', 'organisations', orgId, 'notes'] })
+      qc.invalidateQueries({ queryKey: ['ct', 'organisations', orgId] })
+    },
   })
 }
 

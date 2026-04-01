@@ -1,6 +1,7 @@
 import uuid
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
+from django.db.models import Q
 from django.utils import timezone
 
 
@@ -15,11 +16,104 @@ class UserRole(models.TextChoices):
     EMPLOYEE = 'EMPLOYEE', 'Employee'
 
 
+class ContactKind(models.TextChoices):
+    WORK = 'WORK', 'Work'
+    PERSONAL = 'PERSONAL', 'Personal'
+    LEGAL = 'LEGAL', 'Legal'
+    EMERGENCY = 'EMERGENCY', 'Emergency'
+    OTHER = 'OTHER', 'Other'
+
+
+class Person(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'people'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        primary_email = self.email_addresses.filter(is_primary=True).first()
+        if primary_email:
+            return primary_email.email
+        return f'Person {self.id}'
+
+
+class EmailAddress(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    person = models.ForeignKey(
+        Person,
+        on_delete=models.CASCADE,
+        related_name='email_addresses',
+    )
+    email = models.EmailField()
+    normalized_email = models.CharField(max_length=254, unique=True)
+    kind = models.CharField(
+        max_length=20,
+        choices=ContactKind.choices,
+        default=ContactKind.WORK,
+    )
+    is_primary = models.BooleanField(default=False)
+    is_login = models.BooleanField(default=False)
+    is_verified = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'email_addresses'
+        ordering = ['-is_primary', 'email']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['person'],
+                condition=Q(is_primary=True),
+                name='unique_primary_email_per_person',
+            ),
+        ]
+
+    def __str__(self):
+        return self.email
+
+
+class PhoneNumber(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    person = models.ForeignKey(
+        Person,
+        on_delete=models.CASCADE,
+        related_name='phone_numbers',
+    )
+    e164_number = models.CharField(max_length=20, unique=True)
+    display_number = models.CharField(max_length=32, blank=True)
+    kind = models.CharField(
+        max_length=20,
+        choices=ContactKind.choices,
+        default=ContactKind.WORK,
+    )
+    is_primary = models.BooleanField(default=False)
+    is_verified = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'phone_numbers'
+        ordering = ['-is_primary', 'e164_number']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['person'],
+                condition=Q(is_primary=True),
+                name='unique_primary_phone_per_person',
+            ),
+        ]
+
+    def __str__(self):
+        return self.e164_number
+
+
 class UserManager(BaseUserManager):
     def create_user(self, email, password=None, **extra_fields):
         if not email:
             raise ValueError('Email is required')
-        email = self.normalize_email(email)
+        email = email.strip().lower()
         extra_fields.setdefault('is_active', True)
         user = self.model(email=email, **extra_fields)
         user.set_password(password)
@@ -38,6 +132,13 @@ class UserManager(BaseUserManager):
 class User(AbstractBaseUser, PermissionsMixin):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     email = models.EmailField()
+    person = models.ForeignKey(
+        Person,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='accounts',
+    )
     account_type = models.CharField(
         max_length=20,
         choices=AccountType.choices,
@@ -80,6 +181,14 @@ class User(AbstractBaseUser, PermissionsMixin):
     @property
     def full_name(self):
         return f'{self.first_name} {self.last_name}'.strip() or self.email
+
+    def save(self, *args, **kwargs):
+        from .contact_services import ensure_user_contact_identity
+
+        if self.email:
+            self.email = self.email.strip().lower()
+        ensure_user_contact_identity(self)
+        super().save(*args, **kwargs)
 
 
 class PasswordResetToken(models.Model):

@@ -2,16 +2,23 @@ from decimal import Decimal
 
 from rest_framework import serializers
 from .models import (
+    BootstrapAdminStatus,
     LicenceBatchLifecycleState,
     LicenceBatchPaymentStatus,
     Organisation,
     OrganisationAddress,
+    OrganisationBootstrapAdmin,
     OrganisationEntityType,
+    OrganisationLegalIdentifier,
+    OrganisationLegalIdentifierType,
     OrganisationLicenceBatch,
     OrganisationLifecycleEvent,
     OrganisationLicenceLedger,
     OrganisationMembership,
+    OrganisationNote,
     OrganisationStateTransition,
+    OrganisationTaxRegistration,
+    OrganisationTaxRegistrationType,
 )
 from .country_metadata import (
     DEFAULT_COUNTRY_CODE,
@@ -32,6 +39,7 @@ from .services import normalize_pan_number
 
 class OrganisationAddressSerializer(serializers.ModelSerializer):
     address_type_label = serializers.CharField(source='get_address_type_display', read_only=True)
+    tax_registration_id = serializers.UUIDField(source='tax_registration.id', read_only=True)
 
     class Meta:
         model = OrganisationAddress
@@ -49,6 +57,7 @@ class OrganisationAddressSerializer(serializers.ModelSerializer):
             'country_code',
             'pincode',
             'gstin',
+            'tax_registration_id',
             'is_active',
             'created_at',
             'updated_at',
@@ -111,6 +120,62 @@ class OrganisationAddressWriteSerializer(serializers.Serializer):
                 'BILLING': 'Billing Address',
             }[attrs['address_type']]
         return attrs
+
+
+class PrimaryAdminWriteSerializer(serializers.Serializer):
+    first_name = serializers.CharField(max_length=100)
+    last_name = serializers.CharField(max_length=100)
+    email = serializers.EmailField()
+    phone = serializers.CharField(max_length=20, required=False, allow_blank=True, default='')
+
+
+class BootstrapAdminSerializer(serializers.ModelSerializer):
+    full_name = serializers.SerializerMethodField()
+    invited_user_email = serializers.EmailField(source='invited_user.email', read_only=True)
+    invited_user_id = serializers.UUIDField(source='invited_user.id', read_only=True)
+
+    class Meta:
+        model = OrganisationBootstrapAdmin
+        fields = [
+            'first_name',
+            'last_name',
+            'full_name',
+            'email',
+            'phone',
+            'status',
+            'invited_user_id',
+            'invited_user_email',
+            'invitation_sent_at',
+            'accepted_at',
+            'updated_at',
+        ]
+
+    def get_full_name(self, obj):
+        return f'{obj.first_name} {obj.last_name}'.strip()
+
+
+class OrganisationLegalIdentifierSerializer(serializers.ModelSerializer):
+    identifier_type_label = serializers.CharField(source='get_identifier_type_display', read_only=True)
+
+    class Meta:
+        model = OrganisationLegalIdentifier
+        fields = ['id', 'country_code', 'identifier_type', 'identifier_type_label', 'identifier', 'is_primary']
+
+
+class OrganisationTaxRegistrationSerializer(serializers.ModelSerializer):
+    registration_type_label = serializers.CharField(source='get_registration_type_display', read_only=True)
+
+    class Meta:
+        model = OrganisationTaxRegistration
+        fields = [
+            'id',
+            'country_code',
+            'registration_type',
+            'registration_type_label',
+            'identifier',
+            'state_code',
+            'is_primary_billing',
+        ]
 
 
 class OrganisationListSerializer(serializers.ModelSerializer):
@@ -210,18 +275,56 @@ class LicenceBatchDefaultsSerializer(serializers.Serializer):
     total_amount = serializers.DecimalField(max_digits=12, decimal_places=2)
 
 
+class OrganisationNoteSerializer(serializers.ModelSerializer):
+    created_by = serializers.SerializerMethodField()
+
+    class Meta:
+        model = OrganisationNote
+        fields = ['id', 'body', 'created_at', 'created_by']
+
+    def get_created_by(self, obj):
+        return {
+            'id': str(obj.created_by_id),
+            'full_name': obj.created_by.full_name,
+            'email': obj.created_by.email,
+        }
+
+
+class OrganisationNoteWriteSerializer(serializers.Serializer):
+    body = serializers.CharField(max_length=4000)
+
+
+class OrganisationConfigurationSummarySerializer(serializers.Serializer):
+    locations = serializers.IntegerField()
+    departments = serializers.IntegerField()
+    leave_cycles = serializers.IntegerField()
+    leave_plans = serializers.IntegerField()
+    on_duty_policies = serializers.IntegerField()
+    approval_workflows = serializers.IntegerField()
+    notices = serializers.IntegerField()
+
+
 class OrganisationDetailSerializer(serializers.ModelSerializer):
     created_by_email = serializers.EmailField(source='created_by.email', read_only=True)
     primary_admin_email = serializers.EmailField(source='primary_admin_user.email', read_only=True)
     entity_type_label = serializers.CharField(source='get_entity_type_display', read_only=True)
     licence_count = serializers.SerializerMethodField()
+    primary_admin = BootstrapAdminSerializer(source='bootstrap_admin', read_only=True)
+    bootstrap_admin = BootstrapAdminSerializer(read_only=True)
     addresses = OrganisationAddressSerializer(many=True, read_only=True)
+    legal_identifiers = OrganisationLegalIdentifierSerializer(many=True, read_only=True)
+    tax_registrations = OrganisationTaxRegistrationSerializer(many=True, read_only=True)
     state_transitions = StateTransitionSerializer(many=True, read_only=True)
     lifecycle_events = LifecycleEventSerializer(many=True, read_only=True)
     licence_ledger_entries = LicenceLedgerEntrySerializer(many=True, read_only=True)
     licence_summary = serializers.SerializerMethodField()
     licence_batches = LicenceBatchSerializer(many=True, read_only=True)
     batch_defaults = serializers.SerializerMethodField()
+    admin_count = serializers.SerializerMethodField()
+    employee_count = serializers.SerializerMethodField()
+    holiday_calendar_count = serializers.SerializerMethodField()
+    note_count = serializers.SerializerMethodField()
+    configuration_summary = serializers.SerializerMethodField()
 
     class Meta:
         model = Organisation
@@ -229,9 +332,10 @@ class OrganisationDetailSerializer(serializers.ModelSerializer):
             'id', 'name', 'slug', 'status', 'billing_status', 'access_state', 'onboarding_stage',
             'licence_count', 'country_code', 'currency', 'entity_type', 'entity_type_label', 'pan_number',
             'address', 'phone', 'email', 'logo_url',
-            'primary_admin_email', 'paid_marked_at', 'activated_at', 'suspended_at',
+            'primary_admin_email', 'primary_admin', 'bootstrap_admin', 'paid_marked_at', 'activated_at', 'suspended_at',
             'created_by_email', 'created_at', 'updated_at',
-            'addresses',
+            'admin_count', 'employee_count', 'holiday_calendar_count', 'note_count', 'configuration_summary',
+            'addresses', 'legal_identifiers', 'tax_registrations',
             'state_transitions', 'lifecycle_events', 'licence_ledger_entries', 'licence_summary',
             'licence_batches', 'batch_defaults',
         ]
@@ -251,16 +355,50 @@ class OrganisationDetailSerializer(serializers.ModelSerializer):
 
         return LicenceBatchDefaultsSerializer(get_licence_batch_defaults(obj)).data
 
+    def get_admin_count(self, obj):
+        return obj.memberships.filter(is_org_admin=True, status='ACTIVE').count()
+
+    def get_employee_count(self, obj):
+        from apps.employees.models import Employee
+
+        return Employee.objects.filter(organisation=obj).count()
+
+    def get_holiday_calendar_count(self, obj):
+        from apps.timeoff.models import HolidayCalendar
+
+        return HolidayCalendar.objects.filter(organisation=obj).count()
+
+    def get_note_count(self, obj):
+        return obj.notes.count()
+
+    def get_configuration_summary(self, obj):
+        from apps.approvals.models import ApprovalWorkflow
+        from apps.communications.models import Notice
+        from apps.departments.models import Department
+        from apps.locations.models import OfficeLocation
+        from apps.timeoff.models import LeaveCycle, LeavePlan, OnDutyPolicy
+
+        return OrganisationConfigurationSummarySerializer(
+            {
+                'locations': OfficeLocation.objects.filter(organisation=obj).count(),
+                'departments': Department.objects.filter(organisation=obj).count(),
+                'leave_cycles': LeaveCycle.objects.filter(organisation=obj).count(),
+                'leave_plans': LeavePlan.objects.filter(organisation=obj).count(),
+                'on_duty_policies': OnDutyPolicy.objects.filter(organisation=obj).count(),
+                'approval_workflows': ApprovalWorkflow.objects.filter(organisation=obj).count(),
+                'notices': Notice.objects.filter(organisation=obj).count(),
+            }
+        ).data
+
 
 class CreateOrganisationSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=255)
     pan_number = serializers.CharField(max_length=10)
-    phone = serializers.CharField(max_length=20, required=False, allow_blank=True, default='')
-    email = serializers.EmailField(required=False, allow_blank=True, default='')
     country_code = serializers.CharField(max_length=2, required=False, default=DEFAULT_COUNTRY_CODE)
     currency = serializers.CharField(max_length=3, required=False, default=DEFAULT_CURRENCY_CODE)
     entity_type = serializers.ChoiceField(choices=OrganisationEntityType.choices)
-    licence_count = serializers.IntegerField(min_value=0, required=False, default=0)
+    billing_same_as_registered = serializers.BooleanField(required=False, default=False)
+    primary_admin = PrimaryAdminWriteSerializer()
     addresses = OrganisationAddressWriteSerializer(many=True)
 
     def validate_pan_number(self, value):
@@ -283,15 +421,29 @@ class CreateOrganisationSerializer(serializers.Serializer):
 
     def validate(self, attrs):
         try:
-            attrs['phone'] = validate_phone_for_country(attrs.get('phone', ''), attrs['country_code'])
+            attrs['primary_admin']['phone'] = validate_phone_for_country(
+                attrs['primary_admin'].get('phone', ''),
+                attrs['country_code'],
+            )
         except ValueError as exc:
-            raise serializers.ValidationError({'phone': str(exc)}) from exc
+            raise serializers.ValidationError({'primary_admin': {'phone': str(exc)}}) from exc
         address_types = [address['address_type'] for address in attrs.get('addresses', []) if address.get('is_active', True)]
         if address_types.count('REGISTERED') != 1 or address_types.count('BILLING') != 1:
             raise serializers.ValidationError(
                 {'addresses': 'Exactly one active registered address and one active billing address are required.'}
             )
         pan_number = attrs['pan_number']
+        registered_address = next((address for address in attrs['addresses'] if address['address_type'] == 'REGISTERED'), None)
+        billing_address = next((address for address in attrs['addresses'] if address['address_type'] == 'BILLING'), None)
+        if (
+            attrs.get('billing_same_as_registered')
+            and registered_address
+            and billing_address
+            and (registered_address.get('gstin') or '') != (billing_address.get('gstin') or '')
+        ):
+            raise serializers.ValidationError(
+                {'addresses': 'Billing same as registered requires the same billing tax identifier on both addresses.'}
+            )
         for index, address in enumerate(attrs.get('addresses', [])):
             try:
                 attrs['addresses'][index]['gstin'] = validate_billing_tax_identifier(
@@ -315,6 +467,7 @@ class UpdateOrganisationSerializer(serializers.Serializer):
     currency = serializers.CharField(max_length=3, required=False)
     entity_type = serializers.ChoiceField(choices=OrganisationEntityType.choices, required=False)
     logo_url = serializers.URLField(required=False, allow_blank=True)
+    primary_admin = PrimaryAdminWriteSerializer(required=False)
 
     def validate_pan_number(self, value):
         try:
@@ -349,6 +502,12 @@ class UpdateOrganisationSerializer(serializers.Serializer):
                 raise serializers.ValidationError({'phone': str(exc)}) from exc
             if 'phone' in attrs:
                 attrs['phone'] = normalized_phone
+        primary_admin = attrs.get('primary_admin')
+        if primary_admin:
+            try:
+                primary_admin['phone'] = validate_phone_for_country(primary_admin.get('phone', ''), country_code)
+            except ValueError as exc:
+                raise serializers.ValidationError({'primary_admin': {'phone': str(exc)}}) from exc
         return attrs
 
 

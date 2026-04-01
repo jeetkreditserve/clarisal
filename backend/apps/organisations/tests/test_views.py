@@ -2,13 +2,14 @@ import pytest
 from decimal import Decimal
 from django.urls import reverse
 from rest_framework.test import APIClient
-from apps.accounts.models import User, UserRole
+from apps.accounts.models import AccountType, User, UserRole
 from apps.organisations.models import (
     Organisation,
     OrganisationAccessState,
     OrganisationBillingStatus,
     OrganisationMembership,
     OrganisationMembershipStatus,
+    OrganisationNote,
     OrganisationStatus,
 )
 
@@ -17,11 +18,15 @@ def organisation_create_payload(name='New Org'):
     return {
         'name': name,
         'pan_number': 'ABCDE1234F',
-        'email': 'org@test.com',
-        'phone': '+919876543210',
         'country_code': 'IN',
         'currency': 'INR',
         'entity_type': 'PRIVATE_LIMITED',
+        'primary_admin': {
+            'first_name': 'Aditi',
+            'last_name': 'Rao',
+            'email': 'admin@test.com',
+            'phone': '+919876543210',
+        },
         'addresses': [
             {
                 'address_type': 'REGISTERED',
@@ -79,10 +84,11 @@ class TestOrganisationListCreate:
         assert response.data['name'] == 'New Org'
         assert response.data['status'] == OrganisationStatus.PENDING
         assert response.data['pan_number'] == 'ABCDE1234F'
-        assert response.data['phone'] == '+919876543210'
+        assert response.data['phone'] == ''
         assert response.data['country_code'] == 'IN'
         assert response.data['currency'] == 'INR'
         assert response.data['entity_type'] == 'PRIVATE_LIMITED'
+        assert response.data['bootstrap_admin']['email'] == 'admin@test.com'
 
     def test_create_requires_name(self, ct_client):
         client, _ = ct_client
@@ -92,11 +98,69 @@ class TestOrganisationListCreate:
     def test_create_rejects_phone_with_wrong_country_dial_code(self, ct_client):
         client, _ = ct_client
         payload = organisation_create_payload()
-        payload['phone'] = '+447700900123'
+        payload['primary_admin']['phone'] = '+447700900123'
         payload['country_code'] = 'IN'
         response = client.post('/api/ct/organisations/', payload, format='json')
         assert response.status_code == 400
-        assert 'phone' in response.data
+        assert 'primary_admin' in response.data
+
+    def test_create_returns_400_for_duplicate_gstin(self, ct_client):
+        client, _ = ct_client
+        first_response = client.post('/api/ct/organisations/', organisation_create_payload(name='Existing Org'), format='json')
+        assert first_response.status_code == 201
+        payload = organisation_create_payload(name='Conflicting Org')
+        payload['addresses'][0]['gstin'] = '29ABCDE1234F1Z5'
+        response = client.post('/api/ct/organisations/', payload, format='json')
+        assert response.status_code == 400
+        assert 'error' in response.data
+
+    def test_create_reuses_existing_person_for_bootstrap_admin_email(self, ct_client):
+        client, _ = ct_client
+        user = User.objects.create_user(
+            email='admin@test.com',
+            password='pass123!',
+            account_type=AccountType.WORKFORCE,
+            role=UserRole.ORG_ADMIN,
+            is_active=True,
+        )
+
+        response = client.post('/api/ct/organisations/', organisation_create_payload(name='Shared Person Org'), format='json')
+
+        assert response.status_code == 201
+        organisation = Organisation.objects.get(id=response.data['id'])
+        assert organisation.bootstrap_admin.person_id == user.person_id
+
+    def test_create_rejects_email_and_phone_that_resolve_to_different_people(self, ct_client):
+        client, _ = ct_client
+        User.objects.create_user(
+            email='someoneelse@test.com',
+            password='pass123!',
+            account_type=AccountType.WORKFORCE,
+            role=UserRole.EMPLOYEE,
+            is_active=True,
+        )
+        User.objects.create_user(
+            email='new-admin@test.com',
+            password='pass123!',
+            account_type=AccountType.WORKFORCE,
+            role=UserRole.ORG_ADMIN,
+            is_active=True,
+        )
+        payload = organisation_create_payload(name='Phone Conflict Org')
+        payload['primary_admin']['email'] = 'new-admin@test.com'
+        payload['primary_admin']['phone'] = '+919900001111'
+        conflicting_user = User.objects.get(email='someoneelse@test.com', account_type=AccountType.WORKFORCE)
+        conflicting_user.person.phone_numbers.create(
+            e164_number='+919900001111',
+            display_number='+91 99000 01111',
+            kind='WORK',
+            is_primary=True,
+        )
+
+        response = client.post('/api/ct/organisations/', payload, format='json')
+
+        assert response.status_code == 400
+        assert 'error' in response.data
 
     def test_unauthenticated_returns_401(self):
         client = APIClient()
@@ -213,3 +277,116 @@ class TestLicenceBatchViews:
         assert pay_response.status_code == 200
         assert pay_response.data['payment_status'] == 'PAID'
         assert pay_response.data['lifecycle_state'] in ['ACTIVE', 'PAID_PENDING_START']
+
+
+@pytest.mark.django_db
+class TestCtOrganisationDetailTabsSupport:
+    def test_org_detail_includes_tab_summary_counts(self, ct_client, org):
+        client, ct_user = ct_client
+        response = client.get(f'/api/ct/organisations/{org.id}/')
+
+        assert response.status_code == 200
+        assert 'admin_count' in response.data
+        assert 'employee_count' in response.data
+        assert 'holiday_calendar_count' in response.data
+        assert 'note_count' in response.data
+        assert 'configuration_summary' in response.data
+
+    def test_ct_can_create_and_list_notes(self, ct_client, org):
+        client, ct_user = ct_client
+
+        create_response = client.post(
+            f'/api/ct/organisations/{org.id}/notes/',
+            {'body': 'Payment follow-up scheduled with finance.'},
+            format='json',
+        )
+
+        assert create_response.status_code == 201
+        assert create_response.data['body'] == 'Payment follow-up scheduled with finance.'
+        assert create_response.data['created_by']['email'] == ct_user.email
+        assert OrganisationNote.objects.filter(organisation=org).count() == 1
+
+        list_response = client.get(f'/api/ct/organisations/{org.id}/notes/')
+
+        assert list_response.status_code == 200
+        assert len(list_response.data) == 1
+        assert list_response.data[0]['created_by']['email'] == ct_user.email
+        assert list_response.data[0]['created_at']
+
+    def test_ct_can_list_employees_for_org(self, ct_client, org):
+        client, _ = ct_client
+        workforce_user = User.objects.create_user(
+            email='employee@test.com',
+            password='pass123!',
+            account_type=AccountType.WORKFORCE,
+            role=UserRole.EMPLOYEE,
+            is_active=True,
+            first_name='Riya',
+            last_name='Sen',
+        )
+        from apps.employees.models import Employee
+
+        employee = Employee.objects.create(
+            organisation=org,
+            user=workforce_user,
+            designation='Analyst',
+            employment_type='FULL_TIME',
+            status='ACTIVE',
+        )
+
+        response = client.get(f'/api/ct/organisations/{org.id}/employees/')
+
+        assert response.status_code == 200
+        assert response.data['count'] == 1
+        assert response.data['results'][0]['email'] == 'employee@test.com'
+
+        detail_response = client.get(f'/api/ct/organisations/{org.id}/employees/{employee.id}/')
+        assert detail_response.status_code == 200
+        assert detail_response.data['full_name'] == 'Riya Sen'
+
+    def test_ct_can_manage_holiday_calendars(self, ct_client, org):
+        client, _ = ct_client
+
+        create_response = client.post(
+            f'/api/ct/organisations/{org.id}/holiday-calendars/',
+            {
+                'name': 'FY 2026 Calendar',
+                'year': 2026,
+                'description': '',
+                'is_default': True,
+                'holidays': [
+                    {
+                        'name': 'Founders Day',
+                        'holiday_date': '2026-07-15',
+                        'classification': 'COMPANY',
+                        'session': 'FULL_DAY',
+                        'description': '',
+                    }
+                ],
+                'location_ids': [],
+            },
+            format='json',
+        )
+
+        assert create_response.status_code == 201
+        calendar_id = create_response.data['id']
+
+        publish_response = client.post(f'/api/ct/organisations/{org.id}/holiday-calendars/{calendar_id}/publish/')
+        assert publish_response.status_code == 200
+        assert publish_response.data['status'] == 'PUBLISHED'
+
+    def test_ct_can_fetch_configuration_snapshot(self, ct_client, org):
+        client, _ = ct_client
+
+        response = client.get(f'/api/ct/organisations/{org.id}/configuration/')
+
+        assert response.status_code == 200
+        assert set(response.data.keys()) == {
+            'locations',
+            'departments',
+            'leave_cycles',
+            'leave_plans',
+            'on_duty_policies',
+            'approval_workflows',
+            'notices',
+        }

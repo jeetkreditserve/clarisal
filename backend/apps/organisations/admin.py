@@ -6,6 +6,7 @@ from .models import (
     OrganisationLifecycleEvent,
     OrganisationLicenceLedger,
     OrganisationMembership,
+    OrganisationNote,
     OrganisationStateTransition,
 )
 
@@ -64,3 +65,10 @@ class OrganisationLifecycleEventAdmin(admin.ModelAdmin):
     list_filter = ('event_type',)
     search_fields = ('organisation__name', 'actor__email')
     autocomplete_fields = ('organisation', 'actor')
+
+
+@admin.register(OrganisationNote)
+class OrganisationNoteAdmin(admin.ModelAdmin):
+    list_display = ('organisation', 'created_by', 'created_at')
+    search_fields = ('organisation__name', 'created_by__email', 'body')
+    autocomplete_fields = ('organisation', 'created_by')

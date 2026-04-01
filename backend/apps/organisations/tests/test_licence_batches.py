@@ -5,8 +5,13 @@ from unittest.mock import patch
 import pytest
 
 from apps.accounts.models import User, UserRole
+from apps.employees.models import Employee, EmployeeStatus
 from apps.organisations.models import (
     Organisation,
+    BootstrapAdminStatus,
+    OrganisationMembership,
+    OrganisationMembershipStatus,
+    OrganisationBootstrapAdmin,
     OrganisationStatus,
 )
 from apps.organisations.services import (
@@ -125,6 +130,33 @@ class TestLicenceBatchLifecycle:
 
         assert organisation.status == OrganisationStatus.PAID
 
+    @patch('django.db.transaction.on_commit')
+    @patch('apps.invitations.tasks.send_invite_email.delay')
+    def test_first_paid_batch_sends_bootstrap_admin_invite(self, mock_send_invite, mock_on_commit, organisation, ct_user):
+        mock_on_commit.side_effect = lambda callback: callback()
+        OrganisationBootstrapAdmin.objects.create(
+            organisation=organisation,
+            first_name='Aditi',
+            last_name='Rao',
+            email='admin@acme.com',
+            phone='+919876543210',
+        )
+        batch = create_licence_batch(
+            organisation,
+            quantity=2,
+            price_per_licence_per_month=Decimal('150.00'),
+            start_date=date(2026, 4, 1),
+            end_date=date(2026, 5, 1),
+            created_by=ct_user,
+        )
+
+        mark_licence_batch_paid(batch, paid_by=ct_user, paid_at=date(2026, 4, 1))
+        organisation.refresh_from_db()
+
+        assert organisation.status == OrganisationStatus.PAID
+        assert organisation.bootstrap_admin.status == BootstrapAdminStatus.INVITE_PENDING
+        mock_send_invite.assert_called_once()
+
     def test_org_summary_counts_only_paid_active_batches(self, organisation, ct_user):
         active_batch = create_licence_batch(
             organisation,
@@ -171,3 +203,38 @@ class TestLicenceBatchLifecycle:
         assert summary['available'] == 4
         assert summary['overage'] == 0
         assert summary['has_overage'] is False
+
+    def test_org_admin_memberships_do_not_consume_licences(self, organisation, ct_user):
+        batch = create_licence_batch(
+            organisation,
+            quantity=2,
+            price_per_licence_per_month=Decimal('100.00'),
+            start_date=date(2026, 4, 1),
+            end_date=date(2026, 12, 31),
+            created_by=ct_user,
+        )
+        mark_licence_batch_paid(batch, paid_by=ct_user, paid_at=date(2026, 4, 1))
+
+        hybrid_user = User.objects.create_user(
+            email='hybrid@acme.com',
+            password='pass123!',
+            role=UserRole.ORG_ADMIN,
+            is_active=True,
+        )
+        OrganisationMembership.objects.create(
+            organisation=organisation,
+            user=hybrid_user,
+            is_org_admin=True,
+            status=OrganisationMembershipStatus.ACTIVE,
+        )
+        Employee.objects.create(
+            organisation=organisation,
+            user=hybrid_user,
+            status=EmployeeStatus.ACTIVE,
+            employee_code='EMP001',
+        )
+
+        summary = get_org_licence_summary(organisation, as_of=date(2026, 6, 1))
+
+        assert summary['allocated'] == 1
+        assert summary['available'] == 1

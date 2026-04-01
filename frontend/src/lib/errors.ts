@@ -6,6 +6,28 @@ function firstValue(value: unknown): string | null {
   return null
 }
 
+function collectFieldErrors(
+  value: unknown,
+  currentPath: string,
+  fieldErrors: Record<string, string>
+) {
+  const message = firstValue(value)
+  if (message && currentPath) {
+    fieldErrors[currentPath] = message
+    return
+  }
+
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return
+  }
+
+  for (const [key, nestedValue] of Object.entries(value as Record<string, unknown>)) {
+    if (key === 'error' || key === 'detail') continue
+    const nextPath = currentPath ? `${currentPath}.${key}` : key
+    collectFieldErrors(nestedValue, nextPath, fieldErrors)
+  }
+}
+
 export function getErrorMessage(error: unknown, fallback = 'Something went wrong.') {
   if (!isAxiosError(error)) return fallback
 
@@ -38,10 +60,7 @@ export function getFieldErrors(error: unknown) {
   const fieldErrors: Record<string, string> = {}
   for (const [key, value] of Object.entries(data as Record<string, unknown>)) {
     if (key === 'error' || key === 'detail') continue
-    const message = firstValue(value)
-    if (message) {
-      fieldErrors[key] = message
-    }
+    collectFieldErrors(value, key, fieldErrors)
   }
   return fieldErrors
 }

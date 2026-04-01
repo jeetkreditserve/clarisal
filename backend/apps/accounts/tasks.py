@@ -1,11 +1,9 @@
-from smtplib import SMTPException
-
 from celery import shared_task
 from django.conf import settings
-from django.core.mail import send_mail
+from apps.common.email_service import EmailDeliveryError, send_transactional_email
 
 
-@shared_task(bind=True, autoretry_for=(SMTPException, OSError), max_retries=3, default_retry_delay=60)
+@shared_task(bind=True, autoretry_for=(EmailDeliveryError, OSError), max_retries=3, default_retry_delay=60)
 def send_password_reset_email(self, reset_token_id: str, raw_token: str):
     from apps.accounts.models import PasswordResetToken
 
@@ -27,10 +25,17 @@ def send_password_reset_email(self, reset_token_id: str, raw_token: str):
         "If you did not request this, you can ignore this email.\n\n"
         "— The Calrisal Team"
     )
-    send_mail(
+    html_body = (
+        f"<p>Hi {reset_token.user.full_name},</p>"
+        "<p>We received a request to reset your Calrisal password.</p>"
+        f"<p><a href=\"{reset_url}\">{reset_url}</a></p>"
+        f"<p>This link expires in {settings.PASSWORD_RESET_TOKEN_EXPIRY_MINUTES} minutes.</p>"
+        "<p>If you did not request this, you can ignore this email.</p>"
+        "<p>— The Calrisal Team</p>"
+    )
+    send_transactional_email(
         subject=subject,
-        message=body,
-        from_email=settings.DEFAULT_FROM_EMAIL,
-        recipient_list=[reset_token.user.email],
-        fail_silently=False,
+        recipient_email=reset_token.user.email,
+        text_body=body,
+        html_body=html_body,
     )

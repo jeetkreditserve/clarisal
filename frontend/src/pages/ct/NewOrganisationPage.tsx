@@ -22,7 +22,7 @@ import {
   validateBillingTaxIdentifier,
   validatePostalCodeForCountry,
 } from '@/lib/addressMetadata'
-import { getErrorMessage } from '@/lib/errors'
+import { getErrorMessage, getFieldErrors } from '@/lib/errors'
 import {
   COUNTRY_OPTIONS,
   CURRENCY_OPTIONS,
@@ -108,11 +108,15 @@ export function NewOrganisationPage() {
   const [form, setForm] = useState<{
     name: string
     pan_number: string
-    phone: string
-    email: string
     country_code: string
     currency: string
     entity_type: OrganisationEntityType
+    primary_admin: {
+      first_name: string
+      last_name: string
+      email: string
+      phone: string
+    }
     addresses: {
       REGISTERED: AddressFormState
       BILLING: AddressFormState
@@ -120,11 +124,15 @@ export function NewOrganisationPage() {
   }>({
     name: '',
     pan_number: '',
-    phone: '',
-    email: '',
     country_code: DEFAULT_COUNTRY_CODE,
     currency: DEFAULT_COUNTRY_OPTION.defaultCurrency,
     entity_type: 'PRIVATE_LIMITED',
+    primary_admin: {
+      first_name: '',
+      last_name: '',
+      email: '',
+      phone: '',
+    },
     addresses: {
       REGISTERED: emptyAddress('REGISTERED'),
       BILLING: emptyAddress('BILLING'),
@@ -143,9 +151,20 @@ export function NewOrganisationPage() {
   )
 
   const setField =
-    (field: 'name' | 'pan_number' | 'phone' | 'email') =>
+    (field: 'name' | 'pan_number') =>
     (event: React.ChangeEvent<HTMLInputElement>) =>
       setForm((current) => ({ ...current, [field]: event.target.value }))
+
+  const setPrimaryAdminField =
+    (field: 'first_name' | 'last_name' | 'email' | 'phone') =>
+    (event: React.ChangeEvent<HTMLInputElement>) =>
+      setForm((current) => ({
+        ...current,
+        primary_admin: {
+          ...current.primary_admin,
+          [field]: event.target.value,
+        },
+      }))
 
   const setOrganisationSelectField = (field: 'currency' | 'entity_type', value: string) => {
     setForm((current) => ({ ...current, [field]: value }))
@@ -226,9 +245,9 @@ export function NewOrganisationPage() {
 
   const validateForm = () => {
     const nextErrors: Record<string, string> = {}
-    const phoneError = validatePhoneForCountry(form.phone, form.country_code)
+    const phoneError = validatePhoneForCountry(form.primary_admin.phone, form.country_code)
     if (phoneError) {
-      nextErrors.phone = phoneError
+      nextErrors['primary_admin.phone'] = phoneError
     }
 
     ;(['REGISTERED', 'BILLING'] as const).forEach((addressType) => {
@@ -265,19 +284,21 @@ export function NewOrganisationPage() {
       return
     }
     try {
+      setFieldErrors({})
       const organisation = await mutateAsync({
         name: form.name,
         pan_number: form.pan_number,
-        phone: form.phone,
-        email: form.email,
         country_code: form.country_code,
         currency: form.currency,
         entity_type: form.entity_type,
+        billing_same_as_registered: billingSameAsRegistered,
+        primary_admin: form.primary_admin,
         addresses: [form.addresses.REGISTERED, effectiveBillingAddress],
       })
       toast.success('Organisation created.')
-      navigate(`/ct/organisations/${organisation.id}`)
+      navigate(`/ct/organisations/${organisation.id}/first-licence-batch`)
     } catch (err: unknown) {
+      setFieldErrors(getFieldErrors(err))
       setError(getErrorMessage(err, 'Failed to create organisation.'))
     }
   }
@@ -440,22 +461,6 @@ export function NewOrganisationPage() {
               <input id="pan_number" required value={form.pan_number} onChange={setField('pan_number')} className="field-input" />
             </div>
             <div>
-              <label htmlFor="email" className="field-label">
-                Contact email
-              </label>
-              <input id="email" type="email" value={form.email} onChange={setField('email')} className="field-input" />
-            </div>
-            <div>
-              <label htmlFor="phone" className="field-label">
-                Contact phone
-              </label>
-              <input id="phone" value={form.phone} onChange={setField('phone')} className="field-input" />
-              <p className="mt-2 text-xs text-[hsl(var(--muted-foreground))]">
-                Must start with {selectedCountry.dialCode} for {selectedCountry.name}.
-              </p>
-              <FieldErrorText message={fieldErrors.phone} />
-            </div>
-            <div>
               <label htmlFor="country_code" className="field-label">
                 Country
                 <span className="ml-1 text-[hsl(var(--destructive))]">*</span>
@@ -495,6 +500,72 @@ export function NewOrganisationPage() {
               />
             </div>
           </div>
+
+          <SectionCard
+            title="Primary organisation admin"
+            description="These details are used to create the first organisation admin when the first licence batch is marked as paid."
+          >
+            <div className="grid gap-5 lg:grid-cols-2">
+              <div>
+                <label htmlFor="primary-admin-first-name" className="field-label">
+                  First name
+                  <span className="ml-1 text-[hsl(var(--destructive))]">*</span>
+                </label>
+                <input
+                  id="primary-admin-first-name"
+                  required
+                  value={form.primary_admin.first_name}
+                  onChange={setPrimaryAdminField('first_name')}
+                  className="field-input"
+                />
+                <FieldErrorText message={fieldErrors['primary_admin.first_name']} />
+              </div>
+              <div>
+                <label htmlFor="primary-admin-last-name" className="field-label">
+                  Last name
+                  <span className="ml-1 text-[hsl(var(--destructive))]">*</span>
+                </label>
+                <input
+                  id="primary-admin-last-name"
+                  required
+                  value={form.primary_admin.last_name}
+                  onChange={setPrimaryAdminField('last_name')}
+                  className="field-input"
+                />
+                <FieldErrorText message={fieldErrors['primary_admin.last_name']} />
+              </div>
+              <div>
+                <label htmlFor="primary-admin-email" className="field-label">
+                  Work email
+                  <span className="ml-1 text-[hsl(var(--destructive))]">*</span>
+                </label>
+                <input
+                  id="primary-admin-email"
+                  type="email"
+                  required
+                  value={form.primary_admin.email}
+                  onChange={setPrimaryAdminField('email')}
+                  className="field-input"
+                />
+                <FieldErrorText message={fieldErrors['primary_admin.email']} />
+              </div>
+              <div>
+                <label htmlFor="primary-admin-phone" className="field-label">
+                  Work phone
+                </label>
+                <input
+                  id="primary-admin-phone"
+                  value={form.primary_admin.phone}
+                  onChange={setPrimaryAdminField('phone')}
+                  className="field-input"
+                />
+                <p className="mt-2 text-xs text-[hsl(var(--muted-foreground))]">
+                  Must start with {selectedCountry.dialCode} for {selectedCountry.name}.
+                </p>
+                <FieldErrorText message={fieldErrors['primary_admin.phone']} />
+              </div>
+            </div>
+          </SectionCard>
 
           <div className="grid gap-6 xl:grid-cols-2">
             <SectionCard

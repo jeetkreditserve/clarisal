@@ -188,6 +188,10 @@ EMAIL_USE_TLS = env.bool('EMAIL_USE_TLS', default=True)
 EMAIL_HOST_USER = env('EMAIL_HOST_USER', default='')
 EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', default='')
 DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='Calrisal <noreply@calrisal.com>')
+ZEPTOMAIL_API_URL = env('ZEPTOMAIL_API_URL', default='')
+ZEPTOMAIL_API_KEY = env('ZEPTOMAIL_API_KEY', default='')
+ZEPTOMAIL_FROM_EMAIL = env('ZEPTOMAIL_FROM_EMAIL', default=DEFAULT_FROM_EMAIL)
+ZEPTOMAIL_FROM_NAME = env('ZEPTOMAIL_FROM_NAME', default='Calrisal')
 
 # AWS S3
 AWS_ACCESS_KEY_ID = env('AWS_ACCESS_KEY_ID', default='')

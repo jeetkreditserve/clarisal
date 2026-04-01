@@ -180,6 +180,9 @@ class TestLogin:
         assert workforce_response.status_code == 200
         assert workforce_response.json()['user']['account_type'] == AccountType.WORKFORCE
         assert workforce_response.json()['user']['organisation_name'] == 'Shared Org'
+        control_tower.refresh_from_db()
+        workforce.refresh_from_db()
+        assert control_tower.person_id == workforce.person_id
 
     def test_workforce_user_can_have_multiple_admin_and_employee_workspaces(self, api_client, db):
         control_tower = User.objects.create_superuser(

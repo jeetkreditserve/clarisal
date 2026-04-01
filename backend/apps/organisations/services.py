@@ -8,6 +8,8 @@ from django.db import IntegrityError, transaction
 from django.db.models import Count, F, Q, Sum
 from django.utils import timezone
 
+from apps.accounts.contact_services import normalize_email_address, resolve_person_contacts
+from apps.accounts.workspaces import ACTIVE_EMPLOYEE_STATUSES
 from apps.audit.services import log_audit_event
 from apps.employees.models import Employee, EmployeeStatus
 from .country_metadata import (
@@ -25,6 +27,7 @@ from .address_metadata import (
     validate_postal_code,
 )
 from .models import (
+    BootstrapAdminStatus,
     LicenceBatchLifecycleState,
     LicenceBatchPaymentStatus,
     LifecycleEventType,
@@ -33,25 +36,27 @@ from .models import (
     OrganisationAddress,
     OrganisationAddressType,
     OrganisationAccessState,
+    OrganisationBootstrapAdmin,
     OrganisationBillingStatus,
     OrganisationEntityType,
+    OrganisationLegalIdentifier,
+    OrganisationLegalIdentifierType,
     OrganisationLifecycleEvent,
     OrganisationLicenceBatch,
     OrganisationLicenceLedger,
     OrganisationMembership,
     OrganisationMembershipStatus,
+    OrganisationNote,
     OrganisationOnboardingStage,
     OrganisationStateTransition,
     OrganisationStatus,
+    OrganisationTaxRegistration,
+    OrganisationTaxRegistrationType,
 )
 
 PAN_PATTERN = re.compile(r'^[A-Z]{5}[0-9]{4}[A-Z]$')
 
-LICENCE_CONSUMING_EMPLOYEE_STATUSES = [
-    EmployeeStatus.INVITED,
-    EmployeeStatus.PENDING,
-    EmployeeStatus.ACTIVE,
-]
+LICENCE_CONSUMING_EMPLOYEE_STATUSES = list(ACTIVE_EMPLOYEE_STATUSES)
 
 MANDATORY_ADDRESS_TYPES = {
     OrganisationAddressType.REGISTERED,
@@ -66,6 +71,149 @@ def normalize_pan_number(value):
     if not PAN_PATTERN.match(normalized):
         raise ValueError('PAN must be in the format AAAAA9999A.')
     return normalized
+
+def _registration_type_for_country(country_code):
+    return (
+        OrganisationTaxRegistrationType.GSTIN
+        if country_code == 'IN'
+        else OrganisationTaxRegistrationType.OTHER
+    )
+
+
+def upsert_bootstrap_admin(organisation, *, first_name, last_name, email, phone='', actor=None):
+    resolved_contacts = resolve_person_contacts(
+        email=email,
+        phone=phone,
+        person=getattr(getattr(organisation, 'bootstrap_admin', None), 'person', None),
+        email_kind='WORK',
+        phone_kind='WORK',
+    )
+    bootstrap_admin, _ = OrganisationBootstrapAdmin.objects.get_or_create(
+        organisation=organisation,
+        defaults={
+            'first_name': first_name.strip(),
+            'last_name': last_name.strip(),
+            'person': resolved_contacts.person,
+            'email_address': resolved_contacts.email_address,
+            'phone_number': resolved_contacts.phone_number,
+            'email': resolved_contacts.normalized_email,
+            'phone': resolved_contacts.normalized_phone,
+        },
+    )
+    bootstrap_admin.first_name = first_name.strip()
+    bootstrap_admin.last_name = last_name.strip()
+    bootstrap_admin.person = resolved_contacts.person
+    bootstrap_admin.email_address = resolved_contacts.email_address
+    bootstrap_admin.phone_number = resolved_contacts.phone_number
+    bootstrap_admin.email = resolved_contacts.normalized_email
+    bootstrap_admin.phone = resolved_contacts.normalized_phone
+    bootstrap_admin.save()
+    log_audit_event(
+        actor,
+        'organisation.bootstrap_admin.updated',
+        organisation=organisation,
+        target=bootstrap_admin,
+        payload={'email': bootstrap_admin.email, 'status': bootstrap_admin.status},
+    )
+    return bootstrap_admin
+
+
+def upsert_primary_legal_identifier(organisation, *, country_code, identifier_type, identifier):
+    normalized_identifier = (identifier or '').strip().upper()
+    if not normalized_identifier:
+        return None
+
+    existing = OrganisationLegalIdentifier.objects.filter(
+        country_code=country_code,
+        identifier_type=identifier_type,
+        identifier=normalized_identifier,
+    ).first()
+    if existing and existing.organisation_id != organisation.id:
+        raise ValueError(f'{identifier_type} already belongs to another organisation.')
+
+    record = existing or OrganisationLegalIdentifier(
+        organisation=organisation,
+        country_code=country_code,
+        identifier_type=identifier_type,
+        identifier=normalized_identifier,
+    )
+    record.organisation = organisation
+    record.country_code = country_code
+    record.identifier_type = identifier_type
+    record.identifier = normalized_identifier
+    record.is_primary = True
+    record.save()
+    return record
+
+
+def ensure_tax_registration(
+    organisation,
+    *,
+    country_code,
+    identifier,
+    state_code='',
+    legal_identifier=None,
+):
+    normalized_identifier = (identifier or '').strip().upper()
+    if not normalized_identifier:
+        return None
+
+    registration_type = _registration_type_for_country(country_code)
+    existing = OrganisationTaxRegistration.objects.filter(
+        country_code=country_code,
+        registration_type=registration_type,
+        identifier=normalized_identifier,
+    ).first()
+    if existing and existing.organisation_id != organisation.id:
+        raise ValueError(f'{registration_type} already belongs to another organisation.')
+
+    registration = existing or OrganisationTaxRegistration(
+        organisation=organisation,
+        country_code=country_code,
+        registration_type=registration_type,
+        identifier=normalized_identifier,
+    )
+    registration.organisation = organisation
+    registration.country_code = country_code
+    registration.registration_type = registration_type
+    registration.identifier = normalized_identifier
+    registration.state_code = state_code or ''
+    if legal_identifier is not None:
+        registration.legal_identifier = legal_identifier
+    registration.save()
+    return registration
+
+
+def _sync_address_tax_registration(organisation, payload):
+    legal_identifier = None
+    if organisation.pan_number:
+        legal_identifier = upsert_primary_legal_identifier(
+            organisation,
+            country_code=organisation.country_code,
+            identifier_type=OrganisationLegalIdentifierType.PAN,
+            identifier=organisation.pan_number,
+        )
+
+    tax_registration = ensure_tax_registration(
+        organisation,
+        country_code=payload['country_code'],
+        identifier=payload.get('gstin'),
+        state_code=payload.get('state_code', ''),
+        legal_identifier=legal_identifier if payload['country_code'] == 'IN' else None,
+    )
+    if payload['address_type'] == OrganisationAddressType.BILLING:
+        OrganisationTaxRegistration.objects.filter(
+            organisation=organisation,
+            is_primary_billing=True,
+        ).exclude(id=getattr(tax_registration, 'id', None)).update(is_primary_billing=False)
+        if tax_registration is None:
+            OrganisationTaxRegistration.objects.filter(organisation=organisation).update(is_primary_billing=False)
+        elif not tax_registration.is_primary_billing:
+            tax_registration.is_primary_billing = True
+            tax_registration.save(update_fields=['is_primary_billing', 'updated_at'])
+    payload['tax_registration'] = tax_registration
+    payload['gstin'] = tax_registration.identifier if tax_registration else None
+    return payload
 
 
 def _default_address_label(address_type):
@@ -215,6 +363,8 @@ def create_organisation_address(
         organisation.pan_number,
     )
 
+    payload = _sync_address_tax_registration(organisation, payload)
+
     try:
         with transaction.atomic():
             address = OrganisationAddress.objects.create(organisation=organisation, **payload)
@@ -267,6 +417,7 @@ def update_organisation_address(address, actor=None, **fields):
         if active_count == 0:
             raise ValueError(f'{address.get_address_type_display()} cannot be removed without a replacement.')
 
+    payload = _sync_address_tax_registration(organisation, payload)
     for attr, value in payload.items():
         setattr(address, attr, value)
 
@@ -315,13 +466,68 @@ def deactivate_organisation_address(address, actor=None):
 def validate_organisation_pan_change(organisation, pan_number):
     normalized_pan = normalize_pan_number(pan_number)
     invalid_gst_addresses = [
-        address
-        for address in organisation.addresses.exclude(gstin__isnull=True).exclude(gstin='')
-        if (address.gstin or '')[2:12] != normalized_pan
+        registration.identifier
+        for registration in organisation.tax_registrations.filter(
+            country_code='IN',
+            registration_type=OrganisationTaxRegistrationType.GSTIN,
+        )
+        if registration.identifier[2:12] != normalized_pan
     ]
     if invalid_gst_addresses:
         raise ValueError('PAN cannot be changed because one or more GSTINs do not match the new PAN.')
     return normalized_pan
+
+
+def invite_bootstrap_admin(organisation, actor=None):
+    from apps.invitations.services import create_org_admin_invitation
+
+    bootstrap_admin = getattr(organisation, 'bootstrap_admin', None)
+    if bootstrap_admin is None:
+        return None
+    if bootstrap_admin.status == BootstrapAdminStatus.INVITE_ACCEPTED:
+        return bootstrap_admin
+
+    user, invite = create_org_admin_invitation(
+        organisation=organisation,
+        email=bootstrap_admin.email,
+        first_name=bootstrap_admin.first_name,
+        last_name=bootstrap_admin.last_name,
+        invited_by=actor,
+    )
+    bootstrap_admin.invited_user = user
+    bootstrap_admin.status = BootstrapAdminStatus.INVITE_PENDING
+    bootstrap_admin.invitation_sent_at = timezone.now()
+    bootstrap_admin.save(update_fields=['invited_user', 'status', 'invitation_sent_at', 'updated_at'])
+    _bump_onboarding_stage(organisation, OrganisationOnboardingStage.ADMIN_INVITED)
+    organisation.save(update_fields=['onboarding_stage', 'updated_at'])
+    create_lifecycle_event(
+        organisation,
+        LifecycleEventType.ADMIN_INVITED,
+        actor,
+        {'email': bootstrap_admin.email},
+    )
+    log_audit_event(
+        actor,
+        'organisation.bootstrap_admin.invited',
+        organisation=organisation,
+        target=user,
+        payload={'email': bootstrap_admin.email, 'invite_id': str(invite.id)},
+    )
+    return bootstrap_admin
+
+
+def mark_bootstrap_admin_accepted(organisation, user):
+    bootstrap_admin = getattr(organisation, 'bootstrap_admin', None)
+    if bootstrap_admin is None:
+        return None
+    if normalize_email_address(bootstrap_admin.email) != normalize_email_address(user.email):
+        return bootstrap_admin
+
+    bootstrap_admin.invited_user = user
+    bootstrap_admin.status = BootstrapAdminStatus.INVITE_ACCEPTED
+    bootstrap_admin.accepted_at = timezone.now()
+    bootstrap_admin.save(update_fields=['invited_user', 'status', 'accepted_at', 'updated_at'])
+    return bootstrap_admin
 
 VALID_TRANSITIONS = {
     OrganisationStatus.PENDING: [OrganisationStatus.PAID],
@@ -475,26 +681,33 @@ def create_organisation(
     created_by,
     pan_number,
     addresses,
-    phone='',
-    email='',
+    primary_admin,
     country_code=DEFAULT_COUNTRY_CODE,
     currency=DEFAULT_CURRENCY_CODE,
     entity_type=OrganisationEntityType.PRIVATE_LIMITED,
     licence_count=0,
+    billing_same_as_registered=False,
 ):
     normalized_pan = normalize_pan_number(pan_number)
     normalized_addresses = validate_address_collection(addresses, normalized_pan)
     normalized_country_code = normalize_country_code(country_code)
     normalized_currency = normalize_currency_code(currency)
-    normalized_phone = validate_phone_for_country(phone, normalized_country_code)
+    normalized_primary_admin = {
+        'first_name': (primary_admin.get('first_name') or '').strip(),
+        'last_name': (primary_admin.get('last_name') or '').strip(),
+        'email': normalize_email_address(primary_admin.get('email')),
+        'phone': validate_phone_for_country(primary_admin.get('phone', ''), normalized_country_code),
+    }
+    if not normalized_primary_admin['email']:
+        raise ValueError('Primary admin email is required.')
 
     with transaction.atomic():
         organisation = Organisation.objects.create(
             name=name,
             pan_number=normalized_pan,
             address=normalized_addresses[0]['line1'],
-            phone=normalized_phone,
-            email=email,
+            phone='',
+            email='',
             licence_count=licence_count,
             created_by=created_by,
             country_code=normalized_country_code,
@@ -508,6 +721,11 @@ def create_organisation(
                 else OrganisationOnboardingStage.ORG_CREATED
             ),
         )
+        upsert_bootstrap_admin(
+            organisation,
+            actor=created_by,
+            **normalized_primary_admin,
+        )
         if licence_count:
             OrganisationLicenceLedger.objects.create(
                 organisation=organisation,
@@ -520,7 +738,11 @@ def create_organisation(
             organisation,
             LifecycleEventType.ORGANISATION_CREATED,
             created_by,
-            {'licence_count': licence_count},
+            {
+                'licence_count': licence_count,
+                'billing_same_as_registered': billing_same_as_registered,
+                'primary_admin_email': normalized_primary_admin['email'],
+            },
         )
         for address_payload in normalized_addresses:
             create_organisation_address(
@@ -534,7 +756,11 @@ def create_organisation(
             'organisation.created',
             organisation=organisation,
             target=organisation,
-            payload={'licence_count': licence_count, 'pan_number': normalized_pan},
+            payload={
+                'licence_count': licence_count,
+                'pan_number': normalized_pan,
+                'primary_admin_email': normalized_primary_admin['email'],
+            },
         )
     return organisation
 
@@ -556,6 +782,10 @@ def update_organisation_profile(organisation, actor=None, **fields):
     elif 'country_code' in fields and organisation.phone:
         validate_phone_for_country(organisation.phone, fields['country_code'])
 
+    primary_admin = fields.pop('primary_admin', None)
+    if primary_admin and organisation.billing_status == OrganisationBillingStatus.PAID:
+        raise ValueError('Primary admin details can only be edited before the first paid licence batch.')
+
     legacy_address = fields.pop('address', None)
     for attr, value in fields.items():
         setattr(organisation, attr, value)
@@ -573,12 +803,41 @@ def update_organisation_profile(organisation, actor=None, **fields):
         organisation.address = primary_address.line1 if primary_address else organisation.address
 
     organisation.save()
+    upsert_primary_legal_identifier(
+        organisation,
+        country_code=organisation.country_code,
+        identifier_type=OrganisationLegalIdentifierType.PAN,
+        identifier=organisation.pan_number,
+    )
+    if organisation.country_code == 'IN':
+        organisation.tax_registrations.filter(
+            country_code='IN',
+            registration_type=OrganisationTaxRegistrationType.GSTIN,
+        ).update(legal_identifier=organisation.legal_identifiers.filter(
+            country_code='IN',
+            identifier_type=OrganisationLegalIdentifierType.PAN,
+            is_primary=True,
+        ).first())
+
+    if primary_admin:
+        upsert_bootstrap_admin(
+            organisation,
+            actor=actor,
+            first_name=primary_admin['first_name'],
+            last_name=primary_admin['last_name'],
+            email=primary_admin['email'],
+            phone=primary_admin.get('phone', ''),
+        )
+
     log_audit_event(
         actor,
         'organisation.updated',
         organisation=organisation,
         target=organisation,
-        payload={key: value for key, value in fields.items() if value is not None},
+        payload={
+            **{key: value for key, value in fields.items() if value is not None},
+            **({'primary_admin_email': primary_admin['email']} if primary_admin else {}),
+        },
     )
     return organisation
 
@@ -754,6 +1013,7 @@ def mark_licence_batch_paid(batch, paid_by=None, paid_at=None):
         batch.paid_by = paid_by
         batch.save(update_fields=['payment_status', 'paid_at', 'paid_by', 'updated_at'])
 
+        first_paid_batch = batch.organisation.status == OrganisationStatus.PENDING
         if batch.organisation.status == OrganisationStatus.PENDING:
             transition_organisation_state(
                 batch.organisation,
@@ -761,6 +1021,8 @@ def mark_licence_batch_paid(batch, paid_by=None, paid_at=None):
                 transitioned_by=paid_by,
                 note=f'Licence batch {batch.id} marked paid',
             )
+        if first_paid_batch:
+            invite_bootstrap_admin(batch.organisation, actor=paid_by)
 
     log_audit_event(
         paid_by,
@@ -926,3 +1188,19 @@ def mark_employee_invited(organisation, actor=None, employee=None):
         payload={'employee_id': str(employee.id) if employee else None},
     )
     return organisation
+
+
+def create_organisation_note(organisation, body, created_by):
+    note = OrganisationNote.objects.create(
+        organisation=organisation,
+        body=body.strip(),
+        created_by=created_by,
+    )
+    log_audit_event(
+        created_by,
+        'organisation.note.created',
+        organisation=organisation,
+        target=note,
+        payload={'body_preview': note.body[:120]},
+    )
+    return note

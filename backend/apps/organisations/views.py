@@ -5,7 +5,28 @@ from rest_framework.pagination import PageNumberPagination
 from django.shortcuts import get_object_or_404
 from apps.accounts.permissions import BelongsToActiveOrg, IsControlTowerUser, IsOrgAdmin, OrgAdminMutationAllowed
 from apps.accounts.workspaces import get_active_admin_organisation
-from .models import Organisation, OrganisationAddress, OrganisationLicenceBatch, OrganisationStatus
+from apps.approvals.models import ApprovalWorkflow
+from apps.approvals.serializers import ApprovalWorkflowSerializer
+from apps.communications.models import Notice
+from apps.communications.serializers import NoticeSerializer
+from apps.departments.models import Department
+from apps.departments.repositories import list_departments
+from apps.departments.serializers import DepartmentSerializer
+from apps.employees.repositories import get_employee, list_employees
+from apps.employees.serializers import EmployeeDetailSerializer, EmployeeListSerializer
+from apps.locations.models import OfficeLocation
+from apps.locations.repositories import list_locations
+from apps.locations.serializers import LocationSerializer
+from apps.timeoff.models import HolidayCalendar, LeaveCycle, LeavePlan, OnDutyPolicy
+from apps.timeoff.serializers import (
+    HolidayCalendarSerializer,
+    HolidayCalendarWriteSerializer,
+    LeaveCycleSerializer,
+    LeavePlanSerializer,
+    OnDutyPolicySerializer,
+)
+from apps.timeoff.services import create_holiday_calendar, publish_holiday_calendar, update_holiday_calendar
+from .models import Organisation, OrganisationAddress, OrganisationLicenceBatch, OrganisationNote, OrganisationStatus
 from .repositories import get_organisations, get_organisation_by_id, get_org_admins
 from .serializers import (
     OrganisationListSerializer, OrganisationDetailSerializer,
@@ -17,10 +38,12 @@ from .serializers import (
     LicenceBatchUpdateSerializer,
     LicenceBatchWriteSerializer,
     OrgAdminSerializer, CTDashboardStatsSerializer, OrgDashboardStatsSerializer,
+    OrganisationNoteSerializer, OrganisationNoteWriteSerializer,
 )
 from .services import (
     create_organisation_address,
     create_licence_batch,
+    create_organisation_note,
     create_organisation, transition_organisation_state,
     deactivate_organisation_address,
     get_ct_dashboard_stats, get_org_dashboard_stats, get_org_licence_summary,
@@ -51,7 +74,10 @@ class OrganisationListCreateView(APIView):
     def post(self, request):
         serializer = CreateOrganisationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        org = create_organisation(**serializer.validated_data, created_by=request.user)
+        try:
+            org = create_organisation(**serializer.validated_data, created_by=request.user)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(OrganisationDetailSerializer(org).data, status=status.HTTP_201_CREATED)
 
 
@@ -178,6 +204,125 @@ class OrganisationAdminsView(APIView):
         org = get_object_or_404(Organisation, id=pk)
         admins = get_org_admins(org)
         return Response(OrgAdminSerializer(admins, many=True).data)
+
+
+class CtOrganisationEmployeesView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def get(self, request, pk):
+        organisation = get_object_or_404(Organisation, id=pk)
+        queryset = list_employees(
+            organisation,
+            status=request.query_params.get('status'),
+            search=request.query_params.get('search'),
+        )
+        paginator = PageNumberPagination()
+        page = paginator.paginate_queryset(queryset, request)
+        serializer = EmployeeListSerializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)
+
+
+class CtOrganisationEmployeeDetailView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def get(self, request, pk, employee_id):
+        organisation = get_object_or_404(Organisation, id=pk)
+        employee = get_employee(organisation, employee_id)
+        return Response(EmployeeDetailSerializer(employee).data)
+
+
+class CtOrganisationHolidayCalendarListCreateView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def get(self, request, pk):
+        organisation = get_object_or_404(Organisation, id=pk)
+        calendars = HolidayCalendar.objects.filter(organisation=organisation).prefetch_related('holidays', 'location_assignments')
+        return Response(HolidayCalendarSerializer(calendars, many=True).data)
+
+    def post(self, request, pk):
+        organisation = get_object_or_404(Organisation, id=pk)
+        serializer = HolidayCalendarWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            calendar_obj = create_holiday_calendar(
+                organisation,
+                actor=request.user,
+                **serializer.validated_data,
+            )
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(HolidayCalendarSerializer(calendar_obj).data, status=status.HTTP_201_CREATED)
+
+
+class CtOrganisationHolidayCalendarDetailView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def patch(self, request, pk, calendar_id):
+        organisation = get_object_or_404(Organisation, id=pk)
+        calendar_obj = get_object_or_404(HolidayCalendar, organisation=organisation, id=calendar_id)
+        serializer = HolidayCalendarWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            calendar_obj = update_holiday_calendar(calendar_obj, actor=request.user, **serializer.validated_data)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(HolidayCalendarSerializer(calendar_obj).data)
+
+
+class CtOrganisationHolidayCalendarPublishView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def post(self, request, pk, calendar_id):
+        organisation = get_object_or_404(Organisation, id=pk)
+        calendar_obj = get_object_or_404(HolidayCalendar, organisation=organisation, id=calendar_id)
+        return Response(HolidayCalendarSerializer(publish_holiday_calendar(calendar_obj, actor=request.user)).data)
+
+
+class CtOrganisationConfigurationView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def get(self, request, pk):
+        organisation = get_object_or_404(Organisation, id=pk)
+        workflows = ApprovalWorkflow.objects.filter(organisation=organisation).prefetch_related(
+            'rules',
+            'stages__approvers__approver_employee__user',
+            'stages__fallback_employee__user',
+        )
+        notices = Notice.objects.filter(organisation=organisation).prefetch_related('departments', 'office_locations', 'employees')
+        return Response(
+            {
+                'locations': LocationSerializer(list_locations(organisation, include_inactive=True), many=True).data,
+                'departments': DepartmentSerializer(list_departments(organisation, include_inactive=True), many=True).data,
+                'leave_cycles': LeaveCycleSerializer(LeaveCycle.objects.filter(organisation=organisation), many=True).data,
+                'leave_plans': LeavePlanSerializer(
+                    LeavePlan.objects.filter(organisation=organisation).select_related('leave_cycle').prefetch_related('leave_types', 'rules'),
+                    many=True,
+                ).data,
+                'on_duty_policies': OnDutyPolicySerializer(OnDutyPolicy.objects.filter(organisation=organisation), many=True).data,
+                'approval_workflows': ApprovalWorkflowSerializer(workflows, many=True).data,
+                'notices': NoticeSerializer(notices, many=True).data,
+            }
+        )
+
+
+class CtOrganisationNotesView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def get(self, request, pk):
+        organisation = get_object_or_404(Organisation, id=pk)
+        notes = OrganisationNote.objects.filter(organisation=organisation).select_related('created_by')
+        return Response(OrganisationNoteSerializer(notes, many=True).data)
+
+    def post(self, request, pk):
+        organisation = get_object_or_404(Organisation, id=pk)
+        serializer = OrganisationNoteWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        note = create_organisation_note(
+            organisation=organisation,
+            body=serializer.validated_data['body'],
+            created_by=request.user,
+        )
+        return Response(OrganisationNoteSerializer(note).data, status=status.HTTP_201_CREATED)
 
 
 class CTDashboardStatsView(APIView):

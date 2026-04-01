@@ -9,9 +9,10 @@ from apps.accounts.workspaces import initialize_workforce_workspace, sync_user_r
 from apps.audit.services import log_audit_event
 from apps.common.security import generate_secure_token, hash_token
 from apps.employees.models import Employee, EmployeeOnboardingStatus, EmployeeStatus
-from apps.organisations.models import OrganisationMembershipStatus, OrganisationStatus
+from apps.organisations.models import BootstrapAdminStatus, OrganisationMembershipStatus, OrganisationStatus
 from apps.organisations.services import (
     ensure_org_admin_membership,
+    mark_bootstrap_admin_accepted,
     set_primary_admin,
     transition_organisation_state,
 )
@@ -67,6 +68,12 @@ def create_org_admin_invitation(organisation, email, first_name, last_name, invi
         )
 
         set_primary_admin(organisation, user, invited_by)
+        bootstrap_admin = getattr(organisation, 'bootstrap_admin', None)
+        if bootstrap_admin and bootstrap_admin.email.lower() == email.lower():
+            bootstrap_admin.invited_user = user
+            bootstrap_admin.status = BootstrapAdminStatus.INVITE_PENDING
+            bootstrap_admin.invitation_sent_at = timezone.now()
+            bootstrap_admin.save(update_fields=['invited_user', 'status', 'invitation_sent_at', 'updated_at'])
         sync_user_role(user)
         log_audit_event(
             invited_by,
@@ -147,6 +154,7 @@ def accept_invitation(token, password='', request=None):
                 invited_by=invite.invited_by,
                 status=OrganisationMembershipStatus.ACTIVE,
             )
+            mark_bootstrap_admin_accepted(invite.organisation, user)
             if invite.organisation.status == OrganisationStatus.PAID:
                 transition_organisation_state(
                     invite.organisation,

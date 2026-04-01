@@ -77,11 +77,13 @@ from apps.organisations.services import (
     create_organisation_address,
     ensure_org_admin_membership,
     get_org_licence_summary,
+    mark_bootstrap_admin_accepted,
     mark_employee_invited,
     mark_licence_batch_paid,
     mark_master_data_configured,
     set_primary_admin,
     transition_organisation_state,
+    upsert_bootstrap_admin,
     update_licence_count,
     update_organisation_address,
     update_organisation_profile,
@@ -374,10 +376,37 @@ class Command(BaseCommand):
         return value
 
     def _primary_domain(self):
-        return os.environ.get('SEED_ORGANISATION_EMAIL', DEFAULT_ORGANISATION['email']).split('@', 1)[-1]
+        return os.environ.get('SEED_ORG_ADMIN_EMAIL', DEFAULT_ORG_ADMIN['email']).split('@', 1)[-1]
 
     def _email_for_primary_org(self, local_part):
         return f'{local_part}@{self._primary_domain()}'
+
+    def _names_from_email(self, email):
+        local_part = email.split('@', 1)[0].replace('.', ' ').replace('_', ' ').replace('-', ' ')
+        parts = [segment for segment in local_part.split() if segment]
+        first_name = parts[0].title() if parts else 'Organisation'
+        last_name = ' '.join(part.title() for part in parts[1:]) if len(parts) > 1 else 'Admin'
+        return first_name, last_name
+
+    def _bootstrap_admin_for_primary_org(self):
+        return {
+            'first_name': os.environ.get('SEED_ORG_ADMIN_FIRST_NAME', DEFAULT_ORG_ADMIN['first_name']),
+            'last_name': os.environ.get('SEED_ORG_ADMIN_LAST_NAME', DEFAULT_ORG_ADMIN['last_name']),
+            'email': os.environ.get('SEED_ORG_ADMIN_EMAIL', DEFAULT_ORG_ADMIN['email']),
+            'phone': os.environ.get(
+                'SEED_ORG_ADMIN_PHONE',
+                os.environ.get('SEED_ORGANISATION_PHONE', DEFAULT_ORGANISATION['phone']),
+            ),
+        }
+
+    def _bootstrap_admin_for_config(self, config):
+        first_name, last_name = self._names_from_email(config['email'])
+        return {
+            'first_name': first_name,
+            'last_name': last_name,
+            'email': config['email'],
+            'phone': config['phone'],
+        }
 
     def _ensure_groups(self):
         groups = {}
@@ -424,8 +453,6 @@ class Command(BaseCommand):
         organisation_defaults = {
             'name': os.environ.get('SEED_ORGANISATION_NAME', DEFAULT_ORGANISATION['name']),
             'pan_number': os.environ.get('SEED_ORGANISATION_PAN', DEFAULT_ORGANISATION['pan_number']),
-            'email': os.environ.get('SEED_ORGANISATION_EMAIL', DEFAULT_ORGANISATION['email']),
-            'phone': os.environ.get('SEED_ORGANISATION_PHONE', DEFAULT_ORGANISATION['phone']),
             'country_code': os.environ.get('SEED_ORGANISATION_COUNTRY_CODE', DEFAULT_ORGANISATION['country_code']),
             'currency': os.environ.get('SEED_ORGANISATION_CURRENCY', DEFAULT_ORGANISATION['currency']),
             'entity_type': os.environ.get('SEED_ORGANISATION_ENTITY_TYPE', DEFAULT_ORGANISATION['entity_type']),
@@ -467,8 +494,7 @@ class Command(BaseCommand):
                 created_by=control_tower,
                 pan_number=organisation_defaults['pan_number'],
                 addresses=addresses,
-                phone=organisation_defaults['phone'],
-                email=organisation_defaults['email'],
+                primary_admin=self._bootstrap_admin_for_primary_org(),
                 country_code=organisation_defaults['country_code'],
                 currency=organisation_defaults['currency'],
                 entity_type=organisation_defaults['entity_type'],
@@ -488,6 +514,7 @@ class Command(BaseCommand):
                 self.stdout.write(
                     self.style.WARNING(f"Primary demo organisation {organisation.name} already exists, updated seed state.")
                 )
+        upsert_bootstrap_admin(organisation, actor=control_tower, **self._bootstrap_admin_for_primary_org())
 
         self._ensure_addresses(organisation, control_tower, addresses, auto_create_location=True)
         if organisation.licence_count != licence_count:
@@ -578,6 +605,7 @@ class Command(BaseCommand):
     def _ensure_primary_admin(self, organisation, org_admin, control_tower):
         if organisation.primary_admin_user_id != org_admin.id:
             organisation = set_primary_admin(organisation, org_admin, control_tower)
+        mark_bootstrap_admin_accepted(organisation, org_admin)
         return organisation
 
     def _ensure_active(self, organisation, control_tower):
@@ -2456,8 +2484,7 @@ class Command(BaseCommand):
                 created_by=control_tower,
                 pan_number=config['pan_number'],
                 addresses=config['addresses'],
-                phone=config['phone'],
-                email=config['email'],
+                primary_admin=self._bootstrap_admin_for_config(config),
                 country_code=config['country_code'],
                 currency=config['currency'],
                 entity_type=config['entity_type'],
@@ -2468,8 +2495,6 @@ class Command(BaseCommand):
                 actor=control_tower,
                 name=config['name'],
                 pan_number=config['pan_number'],
-                phone=config['phone'],
-                email=config['email'],
                 country_code=config['country_code'],
                 currency=config['currency'],
                 entity_type=config['entity_type'],
@@ -2481,6 +2506,7 @@ class Command(BaseCommand):
                     changed_by=control_tower,
                     note=f"Seed sync licence allocation for {config['name']}",
                 )
+        upsert_bootstrap_admin(organisation, actor=control_tower, **self._bootstrap_admin_for_config(config))
         self._ensure_addresses(organisation, control_tower, config['addresses'], auto_create_location=True)
         if config['state_kind'] == 'PENDING_PAYMENT':
             self._ensure_named_licence_batch(

@@ -2,6 +2,7 @@ import api from '@/lib/api'
 import type {
   CtDashboardStats,
   LicenceBatch,
+  OrganisationNote,
   OrgAdmin,
   OrganisationEntityType,
   OrganisationAddress,
@@ -9,6 +10,18 @@ import type {
   OrganisationListItem,
   PaginatedResponse,
 } from '@/types/organisation'
+import type {
+  ApprovalWorkflowConfig,
+  Department,
+  EmployeeDetail,
+  EmployeeListItem,
+  HolidayCalendar,
+  LeaveCycle,
+  LeavePlan,
+  Location,
+  NoticeItem,
+  OnDutyPolicy,
+} from '@/types/hr'
 
 export interface OrganisationAddressInput {
   address_type: 'REGISTERED' | 'BILLING' | 'HEADQUARTERS' | 'WAREHOUSE' | 'CUSTOM'
@@ -46,11 +59,16 @@ export async function fetchOrganisation(id: string): Promise<OrganisationDetail>
 export async function createOrganisation(payload: {
   name: string
   pan_number: string
-  phone?: string
-  email?: string
   country_code?: string
   currency?: string
   entity_type: OrganisationEntityType
+  billing_same_as_registered?: boolean
+  primary_admin: {
+    first_name: string
+    last_name: string
+    email: string
+    phone?: string
+  }
   addresses: OrganisationAddressInput[]
 }): Promise<OrganisationDetail> {
   const { data } = await api.post('/ct/organisations/', payload)
@@ -161,6 +179,66 @@ export async function markLicenceBatchPaid(
 
 export async function fetchOrgAdmins(id: string): Promise<OrgAdmin[]> {
   const { data } = await api.get(`/ct/organisations/${id}/admins/`)
+  return data
+}
+
+export async function fetchCtOrgEmployees(
+  id: string,
+  params?: { status?: string; search?: string; page?: number }
+): Promise<PaginatedResponse<EmployeeListItem>> {
+  const { data } = await api.get(`/ct/organisations/${id}/employees/`, { params })
+  return data
+}
+
+export async function fetchCtOrgEmployeeDetail(id: string, employeeId: string): Promise<EmployeeDetail> {
+  const { data } = await api.get(`/ct/organisations/${id}/employees/${employeeId}/`)
+  return data
+}
+
+export async function fetchCtHolidayCalendars(id: string): Promise<HolidayCalendar[]> {
+  const { data } = await api.get(`/ct/organisations/${id}/holiday-calendars/`)
+  return data
+}
+
+export async function createCtHolidayCalendar(id: string, payload: Record<string, unknown>): Promise<HolidayCalendar> {
+  const { data } = await api.post(`/ct/organisations/${id}/holiday-calendars/`, payload)
+  return data
+}
+
+export async function updateCtHolidayCalendar(
+  id: string,
+  calendarId: string,
+  payload: Record<string, unknown>
+): Promise<HolidayCalendar> {
+  const { data } = await api.patch(`/ct/organisations/${id}/holiday-calendars/${calendarId}/`, payload)
+  return data
+}
+
+export async function publishCtHolidayCalendar(id: string, calendarId: string): Promise<HolidayCalendar> {
+  const { data } = await api.post(`/ct/organisations/${id}/holiday-calendars/${calendarId}/publish/`)
+  return data
+}
+
+export async function fetchCtOrgConfiguration(id: string): Promise<{
+  locations: Location[]
+  departments: Department[]
+  leave_cycles: LeaveCycle[]
+  leave_plans: LeavePlan[]
+  on_duty_policies: OnDutyPolicy[]
+  approval_workflows: ApprovalWorkflowConfig[]
+  notices: NoticeItem[]
+}> {
+  const { data } = await api.get(`/ct/organisations/${id}/configuration/`)
+  return data
+}
+
+export async function fetchCtOrgNotes(id: string): Promise<OrganisationNote[]> {
+  const { data } = await api.get(`/ct/organisations/${id}/notes/`)
+  return data
+}
+
+export async function createCtOrgNote(id: string, body: string): Promise<OrganisationNote> {
+  const { data } = await api.post(`/ct/organisations/${id}/notes/`, { body })
   return data
 }
 

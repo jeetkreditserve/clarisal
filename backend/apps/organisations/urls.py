@@ -2,6 +2,13 @@ from django.urls import path
 
 from .views import (
     CTDashboardStatsView,
+    CtOrganisationConfigurationView,
+    CtOrganisationEmployeeDetailView,
+    CtOrganisationEmployeesView,
+    CtOrganisationHolidayCalendarDetailView,
+    CtOrganisationHolidayCalendarListCreateView,
+    CtOrganisationHolidayCalendarPublishView,
+    CtOrganisationNotesView,
     OrganisationActivateView,
     OrganisationAdminsView,
     OrganisationAddressDetailView,
@@ -28,6 +35,13 @@ urlpatterns = [
     path('organisations/<uuid:pk>/licence-batches/<uuid:batch_id>/', OrganisationLicenceBatchDetailView.as_view(), name='organisation-licence-batch-detail'),
     path('organisations/<uuid:pk>/licence-batches/<uuid:batch_id>/mark-paid/', OrganisationLicenceBatchMarkPaidView.as_view(), name='organisation-licence-batch-mark-paid'),
     path('organisations/<uuid:pk>/admins/', OrganisationAdminsView.as_view(), name='organisation-admins'),
+    path('organisations/<uuid:pk>/employees/', CtOrganisationEmployeesView.as_view(), name='ct-organisation-employees'),
+    path('organisations/<uuid:pk>/employees/<uuid:employee_id>/', CtOrganisationEmployeeDetailView.as_view(), name='ct-organisation-employee-detail'),
+    path('organisations/<uuid:pk>/holiday-calendars/', CtOrganisationHolidayCalendarListCreateView.as_view(), name='ct-organisation-holiday-calendar-list-create'),
+    path('organisations/<uuid:pk>/holiday-calendars/<uuid:calendar_id>/', CtOrganisationHolidayCalendarDetailView.as_view(), name='ct-organisation-holiday-calendar-detail'),
+    path('organisations/<uuid:pk>/holiday-calendars/<uuid:calendar_id>/publish/', CtOrganisationHolidayCalendarPublishView.as_view(), name='ct-organisation-holiday-calendar-publish'),
+    path('organisations/<uuid:pk>/configuration/', CtOrganisationConfigurationView.as_view(), name='ct-organisation-configuration'),
+    path('organisations/<uuid:pk>/notes/', CtOrganisationNotesView.as_view(), name='ct-organisation-notes'),
     path('organisations/<uuid:pk>/addresses/', OrganisationAddressListCreateView.as_view(), name='organisation-address-list-create'),
     path('organisations/<uuid:pk>/addresses/<uuid:address_id>/', OrganisationAddressDetailView.as_view(), name='organisation-address-detail'),
 ]

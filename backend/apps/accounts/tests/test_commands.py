@@ -111,7 +111,7 @@ class TestSeedControlTowerCommand:
         assert Department.objects.count() == 7
         assert OrganisationMembership.objects.count() == 4
         assert Employee.objects.count() == 11
-        assert Invitation.objects.count() == 5
+        assert Invitation.objects.count() == 6
         assert OnboardingDocumentType.objects.count() >= 30
         assert ApprovalWorkflow.objects.filter(organisation=primary_org).count() == 2
         assert LeaveRequest.objects.filter(employee__organisation=primary_org).count() == 5
@@ -137,6 +137,10 @@ class TestSeedControlTowerCommand:
         assert pending_invite_employee.status == EmployeeStatus.INVITED
         assert Invitation.objects.get(email='meera.singh@northstarpeople.com', organisation=primary_org).status == InvitationStatus.ACCEPTED
         assert Invitation.objects.get(email='isha.kapoor@northstarpeople.com', organisation=primary_org).status == InvitationStatus.PENDING
+        assert Invitation.objects.get(email='admin@northstarpeople.com', organisation=primary_org).status in {
+            InvitationStatus.PENDING,
+            InvitationStatus.ACCEPTED,
+        }
         assert Invitation.objects.get(email='former.candidate@northstarpeople.com', organisation=primary_org).status == InvitationStatus.REVOKED
         assert Invitation.objects.get(email='expired.candidate@northstarpeople.com', organisation=primary_org).status == InvitationStatus.EXPIRED
 
@@ -195,7 +199,7 @@ class TestSeedControlTowerCommand:
         assert Department.objects.count() == 7
         assert OrganisationMembership.objects.count() == 4
         assert Employee.objects.count() == 11
-        assert Invitation.objects.count() == 5
+        assert Invitation.objects.count() == 6
         assert LeaveRequest.objects.count() == 5
         assert OnDutyRequest.objects.count() == 4
         assert ApprovalWorkflow.objects.count() == 2

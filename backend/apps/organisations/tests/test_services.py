@@ -54,6 +54,12 @@ class TestCreateOrganisation:
             licence_count=5,
             created_by=ct_user,
             pan_number='ABCDE1234F',
+            primary_admin={
+                'first_name': 'Alice',
+                'last_name': 'Smith',
+                'email': 'admin@testcorp.com',
+                'phone': '+919999999999',
+            },
             addresses=organisation_addresses(),
         )
         assert org.status == OrganisationStatus.PENDING
@@ -68,6 +74,12 @@ class TestCreateOrganisation:
             licence_count=1,
             created_by=ct_user,
             pan_number='ABCDE1234F',
+            primary_admin={
+                'first_name': 'Alice',
+                'last_name': 'Smith',
+                'email': 'admin@helloworld.com',
+                'phone': '+919999999999',
+            },
             addresses=organisation_addresses(),
         )
         assert 'hello' in org.slug
@@ -78,13 +90,19 @@ class TestCreateOrganisation:
             name='Test', licence_count=1, created_by=ct_user,
             pan_number='ABCDE1234F',
             addresses=organisation_addresses(),
-            phone='+919999999999', email='org@test.com',
+            primary_admin={
+                'first_name': 'Aditi',
+                'last_name': 'Rao',
+                'email': 'admin@test.com',
+                'phone': '+919999999999',
+            },
             country_code='IN', currency='INR', entity_type='PRIVATE_LIMITED',
         )
         assert org.address == '123 Main St'
-        assert org.email == 'org@test.com'
-        assert org.phone == '+919999999999'
+        assert org.email == ''
+        assert org.phone == ''
         assert org.entity_type == 'PRIVATE_LIMITED'
+        assert org.bootstrap_admin.email == 'admin@test.com'
 
 
 @pytest.mark.django_db
