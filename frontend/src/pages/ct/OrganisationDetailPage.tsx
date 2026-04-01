@@ -2833,8 +2833,23 @@ export function OrganisationDetailPage() {
         title={editingLeavePlanId ? 'Edit leave plan' : 'Add leave plan'}
         description="Manage the current leave-plan shape and its visible leave types from Control Tower."
         contentClassName="sm:w-[min(94vw,52rem)]"
+        footer={
+          <div className="flex flex-wrap justify-end gap-3">
+            <button type="button" className="btn-secondary" onClick={() => setLeavePlanDialogOpen(false)}>
+              Cancel
+            </button>
+            <button
+              type="submit"
+              form="ct-leave-plan-form"
+              className="btn-primary"
+              disabled={createLeavePlanMutation.isPending || updateLeavePlanMutation.isPending}
+            >
+              {editingLeavePlanId ? 'Save changes' : 'Create plan'}
+            </button>
+          </div>
+        }
       >
-        <form onSubmit={handleSaveLeavePlan} className="grid gap-4">
+        <form id="ct-leave-plan-form" onSubmit={handleSaveLeavePlan} className="grid gap-4">
           <div>
             <label className="field-label">Leave cycle</label>
             <AppSelect
@@ -3006,14 +3021,6 @@ export function OrganisationDetailPage() {
               </div>
             ))}
           </div>
-          <div className="flex flex-wrap justify-end gap-3">
-            <button type="button" className="btn-secondary" onClick={() => setLeavePlanDialogOpen(false)}>
-              Cancel
-            </button>
-            <button type="submit" className="btn-primary" disabled={createLeavePlanMutation.isPending || updateLeavePlanMutation.isPending}>
-              {editingLeavePlanId ? 'Save changes' : 'Create plan'}
-            </button>
-          </div>
         </form>
       </AppDialog>
 
@@ -3083,8 +3090,23 @@ export function OrganisationDetailPage() {
         title={editingWorkflowId ? 'Edit approval workflow' : 'Add approval workflow'}
         description="Manage workflow metadata and the current visible stage/rule structure from Control Tower."
         contentClassName="sm:w-[min(94vw,52rem)]"
+        footer={
+          <div className="flex flex-wrap justify-end gap-3">
+            <button type="button" className="btn-secondary" onClick={() => setWorkflowDialogOpen(false)}>
+              Cancel
+            </button>
+            <button
+              type="submit"
+              form="ct-workflow-form"
+              className="btn-primary"
+              disabled={createWorkflowMutation.isPending || updateWorkflowMutation.isPending}
+            >
+              {editingWorkflowId ? 'Save changes' : 'Create workflow'}
+            </button>
+          </div>
+        }
       >
-        <form onSubmit={handleSaveWorkflow} className="grid gap-4">
+        <form id="ct-workflow-form" onSubmit={handleSaveWorkflow} className="grid gap-4">
           <div>
             <label className="field-label" htmlFor="ct-workflow-name">
               Workflow name
@@ -3217,14 +3239,6 @@ export function OrganisationDetailPage() {
               ))}
             </div>
           </SectionCard>
-          <div className="flex flex-wrap justify-end gap-3">
-            <button type="button" className="btn-secondary" onClick={() => setWorkflowDialogOpen(false)}>
-              Cancel
-            </button>
-            <button type="submit" className="btn-primary" disabled={createWorkflowMutation.isPending || updateWorkflowMutation.isPending}>
-              {editingWorkflowId ? 'Save changes' : 'Create workflow'}
-            </button>
-          </div>
         </form>
       </AppDialog>
 
@@ -3487,8 +3501,23 @@ export function OrganisationDetailPage() {
         title={editingHolidayId ? 'Edit holiday calendar' : 'Create holiday calendar'}
         description="Date-based annual holiday calendars with optional office-location assignments."
         contentClassName="sm:w-[min(94vw,52rem)]"
+        footer={
+          <div className="flex flex-wrap justify-end gap-3">
+            <button type="button" className="btn-secondary" onClick={() => setHolidayDialogOpen(false)}>
+              Cancel
+            </button>
+            <button
+              type="submit"
+              form="ct-holiday-calendar-form"
+              className="btn-primary"
+              disabled={createHolidayMutation.isPending || updateHolidayMutation.isPending}
+            >
+              {editingHolidayId ? 'Save changes' : 'Save calendar'}
+            </button>
+          </div>
+        }
       >
-        <form onSubmit={handleSaveHolidayCalendar} className="grid gap-4">
+        <form id="ct-holiday-calendar-form" onSubmit={handleSaveHolidayCalendar} className="grid gap-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label className="field-label" htmlFor="holiday-calendar-name">
@@ -3654,14 +3683,6 @@ export function OrganisationDetailPage() {
           >
             Add holiday
           </button>
-          <div className="flex flex-wrap justify-end gap-3">
-            <button type="button" className="btn-secondary" onClick={() => setHolidayDialogOpen(false)}>
-              Cancel
-            </button>
-            <button type="submit" className="btn-primary" disabled={createHolidayMutation.isPending || updateHolidayMutation.isPending}>
-              {editingHolidayId ? 'Save changes' : 'Save calendar'}
-            </button>
-          </div>
         </form>
       </AppDialog>
 

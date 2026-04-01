@@ -48,7 +48,6 @@ services:
       CORS_ALLOWED_ORIGINS: http://localhost:8080,http://127.0.0.1:8080,http://localhost:5173,http://127.0.0.1:5173,http://edge-proxy,https://www.clarisal.com
       CSRF_TRUSTED_ORIGINS: http://localhost:8080,http://127.0.0.1:8080,http://localhost:5173,http://127.0.0.1:5173,http://edge-proxy,https://www.clarisal.com,https://*.clarisal.com
       DJANGO_SETTINGS_MODULE: clarisal.settings.development
-      FRONTEND_URL: http://localhost:8080
     depends_on:
       db:
         condition: service_healthy
@@ -83,7 +82,6 @@ services:
       CORS_ALLOWED_ORIGINS: http://localhost:8080,http://127.0.0.1:8080,http://localhost:5173,http://127.0.0.1:5173,http://edge-proxy,https://www.clarisal.com
       CSRF_TRUSTED_ORIGINS: http://localhost:8080,http://127.0.0.1:8080,http://localhost:5173,http://127.0.0.1:5173,http://edge-proxy,https://www.clarisal.com,https://*.clarisal.com
       DJANGO_SETTINGS_MODULE: clarisal.settings.development
-      FRONTEND_URL: http://localhost:8080
     depends_on:
       db:
         condition: service_healthy
@@ -109,7 +107,6 @@ services:
       CORS_ALLOWED_ORIGINS: http://localhost:8080,http://127.0.0.1:8080,http://localhost:5173,http://127.0.0.1:5173,http://edge-proxy,https://www.clarisal.com
       CSRF_TRUSTED_ORIGINS: http://localhost:8080,http://127.0.0.1:8080,http://localhost:5173,http://127.0.0.1:5173,http://edge-proxy,https://www.clarisal.com,https://*.clarisal.com
       DJANGO_SETTINGS_MODULE: clarisal.settings.development
-      FRONTEND_URL: http://localhost:8080
     depends_on:
       db:
         condition: service_healthy

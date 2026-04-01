@@ -1,0 +1,18 @@
+{% autoescape off %}
+{{ title }}
+
+Hi {{ greeting_name }},
+
+{{ inviter_name }} invited you to join {{ organisation_name }} on {{ app_name }} as {{ role_label }}.
+
+{{ action_copy }}
+
+{{ action_label }}:
+{{ action_url }}
+
+{% for line in meta_lines %}
+{{ line }}
+{% endfor %}
+
+{{ footer_brand }}
+{% endautoescape %}

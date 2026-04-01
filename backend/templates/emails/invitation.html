@@ -1,0 +1,10 @@
+{% extends "emails/base.html" %}
+
+{% block body %}
+  <p style="margin:0 0 14px;font-size:15px;line-height:24px;color:#334155;">
+    {{ inviter_name }} invited you to join <strong>{{ organisation_name }}</strong> on {{ app_name }} as <strong>{{ role_label }}</strong>.
+  </p>
+  <p style="margin:0;font-size:15px;line-height:24px;color:#334155;">
+    {{ action_copy }}
+  </p>
+{% endblock %}

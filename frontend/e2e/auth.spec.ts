@@ -11,7 +11,7 @@ test.describe('Authentication', () => {
     test('CT login with valid credentials → /ct/dashboard', async ({ page }) => {
       await page.goto('/ct/login')
       await page.fill('#ct-email', 'admin@clarisal.com')
-      await page.fill('#ct-password', 'ClarisalAdmin@2024!')
+      await page.fill('#ct-password', 'change-me-in-production')
       await page.click('button[type="submit"]')
       await page.waitForURL('**/ct/dashboard', { timeout: 15000 })
       expect(page.url()).toContain('/ct/dashboard')

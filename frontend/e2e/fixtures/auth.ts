@@ -1,20 +1,30 @@
-import { test as base } from '@playwright/test'
+import { test as base, expect } from '@playwright/test'
 import { fileURLToPath } from 'url'
 import path from 'path'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-export const ctTest = base.extend<object>({
-  storageState: path.join(__dirname, '../../.auth/ct.json'),
+const CT_AUTH = path.join(__dirname, '../../.auth/ct.json')
+const ORG_ADMIN_AUTH = path.join(__dirname, '../../.auth/org-admin.json')
+const EMPLOYEE_AUTH = path.join(__dirname, '../../.auth/employee.json')
+
+export const ctTest = base.extend({
+  storageState: async ({}, use) => {
+    await use(CT_AUTH)
+  },
 })
 
-export const orgAdminTest = base.extend<object>({
-  storageState: path.join(__dirname, '../../.auth/org-admin.json'),
+export const orgAdminTest = base.extend({
+  storageState: async ({}, use) => {
+    await use(ORG_ADMIN_AUTH)
+  },
 })
 
-export const employeeTest = base.extend<object>({
-  storageState: path.join(__dirname, '../../.auth/employee.json'),
+export const employeeTest = base.extend({
+  storageState: async ({}, use) => {
+    await use(EMPLOYEE_AUTH)
+  },
 })
 
-export { expect } from '@playwright/test'
+export { expect }
