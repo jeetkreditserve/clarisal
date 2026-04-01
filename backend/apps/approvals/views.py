@@ -180,7 +180,10 @@ class OrgApprovalWorkflowListCreateView(APIView):
     def get(self, request):
         organisation = _get_admin_organisation(request)
         workflows = ApprovalWorkflow.objects.filter(organisation=organisation).prefetch_related(
-            'rules',
+            'rules__department',
+            'rules__office_location',
+            'rules__specific_employee__user',
+            'rules__leave_type',
             'stages__approvers__approver_employee__user',
             'stages__fallback_employee__user',
         )
@@ -199,6 +202,21 @@ class OrgApprovalWorkflowListCreateView(APIView):
 
 class OrgApprovalWorkflowDetailView(APIView):
     permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
+
+    def get(self, request, pk):
+        organisation = _get_admin_organisation(request)
+        workflow = get_object_or_404(
+            ApprovalWorkflow.objects.filter(organisation=organisation).prefetch_related(
+                'rules__department',
+                'rules__office_location',
+                'rules__specific_employee__user',
+                'rules__leave_type',
+                'stages__approvers__approver_employee__user',
+                'stages__fallback_employee__user',
+            ),
+            id=pk,
+        )
+        return Response(ApprovalWorkflowSerializer(workflow).data)
 
     def patch(self, request, pk):
         organisation = _get_admin_organisation(request)

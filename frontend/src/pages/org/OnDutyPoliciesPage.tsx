@@ -1,52 +1,16 @@
-import { useState } from 'react'
-import { toast } from 'sonner'
+import { useNavigate } from 'react-router-dom'
 
-import { AppCheckbox } from '@/components/ui/AppCheckbox'
-import { AppDialog } from '@/components/ui/AppDialog'
-import { FieldErrorText } from '@/components/ui/FieldErrorText'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { SkeletonPageHeader, SkeletonTable } from '@/components/ui/Skeleton'
-import { useCreateOnDutyPolicy, useOnDutyPolicies, useUpdateOnDutyPolicy } from '@/hooks/useOrgAdmin'
-import { createDefaultOnDutyPolicyForm } from '@/lib/constants'
-import { getErrorMessage, getFieldErrors } from '@/lib/errors'
+import { StatusBadge } from '@/components/ui/StatusBadge'
+import { useOnDutyPolicies, useOrgOnDutyRequests } from '@/hooks/useOrgAdmin'
+import { formatDateTime } from '@/lib/format'
 
 export function OnDutyPoliciesPage() {
+  const navigate = useNavigate()
   const { data: policies, isLoading } = useOnDutyPolicies()
-  const createPolicyMutation = useCreateOnDutyPolicy()
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const updatePolicyMutation = useUpdateOnDutyPolicy(editingId ?? '')
-  const [isModalOpen, setIsModalOpen] = useState(false)
-  const [policyForm, setPolicyForm] = useState(createDefaultOnDutyPolicyForm)
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
-
-  const resetForm = () => {
-    setEditingId(null)
-    setPolicyForm(createDefaultOnDutyPolicyForm())
-    setFieldErrors({})
-    setIsModalOpen(false)
-  }
-
-  const handlePolicySubmit = async (event: React.FormEvent) => {
-    event.preventDefault()
-    setFieldErrors({})
-    try {
-      if (editingId) {
-        await updatePolicyMutation.mutateAsync(policyForm)
-        toast.success('On-duty policy updated.')
-      } else {
-        await createPolicyMutation.mutateAsync(policyForm)
-        toast.success('On-duty policy created.')
-      }
-      resetForm()
-    } catch (error) {
-      const nextFieldErrors = getFieldErrors(error)
-      setFieldErrors(nextFieldErrors)
-      if (Object.keys(nextFieldErrors).length === 0) {
-        toast.error(getErrorMessage(error, 'Unable to save on-duty policy.'))
-      }
-    }
-  }
+  const { data: requests } = useOrgOnDutyRequests()
 
   if (isLoading) {
     return (
@@ -57,122 +21,86 @@ export function OnDutyPoliciesPage() {
     )
   }
 
+  const activePolicies = policies?.filter((policy) => policy.is_active) ?? []
+  const defaultPolicy = policies?.find((policy) => policy.is_default) ?? null
+
   return (
     <div className="space-y-6">
       <PageHeader
         eyebrow="OD configuration"
         title="On-duty policies"
-        description="Separate OD policy rules from leave plans so travel, field work, and time-range requests stay easy to govern."
+        description="Govern travel, field work, and time-range OD submissions with richer rules than the old lightweight modal could express."
         actions={
-          <button type="button" className="btn-primary" onClick={() => setIsModalOpen(true)}>
-            Add OD policy
+          <button type="button" className="btn-primary" onClick={() => navigate('/org/on-duty-policies/new')}>
+            Build new policy
           </button>
         }
       />
 
-      <SectionCard title="Configured OD policies" description="Keep policy rules readable so field-work and travel approvals are easy to maintain.">
-        <div className="space-y-3">
-          {policies?.map((policy) => (
-            <div key={policy.id} className="surface-muted rounded-[20px] px-4 py-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="font-semibold text-[hsl(var(--foreground-strong))]">{policy.name}</p>
-                  <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">{policy.description || 'No description set'}</p>
-                </div>
-                <div className="flex flex-wrap items-center gap-3">
-                  <div className="text-sm text-[hsl(var(--muted-foreground))]">
-                    {policy.is_default ? 'Default policy' : 'Secondary policy'}
+      <div className="grid gap-4 xl:grid-cols-4">
+        <div className="surface-card rounded-[28px] p-5">
+          <p className="text-xs uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">Configured policies</p>
+          <p className="mt-3 text-3xl font-semibold text-[hsl(var(--foreground-strong))]">{policies?.length ?? 0}</p>
+        </div>
+        <div className="surface-card rounded-[28px] p-5">
+          <p className="text-xs uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">Active policies</p>
+          <p className="mt-3 text-3xl font-semibold text-[hsl(var(--foreground-strong))]">{activePolicies.length}</p>
+        </div>
+        <div className="surface-card rounded-[28px] p-5">
+          <p className="text-xs uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">Default policy</p>
+          <p className="mt-3 text-lg font-semibold text-[hsl(var(--foreground-strong))]">{defaultPolicy?.name ?? 'Not configured'}</p>
+        </div>
+        <div className="surface-card rounded-[28px] p-5">
+          <p className="text-xs uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">OD requests tracked</p>
+          <p className="mt-3 text-3xl font-semibold text-[hsl(var(--foreground-strong))]">{requests?.length ?? 0}</p>
+        </div>
+      </div>
+
+      <SectionCard title="Policy catalogue" description="Use full-page builders for OD policy editing so operational rules stay readable and extensible.">
+        <div className="space-y-4">
+          {(policies ?? []).map((policy) => {
+            const policyRequestCount = (requests ?? []).filter((request) => request.policy === policy.id).length
+            return (
+              <div key={policy.id} className="surface-muted rounded-[24px] p-5">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-lg font-semibold text-[hsl(var(--foreground-strong))]">{policy.name}</p>
+                      {policy.is_default ? <StatusBadge tone="success">Default</StatusBadge> : null}
+                      <StatusBadge tone={policy.is_active ? 'info' : 'neutral'}>{policy.is_active ? 'Active' : 'Inactive'}</StatusBadge>
+                    </div>
+                    <p className="max-w-3xl text-sm text-[hsl(var(--muted-foreground))]">{policy.description || 'No description provided for this policy.'}</p>
                   </div>
-                  <button
-                    type="button"
-                    className="btn-secondary"
-                    onClick={() => {
-                      setEditingId(policy.id)
-                      setPolicyForm({
-                        name: policy.name,
-                        description: policy.description,
-                        is_default: policy.is_default,
-                        allow_half_day: policy.allow_half_day,
-                        allow_time_range: policy.allow_time_range,
-                        requires_attachment: policy.requires_attachment,
-                        min_notice_days: policy.min_notice_days,
-                        allow_past_request: policy.allow_past_request,
-                        allow_future_request: policy.allow_future_request,
-                        is_active: policy.is_active,
-                      })
-                      setIsModalOpen(true)
-                    }}
-                  >
-                    Edit
+                  <button type="button" className="btn-secondary" onClick={() => navigate(`/org/on-duty-policies/${policy.id}`)}>
+                    Open builder
                   </button>
                 </div>
+
+                <div className="mt-5 grid gap-3 xl:grid-cols-4">
+                  <div className="surface-shell rounded-[18px] px-4 py-3">
+                    <p className="text-xs uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">Request modes</p>
+                    <p className="mt-2 font-medium text-[hsl(var(--foreground-strong))]">
+                      {[policy.allow_half_day && 'Half day', policy.allow_time_range && 'Time range'].filter(Boolean).join(' • ') || 'Full day only'}
+                    </p>
+                  </div>
+                  <div className="surface-shell rounded-[18px] px-4 py-3">
+                    <p className="text-xs uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">Minimum notice</p>
+                    <p className="mt-2 font-medium text-[hsl(var(--foreground-strong))]">{policy.min_notice_days} day(s)</p>
+                  </div>
+                  <div className="surface-shell rounded-[18px] px-4 py-3">
+                    <p className="text-xs uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">Requests using policy</p>
+                    <p className="mt-2 font-medium text-[hsl(var(--foreground-strong))]">{policyRequestCount}</p>
+                  </div>
+                  <div className="surface-shell rounded-[18px] px-4 py-3">
+                    <p className="text-xs uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">Last modified</p>
+                    <p className="mt-2 font-medium text-[hsl(var(--foreground-strong))]">{formatDateTime(policy.modified_at)}</p>
+                  </div>
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       </SectionCard>
-
-      <AppDialog
-        open={isModalOpen}
-        onOpenChange={(open) => {
-          setIsModalOpen(open)
-          if (!open) resetForm()
-        }}
-        title={editingId ? 'Edit OD policy' : 'Create OD policy'}
-        description="Define whether employees can request full-day, half-day, or time-range on-duty approvals."
-        footer={
-          <div className="flex flex-wrap justify-end gap-3">
-            <button type="button" className="btn-secondary" onClick={resetForm}>
-              Cancel
-            </button>
-            <button type="submit" form="od-policy-form" className="btn-primary" disabled={createPolicyMutation.isPending || updatePolicyMutation.isPending}>
-              {editingId ? 'Save changes' : 'Save OD policy'}
-            </button>
-          </div>
-        }
-      >
-        <form id="od-policy-form" onSubmit={handlePolicySubmit} className="grid gap-4">
-          <div>
-            <label className="field-label" htmlFor="od-policy-name">
-              Policy name
-            </label>
-            <input
-              id="od-policy-name"
-              className="field-input"
-              value={policyForm.name}
-              onChange={(event) => setPolicyForm((current) => ({ ...current, name: event.target.value }))}
-              required
-            />
-            <FieldErrorText message={fieldErrors.name} />
-          </div>
-          <div>
-            <label className="field-label" htmlFor="od-policy-description">
-              Description
-            </label>
-            <textarea
-              id="od-policy-description"
-              className="field-textarea"
-              value={policyForm.description}
-              onChange={(event) => setPolicyForm((current) => ({ ...current, description: event.target.value }))}
-            />
-          </div>
-          <AppCheckbox
-            checked={policyForm.allow_time_range}
-            onCheckedChange={(checked) => setPolicyForm((current) => ({ ...current, allow_time_range: checked }))}
-            label="Allow time-range requests"
-          />
-          <AppCheckbox
-            checked={policyForm.allow_half_day}
-            onCheckedChange={(checked) => setPolicyForm((current) => ({ ...current, allow_half_day: checked }))}
-            label="Allow half-day OD"
-          />
-          <AppCheckbox
-            checked={policyForm.requires_attachment}
-            onCheckedChange={(checked) => setPolicyForm((current) => ({ ...current, requires_attachment: checked }))}
-            label="Require attachment on submission"
-          />
-        </form>
-      </AppDialog>
     </div>
   )
 }

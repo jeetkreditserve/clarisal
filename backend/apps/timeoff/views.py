@@ -124,6 +124,11 @@ class LeaveCycleListCreateView(APIView):
 class LeaveCycleDetailView(APIView):
     permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
 
+    def get(self, request, pk):
+        organisation = _get_admin_organisation(request)
+        cycle = get_object_or_404(LeaveCycle.objects.prefetch_related('leave_plans'), organisation=organisation, id=pk)
+        return Response(LeaveCycleSerializer(cycle).data)
+
     def patch(self, request, pk):
         organisation = _get_admin_organisation(request)
         cycle = get_object_or_404(LeaveCycle, organisation=organisation, id=pk)
@@ -138,7 +143,12 @@ class LeavePlanListCreateView(APIView):
 
     def get(self, request):
         organisation = _get_admin_organisation(request)
-        plans = LeavePlan.objects.filter(organisation=organisation).select_related('leave_cycle').prefetch_related('leave_types', 'rules')
+        plans = LeavePlan.objects.filter(organisation=organisation).select_related('leave_cycle').prefetch_related(
+            'leave_types',
+            'rules__department',
+            'rules__office_location',
+            'rules__specific_employee__user',
+        )
         return Response(LeavePlanSerializer(plans, many=True).data)
 
     def post(self, request):
@@ -178,6 +188,19 @@ class LeavePlanListCreateView(APIView):
 
 class LeavePlanDetailView(APIView):
     permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
+
+    def get(self, request, pk):
+        organisation = _get_admin_organisation(request)
+        plan = get_object_or_404(
+            LeavePlan.objects.filter(organisation=organisation).select_related('leave_cycle').prefetch_related(
+                'leave_types',
+                'rules__department',
+                'rules__office_location',
+                'rules__specific_employee__user',
+            ),
+            id=pk,
+        )
+        return Response(LeavePlanSerializer(plan).data)
 
     def patch(self, request, pk):
         organisation = _get_admin_organisation(request)
@@ -232,6 +255,11 @@ class OnDutyPolicyListCreateView(APIView):
 
 class OnDutyPolicyDetailView(APIView):
     permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
+
+    def get(self, request, pk):
+        organisation = _get_admin_organisation(request)
+        policy = get_object_or_404(OnDutyPolicy, organisation=organisation, id=pk)
+        return Response(OnDutyPolicySerializer(policy).data)
 
     def patch(self, request, pk):
         organisation = _get_admin_organisation(request)

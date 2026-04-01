@@ -7,7 +7,7 @@ from apps.accounts.models import AccountType
 from apps.accounts.permissions import BelongsToActiveOrg
 from apps.accounts.workspaces import get_current_organisation
 
-from .repositories import get_audit_logs, get_audit_logs_for_organisation
+from .repositories import apply_audit_filters, get_audit_logs, get_audit_logs_for_organisation
 from .serializers import AuditLogSerializer
 
 
@@ -23,6 +23,8 @@ class AuditLogListView(APIView):
         else:
             organisation = get_current_organisation(request, request.user)
             queryset = get_audit_logs_for_organisation(organisation)
+
+        queryset = apply_audit_filters(queryset, request.query_params)
 
         paginator = PageNumberPagination()
         page = paginator.paginate_queryset(queryset, request)

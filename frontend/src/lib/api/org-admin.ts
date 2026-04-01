@@ -275,6 +275,11 @@ export async function fetchApprovalWorkflows() {
   return data
 }
 
+export async function fetchApprovalWorkflow(id: string) {
+  const { data } = await api.get<ApprovalWorkflowConfig>(`/org/approvals/workflows/${id}/`)
+  return data
+}
+
 export async function createApprovalWorkflow(payload: Record<string, unknown>) {
   const { data } = await api.post<ApprovalWorkflowConfig>('/org/approvals/workflows/', payload)
   return data
@@ -340,6 +345,11 @@ export async function fetchLeavePlans() {
   return data
 }
 
+export async function fetchLeavePlan(id: string) {
+  const { data } = await api.get<LeavePlan>(`/org/leave-plans/${id}/`)
+  return data
+}
+
 export async function createLeavePlan(payload: Record<string, unknown>) {
   const { data } = await api.post<LeavePlan>('/org/leave-plans/', payload)
   return data
@@ -352,6 +362,11 @@ export async function updateLeavePlan(id: string, payload: Record<string, unknow
 
 export async function fetchOnDutyPolicies() {
   const { data } = await api.get<OnDutyPolicy[]>('/org/on-duty-policies/')
+  return data
+}
+
+export async function fetchOnDutyPolicy(id: string) {
+  const { data } = await api.get<OnDutyPolicy>(`/org/on-duty-policies/${id}/`)
   return data
 }
 
@@ -375,8 +390,13 @@ export async function fetchOrgOnDutyRequests() {
   return data
 }
 
-export async function fetchNotices() {
-  const { data } = await api.get<NoticeItem[]>('/org/notices/')
+export async function fetchNotices(params?: { status?: string; audience_type?: string; search?: string }) {
+  const { data } = await api.get<NoticeItem[]>('/org/notices/', { params })
+  return data
+}
+
+export async function fetchNotice(id: string) {
+  const { data } = await api.get<NoticeItem>(`/org/notices/${id}/`)
   return data
 }
 

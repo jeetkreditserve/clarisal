@@ -1,9 +1,7 @@
-import { useState } from 'react'
-import { toast } from 'sonner'
+import { useMemo } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import { ApprovalDecisionDialog } from '@/components/ui/ApprovalDecisionDialog'
-import { AppCheckbox } from '@/components/ui/AppCheckbox'
-import { AppDialog } from '@/components/ui/AppDialog'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { SkeletonPageHeader, SkeletonTable } from '@/components/ui/Skeleton'
@@ -12,52 +10,41 @@ import {
   useApprovalInbox,
   useApprovalWorkflows,
   useApproveApprovalAction,
-  useCreateApprovalWorkflow,
   useRejectApprovalAction,
-  useUpdateApprovalWorkflow,
 } from '@/hooks/useOrgAdmin'
-import { createDefaultApprovalWorkflow } from '@/lib/constants'
-import { getErrorMessage } from '@/lib/errors'
+import { formatDateTime } from '@/lib/format'
 import { getApprovalActionTone } from '@/lib/status'
 
+const TABS = [
+  { id: 'workflows', label: 'Workflows' },
+  { id: 'inbox', label: 'Inbox' },
+  { id: 'settings', label: 'Settings' },
+] as const
+
 export function ApprovalWorkflowsPage() {
+  const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const activeTab = TABS.some((tab) => tab.id === searchParams.get('tab')) ? searchParams.get('tab') : 'workflows'
   const { data: workflows, isLoading } = useApprovalWorkflows()
   const { data: inbox } = useApprovalInbox()
-  const createMutation = useCreateApprovalWorkflow()
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const updateMutation = useUpdateApprovalWorkflow(editingId ?? '')
   const approveMutation = useApproveApprovalAction()
   const rejectMutation = useRejectApprovalAction()
-  const [isModalOpen, setIsModalOpen] = useState(false)
-  const [form, setForm] = useState(createDefaultApprovalWorkflow)
 
-  const resetForm = () => {
-    setEditingId(null)
-    setForm(createDefaultApprovalWorkflow())
-    setIsModalOpen(false)
-  }
-
-  const handleCreate = async (event: React.FormEvent) => {
-    event.preventDefault()
-    try {
-      if (editingId) {
-        await updateMutation.mutateAsync(form)
-        toast.success('Approval workflow updated.')
-      } else {
-        await createMutation.mutateAsync(form)
-        toast.success('Approval workflow created.')
-      }
-      resetForm()
-    } catch (error) {
-      toast.error(getErrorMessage(error, 'Unable to save approval workflow.'))
+  const health = useMemo(() => {
+    const workflowList = workflows ?? []
+    return {
+      active: workflowList.filter((workflow) => workflow.is_active).length,
+      defaults: workflowList.filter((workflow) => workflow.is_default).length,
+      rules: workflowList.reduce((sum, workflow) => sum + workflow.rules.length, 0),
+      stages: workflowList.reduce((sum, workflow) => sum + workflow.stages.length, 0),
     }
-  }
+  }, [workflows])
 
   if (isLoading) {
     return (
       <div className="space-y-5">
         <SkeletonPageHeader />
-        <SkeletonTable rows={6} />
+        <SkeletonTable rows={8} />
       </div>
     )
   }
@@ -66,168 +53,164 @@ export function ApprovalWorkflowsPage() {
     <div className="space-y-6">
       <PageHeader
         eyebrow="Approvals"
-        title="Approval workflows"
-        description="Create the default workflow required for employee onboarding, then add more specific flows for departments, designations, or locations."
+        title="Approvals"
+        description="Separate workflow design from day-to-day approval work so admins can maintain routing without losing operational visibility."
         actions={
-          <button type="button" className="btn-primary" onClick={() => setIsModalOpen(true)}>
-            Add workflow
-          </button>
+          activeTab === 'workflows' ? (
+            <button type="button" className="btn-primary" onClick={() => navigate('/org/approval-workflows/new')}>
+              Build workflow
+            </button>
+          ) : null
         }
       />
 
-      <SectionCard title="Configured workflows" description="Specific rule matching and multi-stage routing are supported by the backend. Create and edit actions now use the same modal flow.">
-        <div className="space-y-4">
-          {workflows?.map((workflow) => (
-            <div key={workflow.id} className="surface-muted rounded-[24px] p-5">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="font-semibold text-[hsl(var(--foreground-strong))]">{workflow.name}</p>
-                  <p className="text-sm text-[hsl(var(--muted-foreground))]">{workflow.description || 'No description'}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  {workflow.is_default ? <StatusBadge tone="success">Default</StatusBadge> : null}
-                  <StatusBadge tone={workflow.is_active ? 'info' : 'neutral'}>{workflow.is_active ? 'Active' : 'Inactive'}</StatusBadge>
-                  <button
-                    type="button"
-                    className="btn-secondary"
-                    onClick={() => {
-                      setEditingId(workflow.id)
-                      setForm({
-                        name: workflow.name,
-                        description: workflow.description,
-                        is_default: workflow.is_default,
-                        is_active: workflow.is_active,
-                        rules: workflow.rules.map((rule) => ({
-                          id: rule.id,
-                          name: rule.name,
-                          request_kind: rule.request_kind,
-                          priority: rule.priority,
-                          is_active: rule.is_active,
-                          department_id: rule.department,
-                          office_location_id: rule.office_location,
-                          specific_employee_id: rule.specific_employee,
-                          employment_type: rule.employment_type,
-                          designation: rule.designation,
-                          leave_type_id: rule.leave_type,
-                        })),
-                        stages: workflow.stages.map((stage) => ({
-                          id: stage.id,
-                          name: stage.name,
-                          sequence: stage.sequence,
-                          mode: stage.mode,
-                          fallback_type: stage.fallback_type,
-                          fallback_employee_id: stage.fallback_employee_id,
-                          approvers: stage.approvers.map((approver) => ({
-                            id: approver.id,
-                            approver_type: approver.approver_type,
-                            approver_employee_id: approver.approver_employee_id,
-                          })),
-                        })),
-                      })
-                      setIsModalOpen(true)
-                    }}
-                  >
-                    Edit
+      <div className="flex flex-wrap gap-2 rounded-[24px] border border-[hsl(var(--border)_/_0.72)] bg-[hsl(var(--surface))] p-2">
+        {TABS.map((tab) => {
+          const isActive = tab.id === activeTab
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setSearchParams({ tab: tab.id })}
+              className={
+                isActive
+                  ? 'rounded-[18px] bg-[hsl(var(--brand))] px-4 py-2 text-sm font-medium text-[hsl(var(--brand-foreground))]'
+                  : 'rounded-[18px] px-4 py-2 text-sm font-medium text-[hsl(var(--muted-foreground))] transition hover:bg-[hsl(var(--surface-subtle))]'
+              }
+            >
+              {tab.label}
+            </button>
+          )
+        })}
+      </div>
+
+      {activeTab === 'workflows' ? (
+        <SectionCard title="Workflow catalogue" description="Open dedicated builders to manage rules, stages, fallback behavior, and approver structure.">
+          <div className="space-y-4">
+            {(workflows ?? []).map((workflow) => (
+              <div key={workflow.id} className="surface-muted rounded-[24px] p-5">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-lg font-semibold text-[hsl(var(--foreground-strong))]">{workflow.name}</p>
+                      {workflow.is_default ? <StatusBadge tone="success">Default</StatusBadge> : null}
+                      <StatusBadge tone={workflow.is_active ? 'info' : 'neutral'}>{workflow.is_active ? 'Active' : 'Inactive'}</StatusBadge>
+                    </div>
+                    <p className="max-w-3xl text-sm text-[hsl(var(--muted-foreground))]">{workflow.description || 'No description provided.'}</p>
+                  </div>
+                  <button type="button" className="btn-secondary" onClick={() => navigate(`/org/approval-workflows/${workflow.id}`)}>
+                    Open builder
                   </button>
                 </div>
-              </div>
-              <div className="mt-4 grid gap-3 md:grid-cols-2">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">Rules</p>
-                  <div className="mt-2 space-y-2">
-                    {workflow.rules.map((rule) => (
-                      <div key={rule.id} className="surface-shell rounded-[16px] px-3 py-2 text-sm text-[hsl(var(--foreground-strong))]">
-                        {rule.name} • {rule.request_kind.replace(/_/g, ' ')}
-                      </div>
-                    ))}
+
+                <div className="mt-5 grid gap-3 xl:grid-cols-4">
+                  <div className="surface-shell rounded-[18px] px-4 py-3">
+                    <p className="text-xs uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">Rules</p>
+                    <p className="mt-2 font-medium text-[hsl(var(--foreground-strong))]">{workflow.rules.length}</p>
+                  </div>
+                  <div className="surface-shell rounded-[18px] px-4 py-3">
+                    <p className="text-xs uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">Stages</p>
+                    <p className="mt-2 font-medium text-[hsl(var(--foreground-strong))]">{workflow.stages.length}</p>
+                  </div>
+                  <div className="surface-shell rounded-[18px] px-4 py-3">
+                    <p className="text-xs uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">Request coverage</p>
+                    <p className="mt-2 font-medium text-[hsl(var(--foreground-strong))]">
+                      {workflow.rules.map((rule) => rule.request_kind).filter((value, index, list) => list.indexOf(value) === index).join(' • ') || 'None'}
+                    </p>
+                  </div>
+                  <div className="surface-shell rounded-[18px] px-4 py-3">
+                    <p className="text-xs uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">Last modified</p>
+                    <p className="mt-2 font-medium text-[hsl(var(--foreground-strong))]">{formatDateTime(workflow.modified_at)}</p>
                   </div>
                 </div>
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">Stages</p>
-                  <div className="mt-2 space-y-2">
-                    {workflow.stages.map((stage) => (
-                      <div key={stage.id} className="surface-shell rounded-[16px] px-3 py-2 text-sm text-[hsl(var(--foreground-strong))]">
-                        {stage.sequence}. {stage.name}
-                      </div>
-                    ))}
-                  </div>
-                </div>
               </div>
-            </div>
-          ))}
-        </div>
-      </SectionCard>
-
-      <SectionCard title="Approval inbox" description="Managers and org admins can action pending requests here unless licence expiry blocks approvals.">
-        <div className="space-y-3">
-          {inbox?.map((action) => (
-            <div key={action.id} className="surface-muted flex flex-col gap-3 rounded-[22px] px-4 py-4 md:flex-row md:items-center md:justify-between">
-              <div>
-                <p className="font-semibold text-[hsl(var(--foreground-strong))]">{action.subject_label}</p>
-                <p className="text-sm text-[hsl(var(--muted-foreground))]">{action.requester_name} • {action.stage_name}</p>
-              </div>
-              <div className="flex items-center gap-3">
-                <StatusBadge tone={getApprovalActionTone(action.status)}>{action.status}</StatusBadge>
-                <ApprovalDecisionDialog
-                  actionLabel={`Approve ${action.subject_label}`}
-                  triggerClassName="btn-secondary"
-                  triggerLabel="Approve"
-                  title="Approve request"
-                  description="Add an optional note for the requester or the audit trail before approving this request."
-                  confirmLabel="Approve request"
-                  submitErrorFallback="Unable to approve this request."
-                  isPending={approveMutation.isPending}
-                  onSubmit={(comment) => approveMutation.mutateAsync({ actionId: action.id, comment })}
-                />
-                <ApprovalDecisionDialog
-                  actionLabel={`Reject ${action.subject_label}`}
-                  triggerClassName="btn-danger"
-                  triggerLabel="Reject"
-                  title="Reject request"
-                  description="Rejection notes are required so requesters understand what must change."
-                  confirmLabel="Reject request"
-                  confirmTone="danger"
-                  isCommentRequired
-                  submitErrorFallback="Unable to reject this request."
-                  isPending={rejectMutation.isPending}
-                  onSubmit={(comment) => rejectMutation.mutateAsync({ actionId: action.id, comment })}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
-      </SectionCard>
-
-      <AppDialog
-        open={isModalOpen}
-        onOpenChange={(open) => {
-          setIsModalOpen(open)
-          if (!open) resetForm()
-        }}
-        title={editingId ? 'Edit workflow' : 'Create workflow'}
-        description="This lightweight builder focuses on the workflow name, description, and default behavior."
-        footer={
-          <div className="flex flex-wrap justify-end gap-3">
-            <button type="button" className="btn-secondary" onClick={resetForm}>
-              Cancel
-            </button>
-            <button type="submit" form="approval-workflow-form" className="btn-primary" disabled={createMutation.isPending || updateMutation.isPending}>
-              {editingId ? 'Save changes' : 'Save workflow'}
-            </button>
+            ))}
           </div>
-        }
-      >
-        <form id="approval-workflow-form" onSubmit={handleCreate} className="grid gap-4">
-          <input className="field-input" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="Workflow name" />
-          <textarea className="field-textarea" value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} placeholder="Description" />
-          <AppCheckbox
-            checked={form.is_default}
-            onCheckedChange={(checked) => setForm((current) => ({ ...current, is_default: checked }))}
-            label="Default workflow"
-            description="A default workflow is mandatory before org admins can invite employees."
-          />
-        </form>
-      </AppDialog>
+        </SectionCard>
+      ) : null}
+
+      {activeTab === 'inbox' ? (
+        <SectionCard title="Approval inbox" description="Action pending requests here without mixing them into the workflow design surface.">
+          <div className="space-y-3">
+            {(inbox ?? []).map((action) => (
+              <div key={action.id} className="surface-muted flex flex-col gap-3 rounded-[22px] px-4 py-4 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <p className="font-semibold text-[hsl(var(--foreground-strong))]">{action.subject_label}</p>
+                  <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                    {action.requester_name} • {action.stage_name}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <StatusBadge tone={getApprovalActionTone(action.status)}>{action.status}</StatusBadge>
+                  <ApprovalDecisionDialog
+                    actionLabel={`Approve ${action.subject_label}`}
+                    triggerClassName="btn-secondary"
+                    triggerLabel="Approve"
+                    title="Approve request"
+                    description="Add an optional note for the requester or the audit trail before approving this request."
+                    confirmLabel="Approve request"
+                    submitErrorFallback="Unable to approve this request."
+                    isPending={approveMutation.isPending}
+                    onSubmit={(comment) => approveMutation.mutateAsync({ actionId: action.id, comment })}
+                  />
+                  <ApprovalDecisionDialog
+                    actionLabel={`Reject ${action.subject_label}`}
+                    triggerClassName="btn-danger"
+                    triggerLabel="Reject"
+                    title="Reject request"
+                    description="Rejection notes are required so requesters understand what must change."
+                    confirmLabel="Reject request"
+                    confirmTone="danger"
+                    isCommentRequired
+                    submitErrorFallback="Unable to reject this request."
+                    isPending={rejectMutation.isPending}
+                    onSubmit={(comment) => rejectMutation.mutateAsync({ actionId: action.id, comment })}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </SectionCard>
+      ) : null}
+
+      {activeTab === 'settings' ? (
+        <SectionCard title="Workflow health" description="Use these signals to spot gaps in approval configuration before they become operational issues.">
+          <div className="grid gap-4 xl:grid-cols-4">
+            <div className="surface-muted rounded-[20px] px-4 py-4">
+              <p className="text-xs uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">Active workflows</p>
+              <p className="mt-2 text-3xl font-semibold text-[hsl(var(--foreground-strong))]">{health.active}</p>
+            </div>
+            <div className="surface-muted rounded-[20px] px-4 py-4">
+              <p className="text-xs uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">Default workflows</p>
+              <p className="mt-2 text-3xl font-semibold text-[hsl(var(--foreground-strong))]">{health.defaults}</p>
+            </div>
+            <div className="surface-muted rounded-[20px] px-4 py-4">
+              <p className="text-xs uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">Routing rules</p>
+              <p className="mt-2 text-3xl font-semibold text-[hsl(var(--foreground-strong))]">{health.rules}</p>
+            </div>
+            <div className="surface-muted rounded-[20px] px-4 py-4">
+              <p className="text-xs uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">Pending approvals</p>
+              <p className="mt-2 text-3xl font-semibold text-[hsl(var(--foreground-strong))]">{inbox?.length ?? 0}</p>
+            </div>
+          </div>
+          <div className="mt-5 grid gap-4 lg:grid-cols-2">
+            <div className="surface-shell rounded-[20px] px-5 py-4">
+              <p className="font-semibold text-[hsl(var(--foreground-strong))]">Recommended baseline</p>
+              <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
+                Keep at least one default workflow active, cover both leave and OD request kinds, and avoid stage definitions without fallback handling.
+              </p>
+            </div>
+            <div className="surface-shell rounded-[20px] px-5 py-4">
+              <p className="font-semibold text-[hsl(var(--foreground-strong))]">Current posture</p>
+              <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
+                {health.defaults === 1
+                  ? 'Default coverage looks healthy. Review targeted rules and stage count next.'
+                  : 'Review default workflow coverage. Exactly one default workflow is the safest operating model.'}
+              </p>
+            </div>
+          </div>
+        </SectionCard>
+      ) : null}
     </div>
   )
 }

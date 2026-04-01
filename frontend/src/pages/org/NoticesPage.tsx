@@ -1,61 +1,27 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 
-import { FieldErrorText } from '@/components/ui/FieldErrorText'
-import { AppCheckbox } from '@/components/ui/AppCheckbox'
-import { AppDialog } from '@/components/ui/AppDialog'
 import { AppSelect } from '@/components/ui/AppSelect'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { SkeletonPageHeader, SkeletonTable } from '@/components/ui/Skeleton'
 import { StatusBadge } from '@/components/ui/StatusBadge'
-import { useCreateNotice, useDepartments, useNotices, usePublishNotice, useUpdateNotice } from '@/hooks/useOrgAdmin'
-import { createDefaultNoticeForm, NOTICE_AUDIENCE_TYPE_OPTIONS } from '@/lib/constants'
-import { getErrorMessage, getFieldErrors } from '@/lib/errors'
-import { startCase } from '@/lib/format'
+import { useNotices, usePublishNotice } from '@/hooks/useOrgAdmin'
+import { NOTICE_AUDIENCE_TYPE_OPTIONS, NOTICE_STATUS_OPTIONS } from '@/lib/constants'
+import { formatDateTime, startCase } from '@/lib/format'
 
 export function NoticesPage() {
-  const { data, isLoading } = useNotices()
-  const { data: departments } = useDepartments()
-  const createMutation = useCreateNotice()
+  const navigate = useNavigate()
+  const [statusFilter, setStatusFilter] = useState('')
+  const [audienceFilter, setAudienceFilter] = useState('')
+  const [search, setSearch] = useState('')
+  const { data: notices, isLoading } = useNotices({
+    status: statusFilter || undefined,
+    audience_type: audienceFilter || undefined,
+    search: search || undefined,
+  })
   const publishMutation = usePublishNotice()
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const updateMutation = useUpdateNotice(editingId ?? '')
-  const [isModalOpen, setIsModalOpen] = useState(false)
-  const [form, setForm] = useState(createDefaultNoticeForm)
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
-  const audienceTypeOptions = NOTICE_AUDIENCE_TYPE_OPTIONS.map((type) => ({
-    value: type,
-    label: startCase(type),
-  }))
-
-  const resetForm = () => {
-    setEditingId(null)
-    setForm(createDefaultNoticeForm())
-    setFieldErrors({})
-    setIsModalOpen(false)
-  }
-
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault()
-    setFieldErrors({})
-    try {
-      if (editingId) {
-        await updateMutation.mutateAsync(form)
-        toast.success('Notice updated.')
-      } else {
-        await createMutation.mutateAsync(form)
-        toast.success('Notice created.')
-      }
-      resetForm()
-    } catch (error) {
-      const nextFieldErrors = getFieldErrors(error)
-      setFieldErrors(nextFieldErrors)
-      if (Object.keys(nextFieldErrors).length === 0) {
-        toast.error(getErrorMessage(error, 'Unable to save notice.'))
-      }
-    }
-  }
 
   if (isLoading) {
     return (
@@ -66,119 +32,132 @@ export function NoticesPage() {
     )
   }
 
+  const stickyCount = (notices ?? []).filter((notice) => notice.is_sticky).length
+  const publishedCount = (notices ?? []).filter((notice) => notice.status === 'PUBLISHED').length
+  const scheduledCount = (notices ?? []).filter((notice) => notice.status === 'SCHEDULED').length
+
   return (
     <div className="space-y-6">
       <PageHeader
         eyebrow="Notices"
-        title="Internal notices"
-        description="Publish important organisation-wide updates, targeted announcements, and scheduled messages for employees."
+        title="Announcement center"
+        description="Publish richer internal notices with targeting, scheduling, sticky placement, and lifecycle status tracking."
         actions={
-          <button type="button" className="btn-primary" onClick={() => setIsModalOpen(true)}>
-            Add notice
+          <button type="button" className="btn-primary" onClick={() => navigate('/org/notices/new')}>
+            Compose notice
           </button>
         }
       />
 
-      <SectionCard title="Noticeboard" description="Draft and published notices are visible here, with publishing handled explicitly.">
+      <div className="grid gap-4 xl:grid-cols-4">
+        <div className="surface-card rounded-[28px] p-5">
+          <p className="text-xs uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">Visible in list</p>
+          <p className="mt-3 text-3xl font-semibold text-[hsl(var(--foreground-strong))]">{notices?.length ?? 0}</p>
+        </div>
+        <div className="surface-card rounded-[28px] p-5">
+          <p className="text-xs uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">Published</p>
+          <p className="mt-3 text-3xl font-semibold text-[hsl(var(--foreground-strong))]">{publishedCount}</p>
+        </div>
+        <div className="surface-card rounded-[28px] p-5">
+          <p className="text-xs uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">Scheduled</p>
+          <p className="mt-3 text-3xl font-semibold text-[hsl(var(--foreground-strong))]">{scheduledCount}</p>
+        </div>
+        <div className="surface-card rounded-[28px] p-5">
+          <p className="text-xs uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">Sticky notices</p>
+          <p className="mt-3 text-3xl font-semibold text-[hsl(var(--foreground-strong))]">{stickyCount}</p>
+        </div>
+      </div>
+
+      <SectionCard title="Filters" description="Search and slice by audience or lifecycle state.">
+        <div className="grid gap-4 xl:grid-cols-[2fr_1fr_1fr]">
+          <div>
+            <label className="field-label" htmlFor="notice-search">
+              Search
+            </label>
+            <input
+              id="notice-search"
+              className="field-input"
+              placeholder="Search title, body, or category"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+          </div>
+          <div>
+            <label className="field-label">Status</label>
+            <AppSelect
+              value={statusFilter}
+              onValueChange={setStatusFilter}
+              options={[{ value: '', label: 'All statuses' }, ...NOTICE_STATUS_OPTIONS.map((value) => ({ value, label: startCase(value) }))]}
+            />
+          </div>
+          <div>
+            <label className="field-label">Audience</label>
+            <AppSelect
+              value={audienceFilter}
+              onValueChange={setAudienceFilter}
+              options={[{ value: '', label: 'All audiences' }, ...NOTICE_AUDIENCE_TYPE_OPTIONS.map((value) => ({ value, label: startCase(value) }))]}
+            />
+          </div>
+        </div>
+      </SectionCard>
+
+      <SectionCard title="Notices" description="Drafts, scheduled announcements, live posts, and expired notices stay visible here in one operational view.">
         <div className="space-y-4">
-          {data?.map((notice) => (
+          {(notices ?? []).map((notice) => (
             <div key={notice.id} className="surface-muted rounded-[24px] p-5">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="font-semibold text-[hsl(var(--foreground-strong))]">{notice.title}</p>
-                  <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">{notice.body}</p>
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-lg font-semibold text-[hsl(var(--foreground-strong))]">{notice.title}</p>
+                    <StatusBadge tone={notice.status === 'PUBLISHED' ? 'success' : notice.status === 'SCHEDULED' ? 'warning' : notice.status === 'EXPIRED' ? 'neutral' : 'info'}>
+                      {startCase(notice.status)}
+                    </StatusBadge>
+                    {notice.is_sticky ? <StatusBadge tone="info">Sticky</StatusBadge> : null}
+                  </div>
+                  <p className="max-w-3xl text-sm text-[hsl(var(--muted-foreground))]">{notice.body}</p>
                 </div>
-                <div className="flex items-center gap-3">
-                  <StatusBadge tone={notice.status === 'PUBLISHED' ? 'success' : 'warning'}>{notice.status}</StatusBadge>
-                  <button
-                    type="button"
-                    className="btn-secondary"
-                    onClick={() => {
-                      setEditingId(notice.id)
-                      setForm({
-                        title: notice.title,
-                        body: notice.body,
-                        audience_type: notice.audience_type,
-                        department_ids: notice.department_ids ?? [],
-                        employee_ids: notice.employee_ids ?? [],
-                        office_location_ids: notice.office_location_ids ?? [],
-                        status: notice.status,
-                      })
-                      setIsModalOpen(true)
-                    }}
-                  >
+                <div className="flex flex-wrap items-center gap-3">
+                  <button type="button" className="btn-secondary" onClick={() => navigate(`/org/notices/${notice.id}`)}>
                     Edit
                   </button>
                   {notice.status !== 'PUBLISHED' ? (
-                    <button className="btn-secondary" onClick={() => void publishMutation.mutateAsync(notice.id)}>
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      disabled={publishMutation.isPending}
+                      onClick={async () => {
+                        await publishMutation.mutateAsync(notice.id)
+                        toast.success('Notice published.')
+                      }}
+                    >
                       Publish
                     </button>
                   ) : null}
+                </div>
+              </div>
+
+              <div className="mt-5 grid gap-3 xl:grid-cols-4">
+                <div className="surface-shell rounded-[18px] px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">Category</p>
+                  <p className="mt-2 font-medium text-[hsl(var(--foreground-strong))]">{startCase(notice.category)}</p>
+                </div>
+                <div className="surface-shell rounded-[18px] px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">Audience</p>
+                  <p className="mt-2 font-medium text-[hsl(var(--foreground-strong))]">{startCase(notice.audience_type)}</p>
+                </div>
+                <div className="surface-shell rounded-[18px] px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">Scheduled</p>
+                  <p className="mt-2 font-medium text-[hsl(var(--foreground-strong))]">{formatDateTime(notice.scheduled_for)}</p>
+                </div>
+                <div className="surface-shell rounded-[18px] px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">Expires</p>
+                  <p className="mt-2 font-medium text-[hsl(var(--foreground-strong))]">{formatDateTime(notice.expires_at)}</p>
                 </div>
               </div>
             </div>
           ))}
         </div>
       </SectionCard>
-
-      <AppDialog
-        open={isModalOpen}
-        onOpenChange={(open) => {
-          setIsModalOpen(open)
-          if (!open) resetForm()
-        }}
-        title={editingId ? 'Edit notice' : 'Create notice'}
-        description="Notices can target all employees or narrower audiences such as departments."
-        footer={
-          <div className="flex flex-wrap justify-end gap-3">
-            <button type="button" className="btn-secondary" onClick={resetForm}>
-              Cancel
-            </button>
-            <button type="submit" form="notice-form" className="btn-primary" disabled={createMutation.isPending || updateMutation.isPending}>
-              {editingId ? 'Save changes' : 'Save notice'}
-            </button>
-          </div>
-        }
-      >
-        <form id="notice-form" onSubmit={handleSubmit} className="grid gap-4">
-          <div>
-            <input className="field-input" placeholder="Title" value={form.title} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} required />
-            <FieldErrorText message={fieldErrors.title} />
-          </div>
-          <div>
-            <textarea className="field-textarea" placeholder="Body" value={form.body} onChange={(event) => setForm((current) => ({ ...current, body: event.target.value }))} required />
-            <FieldErrorText message={fieldErrors.body} />
-          </div>
-          <div>
-            <AppSelect
-              value={form.audience_type}
-              onValueChange={(value) => setForm((current) => ({ ...current, audience_type: value }))}
-              options={audienceTypeOptions}
-            />
-            <FieldErrorText message={fieldErrors.audience_type} />
-          </div>
-          {form.audience_type === 'DEPARTMENTS' ? (
-            <div className="grid gap-2">
-              {departments?.filter((department) => department.is_active).map((department) => (
-                <AppCheckbox
-                  key={department.id}
-                  id={`notice-department-${department.id}`}
-                  checked={form.department_ids.includes(department.id)}
-                  onCheckedChange={(checked) =>
-                    setForm((current) => ({
-                      ...current,
-                      department_ids: checked
-                        ? [...current.department_ids, department.id]
-                        : current.department_ids.filter((id) => id !== department.id),
-                    }))
-                  }
-                  label={department.name}
-                />
-              ))}
-            </div>
-          ) : null}
-        </form>
-      </AppDialog>
     </div>
   )
 }

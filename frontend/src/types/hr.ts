@@ -50,6 +50,9 @@ export type CarryForwardMode = 'NONE' | 'CAPPED' | 'UNLIMITED'
 export type ApprovalApproverType = 'REPORTING_MANAGER' | 'SPECIFIC_EMPLOYEE' | 'PRIMARY_ORG_ADMIN'
 export type ApprovalFallbackType = 'NONE' | 'SPECIFIC_EMPLOYEE' | 'PRIMARY_ORG_ADMIN'
 export type ApprovalStageMode = 'ALL' | 'ANY'
+export type NoticeStatus = 'DRAFT' | 'SCHEDULED' | 'PUBLISHED' | 'EXPIRED' | 'ARCHIVED'
+export type NoticeCategory = 'GENERAL' | 'HR_POLICY' | 'OPERATIONS' | 'CELEBRATION' | 'COMPLIANCE' | 'URGENT'
+export type NoticeAudienceType = 'ALL_EMPLOYEES' | 'DEPARTMENTS' | 'OFFICE_LOCATIONS' | 'SPECIFIC_EMPLOYEES'
 
 export interface LinkedOrganisationAddress {
   id: string
@@ -336,10 +339,13 @@ export interface NoticeItem {
   id: string
   title: string
   body: string
-  audience_type: string
-  status: string
+  category: NoticeCategory
+  audience_type: NoticeAudienceType
+  status: NoticeStatus
+  is_sticky: boolean
   scheduled_for: string | null
   published_at: string | null
+  expires_at: string | null
   department_ids: string[]
   office_location_ids: string[]
   employee_ids: string[]
@@ -405,6 +411,8 @@ export interface LeaveCycle {
   start_day: number
   is_default: boolean
   is_active: boolean
+  leave_plan_count: number
+  active_leave_plan_count: number
   created_at: string
   modified_at: string
 }
@@ -415,8 +423,11 @@ export interface LeavePlanRuleConfig {
   priority: number
   is_active: boolean
   department: string | null
+  department_name: string | null
   office_location: string | null
+  office_location_name: string | null
   specific_employee: string | null
+  specific_employee_name: string | null
   employment_type: string
   designation: string
 }

@@ -8,7 +8,26 @@ from apps.audit.services import log_audit_event
 from .models import Notice, NoticeAudienceType, NoticeStatus
 
 
+def _normalise_notice_state(fields):
+    status = fields.get('status', NoticeStatus.DRAFT)
+    expires_at = fields.get('expires_at')
+
+    if status == NoticeStatus.PUBLISHED:
+        fields.setdefault('published_at', timezone.now())
+    elif status != NoticeStatus.PUBLISHED:
+        fields['published_at'] = None
+
+    if status != NoticeStatus.SCHEDULED:
+        fields['scheduled_for'] = None
+
+    if expires_at and status == NoticeStatus.EXPIRED:
+        fields.setdefault('published_at', timezone.now())
+
+    return fields
+
+
 def create_notice(organisation, actor=None, department_ids=None, office_location_ids=None, employee_ids=None, **fields):
+    fields = _normalise_notice_state(fields)
     with transaction.atomic():
         notice = Notice.objects.create(
             organisation=organisation,
@@ -27,6 +46,7 @@ def create_notice(organisation, actor=None, department_ids=None, office_location
 
 
 def update_notice(notice, actor=None, department_ids=None, office_location_ids=None, employee_ids=None, **fields):
+    fields = _normalise_notice_state(fields)
     with transaction.atomic():
         for attr, value in fields.items():
             setattr(notice, attr, value)
@@ -55,11 +75,15 @@ def get_visible_notices(employee):
     now = timezone.now()
     queryset = Notice.objects.filter(
         organisation=employee.organisation,
-        status__in=[NoticeStatus.PUBLISHED, NoticeStatus.SCHEDULED],
-    ).order_by('-published_at', '-created_at')
+        status__in=[NoticeStatus.PUBLISHED, NoticeStatus.SCHEDULED, NoticeStatus.EXPIRED],
+    ).order_by('-is_sticky', '-published_at', '-created_at')
 
     visible = []
     for notice in queryset:
+        if notice.expires_at and notice.expires_at <= now:
+            if notice.status != NoticeStatus.EXPIRED:
+                Notice.objects.filter(id=notice.id).update(status=NoticeStatus.EXPIRED, modified_at=now)
+            continue
         if notice.status == NoticeStatus.SCHEDULED and (notice.scheduled_for is None or notice.scheduled_for > now):
             continue
         if notice.audience_type == NoticeAudienceType.ALL_EMPLOYEES:

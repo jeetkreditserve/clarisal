@@ -522,8 +522,12 @@ function createNoticeDialogForm(notice?: NoticeItem): NoticeFormState {
   return {
     title: notice.title,
     body: notice.body,
+    category: notice.category,
     audience_type: notice.audience_type,
     status: notice.status,
+    is_sticky: notice.is_sticky,
+    scheduled_for: notice.scheduled_for,
+    expires_at: notice.expires_at,
     department_ids: [...notice.department_ids],
     office_location_ids: [...notice.office_location_ids],
     employee_ids: [...notice.employee_ids],

@@ -33,9 +33,13 @@ import { ApprovalsPage } from '@/pages/employee/ApprovalsPage'
 import { HolidaysPage } from '@/pages/org/HolidaysPage'
 import { LeaveCyclesPage } from '@/pages/org/LeaveCyclesPage'
 import { LeavePlansPage } from '@/pages/org/LeavePlansPage'
+import { LeavePlanBuilderPage } from '@/pages/org/LeavePlanBuilderPage'
 import { OnDutyPoliciesPage } from '@/pages/org/OnDutyPoliciesPage'
+import { OnDutyPolicyBuilderPage } from '@/pages/org/OnDutyPolicyBuilderPage'
 import { ApprovalWorkflowsPage } from '@/pages/org/ApprovalWorkflowsPage'
+import { ApprovalWorkflowBuilderPage } from '@/pages/org/ApprovalWorkflowBuilderPage'
 import { NoticesPage } from '@/pages/org/NoticesPage'
+import { NoticeEditorPage } from '@/pages/org/NoticeEditorPage'
 
 export const router = createBrowserRouter([
   // Public auth routes
@@ -102,9 +106,17 @@ export const router = createBrowserRouter([
           { path: '/org/holidays', element: <HolidaysPage /> },
           { path: '/org/leave-cycles', element: <LeaveCyclesPage /> },
           { path: '/org/leave-plans', element: <LeavePlansPage /> },
+          { path: '/org/leave-plans/new', element: <LeavePlanBuilderPage /> },
+          { path: '/org/leave-plans/:id', element: <LeavePlanBuilderPage /> },
           { path: '/org/on-duty-policies', element: <OnDutyPoliciesPage /> },
+          { path: '/org/on-duty-policies/new', element: <OnDutyPolicyBuilderPage /> },
+          { path: '/org/on-duty-policies/:id', element: <OnDutyPolicyBuilderPage /> },
           { path: '/org/approval-workflows', element: <ApprovalWorkflowsPage /> },
+          { path: '/org/approval-workflows/new', element: <ApprovalWorkflowBuilderPage /> },
+          { path: '/org/approval-workflows/:id', element: <ApprovalWorkflowBuilderPage /> },
           { path: '/org/notices', element: <NoticesPage /> },
+          { path: '/org/notices/new', element: <NoticeEditorPage /> },
+          { path: '/org/notices/:id', element: <NoticeEditorPage /> },
           { path: '/org/audit', element: <OrgAuditPage /> },
         ],
       },

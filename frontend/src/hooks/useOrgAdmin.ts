@@ -37,7 +37,9 @@ import {
   fetchOrgOnDutyRequests,
   fetchOrgProfile,
   fetchApprovalInbox,
+  fetchApprovalWorkflow,
   fetchApprovalWorkflows,
+  fetchLeavePlan,
   getEmployeeDocumentDownloadUrl,
   inviteEmployee,
   markEmployeeJoined,
@@ -45,6 +47,8 @@ import {
   publishNotice,
   rejectApprovalAction,
   rejectEmployeeDocument,
+  fetchNotice,
+  fetchOnDutyPolicy,
   updateOrgAddress,
   updateOrgProfile,
   updateOrgSetup,
@@ -85,11 +89,11 @@ export function useUpdateOrgSetup() {
   })
 }
 
-export function useOrgAuditLogs() {
+export function useOrgAuditLogs(params?: Parameters<typeof fetchOrgAuditLogs>[0]) {
   const organisationId = useOrgScope()
   return useQuery({
-    queryKey: ['org', organisationId, 'audit'],
-    queryFn: fetchOrgAuditLogs,
+    queryKey: ['org', organisationId, 'audit', params],
+    queryFn: () => fetchOrgAuditLogs(params),
   })
 }
 
@@ -353,6 +357,15 @@ export function useApprovalWorkflows() {
   })
 }
 
+export function useApprovalWorkflow(id: string) {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'approval-workflows', id],
+    queryFn: () => fetchApprovalWorkflow(id),
+    enabled: Boolean(id),
+  })
+}
+
 export function useCreateApprovalWorkflow() {
   const queryClient = useQueryClient()
   return useMutation({
@@ -477,6 +490,15 @@ export function useLeavePlans() {
   })
 }
 
+export function useLeavePlan(id: string) {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'leave-plans', id],
+    queryFn: () => fetchLeavePlan(id),
+    enabled: Boolean(id),
+  })
+}
+
 export function useCreateLeavePlan() {
   const queryClient = useQueryClient()
   return useMutation({
@@ -502,6 +524,15 @@ export function useOnDutyPolicies() {
   return useQuery({
     queryKey: ['org', organisationId, 'on-duty-policies'],
     queryFn: fetchOnDutyPolicies,
+  })
+}
+
+export function useOnDutyPolicy(id: string) {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'on-duty-policies', id],
+    queryFn: () => fetchOnDutyPolicy(id),
+    enabled: Boolean(id),
   })
 }
 
@@ -541,11 +572,20 @@ export function useOrgOnDutyRequests() {
   })
 }
 
-export function useNotices() {
+export function useNotices(params?: Parameters<typeof fetchNotices>[0]) {
   const organisationId = useOrgScope()
   return useQuery({
-    queryKey: ['org', organisationId, 'notices'],
-    queryFn: fetchNotices,
+    queryKey: ['org', organisationId, 'notices', params],
+    queryFn: () => fetchNotices(params),
+  })
+}
+
+export function useNotice(id: string) {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'notices', id],
+    queryFn: () => fetchNotice(id),
+    enabled: Boolean(id),
   })
 }
 

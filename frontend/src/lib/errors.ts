@@ -17,7 +17,15 @@ function collectFieldErrors(
     return
   }
 
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+  if (Array.isArray(value)) {
+    value.forEach((nestedValue, index) => {
+      const nextPath = currentPath ? `${currentPath}.${index}` : String(index)
+      collectFieldErrors(nestedValue, nextPath, fieldErrors)
+    })
+    return
+  }
+
+  if (!value || typeof value !== 'object') {
     return
   }
 

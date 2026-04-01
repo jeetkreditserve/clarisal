@@ -72,6 +72,9 @@ class HolidayCalendarWriteSerializer(serializers.Serializer):
 
 
 class LeaveCycleSerializer(serializers.ModelSerializer):
+    leave_plan_count = serializers.SerializerMethodField()
+    active_leave_plan_count = serializers.SerializerMethodField()
+
     class Meta:
         model = LeaveCycle
         fields = [
@@ -82,9 +85,17 @@ class LeaveCycleSerializer(serializers.ModelSerializer):
             'start_day',
             'is_default',
             'is_active',
+            'leave_plan_count',
+            'active_leave_plan_count',
             'created_at',
             'modified_at',
         ]
+
+    def get_leave_plan_count(self, obj):
+        return obj.leave_plans.count()
+
+    def get_active_leave_plan_count(self, obj):
+        return obj.leave_plans.filter(is_active=True).count()
 
 
 class LeaveCycleWriteSerializer(serializers.Serializer):
@@ -151,6 +162,10 @@ class LeaveTypeWriteSerializer(serializers.Serializer):
 
 
 class LeavePlanRuleSerializer(serializers.ModelSerializer):
+    department_name = serializers.CharField(source='department.name', read_only=True)
+    office_location_name = serializers.CharField(source='office_location.name', read_only=True)
+    specific_employee_name = serializers.CharField(source='specific_employee.user.full_name', read_only=True)
+
     class Meta:
         model = LeavePlanRule
         fields = [
@@ -159,8 +174,11 @@ class LeavePlanRuleSerializer(serializers.ModelSerializer):
             'priority',
             'is_active',
             'department',
+            'department_name',
             'office_location',
+            'office_location_name',
             'specific_employee',
+            'specific_employee_name',
             'employment_type',
             'designation',
         ]

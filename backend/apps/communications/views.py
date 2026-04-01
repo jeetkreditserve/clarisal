@@ -1,3 +1,4 @@
+from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.response import Response
@@ -31,6 +32,15 @@ class NoticeListCreateView(APIView):
     def get(self, request):
         organisation = _get_admin_organisation(request)
         notices = Notice.objects.filter(organisation=organisation).prefetch_related('departments', 'office_locations', 'employees')
+        status_value = request.query_params.get('status')
+        audience_type = request.query_params.get('audience_type')
+        search = request.query_params.get('search')
+        if status_value:
+            notices = notices.filter(status=status_value)
+        if audience_type:
+            notices = notices.filter(audience_type=audience_type)
+        if search:
+            notices = notices.filter(Q(title__icontains=search) | Q(body__icontains=search) | Q(category__icontains=search))
         return Response(NoticeSerializer(notices, many=True).data)
 
     def post(self, request):
@@ -43,6 +53,15 @@ class NoticeListCreateView(APIView):
 
 class NoticeDetailView(APIView):
     permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
+
+    def get(self, request, pk):
+        organisation = _get_admin_organisation(request)
+        notice = get_object_or_404(
+            Notice.objects.prefetch_related('departments', 'office_locations', 'employees'),
+            organisation=organisation,
+            id=pk,
+        )
+        return Response(NoticeSerializer(notice).data)
 
     def patch(self, request, pk):
         organisation = _get_admin_organisation(request)
