@@ -116,7 +116,7 @@ def sync_user_role(user: User):
 
     if user.role != new_role:
         user.role = new_role
-        user.save(update_fields=['role', 'updated_at'])
+        user.save(update_fields=['role', 'modified_at'])
     return user
 
 
@@ -143,7 +143,7 @@ def set_active_admin_organisation(request, user: User, organisation_id):
         raise ValueError('You do not have administrator access to that organisation.')
 
     membership.last_used_at = timezone.now()
-    membership.save(update_fields=['last_used_at', 'updated_at'])
+    membership.save(update_fields=['last_used_at', 'modified_at'])
 
     request.session['active_workspace_kind'] = 'ADMIN'
     request.session['active_admin_org_id'] = str(membership.organisation_id)

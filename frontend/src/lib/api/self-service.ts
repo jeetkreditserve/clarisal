@@ -53,12 +53,12 @@ export async function fetchEducation() {
   return data
 }
 
-export async function createFamilyMember(payload: Omit<FamilyMember, 'id' | 'created_at' | 'updated_at'>) {
+export async function createFamilyMember(payload: Omit<FamilyMember, 'id' | 'created_at' | 'modified_at'>) {
   const { data } = await api.post<FamilyMember>('/me/family-members/', payload)
   return data
 }
 
-export async function updateFamilyMember(id: string, payload: Partial<Omit<FamilyMember, 'id' | 'created_at' | 'updated_at'>>) {
+export async function updateFamilyMember(id: string, payload: Partial<Omit<FamilyMember, 'id' | 'created_at' | 'modified_at'>>) {
   const { data } = await api.patch<FamilyMember>(`/me/family-members/${id}/`, payload)
   return data
 }
@@ -67,14 +67,14 @@ export async function deleteFamilyMember(id: string) {
   await api.delete(`/me/family-members/${id}/`)
 }
 
-export async function createEmergencyContact(payload: Omit<EmergencyContact, 'id' | 'created_at' | 'updated_at'>) {
+export async function createEmergencyContact(payload: Omit<EmergencyContact, 'id' | 'created_at' | 'modified_at'>) {
   const { data } = await api.post<EmergencyContact>('/me/emergency-contacts/', payload)
   return data
 }
 
 export async function updateEmergencyContact(
   id: string,
-  payload: Partial<Omit<EmergencyContact, 'id' | 'created_at' | 'updated_at'>>
+  payload: Partial<Omit<EmergencyContact, 'id' | 'created_at' | 'modified_at'>>
 ) {
   const { data } = await api.patch<EmergencyContact>(`/me/emergency-contacts/${id}/`, payload)
   return data
@@ -84,12 +84,12 @@ export async function deleteEmergencyContact(id: string) {
   await api.delete(`/me/emergency-contacts/${id}/`)
 }
 
-export async function createEducation(payload: Omit<EducationRecord, 'id' | 'created_at' | 'updated_at'>) {
+export async function createEducation(payload: Omit<EducationRecord, 'id' | 'created_at' | 'modified_at'>) {
   const { data } = await api.post<EducationRecord>('/me/education/', payload)
   return data
 }
 
-export async function updateEducation(id: string, payload: Partial<Omit<EducationRecord, 'id' | 'created_at' | 'updated_at'>>) {
+export async function updateEducation(id: string, payload: Partial<Omit<EducationRecord, 'id' | 'created_at' | 'modified_at'>>) {
   const { data } = await api.patch<EducationRecord>(`/me/education/${id}/`, payload)
   return data
 }

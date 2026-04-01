@@ -447,7 +447,7 @@ class TestCtOrganisationEditingParity:
             is_active=True,
         )
         org.primary_admin_user = primary
-        org.save(update_fields=['primary_admin_user', 'updated_at'])
+        org.save(update_fields=['primary_admin_user', 'modified_at'])
         OrganisationMembership.objects.create(
             user=primary,
             organisation=org,

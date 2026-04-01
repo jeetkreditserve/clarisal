@@ -24,7 +24,7 @@ class LocationSerializer(serializers.ModelSerializer):
             'is_remote',
             'is_active',
             'created_at',
-            'updated_at',
+            'modified_at',
         ]
 
 

@@ -685,7 +685,7 @@ class Command(BaseCommand):
             groups=[groups['employee']],
         )
         shared_admin_employee.reporting_to = shared_admin_employee
-        shared_admin_employee.save(update_fields=['reporting_to', 'updated_at'])
+        shared_admin_employee.save(update_fields=['reporting_to', 'modified_at'])
         self._seed_employee_details(
             shared_admin_employee,
             profile={
@@ -760,7 +760,7 @@ class Command(BaseCommand):
             onboarding_status=EmployeeOnboardingStatus.COMPLETE,
         )
         priya.reporting_to = shared_admin_employee
-        priya.save(update_fields=['reporting_to', 'updated_at'])
+        priya.save(update_fields=['reporting_to', 'modified_at'])
         self._seed_employee_details(
             priya,
             profile={
@@ -844,7 +844,7 @@ class Command(BaseCommand):
             onboarding_status=EmployeeOnboardingStatus.COMPLETE,
         )
         rohan.reporting_to = shared_admin_employee
-        rohan.save(update_fields=['reporting_to', 'updated_at'])
+        rohan.save(update_fields=['reporting_to', 'modified_at'])
         self._seed_employee_details(
             rohan,
             profile={
@@ -919,7 +919,7 @@ class Command(BaseCommand):
             onboarding_status=EmployeeOnboardingStatus.COMPLETE,
         )
         ananya.reporting_to = shared_admin_employee
-        ananya.save(update_fields=['reporting_to', 'updated_at'])
+        ananya.save(update_fields=['reporting_to', 'modified_at'])
         self._seed_employee_details(
             ananya,
             profile={
@@ -994,7 +994,7 @@ class Command(BaseCommand):
             onboarding_status=EmployeeOnboardingStatus.COMPLETE,
         )
         resigned.reporting_to = shared_admin_employee
-        resigned.save(update_fields=['reporting_to', 'updated_at'])
+        resigned.save(update_fields=['reporting_to', 'modified_at'])
 
         retired = self._ensure_employee_record(
             organisation=organisation,
@@ -1017,7 +1017,7 @@ class Command(BaseCommand):
             onboarding_status=EmployeeOnboardingStatus.COMPLETE,
         )
         retired.reporting_to = shared_admin_employee
-        retired.save(update_fields=['reporting_to', 'updated_at'])
+        retired.save(update_fields=['reporting_to', 'modified_at'])
 
         terminated = self._ensure_employee_record(
             organisation=organisation,
@@ -1040,7 +1040,7 @@ class Command(BaseCommand):
             onboarding_status=EmployeeOnboardingStatus.COMPLETE,
         )
         terminated.reporting_to = shared_admin_employee
-        terminated.save(update_fields=['reporting_to', 'updated_at'])
+        terminated.save(update_fields=['reporting_to', 'modified_at'])
 
         onboarding_employee = self._ensure_invited_employee(
             organisation=organisation,
@@ -1244,7 +1244,7 @@ class Command(BaseCommand):
             )
             department.description = payload['description']
             department.is_active = True
-            department.save(update_fields=['description', 'is_active', 'updated_at'])
+            department.save(update_fields=['description', 'is_active', 'modified_at'])
             departments[department.name] = department
         for payload in PRIMARY_DEPARTMENTS:
             parent_name = payload['parent']
@@ -1254,7 +1254,7 @@ class Command(BaseCommand):
             parent = departments[parent_name]
             if department.parent_department_id != parent.id:
                 department.parent_department = parent
-                department.save(update_fields=['parent_department', 'updated_at'])
+                department.save(update_fields=['parent_department', 'modified_at'])
         return departments
 
     def _ensure_workforce_user(self, *, email, password, first_name, last_name, is_active, groups):
@@ -1500,14 +1500,14 @@ class Command(BaseCommand):
                 refresh_employee_onboarding_status(employee, actor=invited_by)
             else:
                 employee.onboarding_status = EmployeeOnboardingStatus.BASIC_DETAILS_PENDING
-                employee.save(update_fields=['onboarding_status', 'updated_at'])
+                employee.save(update_fields=['onboarding_status', 'modified_at'])
         else:
             employee.onboarding_status = EmployeeOnboardingStatus.NOT_STARTED
-            employee.save(update_fields=['onboarding_status', 'updated_at'])
+            employee.save(update_fields=['onboarding_status', 'modified_at'])
 
         if desired_status != employee.status:
             employee.status = desired_status
-            employee.save(update_fields=['status', 'updated_at'])
+            employee.save(update_fields=['status', 'modified_at'])
         sync_user_role(user)
         return employee
 
@@ -1887,7 +1887,7 @@ class Command(BaseCommand):
         )
         if assignment.leave_plan_id != engineering_plan.id:
             assignment.leave_plan = engineering_plan
-            assignment.save(update_fields=['leave_plan', 'updated_at'])
+            assignment.save(update_fields=['leave_plan', 'modified_at'])
 
         default_policy = OnDutyPolicy.objects.filter(organisation=organisation, name='Field Visit / Client Meeting').first()
         default_policy = upsert_on_duty_policy(
@@ -2472,7 +2472,7 @@ class Command(BaseCommand):
             groups=[groups['employee']],
         )
         rohan_expired.reporting_to = rohan_expired
-        rohan_expired.save(update_fields=['reporting_to', 'updated_at'])
+        rohan_expired.save(update_fields=['reporting_to', 'modified_at'])
         return contexts
 
     def _ensure_secondary_organisation(self, config, control_tower):
@@ -2577,7 +2577,7 @@ class Command(BaseCommand):
             )
             department.description = description
             department.is_active = True
-            department.save(update_fields=['description', 'is_active', 'updated_at'])
+            department.save(update_fields=['description', 'is_active', 'modified_at'])
             departments[name] = department
         return departments
 

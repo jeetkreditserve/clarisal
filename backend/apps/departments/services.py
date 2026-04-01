@@ -85,6 +85,6 @@ def deactivate_department(department, actor=None):
     if has_active_employees:
         raise ValueError('Cannot deactivate a department that still has active employees.')
     department.is_active = False
-    department.save(update_fields=['is_active', 'updated_at'])
+    department.save(update_fields=['is_active', 'modified_at'])
     log_audit_event(actor, 'department.deactivated', organisation=department.organisation, target=department)
     return department

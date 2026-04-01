@@ -75,7 +75,7 @@ export interface OrganisationAddress {
   gstin: string | null
   is_active: boolean
   created_at: string
-  updated_at: string
+  modified_at: string
 }
 
 export interface BootstrapAdminSummary {
@@ -89,7 +89,7 @@ export interface BootstrapAdminSummary {
   invited_user_email: string | null
   invitation_sent_at: string | null
   accepted_at: string | null
-  updated_at: string
+  modified_at: string
 }
 
 export interface OrganisationNote {
@@ -154,7 +154,7 @@ export interface LicenceBatch {
   paid_by_email: string | null
   paid_at: string | null
   created_at: string
-  updated_at: string
+  modified_at: string
 }
 
 export interface LicenceBatchDefaults {
@@ -191,7 +191,7 @@ export interface OrganisationDetail {
   suspended_at: string | null
   created_by_email: string
   created_at: string
-  updated_at: string
+  modified_at: string
   admin_count: number
   employee_count: number
   holiday_calendar_count: number

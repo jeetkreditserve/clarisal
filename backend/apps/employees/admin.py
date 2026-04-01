@@ -27,7 +27,7 @@ class EducationRecordAdmin(admin.ModelAdmin):
 
 @admin.register(EmployeeGovernmentId)
 class EmployeeGovernmentIdAdmin(admin.ModelAdmin):
-    list_display = ('employee', 'id_type', 'masked_identifier', 'status', 'updated_at')
+    list_display = ('employee', 'id_type', 'masked_identifier', 'status', 'modified_at')
     list_filter = ('id_type', 'status')
     search_fields = ('employee__employee_code', 'employee__user__email', 'name_on_id', 'masked_identifier')
     autocomplete_fields = ('employee',)

@@ -55,7 +55,7 @@ class HolidayCalendarSerializer(serializers.ModelSerializer):
             'holidays',
             'published_at',
             'created_at',
-            'updated_at',
+            'modified_at',
         ]
 
     def get_location_ids(self, obj):
@@ -83,7 +83,7 @@ class LeaveCycleSerializer(serializers.ModelSerializer):
             'is_default',
             'is_active',
             'created_at',
-            'updated_at',
+            'modified_at',
         ]
 
 
@@ -196,7 +196,7 @@ class LeavePlanSerializer(serializers.ModelSerializer):
             'leave_types',
             'rules',
             'created_at',
-            'updated_at',
+            'modified_at',
         ]
 
 
@@ -232,7 +232,7 @@ class LeaveRequestSerializer(serializers.ModelSerializer):
             'status',
             'rejection_reason',
             'created_at',
-            'updated_at',
+            'modified_at',
         ]
 
 
@@ -261,7 +261,7 @@ class OnDutyPolicySerializer(serializers.ModelSerializer):
             'allow_past_request',
             'allow_future_request',
             'created_at',
-            'updated_at',
+            'modified_at',
         ]
 
 
@@ -301,7 +301,7 @@ class OnDutyRequestSerializer(serializers.ModelSerializer):
             'status',
             'rejection_reason',
             'created_at',
-            'updated_at',
+            'modified_at',
         ]
 
 

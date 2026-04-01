@@ -18,12 +18,12 @@ class UserAdmin(DjangoUserAdmin):
     )
     list_filter = ('account_type', 'role', 'is_active', 'is_staff', 'is_superuser')
     search_fields = ('email', 'first_name', 'last_name')
-    readonly_fields = ('created_at', 'updated_at', 'last_login')
+    readonly_fields = ('created_at', 'modified_at', 'last_login')
     fieldsets = (
         (None, {'fields': ('email', 'password')}),
         ('Profile', {'fields': ('first_name', 'last_name', 'person', 'account_type', 'role', 'organisation')}),
         ('Access', {'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')}),
-        ('Metadata', {'fields': ('is_onboarding_email_sent', 'last_login', 'created_at', 'updated_at')}),
+        ('Metadata', {'fields': ('is_onboarding_email_sent', 'last_login', 'created_at', 'modified_at')}),
     )
     add_fieldsets = (
         (
@@ -50,9 +50,9 @@ class UserAdmin(DjangoUserAdmin):
 
 @admin.register(Person)
 class PersonAdmin(admin.ModelAdmin):
-    list_display = ('id', 'created_at', 'updated_at')
+    list_display = ('id', 'created_at', 'modified_at')
     search_fields = ('id', 'email_addresses__email', 'phone_numbers__e164_number')
-    readonly_fields = ('created_at', 'updated_at')
+    readonly_fields = ('created_at', 'modified_at')
 
 
 @admin.register(EmailAddress)
@@ -60,7 +60,7 @@ class EmailAddressAdmin(admin.ModelAdmin):
     list_display = ('email', 'person', 'kind', 'is_primary', 'is_login', 'is_verified')
     list_filter = ('kind', 'is_primary', 'is_login', 'is_verified')
     search_fields = ('email', 'normalized_email')
-    readonly_fields = ('normalized_email', 'created_at', 'updated_at')
+    readonly_fields = ('normalized_email', 'created_at', 'modified_at')
 
 
 @admin.register(PhoneNumber)
@@ -68,7 +68,7 @@ class PhoneNumberAdmin(admin.ModelAdmin):
     list_display = ('e164_number', 'person', 'kind', 'is_primary', 'is_verified')
     list_filter = ('kind', 'is_primary', 'is_verified')
     search_fields = ('e164_number', 'display_number')
-    readonly_fields = ('created_at', 'updated_at')
+    readonly_fields = ('created_at', 'modified_at')
 
 
 @admin.register(PasswordResetToken)

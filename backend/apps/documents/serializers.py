@@ -61,7 +61,7 @@ class EmployeeDocumentRequestSerializer(serializers.ModelSerializer):
             'verified_at',
             'latest_submission',
             'created_at',
-            'updated_at',
+            'modified_at',
         ]
 
     def get_latest_submission(self, obj):

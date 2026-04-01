@@ -139,7 +139,7 @@ export function LocationsPage() {
                       : 'No linked address'}
                   </p>
                   <p className="mt-2 text-xs uppercase tracking-[0.16em] text-[hsl(var(--muted-foreground))]">
-                    Updated {formatDate(location.updated_at)}
+                    Modified {formatDate(location.modified_at)}
                   </p>
                 </div>
                 <div className="flex gap-3">

@@ -1359,7 +1359,7 @@ export function OrganisationDetailPage() {
           <DetailMetric
             label="Lifecycle status"
             value={startCase(organisation.status)}
-            helper={`Updated ${formatDateTime(organisation.updated_at)}`}
+            helper={`Modified ${formatDateTime(organisation.modified_at)}`}
           />
           <DetailMetric
             label="Billing status"

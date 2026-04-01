@@ -61,7 +61,7 @@ class OrganisationAddressSerializer(serializers.ModelSerializer):
             'tax_registration_id',
             'is_active',
             'created_at',
-            'updated_at',
+            'modified_at',
         ]
 
 
@@ -148,7 +148,7 @@ class BootstrapAdminSerializer(serializers.ModelSerializer):
             'invited_user_email',
             'invitation_sent_at',
             'accepted_at',
-            'updated_at',
+            'modified_at',
         ]
 
     def get_full_name(self, obj):
@@ -250,7 +250,7 @@ class LicenceBatchSerializer(serializers.ModelSerializer):
             'paid_by_email',
             'paid_at',
             'created_at',
-            'updated_at',
+            'modified_at',
         ]
 
     def get_lifecycle_state(self, obj):
@@ -360,7 +360,7 @@ class OrganisationDetailSerializer(serializers.ModelSerializer):
             'licence_count', 'country_code', 'currency', 'entity_type', 'entity_type_label', 'pan_number',
             'address', 'phone', 'email', 'logo_url',
             'primary_admin_email', 'primary_admin', 'bootstrap_admin', 'paid_marked_at', 'activated_at', 'suspended_at',
-            'created_by_email', 'created_at', 'updated_at',
+            'created_by_email', 'created_at', 'modified_at',
             'admin_count', 'employee_count', 'holiday_calendar_count', 'note_count', 'configuration_summary',
             'addresses', 'legal_identifiers', 'tax_registrations',
             'state_transitions', 'lifecycle_events', 'licence_ledger_entries', 'licence_summary',

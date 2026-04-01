@@ -96,7 +96,7 @@ class EducationRecordSerializer(serializers.ModelSerializer):
             'grade',
             'is_current',
             'created_at',
-            'updated_at',
+            'modified_at',
         ]
 
 
@@ -105,7 +105,7 @@ class GovernmentIdSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = EmployeeGovernmentId
-        fields = ['id', 'id_type', 'identifier', 'name_on_id', 'status', 'metadata', 'created_at', 'updated_at']
+        fields = ['id', 'id_type', 'identifier', 'name_on_id', 'status', 'metadata', 'created_at', 'modified_at']
 
 
 class GovernmentIdWriteSerializer(serializers.Serializer):
@@ -131,7 +131,7 @@ class BankAccountSerializer(serializers.ModelSerializer):
             'branch_name',
             'is_primary',
             'created_at',
-            'updated_at',
+            'modified_at',
         ]
 
 
@@ -163,7 +163,7 @@ class EmergencyContactSerializer(serializers.ModelSerializer):
             'address',
             'is_primary',
             'created_at',
-            'updated_at',
+            'modified_at',
         ]
 
 
@@ -178,7 +178,7 @@ class FamilyMemberSerializer(serializers.ModelSerializer):
             'contact_number',
             'is_dependent',
             'created_at',
-            'updated_at',
+            'modified_at',
         ]
 
 

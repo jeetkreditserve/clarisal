@@ -393,7 +393,7 @@ export function OrgProfilePage() {
                       .join(', ')}
                   </p>
                   <p className="mt-2 text-xs uppercase tracking-[0.16em] text-[hsl(var(--muted-foreground))]">
-                    {getBillingTaxLabel(address.country_code)} {address.gstin || 'Not configured'} • Updated {formatDate(address.updated_at)}
+                    {getBillingTaxLabel(address.country_code)} {address.gstin || 'Not configured'} • Modified {formatDate(address.modified_at)}
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-3">

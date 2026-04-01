@@ -252,7 +252,7 @@ class EmployeeGovernmentId(AuditedBaseModel):
 
     class Meta:
         db_table = 'employee_government_ids'
-        ordering = ['-updated_at']
+        ordering = ['-modified_at']
         constraints = [
             models.UniqueConstraint(
                 fields=['employee', 'id_type'],
@@ -283,7 +283,7 @@ class EmployeeBankAccount(SoftDeleteModel):
 
     class Meta:
         db_table = 'employee_bank_accounts'
-        ordering = ['-is_primary', '-updated_at']
+        ordering = ['-is_primary', '-modified_at']
         constraints = [
             models.UniqueConstraint(
                 fields=['employee'],

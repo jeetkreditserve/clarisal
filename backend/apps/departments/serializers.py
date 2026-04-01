@@ -17,7 +17,7 @@ class DepartmentSerializer(serializers.ModelSerializer):
             'parent_department_name',
             'is_active',
             'created_at',
-            'updated_at',
+            'modified_at',
         ]
 
 

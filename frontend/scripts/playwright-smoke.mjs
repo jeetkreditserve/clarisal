@@ -155,7 +155,7 @@ try {
     await page.getByRole('button', { name: /enter control tower/i }).click()
     await page.waitForURL('**/ct/dashboard')
     await page.goto(`${baseUrl}/ct/organisations`, { waitUntil: 'networkidle' })
-    await page.getByText('Organisation directory').first().waitFor()
+    await page.getByRole('heading', { name: 'Organisations' }).waitFor()
   })
 
   await run('org_admin_login', async (page) => {
@@ -163,9 +163,15 @@ try {
     await page.getByLabel('Email address').fill(orgAdminEmail)
     await page.getByLabel('Password').fill(orgAdminPassword)
     await page.getByRole('button', { name: /^sign in$/i }).click()
-    await page.waitForURL('**/org/dashboard')
-    await page.goto(`${baseUrl}/org/employees`, { waitUntil: 'networkidle' })
-    await page.getByText('Employee directory').first().waitFor()
+    await page.waitForFunction(() => window.location.pathname.startsWith('/org/'))
+
+    if (page.url().includes('/org/setup')) {
+      await page.getByRole('heading', { name: /set up this organisation workspace/i }).waitFor()
+    } else {
+      await page.waitForURL('**/org/dashboard')
+      await page.goto(`${baseUrl}/org/employees`, { waitUntil: 'networkidle' })
+      await page.getByText('Employee directory').first().waitFor()
+    }
   })
 
   await run('employee_login', async (page) => {

@@ -25,14 +25,14 @@ def _ensure_primary_email(person: Person, email_record: EmailAddress):
     if not email_record.is_primary or not email_record.is_login:
         email_record.is_primary = True
         email_record.is_login = True
-        email_record.save(update_fields=['is_primary', 'is_login', 'updated_at'])
+        email_record.save(update_fields=['is_primary', 'is_login', 'modified_at'])
 
 
 def _ensure_primary_phone(person: Person, phone_record: PhoneNumber):
     person.phone_numbers.exclude(id=phone_record.id).filter(is_primary=True).update(is_primary=False)
     if not phone_record.is_primary:
         phone_record.is_primary = True
-        phone_record.save(update_fields=['is_primary', 'updated_at'])
+        phone_record.save(update_fields=['is_primary', 'modified_at'])
 
 
 def resolve_person_contacts(
@@ -91,7 +91,7 @@ def resolve_person_contacts(
                 email_record.kind = email_kind
                 changed = True
             if changed:
-                email_record.save(update_fields=['email', 'kind', 'updated_at'])
+                email_record.save(update_fields=['email', 'kind', 'modified_at'])
         _ensure_primary_email(resolved_person, email_record)
 
     if normalized_phone:
@@ -115,7 +115,7 @@ def resolve_person_contacts(
                 phone_record.kind = phone_kind
                 changed = True
             if changed:
-                phone_record.save(update_fields=['display_number', 'kind', 'updated_at'])
+                phone_record.save(update_fields=['display_number', 'kind', 'modified_at'])
         _ensure_primary_phone(resolved_person, phone_record)
 
     return ResolvedContacts(

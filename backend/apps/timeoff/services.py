@@ -315,7 +315,7 @@ def get_or_create_leave_balance(employee, leave_type, as_of=None):
     balance.credited_amount = _decimal(credited)
     balance.used_amount = _decimal(used)
     balance.pending_amount = _decimal(pending)
-    balance.save(update_fields=['credited_amount', 'used_amount', 'pending_amount', 'updated_at'])
+    balance.save(update_fields=['credited_amount', 'used_amount', 'pending_amount', 'modified_at'])
     if created:
         LeaveBalanceLedgerEntry.objects.create(
             leave_balance=balance,
@@ -394,7 +394,7 @@ def withdraw_leave_request(leave_request, actor=None):
     if leave_request.status not in [LeaveRequestStatus.PENDING, LeaveRequestStatus.APPROVED]:
         raise ValueError('Only pending or approved leave requests can be withdrawn.')
     leave_request.status = LeaveRequestStatus.WITHDRAWN
-    leave_request.save(update_fields=['status', 'updated_at'])
+    leave_request.save(update_fields=['status', 'modified_at'])
     from apps.approvals.models import ApprovalRun
 
     approval_run = ApprovalRun.objects.filter(
@@ -464,7 +464,7 @@ def withdraw_on_duty_request(on_duty_request, actor=None):
     if on_duty_request.status not in [OnDutyRequestStatus.PENDING, OnDutyRequestStatus.APPROVED]:
         raise ValueError('Only pending or approved on-duty requests can be withdrawn.')
     on_duty_request.status = OnDutyRequestStatus.WITHDRAWN
-    on_duty_request.save(update_fields=['status', 'updated_at'])
+    on_duty_request.save(update_fields=['status', 'modified_at'])
     from apps.approvals.models import ApprovalRun
 
     approval_run = ApprovalRun.objects.filter(
@@ -524,7 +524,7 @@ def update_holiday_calendar(calendar_obj, actor=None, holidays=None, location_id
 def publish_holiday_calendar(calendar_obj, actor=None):
     calendar_obj.status = HolidayCalendarStatus.PUBLISHED
     calendar_obj.published_at = timezone.now()
-    calendar_obj.save(update_fields=['status', 'published_at', 'updated_at'])
+    calendar_obj.save(update_fields=['status', 'published_at', 'modified_at'])
     log_audit_event(actor, 'holiday_calendar.published', organisation=calendar_obj.organisation, target=calendar_obj)
     return calendar_obj
 

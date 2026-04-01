@@ -125,7 +125,7 @@ def _apply_subject_status(approval_run, new_status, rejection_reason=''):
         subject.status = new_status
     if rejection_reason and hasattr(subject, 'rejection_reason'):
         subject.rejection_reason = rejection_reason
-    update_fields = ['status', 'updated_at'] if hasattr(subject, 'updated_at') else ['status']
+    update_fields = ['status', 'modified_at'] if hasattr(subject, 'modified_at') else ['status']
     if rejection_reason and hasattr(subject, 'rejection_reason'):
         update_fields.append('rejection_reason')
     subject.save(update_fields=update_fields)
@@ -197,13 +197,13 @@ def _advance_or_complete_run(approval_run, actor):
     ).order_by('sequence').first()
     if next_stage is None:
         approval_run.status = ApprovalRunStatus.APPROVED
-        approval_run.save(update_fields=['status', 'updated_at'])
+        approval_run.save(update_fields=['status', 'modified_at'])
         _apply_subject_status(approval_run, 'APPROVED')
         log_audit_event(actor, 'approval.run.approved', organisation=approval_run.organisation, target=approval_run)
         return approval_run
 
     approval_run.current_stage_sequence = next_stage.sequence
-    approval_run.save(update_fields=['current_stage_sequence', 'updated_at'])
+    approval_run.save(update_fields=['current_stage_sequence', 'modified_at'])
     _create_stage_actions(approval_run, next_stage)
     log_audit_event(
         actor,
@@ -229,14 +229,14 @@ def approve_action(action, actor, comment=''):
         action.status = ApprovalActionStatus.APPROVED
         action.comment = comment
         action.acted_at = timezone.now()
-        action.save(update_fields=['status', 'comment', 'acted_at', 'updated_at'])
+        action.save(update_fields=['status', 'comment', 'acted_at', 'modified_at'])
 
         sibling_actions = action.approval_run.actions.filter(stage=action.stage)
         if action.stage.mode == ApprovalStageMode.ANY:
             sibling_actions.exclude(id=action.id).filter(status=ApprovalActionStatus.PENDING).update(
                 status=ApprovalActionStatus.SKIPPED,
                 acted_at=timezone.now(),
-                updated_at=timezone.now(),
+                modified_at=timezone.now(),
             )
             stage_complete = True
         else:
@@ -263,14 +263,14 @@ def reject_action(action, actor, comment=''):
         action.status = ApprovalActionStatus.REJECTED
         action.comment = comment
         action.acted_at = timezone.now()
-        action.save(update_fields=['status', 'comment', 'acted_at', 'updated_at'])
+        action.save(update_fields=['status', 'comment', 'acted_at', 'modified_at'])
 
         action.approval_run.status = ApprovalRunStatus.REJECTED
-        action.approval_run.save(update_fields=['status', 'updated_at'])
+        action.approval_run.save(update_fields=['status', 'modified_at'])
         action.approval_run.actions.exclude(id=action.id).filter(status=ApprovalActionStatus.PENDING).update(
             status=ApprovalActionStatus.CANCELLED,
             acted_at=timezone.now(),
-            updated_at=timezone.now(),
+            modified_at=timezone.now(),
         )
         _apply_subject_status(action.approval_run, 'REJECTED', rejection_reason=comment)
 
@@ -289,11 +289,11 @@ def cancel_approval_run(approval_run, actor=None):
         return approval_run
     with transaction.atomic():
         approval_run.status = ApprovalRunStatus.CANCELLED
-        approval_run.save(update_fields=['status', 'updated_at'])
+        approval_run.save(update_fields=['status', 'modified_at'])
         approval_run.actions.filter(status=ApprovalActionStatus.PENDING).update(
             status=ApprovalActionStatus.CANCELLED,
             acted_at=timezone.now(),
-            updated_at=timezone.now(),
+            modified_at=timezone.now(),
         )
         _apply_subject_status(approval_run, 'CANCELLED')
     log_audit_event(actor, 'approval.run.cancelled', organisation=approval_run.organisation, target=approval_run)

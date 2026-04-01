@@ -13,7 +13,7 @@ def create_notice(organisation, actor=None, department_ids=None, office_location
         notice = Notice.objects.create(
             organisation=organisation,
             created_by=actor,
-            updated_by=actor,
+            modified_by=actor,
             **fields,
         )
         if department_ids:
@@ -30,7 +30,7 @@ def update_notice(notice, actor=None, department_ids=None, office_location_ids=N
     with transaction.atomic():
         for attr, value in fields.items():
             setattr(notice, attr, value)
-        notice.updated_by = actor
+        notice.modified_by = actor
         notice.save()
         if department_ids is not None:
             notice.departments.set(department_ids)
@@ -45,8 +45,8 @@ def update_notice(notice, actor=None, department_ids=None, office_location_ids=N
 def publish_notice(notice, actor=None):
     notice.status = NoticeStatus.PUBLISHED
     notice.published_at = timezone.now()
-    notice.updated_by = actor
-    notice.save(update_fields=['status', 'published_at', 'updated_by', 'updated_at'])
+    notice.modified_by = actor
+    notice.save(update_fields=['status', 'published_at', 'modified_by', 'modified_at'])
     log_audit_event(actor, 'notice.published', organisation=notice.organisation, target=notice)
     return notice
 

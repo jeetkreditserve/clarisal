@@ -119,7 +119,7 @@ def assign_document_requests(employee, document_type_ids, actor=None):
             )
             if request.requested_by_id is None and actor is not None:
                 request.requested_by = actor
-                request.save(update_fields=['requested_by', 'updated_at'])
+                request.save(update_fields=['requested_by', 'modified_at'])
             created_requests.append(request)
     return created_requests
 
@@ -181,7 +181,7 @@ def upload_document_request(employee, document_request, file_obj, uploaded_by, m
         document_request.verified_by = None
         document_request.verified_at = None
         document_request.save(
-            update_fields=['status', 'rejection_note', 'latest_uploaded_at', 'verified_by', 'verified_at', 'updated_at']
+            update_fields=['status', 'rejection_note', 'latest_uploaded_at', 'verified_by', 'verified_at', 'modified_at']
         )
     return document
 
@@ -213,14 +213,14 @@ def verify_document(document, reviewed_by):
         document.status = DocumentStatus.VERIFIED
         document.reviewed_by = reviewed_by
         document.reviewed_at = timezone.now()
-        document.save(update_fields=['status', 'reviewed_by', 'reviewed_at', 'updated_at'])
+        document.save(update_fields=['status', 'reviewed_by', 'reviewed_at', 'modified_at'])
         if document.document_request_id:
             document.document_request.status = EmployeeDocumentRequestStatus.VERIFIED
             document.document_request.verified_by = reviewed_by
             document.document_request.verified_at = timezone.now()
             document.document_request.rejection_note = ''
             document.document_request.save(
-                update_fields=['status', 'verified_by', 'verified_at', 'rejection_note', 'updated_at']
+                update_fields=['status', 'verified_by', 'verified_at', 'rejection_note', 'modified_at']
             )
     log_audit_event(reviewed_by, 'document.verified', organisation=document.employee.organisation, target=document)
     return document
@@ -234,14 +234,14 @@ def reject_document(document, reviewed_by, note=''):
         metadata = document.metadata or {}
         metadata['rejection_note'] = note
         document.metadata = metadata
-        document.save(update_fields=['status', 'reviewed_by', 'reviewed_at', 'metadata', 'updated_at'])
+        document.save(update_fields=['status', 'reviewed_by', 'reviewed_at', 'metadata', 'modified_at'])
         if document.document_request_id:
             document.document_request.status = EmployeeDocumentRequestStatus.REJECTED
             document.document_request.rejection_note = note
             document.document_request.verified_by = None
             document.document_request.verified_at = None
             document.document_request.save(
-                update_fields=['status', 'rejection_note', 'verified_by', 'verified_at', 'updated_at']
+                update_fields=['status', 'rejection_note', 'verified_by', 'verified_at', 'modified_at']
             )
     log_audit_event(
         reviewed_by,

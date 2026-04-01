@@ -179,7 +179,7 @@ export function DepartmentsPage() {
                       {department.description || 'No description provided.'}
                     </p>
                     <p className="mt-2 text-xs uppercase tracking-[0.16em] text-[hsl(var(--muted-foreground))]">
-                      Parent {department.parent_department_name || 'Top level'} • Updated {formatDate(department.updated_at)}
+                      Parent {department.parent_department_name || 'Top level'} • Modified {formatDate(department.modified_at)}
                     </p>
                   </div>
                   <div className="flex gap-3">

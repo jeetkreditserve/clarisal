@@ -81,7 +81,7 @@ export interface Location {
   is_remote: boolean
   is_active: boolean
   created_at: string
-  updated_at: string
+  modified_at: string
 }
 
 export interface Department {
@@ -92,7 +92,7 @@ export interface Department {
   parent_department_name: string | null
   is_active: boolean
   created_at: string
-  updated_at: string
+  modified_at: string
 }
 
 export interface EmployeeListItem {
@@ -136,7 +136,7 @@ export interface FamilyMember {
   contact_number: string
   is_dependent: boolean
   created_at: string
-  updated_at: string
+  modified_at: string
 }
 
 export interface EmergencyContact {
@@ -148,7 +148,7 @@ export interface EmergencyContact {
   address: string
   is_primary: boolean
   created_at: string
-  updated_at: string
+  modified_at: string
 }
 
 export interface EducationRecord {
@@ -161,7 +161,7 @@ export interface EducationRecord {
   grade: string
   is_current: boolean
   created_at: string
-  updated_at: string
+  modified_at: string
 }
 
 export interface GovernmentId {
@@ -172,7 +172,7 @@ export interface GovernmentId {
   status: GovernmentIdStatus
   metadata: Record<string, unknown>
   created_at: string
-  updated_at: string
+  modified_at: string
 }
 
 export interface BankAccount {
@@ -185,7 +185,7 @@ export interface BankAccount {
   branch_name: string
   is_primary: boolean
   created_at: string
-  updated_at: string
+  modified_at: string
 }
 
 export interface EmployeeDetail {
@@ -286,7 +286,7 @@ export interface EmployeeDocumentRequest {
   verified_at: string | null
   latest_submission: DocumentRecord | null
   created_at: string
-  updated_at: string
+  modified_at: string
 }
 
 export interface OnboardingSummary {
@@ -319,7 +319,7 @@ export interface ApprovalActionItem {
   stage_name: string
   organisation_id: string
   created_at: string
-  updated_at: string
+  modified_at: string
 }
 
 export interface LeaveBalanceSnapshot {
@@ -344,7 +344,7 @@ export interface NoticeItem {
   office_location_ids: string[]
   employee_ids: string[]
   created_at: string
-  updated_at: string
+  modified_at: string
 }
 
 export interface EmployeeEvent {
@@ -406,7 +406,7 @@ export interface LeaveCycle {
   is_default: boolean
   is_active: boolean
   created_at: string
-  updated_at: string
+  modified_at: string
 }
 
 export interface LeavePlanRuleConfig {
@@ -432,7 +432,7 @@ export interface LeavePlan {
   leave_types: LeaveTypeConfig[]
   rules: LeavePlanRuleConfig[]
   created_at: string
-  updated_at: string
+  modified_at: string
 }
 
 export interface LeaveRequestRecord {
@@ -450,7 +450,7 @@ export interface LeaveRequestRecord {
   status: LeaveRequestStatus
   rejection_reason: string
   created_at: string
-  updated_at: string
+  modified_at: string
 }
 
 export interface LeaveOverview {
@@ -472,7 +472,7 @@ export interface OnDutyPolicy {
   allow_past_request: boolean
   allow_future_request: boolean
   created_at: string
-  updated_at: string
+  modified_at: string
 }
 
 export interface OnDutyRequestRecord {
@@ -492,7 +492,7 @@ export interface OnDutyRequestRecord {
   status: OnDutyRequestStatus
   rejection_reason: string
   created_at: string
-  updated_at: string
+  modified_at: string
 }
 
 export interface HolidayRecord {
@@ -515,7 +515,7 @@ export interface HolidayCalendar {
   holidays: HolidayRecord[]
   published_at: string | null
   created_at: string
-  updated_at: string
+  modified_at: string
 }
 
 export interface ApprovalStageApproverConfig {
@@ -563,5 +563,5 @@ export interface ApprovalWorkflowConfig {
   rules: ApprovalWorkflowRuleConfig[]
   stages: ApprovalStageConfig[]
   created_at: string
-  updated_at: string
+  modified_at: string
 }

@@ -80,6 +80,6 @@ def deactivate_location(location, actor=None):
     if location.employees.filter(status__in=ACTIVE_LOCATION_EMPLOYEE_STATUSES).exists():
         raise ValueError('Cannot deactivate an office location that still has invited, pending, or active employees.')
     location.is_active = False
-    location.save(update_fields=['is_active', 'updated_at'])
+    location.save(update_fields=['is_active', 'modified_at'])
     log_audit_event(actor, 'location.deactivated', organisation=location.organisation, target=location)
     return location

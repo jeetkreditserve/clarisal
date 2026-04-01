@@ -118,7 +118,7 @@ class ApprovalWorkflowSerializer(serializers.ModelSerializer):
             'rules',
             'stages',
             'created_at',
-            'updated_at',
+            'modified_at',
         ]
 
 
@@ -153,7 +153,7 @@ class ApprovalActionSerializer(serializers.ModelSerializer):
             'stage_name',
             'organisation_id',
             'created_at',
-            'updated_at',
+            'modified_at',
         ]
 
 

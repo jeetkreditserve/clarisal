@@ -47,7 +47,7 @@ def create_org_admin_invitation(organisation, email, first_name, last_name, invi
         if not created:
             user.first_name = first_name
             user.last_name = last_name
-            user.save(update_fields=['first_name', 'last_name', 'updated_at'])
+            user.save(update_fields=['first_name', 'last_name', 'modified_at'])
 
         ensure_org_admin_membership(
             organisation,
@@ -73,7 +73,7 @@ def create_org_admin_invitation(organisation, email, first_name, last_name, invi
             bootstrap_admin.invited_user = user
             bootstrap_admin.status = BootstrapAdminStatus.INVITE_PENDING
             bootstrap_admin.invitation_sent_at = timezone.now()
-            bootstrap_admin.save(update_fields=['invited_user', 'status', 'invitation_sent_at', 'updated_at'])
+            bootstrap_admin.save(update_fields=['invited_user', 'status', 'invitation_sent_at', 'modified_at'])
         sync_user_role(user)
         log_audit_event(
             invited_by,
@@ -142,7 +142,7 @@ def accept_invitation(token, password='', request=None):
         if not user.is_active:
             user.set_password(password)
             user.is_active = True
-            user.save(update_fields=['password', 'is_active', 'updated_at'])
+            user.save(update_fields=['password', 'is_active', 'modified_at'])
 
         invite.status = InvitationStatus.ACCEPTED
         invite.accepted_at = timezone.now()
@@ -169,7 +169,7 @@ def accept_invitation(token, password='', request=None):
             employee = Employee.objects.get(user=user, organisation=invite.organisation)
             if employee.status == EmployeeStatus.INVITED:
                 employee.onboarding_status = EmployeeOnboardingStatus.BASIC_DETAILS_PENDING
-                employee.save(update_fields=['onboarding_status', 'updated_at'])
+                employee.save(update_fields=['onboarding_status', 'modified_at'])
 
         sync_user_role(user)
 

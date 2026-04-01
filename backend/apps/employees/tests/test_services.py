@@ -86,7 +86,7 @@ def default_workflow(organisation, org_admin):
         approver_type=ApprovalApproverType.PRIMARY_ORG_ADMIN,
     )
     organisation.primary_admin_user = org_admin
-    organisation.save(update_fields=['primary_admin_user', 'updated_at'])
+    organisation.save(update_fields=['primary_admin_user', 'modified_at'])
     return workflow
 
 

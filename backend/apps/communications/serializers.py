@@ -22,7 +22,7 @@ class NoticeSerializer(serializers.ModelSerializer):
             'office_location_ids',
             'employee_ids',
             'created_at',
-            'updated_at',
+            'modified_at',
         ]
 
     def get_department_ids(self, obj):

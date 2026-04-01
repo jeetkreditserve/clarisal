@@ -221,7 +221,7 @@ def _sync_address_tax_registration(organisation, payload):
             OrganisationTaxRegistration.objects.filter(organisation=organisation).update(is_primary_billing=False)
         elif not tax_registration.is_primary_billing:
             tax_registration.is_primary_billing = True
-            tax_registration.save(update_fields=['is_primary_billing', 'updated_at'])
+            tax_registration.save(update_fields=['is_primary_billing', 'modified_at'])
     payload['tax_registration'] = tax_registration
     payload['gstin'] = tax_registration.identifier if tax_registration else None
     return payload
@@ -454,7 +454,7 @@ def deactivate_organisation_address(address, actor=None):
         raise ValueError('Deactivate linked office locations before deactivating this address.')
 
     address.is_active = False
-    address.save(update_fields=['is_active', 'updated_at'])
+    address.save(update_fields=['is_active', 'modified_at'])
     log_audit_event(
         actor,
         'organisation.address.deactivated',
@@ -499,9 +499,9 @@ def invite_bootstrap_admin(organisation, actor=None):
     bootstrap_admin.invited_user = user
     bootstrap_admin.status = BootstrapAdminStatus.INVITE_PENDING
     bootstrap_admin.invitation_sent_at = timezone.now()
-    bootstrap_admin.save(update_fields=['invited_user', 'status', 'invitation_sent_at', 'updated_at'])
+    bootstrap_admin.save(update_fields=['invited_user', 'status', 'invitation_sent_at', 'modified_at'])
     _bump_onboarding_stage(organisation, OrganisationOnboardingStage.ADMIN_INVITED)
-    organisation.save(update_fields=['onboarding_stage', 'updated_at'])
+    organisation.save(update_fields=['onboarding_stage', 'modified_at'])
     create_lifecycle_event(
         organisation,
         LifecycleEventType.ADMIN_INVITED,
@@ -528,7 +528,7 @@ def mark_bootstrap_admin_accepted(organisation, user):
     bootstrap_admin.invited_user = user
     bootstrap_admin.status = BootstrapAdminStatus.INVITE_ACCEPTED
     bootstrap_admin.accepted_at = timezone.now()
-    bootstrap_admin.save(update_fields=['invited_user', 'status', 'accepted_at', 'updated_at'])
+    bootstrap_admin.save(update_fields=['invited_user', 'status', 'accepted_at', 'modified_at'])
     return bootstrap_admin
 
 VALID_TRANSITIONS = {
@@ -601,7 +601,7 @@ def ensure_org_admin_setup_state(organisation):
                 'admin_setup_current_step',
                 'admin_setup_completed_at',
                 'admin_setup_completed_by',
-                'updated_at',
+                'modified_at',
             ]
         )
     return organisation
@@ -662,7 +662,7 @@ def update_org_admin_setup_state(organisation, *, actor, current_step=None, comp
         ])
 
     if update_fields:
-        organisation.save(update_fields=[*update_fields, 'updated_at'])
+        organisation.save(update_fields=[*update_fields, 'modified_at'])
         log_audit_event(
             actor,
             'organisation.admin_setup.updated',
@@ -1044,7 +1044,7 @@ def update_licence_count(org, new_count, changed_by=None, note=''):
         )
         org.licence_count = new_count
         _bump_onboarding_stage(org, OrganisationOnboardingStage.LICENCES_ASSIGNED)
-        org.save(update_fields=['licence_count', 'onboarding_stage', 'updated_at'])
+        org.save(update_fields=['licence_count', 'onboarding_stage', 'modified_at'])
         create_lifecycle_event(
             org,
             LifecycleEventType.LICENCES_UPDATED,
@@ -1138,7 +1138,7 @@ def mark_licence_batch_paid(batch, paid_by=None, paid_at=None):
         batch.payment_status = LicenceBatchPaymentStatus.PAID
         batch.paid_at = resolved_paid_at
         batch.paid_by = paid_by
-        batch.save(update_fields=['payment_status', 'paid_at', 'paid_by', 'updated_at'])
+        batch.save(update_fields=['payment_status', 'paid_at', 'paid_by', 'modified_at'])
 
         first_paid_batch = batch.organisation.status == OrganisationStatus.PENDING
         if batch.organisation.status == OrganisationStatus.PENDING:
@@ -1237,7 +1237,7 @@ def get_org_dashboard_stats(organisation):
 def set_primary_admin(organisation, user, actor=None):
     organisation.primary_admin_user = user
     _bump_onboarding_stage(organisation, OrganisationOnboardingStage.ADMIN_INVITED)
-    organisation.save(update_fields=['primary_admin_user', 'onboarding_stage', 'updated_at'])
+    organisation.save(update_fields=['primary_admin_user', 'onboarding_stage', 'modified_at'])
     create_lifecycle_event(
         organisation,
         LifecycleEventType.ADMIN_INVITED,
@@ -1303,7 +1303,7 @@ def deactivate_org_admin_membership(organisation, user, actor=None):
         raise ValueError('At least one active organisation admin must remain assigned.')
 
     membership.status = OrganisationMembershipStatus.INACTIVE
-    membership.save(update_fields=['status', 'updated_at'])
+    membership.save(update_fields=['status', 'modified_at'])
     sync_user_role(user)
     log_audit_event(
         actor,
@@ -1331,9 +1331,9 @@ def reactivate_org_admin_membership(organisation, user, actor=None):
     membership.status = OrganisationMembershipStatus.ACTIVE
     if membership.accepted_at is None:
         membership.accepted_at = timezone.now()
-        membership.save(update_fields=['status', 'accepted_at', 'updated_at'])
+        membership.save(update_fields=['status', 'accepted_at', 'modified_at'])
     else:
-        membership.save(update_fields=['status', 'updated_at'])
+        membership.save(update_fields=['status', 'modified_at'])
     sync_user_role(user)
     log_audit_event(
         actor,
@@ -1366,17 +1366,17 @@ def revoke_org_admin_membership_invitation(organisation, user, actor=None):
     ).update(status=InvitationStatus.REVOKED, revoked_at=timezone.now())
 
     membership.status = OrganisationMembershipStatus.REVOKED
-    membership.save(update_fields=['status', 'updated_at'])
+    membership.save(update_fields=['status', 'modified_at'])
 
     bootstrap_admin = getattr(organisation, 'bootstrap_admin', None)
     if bootstrap_admin and normalize_email_address(bootstrap_admin.email) == normalize_email_address(user.email):
         bootstrap_admin.status = BootstrapAdminStatus.DRAFT
         bootstrap_admin.invited_user = None
         bootstrap_admin.invitation_sent_at = None
-        bootstrap_admin.save(update_fields=['status', 'invited_user', 'invitation_sent_at', 'updated_at'])
+        bootstrap_admin.save(update_fields=['status', 'invited_user', 'invitation_sent_at', 'modified_at'])
         if organisation.primary_admin_user_id == user.id:
             organisation.primary_admin_user = None
-            organisation.save(update_fields=['primary_admin_user', 'updated_at'])
+            organisation.save(update_fields=['primary_admin_user', 'modified_at'])
 
     sync_user_role(user)
     log_audit_event(
@@ -1393,7 +1393,7 @@ def mark_master_data_configured(organisation, actor=None):
     if organisation.locations.filter(is_active=True).exists() and organisation.departments.filter(is_active=True).exists():
         if organisation.onboarding_stage != OrganisationOnboardingStage.MASTER_DATA_CONFIGURED:
             organisation.onboarding_stage = OrganisationOnboardingStage.MASTER_DATA_CONFIGURED
-            organisation.save(update_fields=['onboarding_stage', 'updated_at'])
+            organisation.save(update_fields=['onboarding_stage', 'modified_at'])
             create_lifecycle_event(organisation, LifecycleEventType.MASTER_DATA_CONFIGURED, actor)
             log_audit_event(
                 actor,
@@ -1406,7 +1406,7 @@ def mark_master_data_configured(organisation, actor=None):
 
 def mark_employee_invited(organisation, actor=None, employee=None):
     _bump_onboarding_stage(organisation, OrganisationOnboardingStage.EMPLOYEES_INVITED)
-    organisation.save(update_fields=['onboarding_stage', 'updated_at'])
+    organisation.save(update_fields=['onboarding_stage', 'modified_at'])
     create_lifecycle_event(
         organisation,
         LifecycleEventType.EMPLOYEE_INVITED,

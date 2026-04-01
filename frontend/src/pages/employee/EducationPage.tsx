@@ -158,7 +158,7 @@ export function EducationPage() {
                     <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
                       {record.field_of_study || 'General'} • {record.start_year || 'N/A'} - {record.is_current ? 'Present' : record.end_year || 'N/A'}
                     </p>
-                    <p className="mt-2 text-xs uppercase tracking-[0.16em] text-[hsl(var(--muted-foreground))]">Updated {formatDate(record.updated_at)}</p>
+                    <p className="mt-2 text-xs uppercase tracking-[0.16em] text-[hsl(var(--muted-foreground))]">Modified {formatDate(record.modified_at)}</p>
                   </div>
                   <div className="flex gap-3">
                     <button type="button" onClick={() => handleEdit(record.id)} className="btn-secondary">
