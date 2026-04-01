@@ -1,9 +1,9 @@
-import uuid
 from django.db import models
 
+from apps.common.models import AuditedBaseModel
 
-class OfficeLocation(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+class OfficeLocation(AuditedBaseModel):
     organisation = models.ForeignKey(
         'organisations.Organisation',
         on_delete=models.CASCADE,
@@ -24,8 +24,6 @@ class OfficeLocation(models.Model):
     pincode = models.CharField(max_length=20, blank=True)
     is_remote = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'office_locations'

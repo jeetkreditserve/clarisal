@@ -7,21 +7,22 @@ test.describe('Approval Workflows', () => {
     await expect(page.locator('text=Approval workflows')).toBeVisible({ timeout: 10000 })
   })
 
-  test('create workflow form is visible', async ({ page }) => {
+  test('create workflow action is visible', async ({ page }) => {
     await page.goto('/org/approval-workflows')
-    await expect(page.locator('text=Create workflow')).toBeVisible({ timeout: 10000 })
+    await expect(page.locator('button:has-text("Add workflow")')).toBeVisible({ timeout: 10000 })
   })
 
-  test('workflow form has name input and save button', async ({ page }) => {
+  test('workflow modal has name input and save button', async ({ page }) => {
     await page.goto('/org/approval-workflows')
-    await page.waitForSelector('text=Create workflow', { timeout: 10000 })
-    // Name input is a bare input.field-input (no id) inside the form
+    await page.click('button:has-text("Add workflow")')
+    await expect(page.locator('text=Create workflow')).toBeVisible({ timeout: 10000 })
     await expect(page.locator('form input.field-input').first()).toBeVisible({ timeout: 10000 })
     await expect(page.locator('button:has-text("Save workflow")')).toBeVisible({ timeout: 10000 })
   })
 
   test('create a default approval workflow', async ({ page }) => {
     await page.goto('/org/approval-workflows')
+    await page.click('button:has-text("Add workflow")')
     await page.waitForSelector('button:has-text("Save workflow")', { timeout: 10000 })
 
     const workflowName = uniqueName('E2E Default Workflow')
@@ -56,12 +57,7 @@ test.describe('Approval Workflows', () => {
 
   test('approval inbox section is visible', async ({ page }) => {
     await page.goto('/org/approval-workflows')
-    // The page also shows an approval inbox — verify it renders
     await page.waitForSelector('text=Approval workflows', { timeout: 10000 })
-    // Inbox might be a section with pending items or empty state
-    const inboxSection = page.locator('text=inbox, text=Inbox, text=pending approvals').first()
-    // Either inbox section or empty state is acceptable
-    const pageContent = await page.locator('body').textContent()
-    expect(pageContent).toBeTruthy()
+    await expect(page.locator('text=Approval inbox')).toBeVisible({ timeout: 10000 })
   })
 })

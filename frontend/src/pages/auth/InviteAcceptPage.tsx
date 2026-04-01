@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { acceptInvite, validateInviteToken } from '@/lib/api/invitations'
 import { getDefaultRoute } from '@/lib/rbac'
 import { AuthShell } from '@/components/auth/AuthShell'
+import { AppDialog } from '@/components/ui/AppDialog'
 import { FieldErrorText } from '@/components/ui/FieldErrorText'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { useAuth } from '@/hooks/useAuth'
@@ -24,6 +25,11 @@ export function InviteAcceptPage() {
   const [error, setError] = useState('')
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [isLoading, setIsLoading] = useState(false)
+  const [successModal, setSuccessModal] = useState<{ open: boolean; loginUrl: string; message: string }>({
+    open: false,
+    loginUrl: '/auth/login',
+    message: '',
+  })
 
   useEffect(() => {
     if (!token) return
@@ -56,6 +62,14 @@ export function InviteAcceptPage() {
           ? { token: token!, password, confirm_password: confirmPassword }
           : { token: token! }
       )
+      if (result.requires_login) {
+        setSuccessModal({
+          open: true,
+          loginUrl: result.login_url,
+          message: result.message,
+        })
+        return
+      }
       await refreshUser()
       navigate(getDefaultRoute(result.user), { replace: true })
     } catch (err: unknown) {
@@ -93,69 +107,101 @@ export function InviteAcceptPage() {
   }
 
   return (
-    <AuthShell
-      variant="setup"
-      title={inviteInfo?.requires_password_setup ? 'Set your password' : 'Accept your access'}
-      description={
-        inviteInfo
-          ? inviteInfo.requires_password_setup
-            ? `${inviteInfo.email} was invited to ${inviteInfo.organisation_name || 'Clarisal'}. Create a password to activate the account.`
-            : `${inviteInfo.email} already has a workforce account. Accept access to join ${inviteInfo.organisation_name || 'Clarisal'}.`
-          : 'Create a password to finish your account setup.'
-      }
-    >
-      <form onSubmit={handleSubmit} className="space-y-5">
-        {inviteInfo?.requires_password_setup ? (
-          <>
-            <div>
-              <label className="field-label" htmlFor="password">
-                New password
-              </label>
-              <input
-                id="password"
-                type="password"
-                required
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                className="field-input"
-                placeholder="Minimum 8 characters"
-              />
-              <FieldErrorText message={fieldErrors.password} />
+    <>
+      <AuthShell
+        variant="setup"
+        title={inviteInfo?.requires_password_setup ? 'Set your password' : 'Accept your access'}
+        description={
+          inviteInfo
+            ? inviteInfo.requires_password_setup
+              ? `${inviteInfo.email} was invited to ${inviteInfo.organisation_name || 'Clarisal'}. Create a password to activate the account.`
+              : `${inviteInfo.email} already has a workforce account. Accept access to join ${inviteInfo.organisation_name || 'Clarisal'}.`
+            : 'Create a password to finish your account setup.'
+        }
+      >
+        <form onSubmit={handleSubmit} className="space-y-5">
+          {inviteInfo?.requires_password_setup ? (
+            <>
+              <div>
+                <label className="field-label" htmlFor="password">
+                  New password
+                </label>
+                <input
+                  id="password"
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  className="field-input"
+                  placeholder="Minimum 8 characters"
+                />
+                <FieldErrorText message={fieldErrors.password} />
+              </div>
+              <div>
+                <label className="field-label" htmlFor="confirmPassword">
+                  Confirm password
+                </label>
+                <input
+                  id="confirmPassword"
+                  type="password"
+                  required
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                  className="field-input"
+                  placeholder="Repeat your password"
+                />
+                <FieldErrorText message={fieldErrors.confirm_password} />
+              </div>
+            </>
+          ) : (
+            <div className="notice-info">
+              This invitation will add the organisation access to your existing workforce account.
             </div>
-            <div>
-              <label className="field-label" htmlFor="confirmPassword">
-                Confirm password
-              </label>
-              <input
-                id="confirmPassword"
-                type="password"
-                required
-                value={confirmPassword}
-                onChange={(event) => setConfirmPassword(event.target.value)}
-                className="field-input"
-                placeholder="Repeat your password"
-              />
-              <FieldErrorText message={fieldErrors.confirm_password} />
-            </div>
-          </>
-        ) : (
-          <div className="notice-info">
-            This invitation will add the organisation access to your existing workforce account.
+          )}
+
+          {error ? (
+            <div className="notice-error">{error}</div>
+          ) : null}
+
+          <button type="submit" disabled={isLoading} className="btn-primary w-full">
+            {isLoading
+              ? 'Creating secure session...'
+              : inviteInfo?.requires_password_setup
+                ? 'Set password and continue'
+                : 'Accept access and continue'}
+          </button>
+        </form>
+      </AuthShell>
+
+      <AppDialog
+        open={successModal.open}
+        onOpenChange={(open) => {
+          setSuccessModal((current) => ({ ...current, open }))
+          if (!open) {
+            window.location.assign(successModal.loginUrl)
+          }
+        }}
+        title="Password set successfully"
+        description={successModal.message}
+        footer={
+          <div className="flex justify-end">
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={() => window.location.assign(successModal.loginUrl)}
+            >
+              Go to login
+            </button>
           </div>
-        )}
-
-        {error ? (
-          <div className="notice-error">{error}</div>
-        ) : null}
-
-        <button type="submit" disabled={isLoading} className="btn-primary w-full">
-          {isLoading
-            ? 'Creating secure session...'
-            : inviteInfo?.requires_password_setup
-              ? 'Set password and continue'
-              : 'Accept access and continue'}
-        </button>
-      </form>
-    </AuthShell>
+        }
+      >
+        <div className="space-y-3 text-sm leading-6 text-[hsl(var(--muted-foreground))]">
+          <p>Your account is active now. Use the workforce login page to sign in from here onward.</p>
+          <p className="break-all rounded-[18px] bg-[hsl(var(--muted)_/_0.52)] px-4 py-3 text-[hsl(var(--foreground-strong))]">
+            {successModal.loginUrl}
+          </p>
+        </div>
+      </AppDialog>
+    </>
   )
 }

@@ -113,4 +113,5 @@ class TestAcceptInvitation:
         assert user.is_active
         assert invite.status == InvitationStatus.ACCEPTED
         assert paid_org.status == OrganisationStatus.ACTIVE
-        assert result.id == user.id
+        assert result['user'].id == user.id
+        assert result['requires_login'] is True

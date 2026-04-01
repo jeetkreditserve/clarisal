@@ -1,8 +1,8 @@
-import uuid
-
 from django.conf import settings
 from django.db import models
 from django.db.models import Q
+
+from apps.common.models import AuditedBaseModel
 
 
 class DaySession(models.TextChoices):
@@ -76,8 +76,7 @@ class OnDutyDurationType(models.TextChoices):
     TIME_RANGE = 'TIME_RANGE', 'Time Range'
 
 
-class HolidayCalendar(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+class HolidayCalendar(AuditedBaseModel):
     organisation = models.ForeignKey(
         'organisations.Organisation',
         on_delete=models.CASCADE,
@@ -96,9 +95,6 @@ class HolidayCalendar(models.Model):
         related_name='created_holiday_calendars',
     )
     published_at = models.DateTimeField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
     class Meta:
         db_table = 'holiday_calendars'
         ordering = ['-year', 'name']
@@ -114,8 +110,7 @@ class HolidayCalendar(models.Model):
         return f'{self.organisation.name} {self.year} - {self.name}'
 
 
-class HolidayCalendarLocation(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+class HolidayCalendarLocation(AuditedBaseModel):
     holiday_calendar = models.ForeignKey(
         HolidayCalendar,
         on_delete=models.CASCADE,
@@ -126,8 +121,6 @@ class HolidayCalendarLocation(models.Model):
         on_delete=models.CASCADE,
         related_name='holiday_calendar_assignments',
     )
-    created_at = models.DateTimeField(auto_now_add=True)
-
     class Meta:
         db_table = 'holiday_calendar_locations'
         constraints = [
@@ -138,8 +131,7 @@ class HolidayCalendarLocation(models.Model):
         ]
 
 
-class Holiday(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+class Holiday(AuditedBaseModel):
     holiday_calendar = models.ForeignKey(
         HolidayCalendar,
         on_delete=models.CASCADE,
@@ -150,8 +142,6 @@ class Holiday(models.Model):
     classification = models.CharField(max_length=20, choices=HolidayClassification.choices, default=HolidayClassification.PUBLIC)
     session = models.CharField(max_length=20, choices=DaySession.choices, default=DaySession.FULL_DAY)
     description = models.TextField(blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'holidays'
@@ -164,8 +154,7 @@ class Holiday(models.Model):
         ]
 
 
-class LeaveCycle(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+class LeaveCycle(AuditedBaseModel):
     organisation = models.ForeignKey(
         'organisations.Organisation',
         on_delete=models.CASCADE,
@@ -184,9 +173,6 @@ class LeaveCycle(models.Model):
         on_delete=models.SET_NULL,
         related_name='created_leave_cycles',
     )
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
     class Meta:
         db_table = 'leave_cycles'
         ordering = ['name']
@@ -202,8 +188,7 @@ class LeaveCycle(models.Model):
         return f'{self.organisation.name} - {self.name}'
 
 
-class LeavePlan(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+class LeavePlan(AuditedBaseModel):
     organisation = models.ForeignKey(
         'organisations.Organisation',
         on_delete=models.CASCADE,
@@ -226,9 +211,6 @@ class LeavePlan(models.Model):
         on_delete=models.SET_NULL,
         related_name='created_leave_plans',
     )
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
     class Meta:
         db_table = 'leave_plans'
         ordering = ['priority', 'name']
@@ -244,8 +226,7 @@ class LeavePlan(models.Model):
         return f'{self.organisation.name} - {self.name}'
 
 
-class LeavePlanRule(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+class LeavePlanRule(AuditedBaseModel):
     leave_plan = models.ForeignKey(
         LeavePlan,
         on_delete=models.CASCADE,
@@ -277,16 +258,13 @@ class LeavePlanRule(models.Model):
     )
     employment_type = models.CharField(max_length=20, blank=True)
     designation = models.CharField(max_length=255, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'leave_plan_rules'
         ordering = ['priority', 'created_at']
 
 
-class LeavePlanEmployeeAssignment(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+class LeavePlanEmployeeAssignment(AuditedBaseModel):
     leave_plan = models.ForeignKey(
         LeavePlan,
         on_delete=models.CASCADE,
@@ -297,15 +275,11 @@ class LeavePlanEmployeeAssignment(models.Model):
         on_delete=models.CASCADE,
         related_name='leave_plan_assignment',
     )
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
     class Meta:
         db_table = 'leave_plan_employee_assignments'
 
 
-class LeaveType(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+class LeaveType(AuditedBaseModel):
     leave_plan = models.ForeignKey(
         LeavePlan,
         on_delete=models.CASCADE,
@@ -332,8 +306,6 @@ class LeaveType(models.Model):
     allow_past_request = models.BooleanField(default=False)
     allow_future_request = models.BooleanField(default=True)
     is_active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'leave_types'
@@ -349,8 +321,7 @@ class LeaveType(models.Model):
         return f'{self.leave_plan.name} - {self.name}'
 
 
-class LeaveBalance(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+class LeaveBalance(AuditedBaseModel):
     employee = models.ForeignKey(
         'employees.Employee',
         on_delete=models.CASCADE,
@@ -368,8 +339,6 @@ class LeaveBalance(models.Model):
     used_amount = models.DecimalField(max_digits=8, decimal_places=2, default=0)
     pending_amount = models.DecimalField(max_digits=8, decimal_places=2, default=0)
     carried_forward_amount = models.DecimalField(max_digits=8, decimal_places=2, default=0)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'leave_balances'
@@ -382,8 +351,7 @@ class LeaveBalance(models.Model):
         ]
 
 
-class LeaveBalanceLedgerEntry(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+class LeaveBalanceLedgerEntry(AuditedBaseModel):
     leave_balance = models.ForeignKey(
         LeaveBalance,
         on_delete=models.CASCADE,
@@ -400,15 +368,12 @@ class LeaveBalanceLedgerEntry(models.Model):
         on_delete=models.SET_NULL,
         related_name='leave_balance_entries',
     )
-    created_at = models.DateTimeField(auto_now_add=True)
-
     class Meta:
         db_table = 'leave_balance_ledger_entries'
         ordering = ['-effective_date', '-created_at']
 
 
-class LeaveRequest(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+class LeaveRequest(AuditedBaseModel):
     employee = models.ForeignKey(
         'employees.Employee',
         on_delete=models.CASCADE,
@@ -431,8 +396,6 @@ class LeaveRequest(models.Model):
     attachment_file_name = models.CharField(max_length=255, blank=True)
     attachment_mime_type = models.CharField(max_length=100, blank=True)
     attachment_file_size = models.PositiveIntegerField(default=0)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'leave_requests'
@@ -443,8 +406,7 @@ class LeaveRequest(models.Model):
         ]
 
 
-class OnDutyPolicy(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+class OnDutyPolicy(AuditedBaseModel):
     organisation = models.ForeignKey(
         'organisations.Organisation',
         on_delete=models.CASCADE,
@@ -467,9 +429,6 @@ class OnDutyPolicy(models.Model):
         on_delete=models.SET_NULL,
         related_name='created_on_duty_policies',
     )
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
     class Meta:
         db_table = 'on_duty_policies'
         ordering = ['name']
@@ -482,8 +441,7 @@ class OnDutyPolicy(models.Model):
         ]
 
 
-class OnDutyRequest(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+class OnDutyRequest(AuditedBaseModel):
     employee = models.ForeignKey(
         'employees.Employee',
         on_delete=models.CASCADE,
@@ -508,8 +466,6 @@ class OnDutyRequest(models.Model):
     attachment_file_name = models.CharField(max_length=255, blank=True)
     attachment_mime_type = models.CharField(max_length=100, blank=True)
     attachment_file_size = models.PositiveIntegerField(default=0)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'on_duty_requests'

@@ -41,6 +41,7 @@ from .models import (
     OrganisationEntityType,
     OrganisationLegalIdentifier,
     OrganisationLegalIdentifierType,
+    OrgAdminSetupStep,
     OrganisationLifecycleEvent,
     OrganisationLicenceBatch,
     OrganisationLicenceLedger,
@@ -62,6 +63,16 @@ MANDATORY_ADDRESS_TYPES = {
     OrganisationAddressType.REGISTERED,
     OrganisationAddressType.BILLING,
 }
+
+ORG_ADMIN_SETUP_SEQUENCE = [
+    OrgAdminSetupStep.PROFILE,
+    OrgAdminSetupStep.ADDRESSES,
+    OrgAdminSetupStep.LOCATIONS,
+    OrgAdminSetupStep.DEPARTMENTS,
+    OrgAdminSetupStep.HOLIDAYS,
+    OrgAdminSetupStep.POLICIES,
+    OrgAdminSetupStep.EMPLOYEES,
+]
 
 
 def normalize_pan_number(value):
@@ -407,15 +418,11 @@ def update_organisation_address(address, actor=None, **fields):
         organisation.pan_number or pan_number,
     )
 
-    if address.address_type in MANDATORY_ADDRESS_TYPES and (
-        fields.get('is_active') is False or payload['address_type'] != address.address_type
-    ):
-        active_count = organisation.addresses.filter(
-            address_type=address.address_type,
-            is_active=True,
-        ).exclude(id=address.id).count()
-        if active_count == 0:
-            raise ValueError(f'{address.get_address_type_display()} cannot be removed without a replacement.')
+    if address.address_type in MANDATORY_ADDRESS_TYPES:
+        if fields.get('is_active') is False:
+            raise ValueError(f'{address.get_address_type_display()} cannot be deactivated.')
+        if payload['address_type'] != address.address_type:
+            raise ValueError(f'{address.get_address_type_display()} address type cannot be changed.')
 
     payload = _sync_address_tax_registration(organisation, payload)
     for attr, value in payload.items():
@@ -442,12 +449,7 @@ def update_organisation_address(address, actor=None, **fields):
 
 def deactivate_organisation_address(address, actor=None):
     if address.address_type in MANDATORY_ADDRESS_TYPES:
-        remaining = address.organisation.addresses.filter(
-            address_type=address.address_type,
-            is_active=True,
-        ).exclude(id=address.id)
-        if not remaining.exists():
-            raise ValueError(f'{address.get_address_type_display()} cannot be removed without a replacement.')
+        raise ValueError(f'{address.get_address_type_display()} cannot be deactivated.')
     if address.office_locations.filter(is_active=True).exists():
         raise ValueError('Deactivate linked office locations before deactivating this address.')
 
@@ -550,6 +552,131 @@ STAGE_ORDER = {
 def _bump_onboarding_stage(org, stage):
     if STAGE_ORDER[stage] > STAGE_ORDER.get(org.onboarding_stage, 0):
         org.onboarding_stage = stage
+
+
+def _derive_setup_step_statuses(organisation):
+    from apps.approvals.models import ApprovalWorkflow
+    from apps.departments.models import Department
+    from apps.employees.models import Employee
+    from apps.locations.models import OfficeLocation
+    from apps.timeoff.models import HolidayCalendar, LeaveCycle, LeavePlan, OnDutyPolicy
+
+    active_addresses = organisation.addresses.filter(is_active=True)
+    return {
+        OrgAdminSetupStep.PROFILE: bool(organisation.name and organisation.pan_number and organisation.entity_type),
+        OrgAdminSetupStep.ADDRESSES: active_addresses.filter(address_type=OrganisationAddressType.REGISTERED).exists()
+        and active_addresses.filter(address_type=OrganisationAddressType.BILLING).exists(),
+        OrgAdminSetupStep.LOCATIONS: OfficeLocation.objects.filter(organisation=organisation, is_active=True).exists(),
+        OrgAdminSetupStep.DEPARTMENTS: Department.objects.filter(organisation=organisation, is_active=True).exists(),
+        OrgAdminSetupStep.HOLIDAYS: HolidayCalendar.objects.filter(organisation=organisation).exists(),
+        OrgAdminSetupStep.POLICIES: (
+            LeaveCycle.objects.filter(organisation=organisation).exists()
+            or LeavePlan.objects.filter(organisation=organisation).exists()
+            or OnDutyPolicy.objects.filter(organisation=organisation).exists()
+            or ApprovalWorkflow.objects.filter(organisation=organisation).exists()
+        ),
+        OrgAdminSetupStep.EMPLOYEES: Employee.objects.filter(organisation=organisation).exists(),
+    }
+
+
+def ensure_org_admin_setup_state(organisation):
+    if organisation.admin_setup_completed_at:
+        return organisation
+
+    step_statuses = _derive_setup_step_statuses(organisation)
+    should_backfill_complete = (
+        step_statuses[OrgAdminSetupStep.DEPARTMENTS]
+        and step_statuses[OrgAdminSetupStep.HOLIDAYS]
+        and step_statuses[OrgAdminSetupStep.POLICIES]
+    ) or step_statuses[OrgAdminSetupStep.EMPLOYEES]
+
+    if should_backfill_complete:
+        organisation.admin_setup_started_at = organisation.admin_setup_started_at or organisation.created_at
+        organisation.admin_setup_current_step = OrgAdminSetupStep.EMPLOYEES
+        organisation.admin_setup_completed_at = timezone.now()
+        organisation.admin_setup_completed_by = organisation.primary_admin_user
+        organisation.save(
+            update_fields=[
+                'admin_setup_started_at',
+                'admin_setup_current_step',
+                'admin_setup_completed_at',
+                'admin_setup_completed_by',
+                'updated_at',
+            ]
+        )
+    return organisation
+
+
+def is_org_admin_setup_required(organisation):
+    ensure_org_admin_setup_state(organisation)
+    return organisation.admin_setup_completed_at is None
+
+
+def get_org_admin_setup_state(organisation):
+    ensure_org_admin_setup_state(organisation)
+    step_statuses = _derive_setup_step_statuses(organisation)
+    steps = [
+        {
+            'key': step,
+            'label': OrgAdminSetupStep(step).label,
+            'is_complete': step_statuses[step],
+            'sequence': index + 1,
+        }
+        for index, step in enumerate(ORG_ADMIN_SETUP_SEQUENCE)
+    ]
+    current_step = organisation.admin_setup_current_step or ORG_ADMIN_SETUP_SEQUENCE[0]
+    current_index = ORG_ADMIN_SETUP_SEQUENCE.index(current_step)
+    return {
+        'required': organisation.admin_setup_completed_at is None,
+        'started_at': organisation.admin_setup_started_at,
+        'current_step': current_step,
+        'current_step_index': current_index + 1,
+        'total_steps': len(ORG_ADMIN_SETUP_SEQUENCE),
+        'completed_at': organisation.admin_setup_completed_at,
+        'completed_by': organisation.admin_setup_completed_by,
+        'steps': steps,
+    }
+
+
+def update_org_admin_setup_state(organisation, *, actor, current_step=None, completed=False):
+    ensure_org_admin_setup_state(organisation)
+    update_fields = []
+    if organisation.admin_setup_started_at is None:
+        organisation.admin_setup_started_at = timezone.now()
+        update_fields.append('admin_setup_started_at')
+
+    if current_step:
+        if current_step not in ORG_ADMIN_SETUP_SEQUENCE:
+            raise ValueError('Setup step is invalid.')
+        organisation.admin_setup_current_step = current_step
+        update_fields.append('admin_setup_current_step')
+
+    if completed:
+        organisation.admin_setup_current_step = OrgAdminSetupStep.EMPLOYEES
+        organisation.admin_setup_completed_at = timezone.now()
+        organisation.admin_setup_completed_by = actor
+        update_fields.extend([
+            'admin_setup_current_step',
+            'admin_setup_completed_at',
+            'admin_setup_completed_by',
+        ])
+
+    if update_fields:
+        organisation.save(update_fields=[*update_fields, 'updated_at'])
+        log_audit_event(
+            actor,
+            'organisation.admin_setup.updated',
+            organisation=organisation,
+            target=organisation,
+            payload={
+                'current_step': organisation.admin_setup_current_step,
+                'completed_at': organisation.admin_setup_completed_at.isoformat()
+                if organisation.admin_setup_completed_at
+                else None,
+            },
+        )
+
+    return organisation
 
 
 def _sync_legacy_status(org):

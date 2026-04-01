@@ -1,7 +1,8 @@
-import uuid
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
+
+from apps.common.models import AuditedBaseModel
 
 
 class InvitationRole(models.TextChoices):
@@ -16,8 +17,7 @@ class InvitationStatus(models.TextChoices):
     REVOKED = 'REVOKED', 'Revoked'
 
 
-class Invitation(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+class Invitation(AuditedBaseModel):
     token_hash = models.CharField(max_length=64, unique=True, null=True, blank=True)
     email = models.EmailField()
     organisation = models.ForeignKey(
@@ -50,7 +50,6 @@ class Invitation(models.Model):
     expires_at = models.DateTimeField()
     accepted_at = models.DateTimeField(null=True, blank=True)
     revoked_at = models.DateTimeField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         db_table = 'invitations'

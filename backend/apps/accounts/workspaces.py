@@ -195,6 +195,11 @@ def get_default_route(user: User, request=None):
 
     state = get_workspace_state(user, request)
     if state.admin_memberships:
+        from apps.organisations.services import is_org_admin_setup_required
+
+        active_organisation = state.active_admin_membership.organisation if state.active_admin_membership else None
+        if active_organisation and is_org_admin_setup_required(active_organisation):
+            return '/org/setup'
         return '/org/dashboard'
     if state.employee_records:
         employee = state.active_employee or state.employee_records[0]

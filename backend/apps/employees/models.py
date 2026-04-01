@@ -1,8 +1,9 @@
-import uuid
 from django.conf import settings
 from django.db import models
 from django.db.models import Q
 from django.utils import timezone
+
+from apps.common.models import AuditedBaseModel
 
 
 class EmploymentType(models.TextChoices):
@@ -87,7 +88,7 @@ class SoftDeleteManager(models.Manager.from_queryset(SoftDeleteQuerySet)):
         return super().get_queryset().active()
 
 
-class SoftDeleteModel(models.Model):
+class SoftDeleteModel(AuditedBaseModel):
     is_deleted = models.BooleanField(default=False)
     deleted_at = models.DateTimeField(null=True, blank=True)
 
@@ -105,7 +106,6 @@ class SoftDeleteModel(models.Model):
 
 
 class Employee(SoftDeleteModel):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     organisation = models.ForeignKey(
         'organisations.Organisation',
         on_delete=models.CASCADE,
@@ -157,8 +157,6 @@ class Employee(SoftDeleteModel):
         default=EmployeeOnboardingStatus.NOT_STARTED,
     )
     onboarding_completed_at = models.DateTimeField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'employees'
@@ -179,8 +177,7 @@ class Employee(SoftDeleteModel):
         return f'{self.employee_code or "UNASSIGNED"} - {self.user.full_name}'
 
 
-class EmployeeProfile(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+class EmployeeProfile(AuditedBaseModel):
     employee = models.OneToOneField(
         Employee,
         on_delete=models.CASCADE,
@@ -203,8 +200,6 @@ class EmployeeProfile(models.Model):
     country = models.CharField(max_length=100, blank=True)
     country_code = models.CharField(max_length=2, blank=True, default='')
     pincode = models.CharField(max_length=20, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'employee_profiles'
@@ -214,7 +209,6 @@ class EmployeeProfile(models.Model):
 
 
 class EducationRecord(SoftDeleteModel):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     employee = models.ForeignKey(
         Employee,
         on_delete=models.CASCADE,
@@ -227,8 +221,6 @@ class EducationRecord(SoftDeleteModel):
     end_year = models.PositiveIntegerField(null=True, blank=True)
     grade = models.CharField(max_length=50, blank=True)
     is_current = models.BooleanField(default=False)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'education_records'
@@ -241,8 +233,7 @@ class EducationRecord(SoftDeleteModel):
         return f'{self.degree} at {self.institution}'
 
 
-class EmployeeGovernmentId(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+class EmployeeGovernmentId(AuditedBaseModel):
     employee = models.ForeignKey(
         Employee,
         on_delete=models.CASCADE,
@@ -258,8 +249,6 @@ class EmployeeGovernmentId(models.Model):
         default=GovernmentIdStatus.PENDING,
     )
     metadata = models.JSONField(default=dict, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'employee_government_ids'
@@ -273,7 +262,6 @@ class EmployeeGovernmentId(models.Model):
 
 
 class EmployeeBankAccount(SoftDeleteModel):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     employee = models.ForeignKey(
         Employee,
         on_delete=models.CASCADE,
@@ -292,8 +280,6 @@ class EmployeeBankAccount(SoftDeleteModel):
     )
     branch_name = models.CharField(max_length=255, blank=True)
     is_primary = models.BooleanField(default=False)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'employee_bank_accounts'
@@ -322,7 +308,6 @@ class FamilyRelationChoice(models.TextChoices):
 
 
 class EmployeeFamilyMember(SoftDeleteModel):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     employee = models.ForeignKey(
         Employee,
         on_delete=models.CASCADE,
@@ -333,8 +318,6 @@ class EmployeeFamilyMember(SoftDeleteModel):
     date_of_birth = models.DateField(null=True, blank=True)
     contact_number = models.CharField(max_length=20, blank=True)
     is_dependent = models.BooleanField(default=False)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'employee_family_members'
@@ -345,7 +328,6 @@ class EmployeeFamilyMember(SoftDeleteModel):
 
 
 class EmployeeEmergencyContact(SoftDeleteModel):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     employee = models.ForeignKey(
         Employee,
         on_delete=models.CASCADE,
@@ -357,8 +339,6 @@ class EmployeeEmergencyContact(SoftDeleteModel):
     alternate_phone_number = models.CharField(max_length=20, blank=True)
     address = models.TextField(blank=True)
     is_primary = models.BooleanField(default=False)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'employee_emergency_contacts'

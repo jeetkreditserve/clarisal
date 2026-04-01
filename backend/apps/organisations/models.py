@@ -5,6 +5,8 @@ from django.db.models import Q
 from django.utils import timezone
 from django.utils.text import slugify
 
+from apps.common.models import AuditedBaseModel
+
 
 class OrganisationStatus(models.TextChoices):
     PENDING = 'PENDING', 'Pending Payment'
@@ -100,6 +102,16 @@ class BootstrapAdminStatus(models.TextChoices):
     INVITE_ACCEPTED = 'INVITE_ACCEPTED', 'Invite Accepted'
 
 
+class OrgAdminSetupStep(models.TextChoices):
+    PROFILE = 'PROFILE', 'Organisation Profile'
+    ADDRESSES = 'ADDRESSES', 'Addresses'
+    LOCATIONS = 'LOCATIONS', 'Locations'
+    DEPARTMENTS = 'DEPARTMENTS', 'Departments'
+    HOLIDAYS = 'HOLIDAYS', 'Holiday Calendar'
+    POLICIES = 'POLICIES', 'Policies And Approvals'
+    EMPLOYEES = 'EMPLOYEES', 'Employees'
+
+
 class OrganisationLegalIdentifierType(models.TextChoices):
     PAN = 'PAN', 'PAN'
     EIN = 'EIN', 'EIN'
@@ -116,8 +128,7 @@ class OrganisationTaxRegistrationType(models.TextChoices):
     OTHER = 'OTHER', 'Other'
 
 
-class Organisation(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+class Organisation(AuditedBaseModel):
     name = models.CharField(max_length=255)
     slug = models.SlugField(max_length=255, unique=True, blank=True)
     status = models.CharField(
@@ -177,8 +188,20 @@ class Organisation(models.Model):
     )
     activated_at = models.DateTimeField(null=True, blank=True)
     suspended_at = models.DateTimeField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    admin_setup_started_at = models.DateTimeField(null=True, blank=True)
+    admin_setup_current_step = models.CharField(
+        max_length=24,
+        choices=OrgAdminSetupStep.choices,
+        default=OrgAdminSetupStep.PROFILE,
+    )
+    admin_setup_completed_at = models.DateTimeField(null=True, blank=True)
+    admin_setup_completed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='completed_org_admin_setups',
+    )
 
     class Meta:
         db_table = 'organisations'
@@ -199,8 +222,7 @@ class Organisation(models.Model):
         return f'{self.name} ({self.status})'
 
 
-class OrganisationAddress(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+class OrganisationAddress(AuditedBaseModel):
     organisation = models.ForeignKey(
         Organisation,
         on_delete=models.CASCADE,
@@ -228,8 +250,6 @@ class OrganisationAddress(models.Model):
         related_name='addresses',
     )
     is_active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'organisation_addresses'
@@ -251,8 +271,7 @@ class OrganisationAddress(models.Model):
         return f'{self.organisation.name} - {self.label or self.get_address_type_display()}'
 
 
-class OrganisationBootstrapAdmin(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+class OrganisationBootstrapAdmin(AuditedBaseModel):
     organisation = models.OneToOneField(
         Organisation,
         on_delete=models.CASCADE,
@@ -297,8 +316,6 @@ class OrganisationBootstrapAdmin(models.Model):
     )
     invitation_sent_at = models.DateTimeField(null=True, blank=True)
     accepted_at = models.DateTimeField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'organisation_bootstrap_admins'
@@ -307,8 +324,7 @@ class OrganisationBootstrapAdmin(models.Model):
         return f'{self.organisation.name} bootstrap admin <{self.email}>'
 
 
-class OrganisationLegalIdentifier(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+class OrganisationLegalIdentifier(AuditedBaseModel):
     organisation = models.ForeignKey(
         Organisation,
         on_delete=models.CASCADE,
@@ -321,8 +337,6 @@ class OrganisationLegalIdentifier(models.Model):
     )
     identifier = models.CharField(max_length=64)
     is_primary = models.BooleanField(default=False)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'organisation_legal_identifiers'
@@ -342,8 +356,7 @@ class OrganisationLegalIdentifier(models.Model):
         return f'{self.organisation.name} {self.identifier_type} {self.identifier}'
 
 
-class OrganisationTaxRegistration(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+class OrganisationTaxRegistration(AuditedBaseModel):
     organisation = models.ForeignKey(
         Organisation,
         on_delete=models.CASCADE,
@@ -364,8 +377,6 @@ class OrganisationTaxRegistration(models.Model):
     identifier = models.CharField(max_length=64)
     state_code = models.CharField(max_length=16, blank=True, default='')
     is_primary_billing = models.BooleanField(default=False)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'organisation_tax_registrations'
@@ -385,8 +396,7 @@ class OrganisationTaxRegistration(models.Model):
         return f'{self.organisation.name} {self.registration_type} {self.identifier}'
 
 
-class OrganisationStateTransition(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+class OrganisationStateTransition(AuditedBaseModel):
     organisation = models.ForeignKey(
         Organisation,
         on_delete=models.CASCADE,
@@ -401,15 +411,13 @@ class OrganisationStateTransition(models.Model):
         related_name='org_transitions',
     )
     note = models.TextField(blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         db_table = 'organisation_state_transitions'
         ordering = ['-created_at']
 
 
-class OrganisationLicenceLedger(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+class OrganisationLicenceLedger(AuditedBaseModel):
     organisation = models.ForeignKey(
         Organisation,
         on_delete=models.CASCADE,
@@ -426,15 +434,12 @@ class OrganisationLicenceLedger(models.Model):
         on_delete=models.SET_NULL,
         related_name='licence_ledger_entries',
     )
-    created_at = models.DateTimeField(auto_now_add=True)
-
     class Meta:
         db_table = 'organisation_licence_ledger'
         ordering = ['-created_at']
 
 
-class OrganisationLicenceBatch(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+class OrganisationLicenceBatch(AuditedBaseModel):
     organisation = models.ForeignKey(
         Organisation,
         on_delete=models.CASCADE,
@@ -467,8 +472,6 @@ class OrganisationLicenceBatch(models.Model):
         related_name='paid_licence_batches',
     )
     paid_at = models.DateField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'organisation_licence_batches'
@@ -486,8 +489,7 @@ class OrganisationLicenceBatch(models.Model):
         return LicenceBatchLifecycleState.EXPIRED
 
 
-class OrganisationLifecycleEvent(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+class OrganisationLifecycleEvent(AuditedBaseModel):
     organisation = models.ForeignKey(
         Organisation,
         on_delete=models.CASCADE,
@@ -502,15 +504,13 @@ class OrganisationLifecycleEvent(models.Model):
         related_name='organisation_lifecycle_events',
     )
     payload = models.JSONField(default=dict, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         db_table = 'organisation_lifecycle_events'
         ordering = ['-created_at']
 
 
-class OrganisationMembership(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+class OrganisationMembership(AuditedBaseModel):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -537,8 +537,6 @@ class OrganisationMembership(models.Model):
     invited_at = models.DateTimeField(auto_now_add=True)
     accepted_at = models.DateTimeField(null=True, blank=True)
     last_used_at = models.DateTimeField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'organisation_memberships'
@@ -558,8 +556,7 @@ class OrganisationMembership(models.Model):
         return f'{self.user.email} -> {self.organisation.name}'
 
 
-class OrganisationNote(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+class OrganisationNote(AuditedBaseModel):
     organisation = models.ForeignKey(
         Organisation,
         on_delete=models.CASCADE,
@@ -571,7 +568,6 @@ class OrganisationNote(models.Model):
         on_delete=models.CASCADE,
         related_name='organisation_notes',
     )
-    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         db_table = 'organisation_notes'

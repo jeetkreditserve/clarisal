@@ -6,6 +6,7 @@ import type {
   OrganisationDetail,
   PaginatedResponse,
 } from '@/types/organisation'
+import type { OrgAdminSetupState } from '@/types/organisation'
 import type {
   ApprovalActionItem,
   ApprovalWorkflowConfig,
@@ -27,6 +28,16 @@ import type {
 
 export async function fetchOrgDashboard() {
   const { data } = await api.get<OrgDashboardStats>('/org/dashboard/')
+  return data
+}
+
+export async function fetchOrgSetup() {
+  const { data } = await api.get<OrgAdminSetupState>('/org/setup/')
+  return data
+}
+
+export async function updateOrgSetup(payload: { current_step?: string; completed?: boolean }) {
+  const { data } = await api.patch<OrgAdminSetupState>('/org/setup/', payload)
   return data
 }
 

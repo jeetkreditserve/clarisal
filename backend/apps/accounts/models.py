@@ -1,8 +1,9 @@
-import uuid
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
 from django.db.models import Q
 from django.utils import timezone
+
+from apps.common.models import AuditedBaseModel
 
 
 class AccountType(models.TextChoices):
@@ -24,11 +25,7 @@ class ContactKind(models.TextChoices):
     OTHER = 'OTHER', 'Other'
 
 
-class Person(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
+class Person(AuditedBaseModel):
     class Meta:
         db_table = 'people'
         ordering = ['-created_at']
@@ -40,8 +37,7 @@ class Person(models.Model):
         return f'Person {self.id}'
 
 
-class EmailAddress(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+class EmailAddress(AuditedBaseModel):
     person = models.ForeignKey(
         Person,
         on_delete=models.CASCADE,
@@ -57,9 +53,6 @@ class EmailAddress(models.Model):
     is_primary = models.BooleanField(default=False)
     is_login = models.BooleanField(default=False)
     is_verified = models.BooleanField(default=False)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
     class Meta:
         db_table = 'email_addresses'
         ordering = ['-is_primary', 'email']
@@ -75,8 +68,7 @@ class EmailAddress(models.Model):
         return self.email
 
 
-class PhoneNumber(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+class PhoneNumber(AuditedBaseModel):
     person = models.ForeignKey(
         Person,
         on_delete=models.CASCADE,
@@ -91,9 +83,6 @@ class PhoneNumber(models.Model):
     )
     is_primary = models.BooleanField(default=False)
     is_verified = models.BooleanField(default=False)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
     class Meta:
         db_table = 'phone_numbers'
         ordering = ['-is_primary', 'e164_number']
@@ -129,8 +118,7 @@ class UserManager(BaseUserManager):
         return self.create_user(email, password, **extra_fields)
 
 
-class User(AbstractBaseUser, PermissionsMixin):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+class User(AuditedBaseModel, AbstractBaseUser, PermissionsMixin):
     email = models.EmailField()
     person = models.ForeignKey(
         Person,
@@ -157,9 +145,6 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_active = models.BooleanField(default=False)
     is_staff = models.BooleanField(default=False)
     is_onboarding_email_sent = models.BooleanField(default=False)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = []
 
@@ -191,8 +176,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         super().save(*args, **kwargs)
 
 
-class PasswordResetToken(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+class PasswordResetToken(AuditedBaseModel):
     user = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
@@ -202,8 +186,6 @@ class PasswordResetToken(models.Model):
     expires_at = models.DateTimeField()
     used_at = models.DateTimeField(null=True, blank=True)
     requested_by_ip = models.GenericIPAddressField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-
     class Meta:
         db_table = 'password_reset_tokens'
         ordering = ['-created_at']

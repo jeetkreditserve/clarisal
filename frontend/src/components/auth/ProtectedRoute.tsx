@@ -29,6 +29,14 @@ export function ProtectedRoute({ requiredAccess }: ProtectedRouteProps) {
     return <Navigate to={getDefaultRoute(user)} replace />
   }
 
+  if (requiredAccess === 'ORG_ADMIN' && user.org_setup_required && location.pathname === '/org/dashboard') {
+    return <Navigate to="/org/setup" replace />
+  }
+
+  if (requiredAccess === 'ORG_ADMIN' && !user.org_setup_required && location.pathname === '/org/setup') {
+    return <Navigate to="/org/dashboard" replace />
+  }
+
   if (requiredAccess === 'EMPLOYEE' && !user.has_employee_access) {
     return <Navigate to={getDefaultRoute(user)} replace />
   }

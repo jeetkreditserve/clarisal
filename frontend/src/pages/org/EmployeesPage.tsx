@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Search, UserPlus } from 'lucide-react'
 import { toast } from 'sonner'
 
+import { AppDialog } from '@/components/ui/AppDialog'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { AppCheckbox } from '@/components/ui/AppCheckbox'
 import { AppDatePicker } from '@/components/ui/AppDatePicker'
@@ -50,7 +51,7 @@ export function EmployeesPage() {
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState<EmployeeStatus | ''>('')
   const [page, setPage] = useState(1)
-  const [showInviteForm, setShowInviteForm] = useState(false)
+  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false)
   const [inviteForm, setInviteForm] = useState(inviteDefaults)
   const [selectedDocumentTypeIds, setSelectedDocumentTypeIds] = useState<string[]>([])
   const [inviteFieldErrors, setInviteFieldErrors] = useState<Record<string, string>>({})
@@ -79,7 +80,7 @@ export function EmployeesPage() {
       toast.success('Employee invited.')
       setInviteForm(inviteDefaults)
       setSelectedDocumentTypeIds([])
-      setShowInviteForm(false)
+      setIsInviteModalOpen(false)
     } catch (error) {
       const nextFieldErrors = getFieldErrors(error)
       setInviteFieldErrors(nextFieldErrors)
@@ -99,134 +100,13 @@ export function EmployeesPage() {
           title="Employees"
           description="Invite employees, define onboarding documents, and manage lifecycle progression from invite to active join."
           actions={
-            <button onClick={() => setShowInviteForm((current) => !current)} className="btn-primary">
+            <button onClick={() => setIsInviteModalOpen(true)} className="btn-primary">
               <UserPlus className="h-4 w-4" />
-              {showInviteForm ? 'Close invite form' : 'Invite employee'}
+              Invite employee
             </button>
           }
         />
       )}
-
-      {showInviteForm ? (
-        <SectionCard title="Invite employee" description="Invites consume licence capacity immediately, so collect only the documents you genuinely need for onboarding.">
-          <form onSubmit={handleInvite} className="grid gap-4 lg:grid-cols-3">
-            {[
-              ['first_name', 'First name'],
-              ['last_name', 'Last name'],
-              ['company_email', 'Company email'],
-              ['designation', 'Designation'],
-            ].map(([field, label]) => (
-              <div key={field}>
-                <label className="field-label" htmlFor={field}>
-                  {label}
-                </label>
-                <input
-                  id={field}
-                  type={field === 'company_email' ? 'email' : 'text'}
-                  className="field-input"
-                  required={field !== 'designation'}
-                  value={inviteForm[field as keyof typeof inviteForm]}
-                  onChange={(event) => setInviteForm((current) => ({ ...current, [field]: event.target.value }))}
-                />
-                <FieldErrorText message={inviteFieldErrors[field]} />
-              </div>
-            ))}
-            <div>
-              <label className="field-label" htmlFor="employment-type">
-                Employment type
-              </label>
-              <AppSelect
-                id="employment-type"
-                value={inviteForm.employment_type}
-                onValueChange={(value) =>
-                  setInviteForm((current) => ({ ...current, employment_type: value as EmploymentType }))
-                }
-                options={EMPLOYMENT_TYPE_SELECT_OPTIONS}
-              />
-              <FieldErrorText message={inviteFieldErrors.employment_type} />
-            </div>
-            <div>
-              <label className="field-label" htmlFor="date-of-joining">
-                Planned joining date
-              </label>
-              <AppDatePicker
-                id="date-of-joining"
-                value={inviteForm.date_of_joining}
-                onValueChange={(value) => setInviteForm((current) => ({ ...current, date_of_joining: value }))}
-                placeholder="Select planned joining date"
-              />
-              <FieldErrorText message={inviteFieldErrors.date_of_joining} />
-            </div>
-            <div>
-              <label className="field-label" htmlFor="department">
-                Department
-              </label>
-              <AppSelect
-                id="department"
-                value={inviteForm.department_id}
-                onValueChange={(value) => setInviteForm((current) => ({ ...current, department_id: value }))}
-                placeholder="Unassigned"
-                options={[
-                  { value: '', label: 'Unassigned' },
-                  ...(departments?.filter((department) => department.is_active).map((department) => ({
-                    value: department.id,
-                    label: department.name,
-                  })) ?? []),
-                ]}
-              />
-              <FieldErrorText message={inviteFieldErrors.department_id} />
-            </div>
-            <div>
-              <label className="field-label" htmlFor="location">
-                Office location
-              </label>
-              <AppSelect
-                id="location"
-                value={inviteForm.office_location_id}
-                onValueChange={(value) =>
-                  setInviteForm((current) => ({ ...current, office_location_id: value }))
-                }
-                placeholder="Unassigned"
-                options={[
-                  { value: '', label: 'Unassigned' },
-                  ...(locations?.filter((location) => location.is_active).map((location) => ({
-                    value: location.id,
-                    label: location.name,
-                  })) ?? []),
-                ]}
-              />
-              <FieldErrorText message={inviteFieldErrors.office_location_id} />
-            </div>
-            <div className="flex items-end">
-              <button type="submit" className="btn-primary w-full" disabled={inviteMutation.isPending}>
-                {inviteMutation.isPending ? 'Sending invite...' : 'Invite employee'}
-              </button>
-            </div>
-            <div className="lg:col-span-3">
-              <p className="mb-3 text-sm font-semibold text-[hsl(var(--foreground-strong))]">Requested onboarding documents</p>
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                {documentTypes?.map((documentType) => (
-                  <AppCheckbox
-                    key={documentType.id}
-                    id={`document-type-${documentType.id}`}
-                    checked={selectedDocumentTypeIds.includes(documentType.id)}
-                    onCheckedChange={(checked) =>
-                      setSelectedDocumentTypeIds((current) =>
-                        checked ? [...current, documentType.id] : current.filter((item) => item !== documentType.id),
-                      )
-                    }
-                    label={documentType.name}
-                    description={documentType.category.replace(/_/g, ' ')}
-                  />
-                ))}
-              </div>
-            </div>
-            <div className="surface-muted rounded-[26px] p-5 text-sm leading-6 text-[hsl(var(--muted-foreground))] lg:col-span-3">
-              Employee codes are assigned only when you mark a pending employee as joined. If the invite is accepted but the employee never joins, you do not waste a code.
-            </div>
-          </form>
-        </SectionCard>
-      ) : null}
 
       <SectionCard title="Employee directory" description="Search by name or email and filter by lifecycle state.">
         <div className="mb-5 flex flex-col gap-3 lg:flex-row">
@@ -308,6 +188,152 @@ export function EmployeesPage() {
           <EmptyState title="No employees match the current filter" description="Adjust the filters or send the first invite to begin employee onboarding." icon={UserPlus} />
         )}
       </SectionCard>
+
+      <AppDialog
+        open={isInviteModalOpen}
+        onOpenChange={(open) => {
+          setIsInviteModalOpen(open)
+          if (!open) {
+            setInviteForm(inviteDefaults)
+            setSelectedDocumentTypeIds([])
+            setInviteFieldErrors({})
+          }
+        }}
+        title="Invite employee"
+        description="Invites consume licence capacity immediately, so collect only the documents you genuinely need for onboarding."
+        contentClassName="sm:w-[min(92vw,64rem)]"
+        footer={
+          <div className="flex flex-wrap justify-end gap-3">
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => {
+                setIsInviteModalOpen(false)
+                setInviteForm(inviteDefaults)
+                setSelectedDocumentTypeIds([])
+                setInviteFieldErrors({})
+              }}
+            >
+              Cancel
+            </button>
+            <button type="submit" form="invite-employee-form" className="btn-primary" disabled={inviteMutation.isPending}>
+              {inviteMutation.isPending ? 'Sending invite...' : 'Invite employee'}
+            </button>
+          </div>
+        }
+      >
+        <form id="invite-employee-form" onSubmit={handleInvite} className="grid gap-4 lg:grid-cols-3">
+          {[
+            ['first_name', 'First name'],
+            ['last_name', 'Last name'],
+            ['company_email', 'Company email'],
+            ['designation', 'Designation'],
+          ].map(([field, label]) => (
+            <div key={field}>
+              <label className="field-label" htmlFor={field}>
+                {label}
+              </label>
+              <input
+                id={field}
+                type={field === 'company_email' ? 'email' : 'text'}
+                className="field-input"
+                required={field !== 'designation'}
+                value={inviteForm[field as keyof typeof inviteForm]}
+                onChange={(event) => setInviteForm((current) => ({ ...current, [field]: event.target.value }))}
+              />
+              <FieldErrorText message={inviteFieldErrors[field]} />
+            </div>
+          ))}
+          <div>
+            <label className="field-label" htmlFor="employment-type">
+              Employment type
+            </label>
+            <AppSelect
+              id="employment-type"
+              value={inviteForm.employment_type}
+              onValueChange={(value) =>
+                setInviteForm((current) => ({ ...current, employment_type: value as EmploymentType }))
+              }
+              options={EMPLOYMENT_TYPE_SELECT_OPTIONS}
+            />
+            <FieldErrorText message={inviteFieldErrors.employment_type} />
+          </div>
+          <div>
+            <label className="field-label" htmlFor="date-of-joining">
+              Planned joining date
+            </label>
+            <AppDatePicker
+              id="date-of-joining"
+              value={inviteForm.date_of_joining}
+              onValueChange={(value) => setInviteForm((current) => ({ ...current, date_of_joining: value }))}
+              placeholder="Select planned joining date"
+            />
+            <FieldErrorText message={inviteFieldErrors.date_of_joining} />
+          </div>
+          <div>
+            <label className="field-label" htmlFor="department">
+              Department
+            </label>
+            <AppSelect
+              id="department"
+              value={inviteForm.department_id}
+              onValueChange={(value) => setInviteForm((current) => ({ ...current, department_id: value }))}
+              placeholder="Unassigned"
+              options={[
+                { value: '', label: 'Unassigned' },
+                ...(departments?.filter((department) => department.is_active).map((department) => ({
+                  value: department.id,
+                  label: department.name,
+                })) ?? []),
+              ]}
+            />
+            <FieldErrorText message={inviteFieldErrors.department_id} />
+          </div>
+          <div>
+            <label className="field-label" htmlFor="location">
+              Office location
+            </label>
+            <AppSelect
+              id="location"
+              value={inviteForm.office_location_id}
+              onValueChange={(value) =>
+                setInviteForm((current) => ({ ...current, office_location_id: value }))
+              }
+              placeholder="Unassigned"
+              options={[
+                { value: '', label: 'Unassigned' },
+                ...(locations?.filter((location) => location.is_active).map((location) => ({
+                  value: location.id,
+                  label: location.name,
+                })) ?? []),
+              ]}
+            />
+            <FieldErrorText message={inviteFieldErrors.office_location_id} />
+          </div>
+          <div className="lg:col-span-3">
+            <p className="mb-3 text-sm font-semibold text-[hsl(var(--foreground-strong))]">Requested onboarding documents</p>
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {documentTypes?.map((documentType) => (
+                <AppCheckbox
+                  key={documentType.id}
+                  id={`document-type-${documentType.id}`}
+                  checked={selectedDocumentTypeIds.includes(documentType.id)}
+                  onCheckedChange={(checked) =>
+                    setSelectedDocumentTypeIds((current) =>
+                      checked ? [...current, documentType.id] : current.filter((item) => item !== documentType.id),
+                    )
+                  }
+                  label={documentType.name}
+                  description={documentType.category.replace(/_/g, ' ')}
+                />
+              ))}
+            </div>
+          </div>
+          <div className="surface-muted rounded-[26px] p-5 text-sm leading-6 text-[hsl(var(--muted-foreground))] lg:col-span-3">
+            Employee codes are assigned only when you mark a pending employee as joined. If the invite is accepted but the employee never joins, you do not waste a code.
+          </div>
+        </form>
+      </AppDialog>
     </div>
   )
 }

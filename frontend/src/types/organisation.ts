@@ -29,6 +29,14 @@ export type OrganisationOnboardingStage =
   | 'ADMIN_ACTIVATED'
   | 'MASTER_DATA_CONFIGURED'
   | 'EMPLOYEES_INVITED'
+export type OrgAdminSetupStep =
+  | 'PROFILE'
+  | 'ADDRESSES'
+  | 'LOCATIONS'
+  | 'DEPARTMENTS'
+  | 'HOLIDAYS'
+  | 'POLICIES'
+  | 'EMPLOYEES'
 
 export interface PaginatedResponse<T> {
   count: number
@@ -221,6 +229,26 @@ export interface OrganisationDetail {
   licence_summary: LicenceSummary
   licence_batches: LicenceBatch[]
   batch_defaults: LicenceBatchDefaults
+}
+
+export interface OrgAdminSetupState {
+  required: boolean
+  started_at: string | null
+  current_step: OrgAdminSetupStep
+  current_step_index: number
+  total_steps: number
+  completed_at: string | null
+  completed_by: {
+    id: string
+    full_name: string
+    email: string
+  } | null
+  steps: Array<{
+    key: OrgAdminSetupStep
+    label: string
+    is_complete: boolean
+    sequence: number
+  }>
 }
 
 export interface OrgAdmin {

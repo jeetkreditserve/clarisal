@@ -61,12 +61,28 @@ export interface AuthUser {
   active_employee_status?: EmployeeStatus | null
   active_employee_onboarding_status?: EmployeeOnboardingStatus | null
   org_operations_guard?: OrgOperationsGuard | null
+  org_setup_required?: boolean
+  org_setup_current_step?: string | null
+  org_setup_completed_at?: string | null
   is_active: boolean
 }
 
 export interface LoginResponse {
   user: AuthUser
 }
+
+export interface AcceptInviteLoginRequiredResponse {
+  requires_login: true
+  login_url: string
+  message: string
+}
+
+export interface AcceptInviteAuthenticatedResponse {
+  requires_login: false
+  user: AuthUser
+}
+
+export type AcceptInviteResponse = AcceptInviteLoginRequiredResponse | AcceptInviteAuthenticatedResponse
 
 export interface ApiError {
   error?: string

@@ -10,18 +10,20 @@ test.describe('Leave Plans', () => {
     await expect(page.locator('text=Leave plans')).toBeVisible({ timeout: 10000 })
   })
 
-  test('create leave plan form is visible', async ({ page }) => {
+  test('create leave plan action is visible', async ({ page }) => {
     await page.goto('/org/leave-plans')
-    await expect(page.locator('text=Create leave plan')).toBeVisible({ timeout: 10000 })
+    await expect(page.locator('button:has-text("Add leave plan")')).toBeVisible({ timeout: 10000 })
   })
 
-  test('leave cycle selector is visible in form', async ({ page }) => {
+  test('leave cycle selector is visible in modal', async ({ page }) => {
     await page.goto('/org/leave-plans')
+    await page.click('button:has-text("Add leave plan")')
     await expect(page.locator('#leave-cycle-id, [data-radix-select-trigger]').first()).toBeVisible({ timeout: 10000 })
   })
 
   test('create a leave plan (requires leave cycle to exist)', async ({ page }) => {
     await page.goto('/org/leave-plans')
+    await page.click('button:has-text("Add leave plan")')
     await page.waitForSelector('text=Create leave plan', { timeout: 10000 })
 
     // Select the first available leave cycle from the dropdown
@@ -56,16 +58,11 @@ test.describe('Leave Plans', () => {
 
   test('leave plan requires leave cycle to submit', async ({ page }) => {
     await page.goto('/org/leave-plans')
+    await page.click('button:has-text("Add leave plan")')
     await page.waitForSelector('text=Create leave plan', { timeout: 10000 })
     // Submit without selecting a cycle — should show an error or not succeed
     await page.click('button[type="submit"]')
-    // Either a field error or toast error should appear
-    const errorVisible = await page
-      .locator('.field-error, [data-sonner-toast], .notice-error')
-      .first()
-      .isVisible()
     // Page should not navigate away
     expect(page.url()).toContain('/org/leave-plans')
-    // The error or staying on page is acceptable — just verify no crash
   })
 })

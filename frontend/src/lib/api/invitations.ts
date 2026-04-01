@@ -1,5 +1,5 @@
 import api from '@/lib/api'
-import type { LoginResponse } from '@/types/auth'
+import type { AcceptInviteResponse } from '@/types/auth'
 
 export async function validateInviteToken(token: string): Promise<{
   email: string
@@ -15,7 +15,7 @@ export async function acceptInvite(payload: {
   token: string
   password?: string
   confirm_password?: string
-}): Promise<LoginResponse> {
-  const { data } = await api.post('/auth/invite/accept/', payload)
+}): Promise<AcceptInviteResponse> {
+  const { data } = await api.post<AcceptInviteResponse>('/auth/invite/accept/', payload)
   return data
 }

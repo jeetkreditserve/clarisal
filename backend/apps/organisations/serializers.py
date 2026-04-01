@@ -5,6 +5,7 @@ from .models import (
     BootstrapAdminStatus,
     LicenceBatchLifecycleState,
     LicenceBatchPaymentStatus,
+    OrgAdminSetupStep,
     Organisation,
     OrganisationAddress,
     OrganisationBootstrapAdmin,
@@ -302,6 +303,32 @@ class OrganisationConfigurationSummarySerializer(serializers.Serializer):
     on_duty_policies = serializers.IntegerField()
     approval_workflows = serializers.IntegerField()
     notices = serializers.IntegerField()
+
+
+class OrgAdminSetupStateSerializer(serializers.Serializer):
+    required = serializers.BooleanField()
+    started_at = serializers.DateTimeField(allow_null=True)
+    current_step = serializers.ChoiceField(choices=OrgAdminSetupStep.choices)
+    current_step_index = serializers.IntegerField()
+    total_steps = serializers.IntegerField()
+    completed_at = serializers.DateTimeField(allow_null=True)
+    completed_by = serializers.SerializerMethodField()
+    steps = serializers.ListField()
+
+    def get_completed_by(self, obj):
+        completed_by = obj.get('completed_by')
+        if completed_by is None:
+            return None
+        return {
+            'id': str(completed_by.id),
+            'full_name': completed_by.full_name,
+            'email': completed_by.email,
+        }
+
+
+class OrgAdminSetupUpdateSerializer(serializers.Serializer):
+    current_step = serializers.ChoiceField(choices=OrgAdminSetupStep.choices, required=False)
+    completed = serializers.BooleanField(required=False, default=False)
 
 
 class OrganisationDetailSerializer(serializers.ModelSerializer):

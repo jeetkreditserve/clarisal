@@ -1,13 +1,15 @@
 import { Outlet, useNavigate } from 'react-router-dom'
-import { Bell, Building, Building2, CalendarDays, ClipboardCheck, LayoutDashboard, LogOut, MapPin, PlaneTakeoff, Repeat, Users } from 'lucide-react'
+import { Bell, Building, Building2, CalendarDays, ClipboardCheck, LayoutDashboard, LogOut, MapPin, PlaneTakeoff, Repeat, ScrollText, Settings2, Users } from 'lucide-react'
 import { SidebarNav, type NavItem } from './SidebarNav'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
 import { useAuth } from '@/hooks/useAuth'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { ThemeToggle } from '@/components/ui/ThemeToggle'
 import { getAccessStateTone } from '@/lib/status'
+import { OrgSetupBanner } from '@/components/org/OrgSetupBanner'
 
 const navItems: NavItem[] = [
+  { label: 'Setup', href: '/org/setup', icon: Settings2 },
   { label: 'Dashboard', href: '/org/dashboard', icon: LayoutDashboard },
   { label: 'Organisation', href: '/org/profile', icon: Building2 },
   { label: 'Locations', href: '/org/locations', icon: MapPin },
@@ -19,6 +21,7 @@ const navItems: NavItem[] = [
   { label: 'OD policies', href: '/org/on-duty-policies', icon: PlaneTakeoff },
   { label: 'Approvals', href: '/org/approval-workflows', icon: ClipboardCheck },
   { label: 'Notices', href: '/org/notices', icon: Bell },
+  { label: 'Audit Timeline', href: '/org/audit', icon: ScrollText },
 ]
 
 export function OrgLayout() {
@@ -64,6 +67,7 @@ export function OrgLayout() {
               <p className="mt-1 text-[hsl(var(--muted-foreground))]">{user.org_operations_guard.reason}</p>
             </div>
           ) : null}
+          <OrgSetupBanner />
           <Outlet />
         </main>
       </div>

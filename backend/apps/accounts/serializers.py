@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from apps.organisations.services import get_org_operations_guard
+from apps.organisations.services import get_org_admin_setup_state, get_org_operations_guard, is_org_admin_setup_required
 
 from .models import AccountType, User
 from .workspaces import get_default_route, get_workspace_state
@@ -48,6 +48,9 @@ class UserSerializer(serializers.ModelSerializer):
     active_employee_status = serializers.SerializerMethodField()
     active_employee_onboarding_status = serializers.SerializerMethodField()
     org_operations_guard = serializers.SerializerMethodField()
+    org_setup_required = serializers.SerializerMethodField()
+    org_setup_current_step = serializers.SerializerMethodField()
+    org_setup_completed_at = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -74,6 +77,9 @@ class UserSerializer(serializers.ModelSerializer):
             'active_employee_status',
             'active_employee_onboarding_status',
             'org_operations_guard',
+            'org_setup_required',
+            'org_setup_current_step',
+            'org_setup_completed_at',
             'is_active',
         ]
         read_only_fields = fields
@@ -181,3 +187,21 @@ class UserSerializer(serializers.ModelSerializer):
         if organisation is None or obj.account_type == AccountType.CONTROL_TOWER:
             return None
         return get_org_operations_guard(organisation)
+
+    def get_org_setup_required(self, obj):
+        organisation = self._current_org(obj)
+        if organisation is None or obj.account_type == AccountType.CONTROL_TOWER:
+            return False
+        return is_org_admin_setup_required(organisation)
+
+    def get_org_setup_current_step(self, obj):
+        organisation = self._current_org(obj)
+        if organisation is None or obj.account_type == AccountType.CONTROL_TOWER:
+            return None
+        return get_org_admin_setup_state(organisation)['current_step']
+
+    def get_org_setup_completed_at(self, obj):
+        organisation = self._current_org(obj)
+        if organisation is None or obj.account_type == AccountType.CONTROL_TOWER:
+            return None
+        return get_org_admin_setup_state(organisation)['completed_at']

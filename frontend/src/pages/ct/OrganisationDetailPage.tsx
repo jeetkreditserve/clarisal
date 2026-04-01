@@ -1506,7 +1506,7 @@ export function OrganisationDetailPage() {
                 <button type="button" className="btn-secondary" onClick={() => openAddressDialog(address)}>
                   Edit
                 </button>
-                {address.is_active ? (
+                {address.is_active && !['REGISTERED', 'BILLING'].includes(address.address_type) ? (
                   <button type="button" className="btn-danger" onClick={() => void handleDeactivateAddress(address.id)}>
                     Deactivate
                   </button>

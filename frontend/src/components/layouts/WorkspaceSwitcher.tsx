@@ -26,7 +26,7 @@ export function WorkspaceSwitcher({ currentMode }: WorkspaceSwitcherProps) {
     try {
       const nextUser = await switchWorkspace({ workspace_kind, organisation_id })
       if (workspace_kind === 'ADMIN') {
-        navigate('/org/dashboard', { replace: true })
+        navigate(nextUser.default_route || '/org/dashboard', { replace: true })
       } else if (
         nextUser.active_employee_status === 'INVITED' ||
         (nextUser.active_employee_onboarding_status && nextUser.active_employee_onboarding_status !== 'COMPLETE')

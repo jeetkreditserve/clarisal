@@ -100,3 +100,27 @@ def render_password_reset_email(reset_token, raw_token: str, *, frontend_url: st
             'fallback_label': 'If the button does not work, copy and paste this URL into your browser:',
         },
     )
+
+
+def render_org_admin_password_set_email(*, user, organisation_name: str, frontend_url: str | None = None) -> RenderedTransactionalEmail:
+    login_url = build_frontend_url('/auth/login', frontend_url)
+    recipient_name = user.first_name or user.full_name or user.email
+
+    return _render_email(
+        subject=f'Your {APP_NAME} account is now active',
+        template_name='org_admin_password_set',
+        context={
+            'preheader': f'Your password is set and your {organisation_name} admin workspace is ready.',
+            'title': 'Password set successfully',
+            'subtitle': f'{organisation_name} organisation admin access',
+            'greeting_name': recipient_name,
+            'organisation_name': organisation_name,
+            'action_label': 'Go to workforce login',
+            'action_url': login_url,
+            'meta_lines': [
+                'Your account is active and ready to use.',
+                'Next time, use the workforce login page instead of the original setup email.',
+            ],
+            'fallback_label': 'If the button does not work, copy and paste this login URL into your browser:',
+        },
+    )

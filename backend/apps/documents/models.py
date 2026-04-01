@@ -1,6 +1,7 @@
-import uuid
 from django.conf import settings
 from django.db import models
+
+from apps.common.models import AuditedBaseModel
 
 
 class DocumentType(models.TextChoices):
@@ -39,8 +40,7 @@ class EmployeeDocumentRequestStatus(models.TextChoices):
     WAIVED = 'WAIVED', 'Waived'
 
 
-class OnboardingDocumentType(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+class OnboardingDocumentType(AuditedBaseModel):
     code = models.CharField(max_length=60, unique=True)
     name = models.CharField(max_length=255)
     category = models.CharField(max_length=32, choices=OnboardingDocumentCategory.choices)
@@ -56,9 +56,6 @@ class OnboardingDocumentType(models.Model):
         on_delete=models.SET_NULL,
         related_name='created_onboarding_document_types',
     )
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
     class Meta:
         db_table = 'onboarding_document_types'
         ordering = ['category', 'sort_order', 'name']
@@ -67,8 +64,7 @@ class OnboardingDocumentType(models.Model):
         return self.name
 
 
-class EmployeeDocumentRequest(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+class EmployeeDocumentRequest(AuditedBaseModel):
     employee = models.ForeignKey(
         'employees.Employee',
         on_delete=models.CASCADE,
@@ -110,9 +106,6 @@ class EmployeeDocumentRequest(models.Model):
         on_delete=models.SET_NULL,
         related_name='waived_employee_document_requests',
     )
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
     class Meta:
         db_table = 'employee_document_requests'
         ordering = ['created_at']
@@ -130,8 +123,7 @@ class EmployeeDocumentRequest(models.Model):
         return f'{self.employee} - {self.document_type_ref.name}'
 
 
-class Document(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+class Document(AuditedBaseModel):
     employee = models.ForeignKey(
         'employees.Employee',
         on_delete=models.CASCADE,
@@ -171,8 +163,6 @@ class Document(models.Model):
         related_name='reviewed_documents',
     )
     reviewed_at = models.DateTimeField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'documents'

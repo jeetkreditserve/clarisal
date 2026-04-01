@@ -1,4 +1,5 @@
 import pytest
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.accounts.models import AccountType, User, UserRole
@@ -42,6 +43,7 @@ def workforce_user(db):
         status='ACTIVE',
         billing_status=OrganisationBillingStatus.PAID,
         access_state=OrganisationAccessState.ACTIVE,
+        admin_setup_completed_at=timezone.now(),
     )
     user = User.objects.create_user(
         email='ops@northstar.com',
@@ -147,6 +149,7 @@ class TestLogin:
             status='ACTIVE',
             billing_status=OrganisationBillingStatus.PAID,
             access_state=OrganisationAccessState.ACTIVE,
+            admin_setup_completed_at=timezone.now(),
         )
         workforce = User.objects.create_user(
             email='shared@clarisal.com',
@@ -198,6 +201,7 @@ class TestLogin:
             status='ACTIVE',
             billing_status=OrganisationBillingStatus.PAID,
             access_state=OrganisationAccessState.ACTIVE,
+            admin_setup_completed_at=timezone.now(),
         )
         employee_org = Organisation.objects.create(
             name='Bluebird Works',

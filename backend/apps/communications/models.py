@@ -1,7 +1,6 @@
-import uuid
-
-from django.conf import settings
 from django.db import models
+
+from apps.common.models import AuditedBaseModel
 
 
 class NoticeStatus(models.TextChoices):
@@ -18,8 +17,7 @@ class NoticeAudienceType(models.TextChoices):
     SPECIFIC_EMPLOYEES = 'SPECIFIC_EMPLOYEES', 'Specific Employees'
 
 
-class Notice(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+class Notice(AuditedBaseModel):
     organisation = models.ForeignKey(
         'organisations.Organisation',
         on_delete=models.CASCADE,
@@ -31,25 +29,9 @@ class Notice(models.Model):
     status = models.CharField(max_length=20, choices=NoticeStatus.choices, default=NoticeStatus.DRAFT)
     scheduled_for = models.DateTimeField(null=True, blank=True)
     published_at = models.DateTimeField(null=True, blank=True)
-    created_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name='created_notices',
-    )
-    updated_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name='updated_notices',
-    )
     departments = models.ManyToManyField('departments.Department', blank=True, related_name='notices')
     office_locations = models.ManyToManyField('locations.OfficeLocation', blank=True, related_name='notices')
     employees = models.ManyToManyField('employees.Employee', blank=True, related_name='notices')
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'notices'

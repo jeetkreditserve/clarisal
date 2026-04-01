@@ -1,5 +1,4 @@
 import { employeeTest as test, expect } from '../fixtures/auth'
-import { waitForToast } from '../helpers'
 
 test.describe('Employee Profile', () => {
   test.describe('Read-only', () => {

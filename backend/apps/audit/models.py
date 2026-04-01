@@ -1,10 +1,10 @@
-import uuid
 from django.conf import settings
 from django.db import models
 
+from apps.common.models import AuditedBaseModel
 
-class AuditLog(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+class AuditLog(AuditedBaseModel):
     actor = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,
@@ -25,7 +25,6 @@ class AuditLog(models.Model):
     payload = models.JSONField(default=dict, blank=True)
     ip_address = models.GenericIPAddressField(null=True, blank=True)
     user_agent = models.TextField(blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         db_table = 'audit_logs'

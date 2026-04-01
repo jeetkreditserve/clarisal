@@ -15,7 +15,9 @@ import { NewOrganisationPage } from '@/pages/ct/NewOrganisationPage'
 import { FirstLicenceBatchPage } from '@/pages/ct/FirstLicenceBatchPage'
 import { OrganisationDetailPage } from '@/pages/ct/OrganisationDetailPage'
 import { OrgDashboardPage } from '@/pages/org/DashboardPage'
+import { OrgSetupPage } from '@/pages/org/SetupPage'
 import { OrgProfilePage } from '@/pages/org/ProfilePage'
+import { OrgAuditPage } from '@/pages/org/AuditPage'
 import { LocationsPage } from '@/pages/org/LocationsPage'
 import { DepartmentsPage } from '@/pages/org/DepartmentsPage'
 import { EmployeesPage } from '@/pages/org/EmployeesPage'
@@ -90,6 +92,7 @@ export const router = createBrowserRouter([
       {
         element: <OrgLayout />,
         children: [
+          { path: '/org/setup', element: <OrgSetupPage /> },
           { path: '/org/dashboard', element: <OrgDashboardPage /> },
           { path: '/org/profile', element: <OrgProfilePage /> },
           { path: '/org/locations', element: <LocationsPage /> },
@@ -102,6 +105,7 @@ export const router = createBrowserRouter([
           { path: '/org/on-duty-policies', element: <OnDutyPoliciesPage /> },
           { path: '/org/approval-workflows', element: <ApprovalWorkflowsPage /> },
           { path: '/org/notices', element: <NoticesPage /> },
+          { path: '/org/audit', element: <OrgAuditPage /> },
         ],
       },
     ],

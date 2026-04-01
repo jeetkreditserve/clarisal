@@ -11,6 +11,7 @@ from apps.accounts.workspaces import initialize_workforce_workspace
 from apps.organisations.models import Organisation, OrganisationMembership
 from apps.organisations.repositories import get_org_admins
 from apps.organisations.serializers import OrgAdminSerializer
+from apps.common.transactional_emails import build_frontend_url
 
 from .serializers import AcceptInviteSerializer, InviteOrgAdminSerializer
 from .services import accept_invitation, create_org_admin_invitation, validate_invite_token
@@ -101,7 +102,7 @@ class AcceptInviteView(APIView):
         serializer = AcceptInviteSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         try:
-            user = accept_invitation(
+            result = accept_invitation(
                 token=serializer.validated_data['token'],
                 password=serializer.validated_data.get('password', ''),
                 request=request,
@@ -109,8 +110,24 @@ class AcceptInviteView(APIView):
         except drf_serializers.ValidationError as exc:
             return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
 
+        user = result['user']
+        if result.get('requires_login'):
+            login_url = build_frontend_url('/auth/login')
+            return Response(
+                {
+                    'requires_login': True,
+                    'login_url': login_url,
+                    'message': 'Password set successfully. Sign in from the workforce login page to continue.',
+                }
+            )
+
         login(request, user)
         request.session.cycle_key()
         initialize_workforce_workspace(request, user)
         get_token(request)
-        return Response({'user': UserSerializer(user, context={'request': request}).data})
+        return Response(
+            {
+                'requires_login': False,
+                'user': UserSerializer(user, context={'request': request}).data,
+            }
+        )

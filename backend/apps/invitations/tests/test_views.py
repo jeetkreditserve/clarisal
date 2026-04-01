@@ -76,7 +76,7 @@ class TestValidateInviteToken:
 
 @pytest.mark.django_db
 class TestAcceptInvite:
-    def test_accept_activates_user_and_returns_tokens(self, db):
+    def test_accept_activates_user_and_requires_login_for_new_org_admin(self, db):
         ct = User.objects.create_superuser(email='ct@t.com', password='pass', role=UserRole.CONTROL_TOWER)
         org = Organisation.objects.create(name='Org', licence_count=5, created_by=ct, status=OrganisationStatus.PAID)
         user = User.objects.create(email='admin@org.com', role=UserRole.ORG_ADMIN, account_type=AccountType.WORKFORCE, is_active=False)
@@ -100,6 +100,7 @@ class TestAcceptInvite:
             'confirm_password': 'SecurePass123!',
         }, format='json')
         assert response.status_code == 200
-        assert 'user' in response.data
+        assert response.data['requires_login'] is True
+        assert response.data['login_url'].endswith('/auth/login')
         user.refresh_from_db()
         assert user.is_active

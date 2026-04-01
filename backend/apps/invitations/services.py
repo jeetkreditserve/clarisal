@@ -134,6 +134,7 @@ def accept_invitation(token, password='', request=None):
     if user is None:
         raise drf_serializers.ValidationError({'token': 'Invitation has no associated user.'})
 
+    password_set_for_inactive_user = not user.is_active
     if not user.is_active and not password:
         raise drf_serializers.ValidationError({'password': 'Password is required to activate this account.'})
 
@@ -172,6 +173,13 @@ def accept_invitation(token, password='', request=None):
 
         sync_user_role(user)
 
+        if invite.role == InvitationRole.ORG_ADMIN and password_set_for_inactive_user and invite.organisation:
+            from .tasks import send_org_admin_password_set_email
+
+            transaction.on_commit(
+                lambda: send_org_admin_password_set_email.delay(str(user.id), invite.organisation.name)
+            )
+
     log_audit_event(
         user,
         'invitation.accepted',
@@ -180,4 +188,7 @@ def accept_invitation(token, password='', request=None):
         payload={'role': invite.role},
         request=request,
     )
-    return user
+    return {
+        'user': user,
+        'requires_login': invite.role == InvitationRole.ORG_ADMIN and password_set_for_inactive_user,
+    }

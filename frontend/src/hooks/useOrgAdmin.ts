@@ -32,6 +32,7 @@ import {
   fetchOnboardingDocumentTypes,
   fetchOnDutyPolicies,
   fetchOrgDashboard,
+  fetchOrgSetup,
   fetchOrgLeaveRequests,
   fetchOrgOnDutyRequests,
   fetchOrgProfile,
@@ -46,6 +47,7 @@ import {
   rejectEmployeeDocument,
   updateOrgAddress,
   updateOrgProfile,
+  updateOrgSetup,
   updateApprovalWorkflow,
   updateDepartment,
   updateEmployee,
@@ -66,6 +68,21 @@ function useOrgScope() {
 export function useOrgDashboard() {
   const organisationId = useOrgScope()
   return useQuery({ queryKey: ['org', organisationId, 'dashboard'], queryFn: fetchOrgDashboard })
+}
+
+export function useOrgSetup() {
+  const organisationId = useOrgScope()
+  return useQuery({ queryKey: ['org', organisationId, 'setup'], queryFn: fetchOrgSetup })
+}
+
+export function useUpdateOrgSetup() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: updateOrgSetup,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
 }
 
 export function useOrgAuditLogs() {

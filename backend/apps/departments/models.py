@@ -1,9 +1,9 @@
-import uuid
 from django.db import models
 
+from apps.common.models import AuditedBaseModel
 
-class Department(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+class Department(AuditedBaseModel):
     organisation = models.ForeignKey(
         'organisations.Organisation',
         on_delete=models.CASCADE,
@@ -19,8 +19,6 @@ class Department(models.Model):
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'departments'

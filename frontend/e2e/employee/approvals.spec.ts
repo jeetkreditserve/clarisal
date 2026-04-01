@@ -1,5 +1,4 @@
 import { employeeTest as test, expect } from '../fixtures/auth'
-import { waitForToast } from '../helpers'
 
 test.describe('Employee Approvals', () => {
   test('approvals page loads at /me/approvals', async ({ page }) => {
@@ -16,8 +15,6 @@ test.describe('Employee Approvals', () => {
   test('empty inbox state renders without crash', async ({ page }) => {
     await page.goto('/me/approvals')
     await page.waitForSelector('text=Approval inbox', { timeout: 15000 })
-    // Either inbox has items or shows empty state — both are valid
-    const inboxContent = page.locator('.surface-muted, [class*="EmptyState"], text=No pending').first()
     // The page should render something — just not crash
     await expect(page.locator('text=Approval inbox')).toBeVisible({ timeout: 10000 })
   })

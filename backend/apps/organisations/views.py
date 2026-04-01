@@ -47,6 +47,7 @@ from .serializers import (
     LicenceBatchWriteSerializer,
     OrgAdminSerializer, CTDashboardStatsSerializer, OrgDashboardStatsSerializer,
     OrganisationNoteSerializer, OrganisationNoteWriteSerializer,
+    OrgAdminSetupStateSerializer, OrgAdminSetupUpdateSerializer,
 )
 from .services import (
     create_organisation_address,
@@ -59,6 +60,8 @@ from .services import (
     deactivate_org_admin_membership,
     reactivate_org_admin_membership,
     revoke_org_admin_membership_invitation,
+    get_org_admin_setup_state,
+    update_org_admin_setup_state,
     update_organisation_address,
     update_licence_batch,
     update_organisation_profile,
@@ -687,6 +690,32 @@ class OrgProfileView(APIView):
         except ValueError as exc:
             return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(OrganisationDetailSerializer(organisation).data)
+
+
+class OrgAdminSetupView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
+
+    def get(self, request):
+        organisation = get_active_admin_organisation(request, request.user)
+        if organisation is None:
+            return Response({'error': 'Select an administrator organisation workspace to continue.'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(OrgAdminSetupStateSerializer(get_org_admin_setup_state(organisation)).data)
+
+    def patch(self, request):
+        organisation = get_active_admin_organisation(request, request.user)
+        if organisation is None:
+            return Response({'error': 'Select an administrator organisation workspace to continue.'}, status=status.HTTP_400_BAD_REQUEST)
+        serializer = OrgAdminSetupUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            organisation = update_org_admin_setup_state(
+                organisation,
+                actor=request.user,
+                **serializer.validated_data,
+            )
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(OrgAdminSetupStateSerializer(get_org_admin_setup_state(organisation)).data)
 
 
 class OrgProfileAddressListCreateView(APIView):

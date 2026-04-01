@@ -1,19 +1,17 @@
 import { useState } from 'react'
-import { Building2, Landmark } from 'lucide-react'
+import { Building2, Landmark, Mail, Phone } from 'lucide-react'
 import { toast } from 'sonner'
 
 import {
   useCreateOrgAddress,
   useDeactivateOrgAddress,
-  useOrgAuditLogs,
   useOrgProfile,
   useUpdateOrgAddress,
   useUpdateOrgProfile,
 } from '@/hooks/useOrgAdmin'
+import { AppDialog } from '@/components/ui/AppDialog'
 import { AppSelect } from '@/components/ui/AppSelect'
-import { AuditTimeline } from '@/components/ui/AuditTimeline'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { FieldErrorText } from '@/components/ui/FieldErrorText'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { SkeletonFormBlock, SkeletonPageHeader, SkeletonTable } from '@/components/ui/Skeleton'
@@ -35,7 +33,6 @@ import {
   DEFAULT_COUNTRY_OPTION,
   ORGANISATION_ENTITY_TYPE_OPTIONS,
   getCountryOption,
-  validatePhoneForCountry,
 } from '@/lib/organisationMetadata'
 import type { OrganisationAddress, OrganisationAddressType, OrganisationEntityType } from '@/types/organisation'
 
@@ -79,27 +76,24 @@ export function OrgProfilePage() {
   const createAddressMutation = useCreateOrgAddress()
   const updateAddressMutation = useUpdateOrgAddress()
   const deactivateAddressMutation = useDeactivateOrgAddress()
-  const { data: auditLogs } = useOrgAuditLogs()
 
   const [profileDraft, setProfileDraft] = useState<Partial<{
     name: string
     pan_number: string
-    email: string
-    phone: string
     country_code: string
     currency: string
     entity_type: OrganisationEntityType
   }>>({})
   const [editingAddressId, setEditingAddressId] = useState<string | null>(null)
+  const [isAddressModalOpen, setIsAddressModalOpen] = useState(false)
   const [addressForm, setAddressForm] = useState(() => createEmptyAddressForm())
   const [hasCurrencyManualOverride, setHasCurrencyManualOverride] = useState(false)
-  const [profileErrors, setProfileErrors] = useState<{ phone?: string }>({})
 
   if (isLoading || !data) {
     return (
       <div className="space-y-5">
         <SkeletonPageHeader />
-        <SkeletonFormBlock rows={6} />
+        <SkeletonFormBlock rows={5} />
         <SkeletonTable rows={5} />
       </div>
     )
@@ -108,8 +102,6 @@ export function OrgProfilePage() {
   const profileForm = {
     name: profileDraft.name ?? data.name,
     pan_number: profileDraft.pan_number ?? data.pan_number ?? '',
-    email: profileDraft.email ?? data.email,
-    phone: profileDraft.phone ?? data.phone,
     country_code: profileDraft.country_code ?? data.country_code,
     currency: profileDraft.currency ?? data.currency,
     entity_type: profileDraft.entity_type ?? data.entity_type,
@@ -156,23 +148,20 @@ export function OrgProfilePage() {
     }
   }
 
-  const validateProfileForm = () => {
-    const phoneError = validatePhoneForCountry(profileForm.phone, profileForm.country_code) ?? undefined
-    setProfileErrors({ phone: phoneError })
-    return !phoneError
-  }
-
   const handleProfileSave = async (event: React.FormEvent) => {
     event.preventDefault()
-    if (!validateProfileForm()) {
-      return
-    }
     try {
       await updateProfileMutation.mutateAsync(profileForm)
       toast.success('Organisation profile updated.')
     } catch (error) {
       toast.error(getErrorMessage(error, 'Unable to update organisation profile.'))
     }
+  }
+
+  const openCreateAddressModal = () => {
+    setEditingAddressId(null)
+    setAddressForm(createEmptyAddressForm(selectedCountry.code))
+    setIsAddressModalOpen(true)
   }
 
   const handleAddressEdit = (address: OrganisationAddress) => {
@@ -190,11 +179,13 @@ export function OrgProfilePage() {
       pincode: address.pincode,
       gstin: address.gstin ?? '',
     })
+    setIsAddressModalOpen(true)
   }
 
   const resetAddressForm = () => {
     setEditingAddressId(null)
     setAddressForm(createEmptyAddressForm(selectedCountry.code))
+    setIsAddressModalOpen(false)
   }
 
   const handleAddressSubmit = async (event: React.FormEvent) => {
@@ -218,10 +209,11 @@ export function OrgProfilePage() {
     }
   }
 
-  const handleDeactivate = async (addressId: string) => {
+  const handleDeactivate = async (address: OrganisationAddress) => {
+    if (mandatoryAddressTypes.includes(address.address_type)) return
     if (!window.confirm('Deactivate this address?')) return
     try {
-      await deactivateAddressMutation.mutateAsync(addressId)
+      await deactivateAddressMutation.mutateAsync(address.id)
       toast.success('Address deactivated.')
     } catch (error) {
       toast.error(getErrorMessage(error, 'Unable to deactivate address.'))
@@ -233,39 +225,39 @@ export function OrgProfilePage() {
       <PageHeader
         eyebrow="Organisation"
         title="Organisation profile"
-        description="Maintain legal profile, PAN, and the shared address directory used by office locations."
+        description="Maintain the legal profile and address directory used across onboarding, billing, and workspace configuration."
       />
 
-      <div className="grid gap-6 xl:grid-cols-[0.92fr_1.08fr]">
-        <SectionCard title="Core profile" description="These details define the organisation identity used across onboarding and billing operations.">
+      <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+        <SectionCard
+          title="Core profile"
+          description="These details define the legal identity used across the organisation workspace."
+        >
           <form onSubmit={handleProfileSave} className="grid gap-4">
-            {[
-              ['name', 'Organisation name'],
-              ['pan_number', 'PAN number'],
-              ['email', 'Contact email'],
-              ['phone', 'Contact phone'],
-            ].map(([field, label]) => (
-              <div key={field}>
-                <label className="field-label" htmlFor={field}>
-                  {label}
-                </label>
-                <input
-                  id={field}
-                  className="field-input"
-                  value={profileForm[field as keyof typeof profileForm]}
-                  onChange={(event) => setProfileDraft((current) => ({ ...current, [field]: event.target.value }))}
-                  required={field === 'name' || field === 'pan_number'}
-                />
-                {field === 'phone' ? (
-                  <>
-                    <p className="mt-2 text-xs text-[hsl(var(--muted-foreground))]">
-                      Must start with {selectedCountry.dialCode} for {selectedCountry.name}.
-                    </p>
-                    <FieldErrorText message={profileErrors.phone} />
-                  </>
-                ) : null}
-              </div>
-            ))}
+            <div>
+              <label className="field-label" htmlFor="name">
+                Organisation name
+              </label>
+              <input
+                id="name"
+                className="field-input"
+                value={profileForm.name}
+                onChange={(event) => setProfileDraft((current) => ({ ...current, name: event.target.value }))}
+                required
+              />
+            </div>
+            <div>
+              <label className="field-label" htmlFor="pan_number">
+                PAN number
+              </label>
+              <input
+                id="pan_number"
+                className="field-input"
+                value={profileForm.pan_number}
+                onChange={(event) => setProfileDraft((current) => ({ ...current, pan_number: event.target.value }))}
+                required
+              />
+            </div>
             <div className="grid gap-4 md:grid-cols-2">
               <div>
                 <label className="field-label" htmlFor="country_code">
@@ -319,167 +311,67 @@ export function OrgProfilePage() {
         </SectionCard>
 
         <SectionCard
-          title={editingAddressId ? 'Edit address' : 'Add address'}
-          description="Registered and billing addresses are required. Additional headquarters, warehouse, or custom addresses can be added as needed."
+          title="Bootstrap admin"
+          description="This is the primary organisation admin captured during Control Tower onboarding."
         >
-          <form onSubmit={handleAddressSubmit} className="grid gap-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              <div>
-                <label className="field-label" htmlFor="address_type">
-                  Address type
-                </label>
-                <AppSelect
-                  id="address_type"
-                  value={addressForm.address_type}
-                  onValueChange={(value) =>
-                    setAddressForm((current) => ({
-                      ...current,
-                      address_type: value as OrganisationAddressType,
-                    }))
-                  }
-                  options={ADDRESS_TYPE_OPTIONS}
-                  placeholder="Select address type"
-                />
-              </div>
-              {!mandatoryAddressTypes.includes(addressForm.address_type) ? (
-                <div>
-                  <label className="field-label" htmlFor="label">
-                    Address label
-                  </label>
-                  <input
-                    id="label"
-                    className="field-input"
-                    value={addressForm.label}
-                    onChange={(event) => setAddressForm((current) => ({ ...current, label: event.target.value }))}
-                    required
-                  />
+          {data.bootstrap_admin ? (
+            <div className="space-y-4">
+              <div className="surface-muted rounded-[24px] p-5">
+                <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[hsl(var(--muted-foreground))]">
+                  Primary admin
+                </p>
+                <p className="mt-3 text-xl font-semibold text-[hsl(var(--foreground-strong))]">
+                  {data.bootstrap_admin.full_name}
+                </p>
+                <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                  <div className="surface-shell rounded-[18px] px-4 py-3">
+                    <div className="flex items-center gap-2 text-sm font-medium text-[hsl(var(--foreground-strong))]">
+                      <Mail className="h-4 w-4 text-[hsl(var(--brand))]" />
+                      Email
+                    </div>
+                    <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
+                      {data.bootstrap_admin.email}
+                    </p>
+                  </div>
+                  <div className="surface-shell rounded-[18px] px-4 py-3">
+                    <div className="flex items-center gap-2 text-sm font-medium text-[hsl(var(--foreground-strong))]">
+                      <Phone className="h-4 w-4 text-[hsl(var(--brand))]" />
+                      Phone
+                    </div>
+                    <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
+                      {data.bootstrap_admin.phone || 'Not provided'}
+                    </p>
+                  </div>
                 </div>
-              ) : null}
-            </div>
-            <div>
-              <label className="field-label" htmlFor="line1">
-                Address line 1
-              </label>
-              <input
-                id="line1"
-                className="field-input"
-                value={addressForm.line1}
-                onChange={(event) => setAddressForm((current) => ({ ...current, line1: event.target.value }))}
-                required
-              />
-            </div>
-            <div>
-              <label className="field-label" htmlFor="line2">
-                Address line 2
-              </label>
-              <input
-                id="line2"
-                className="field-input"
-                value={addressForm.line2}
-                onChange={(event) => setAddressForm((current) => ({ ...current, line2: event.target.value }))}
-              />
-            </div>
-            <div className="grid gap-4 md:grid-cols-2">
-              <div>
-                <label className="field-label" htmlFor="address-country">
-                  Country
-                </label>
-                <AppSelect
-                  id="address-country"
-                  value={addressCountry.code}
-                  onValueChange={setAddressCountry}
-                  options={COUNTRY_SELECT_OPTIONS}
-                  placeholder="Select country"
-                />
-              </div>
-              <div>
-                <label className="field-label" htmlFor="city">
-                  City
-                </label>
-                <input
-                  id="city"
-                  className="field-input"
-                  value={addressForm.city}
-                  onChange={(event) => setAddressForm((current) => ({ ...current, city: event.target.value }))}
-                  required
-                />
+                <div className="mt-4 flex flex-wrap items-center gap-3">
+                  <StatusBadge tone="info">{data.bootstrap_admin.status.replace(/_/g, ' ')}</StatusBadge>
+                  {data.bootstrap_admin.invitation_sent_at ? (
+                    <span className="text-xs uppercase tracking-[0.16em] text-[hsl(var(--muted-foreground))]">
+                      Invited {formatDate(data.bootstrap_admin.invitation_sent_at)}
+                    </span>
+                  ) : null}
+                </div>
               </div>
             </div>
-            <div className="grid gap-4 md:grid-cols-2">
-              <div>
-                <label className="field-label" htmlFor="address-state">
-                  {addressRule.subdivisionLabel}
-                </label>
-                {addressSubdivisions.length > 0 ? (
-                  <AppSelect
-                    id="address-state"
-                    value={resolveSubdivisionCode(addressCountry.code, addressForm.state, addressForm.state_code)}
-                    onValueChange={setAddressState}
-                    options={addressSubdivisions.map((option) => ({
-                      value: option.code,
-                      label: option.label,
-                      hint: option.taxRegionCode ? `Tax region ${option.taxRegionCode}` : undefined,
-                    }))}
-                    placeholder={`Select ${addressRule.subdivisionLabel.toLowerCase()}`}
-                  />
-                ) : (
-                  <input
-                    id="address-state"
-                    className="field-input"
-                    value={addressForm.state}
-                    onChange={(event) => setAddressForm((current) => ({ ...current, state: event.target.value }))}
-                    required
-                  />
-                )}
-              </div>
-              <div>
-                <label className="field-label" htmlFor="pincode">
-                  {addressRule.postalLabel}
-                </label>
-                <input
-                  id="pincode"
-                  className="field-input"
-                  value={addressForm.pincode}
-                  placeholder={addressRule.postalPlaceholder}
-                  onChange={(event) => setAddressForm((current) => ({ ...current, pincode: event.target.value }))}
-                  required={addressRule.postalRequired !== false}
-                />
-              </div>
-            </div>
-            <div>
-              <label className="field-label" htmlFor="gstin">
-                {getBillingTaxLabel(addressCountry.code)}
-              </label>
-              <input
-                id="gstin"
-                className="field-input"
-                value={addressForm.gstin}
-                onChange={(event) => setAddressForm((current) => ({ ...current, gstin: event.target.value }))}
-                required={addressForm.address_type === 'BILLING' && addressCountry.code === 'IN'}
-              />
-              <p className="mt-2 text-xs text-[hsl(var(--muted-foreground))]">
-                {addressRule.taxHelperText || 'Capture a billing tax registration when this address is used for invoicing.'}
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-3">
-              {editingAddressId ? (
-                <button type="button" onClick={resetAddressForm} className="btn-secondary">
-                  Cancel
-                </button>
-              ) : null}
-              <button
-                type="submit"
-                className="btn-primary"
-                disabled={createAddressMutation.isPending || updateAddressMutation.isPending}
-              >
-                {editingAddressId ? 'Save address' : 'Add address'}
-              </button>
-            </div>
-          </form>
+          ) : (
+            <EmptyState
+              title="No bootstrap admin found"
+              description="Control Tower assigns the primary organisation admin during organisation creation."
+              icon={Mail}
+            />
+          )}
         </SectionCard>
       </div>
 
-      <SectionCard title="Address directory" description="Office locations must link to one of these addresses.">
+      <SectionCard
+        title="Address directory"
+        description="Registered and billing addresses stay active permanently. Additional operational addresses can be added, edited, or deactivated here."
+        action={
+          <button type="button" className="btn-primary" onClick={openCreateAddressModal}>
+            Add address
+          </button>
+        }
+      >
         {data.addresses.length > 0 ? (
           <div className="space-y-3">
             {data.addresses.map((address) => (
@@ -504,12 +396,12 @@ export function OrgProfilePage() {
                     {getBillingTaxLabel(address.country_code)} {address.gstin || 'Not configured'} • Updated {formatDate(address.updated_at)}
                   </p>
                 </div>
-                <div className="flex gap-3">
+                <div className="flex flex-wrap gap-3">
                   <button type="button" onClick={() => handleAddressEdit(address)} className="btn-secondary">
                     Edit
                   </button>
-                  {address.is_active ? (
-                    <button type="button" onClick={() => handleDeactivate(address.id)} className="btn-danger">
+                  {!mandatoryAddressTypes.includes(address.address_type) && address.is_active ? (
+                    <button type="button" onClick={() => void handleDeactivate(address)} className="btn-danger">
                       Deactivate
                     </button>
                   ) : null}
@@ -520,19 +412,179 @@ export function OrgProfilePage() {
         ) : (
           <EmptyState
             title="No addresses configured yet"
-            description="Add organisation addresses so office locations can be linked to a legal or operational site."
+            description="Add organisation addresses so office locations can be linked to legal or operational sites."
             icon={Building2}
           />
         )}
       </SectionCard>
 
-      <SectionCard title="Audit timeline" description="Recent organisation-profile, address, and admin-side changes for this tenant.">
-        <AuditTimeline
-          entries={auditLogs?.results.slice(0, 8)}
-          emptyTitle="No organisation audit activity yet"
-          emptyDescription="Profile updates, address changes, and onboarding operations will appear here as admins work inside this organisation."
-        />
-      </SectionCard>
+      <AppDialog
+        open={isAddressModalOpen}
+        onOpenChange={(open) => {
+          setIsAddressModalOpen(open)
+          if (!open) {
+            resetAddressForm()
+          }
+        }}
+        title={editingAddressId ? 'Edit address' : 'Add address'}
+        description="Use the same modal to maintain registered, billing, and operational organisation addresses."
+        footer={
+          <div className="flex flex-wrap justify-end gap-3">
+            <button type="button" className="btn-secondary" onClick={resetAddressForm}>
+              Cancel
+            </button>
+            <button
+              type="submit"
+              form="org-address-form"
+              className="btn-primary"
+              disabled={createAddressMutation.isPending || updateAddressMutation.isPending}
+            >
+              {editingAddressId ? 'Save address' : 'Add address'}
+            </button>
+          </div>
+        }
+      >
+        <form id="org-address-form" onSubmit={handleAddressSubmit} className="grid gap-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <label className="field-label" htmlFor="address_type">
+                Address type
+              </label>
+              <AppSelect
+                id="address_type"
+                value={addressForm.address_type}
+                onValueChange={(value) =>
+                  setAddressForm((current) => ({
+                    ...current,
+                    address_type: value as OrganisationAddressType,
+                  }))
+                }
+                options={ADDRESS_TYPE_OPTIONS}
+                placeholder="Select address type"
+              />
+            </div>
+            {!mandatoryAddressTypes.includes(addressForm.address_type) ? (
+              <div>
+                <label className="field-label" htmlFor="label">
+                  Address label
+                </label>
+                <input
+                  id="label"
+                  className="field-input"
+                  value={addressForm.label}
+                  onChange={(event) => setAddressForm((current) => ({ ...current, label: event.target.value }))}
+                  required
+                />
+              </div>
+            ) : null}
+          </div>
+          <div>
+            <label className="field-label" htmlFor="line1">
+              Address line 1
+            </label>
+            <input
+              id="line1"
+              className="field-input"
+              value={addressForm.line1}
+              onChange={(event) => setAddressForm((current) => ({ ...current, line1: event.target.value }))}
+              required
+            />
+          </div>
+          <div>
+            <label className="field-label" htmlFor="line2">
+              Address line 2
+            </label>
+            <input
+              id="line2"
+              className="field-input"
+              value={addressForm.line2}
+              onChange={(event) => setAddressForm((current) => ({ ...current, line2: event.target.value }))}
+            />
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <label className="field-label" htmlFor="address-country">
+                Country
+              </label>
+              <AppSelect
+                id="address-country"
+                value={addressCountry.code}
+                onValueChange={setAddressCountry}
+                options={COUNTRY_SELECT_OPTIONS}
+                placeholder="Select country"
+              />
+            </div>
+            <div>
+              <label className="field-label" htmlFor="city">
+                City
+              </label>
+              <input
+                id="city"
+                className="field-input"
+                value={addressForm.city}
+                onChange={(event) => setAddressForm((current) => ({ ...current, city: event.target.value }))}
+                required
+              />
+            </div>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <label className="field-label" htmlFor="address-state">
+                {addressRule.subdivisionLabel}
+              </label>
+              {addressSubdivisions.length > 0 ? (
+                <AppSelect
+                  id="address-state"
+                  value={resolveSubdivisionCode(addressCountry.code, addressForm.state, addressForm.state_code)}
+                  onValueChange={setAddressState}
+                  options={addressSubdivisions.map((option) => ({
+                    value: option.code,
+                    label: option.label,
+                    hint: option.taxRegionCode ? `Tax region ${option.taxRegionCode}` : undefined,
+                  }))}
+                  placeholder={`Select ${addressRule.subdivisionLabel.toLowerCase()}`}
+                />
+              ) : (
+                <input
+                  id="address-state"
+                  className="field-input"
+                  value={addressForm.state}
+                  onChange={(event) => setAddressForm((current) => ({ ...current, state: event.target.value }))}
+                  required
+                />
+              )}
+            </div>
+            <div>
+              <label className="field-label" htmlFor="pincode">
+                {addressRule.postalLabel}
+              </label>
+              <input
+                id="pincode"
+                className="field-input"
+                value={addressForm.pincode}
+                placeholder={addressRule.postalPlaceholder}
+                onChange={(event) => setAddressForm((current) => ({ ...current, pincode: event.target.value }))}
+                required={addressRule.postalRequired !== false}
+              />
+            </div>
+          </div>
+          <div>
+            <label className="field-label" htmlFor="gstin">
+              {getBillingTaxLabel(addressCountry.code)}
+            </label>
+            <input
+              id="gstin"
+              className="field-input"
+              value={addressForm.gstin}
+              onChange={(event) => setAddressForm((current) => ({ ...current, gstin: event.target.value }))}
+              required={addressForm.address_type === 'BILLING' && addressCountry.code === 'IN'}
+            />
+            <p className="mt-2 text-xs text-[hsl(var(--muted-foreground))]">
+              {addressRule.taxHelperText || 'Capture the billing tax registration for invoicing and statutory use.'}
+            </p>
+          </div>
+        </form>
+      </AppDialog>
     </div>
   )
 }

@@ -1,9 +1,9 @@
-import uuid
-
 from django.conf import settings
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
+
+from apps.common.models import AuditedBaseModel
 
 
 class ApprovalRequestKind(models.TextChoices):
@@ -43,8 +43,7 @@ class ApprovalActionStatus(models.TextChoices):
     CANCELLED = 'CANCELLED', 'Cancelled'
 
 
-class ApprovalWorkflow(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+class ApprovalWorkflow(AuditedBaseModel):
     organisation = models.ForeignKey(
         'organisations.Organisation',
         on_delete=models.CASCADE,
@@ -61,9 +60,6 @@ class ApprovalWorkflow(models.Model):
         on_delete=models.SET_NULL,
         related_name='created_approval_workflows',
     )
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
     class Meta:
         db_table = 'approval_workflows'
         ordering = ['name']
@@ -72,8 +68,7 @@ class ApprovalWorkflow(models.Model):
         return f'{self.organisation.name} - {self.name}'
 
 
-class ApprovalWorkflowRule(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+class ApprovalWorkflowRule(AuditedBaseModel):
     workflow = models.ForeignKey(
         ApprovalWorkflow,
         on_delete=models.CASCADE,
@@ -113,9 +108,6 @@ class ApprovalWorkflowRule(models.Model):
         on_delete=models.CASCADE,
         related_name='approval_rules',
     )
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
     class Meta:
         db_table = 'approval_workflow_rules'
         ordering = ['priority', 'created_at']
@@ -124,8 +116,7 @@ class ApprovalWorkflowRule(models.Model):
         return f'{self.workflow.name} [{self.request_kind}]'
 
 
-class ApprovalStage(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+class ApprovalStage(AuditedBaseModel):
     workflow = models.ForeignKey(
         ApprovalWorkflow,
         on_delete=models.CASCADE,
@@ -146,9 +137,6 @@ class ApprovalStage(models.Model):
         on_delete=models.SET_NULL,
         related_name='approval_stage_fallbacks',
     )
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
     class Meta:
         db_table = 'approval_stages'
         ordering = ['sequence', 'created_at']
@@ -163,8 +151,7 @@ class ApprovalStage(models.Model):
         return f'{self.workflow.name} - Stage {self.sequence}'
 
 
-class ApprovalStageApprover(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+class ApprovalStageApprover(AuditedBaseModel):
     stage = models.ForeignKey(
         ApprovalStage,
         on_delete=models.CASCADE,
@@ -178,9 +165,6 @@ class ApprovalStageApprover(models.Model):
         on_delete=models.SET_NULL,
         related_name='stage_approver_assignments',
     )
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
     class Meta:
         db_table = 'approval_stage_approvers'
         ordering = ['created_at']
@@ -189,8 +173,7 @@ class ApprovalStageApprover(models.Model):
         return f'{self.stage} - {self.approver_type}'
 
 
-class ApprovalRun(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+class ApprovalRun(AuditedBaseModel):
     organisation = models.ForeignKey(
         'organisations.Organisation',
         on_delete=models.CASCADE,
@@ -213,9 +196,6 @@ class ApprovalRun(models.Model):
     content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
     object_id = models.UUIDField()
     content_object = GenericForeignKey('content_type', 'object_id')
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
     class Meta:
         db_table = 'approval_runs'
         ordering = ['-created_at']
@@ -228,8 +208,7 @@ class ApprovalRun(models.Model):
         return f'{self.request_kind} - {self.subject_label}'
 
 
-class ApprovalAction(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+class ApprovalAction(AuditedBaseModel):
     approval_run = models.ForeignKey(
         ApprovalRun,
         on_delete=models.CASCADE,
@@ -259,8 +238,6 @@ class ApprovalAction(models.Model):
     )
     comment = models.TextField(blank=True)
     acted_at = models.DateTimeField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'approval_actions'
