@@ -46,7 +46,6 @@ from .models import (
 )
 
 PAN_PATTERN = re.compile(r'^[A-Z]{5}[0-9]{4}[A-Z]$')
-GSTIN_PATTERN = re.compile(r'^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$')
 
 LICENCE_CONSUMING_EMPLOYEE_STATUSES = [
     EmployeeStatus.INVITED,
@@ -66,17 +65,6 @@ def normalize_pan_number(value):
         return ''
     if not PAN_PATTERN.match(normalized):
         raise ValueError('PAN must be in the format AAAAA9999A.')
-    return normalized
-
-
-def normalize_gstin(value, pan_number=''):
-    normalized = (value or '').replace(' ', '').upper()
-    if not normalized:
-        return None
-    if not GSTIN_PATTERN.match(normalized):
-        raise ValueError('GSTIN must be in the format 22AAAAA0000A1Z5.')
-    if pan_number and normalized[2:12] != pan_number:
-        raise ValueError('GSTIN must contain the organisation PAN number.')
     return normalized
 
 
