@@ -25,7 +25,6 @@ import {
   getBillingTaxLabel,
   getSubdivisionName,
   getSubdivisionOptions,
-  resolveCountryCode,
   resolveSubdivisionCode,
 } from '@/lib/addressMetadata'
 import { getErrorMessage } from '@/lib/errors'

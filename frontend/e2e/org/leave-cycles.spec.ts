@@ -69,7 +69,6 @@ test.describe('Org Admin — Leave Cycles (write)', () => {
     await page.locator('#leave-cycle-name').fill(cycleName)
 
     // Change cycle type to FINANCIAL YEAR via Radix Select
-    const cycleTypeButton = page.locator('[id="leave-cycle-type"]').locator('..').getByRole('combobox')
     // AppSelect renders a button-like trigger; click it to open dropdown
     await page.locator('#leave-cycle-type').locator('..').locator('button').click()
     // Click the FINANCIAL YEAR option in the dropdown list

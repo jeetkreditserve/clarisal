@@ -28,7 +28,7 @@ export function AppCheckbox({
       id={id}
       checked={checked}
       disabled={disabled}
-      onCheckedChange={(nextChecked) => onCheckedChange(nextChecked === true)}
+      onCheckedChange={(nextChecked: boolean | 'indeterminate') => onCheckedChange(nextChecked === true)}
       className={cn(
         'flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-[hsl(var(--border-strong))] bg-[hsl(var(--surface))] text-[hsl(var(--brand-foreground))] shadow-[var(--shadow-soft)] transition focus:outline-none focus:ring-4 focus:ring-[hsl(var(--ring)/0.16)] data-[state=checked]:border-[hsl(var(--brand))] data-[state=checked]:bg-[hsl(var(--brand))] disabled:cursor-not-allowed disabled:opacity-60',
         className,

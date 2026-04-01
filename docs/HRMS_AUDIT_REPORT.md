@@ -34,18 +34,18 @@ On security, the most urgent iss`:que is credential exposure: if a `.env` file c
 
 ### 1.1 Backend Stack
 
-| Component | Technology | Version |
-|-----------|-----------|---------|
-| Framework | Django | 4.2.16 |
-| REST API | Django REST Framework | 3.15.2 |
-| Database | PostgreSQL (psycopg2) | 2.9.9 |
-| Task Queue | Celery | 5.4.0 |
-| Cache / Broker | Redis | 5.1.1 |
-| File Storage | AWS S3 (boto3 + django-storages) | 1.35.30 |
-| Authentication | Session-based (no JWT) | — |
-| CORS | django-cors-headers | 4.4.0 |
-| Rate Limiting | django-ratelimit | 4.1.0 |
-| Field Encryption | cryptography (Fernet) | 45.0.7 |
+| Component | Version | Technology |
+|-----------|---------|-----------|
+| Framework | 4.2.16 | Django |
+| REST API | 3.15.2 | Django REST Framework |
+| Database | 2.9.9 | PostgreSQL (psycopg2) |
+| Task Queue | 5.4.0 | Celery |
+| Cache / Broker | 5.1.1 | Redis |
+| File Storage | 1.35.30 | AWS S3 (boto3 + django-storages) |
+| Authentication | — | Session-based (no JWT) |
+| CORS | 4.4.0 | django-cors-headers |
+| Rate Limiting | 4.1.0 | django-ratelimit |
+| Field Encryption | 45.0.7 | cryptography (Fernet) |
 
 Key settings (`backend/calrisal/settings/base.py`):
 - `AUTH_USER_MODEL = 'accounts.User'`

@@ -56,7 +56,7 @@ export function AppDatePicker({
           <DayPicker
             mode="single"
             selected={selectedDate}
-            onSelect={(nextDate) => {
+            onSelect={(nextDate: Date | undefined) => {
               if (!nextDate) return
               onValueChange(format(nextDate, 'yyyy-MM-dd'))
               setOpen(false)

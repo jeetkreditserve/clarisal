@@ -1,7 +1,7 @@
 import * as Popover from '@radix-ui/react-popover'
 import { format, parseISO } from 'date-fns'
 import { CalendarClock } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { DayPicker } from 'react-day-picker'
 
 import { cn } from '@/lib/utils'
@@ -33,13 +33,16 @@ export function AppDateTimePicker({
   const [draftDate, setDraftDate] = useState<Date | undefined>(selectedDateTime ?? undefined)
   const [draftTime, setDraftTime] = useState(selectedDateTime ? format(selectedDateTime, 'HH:mm') : '09:00')
 
-  useEffect(() => {
-    setDraftDate(selectedDateTime ?? undefined)
-    setDraftTime(selectedDateTime ? format(selectedDateTime, 'HH:mm') : '09:00')
-  }, [selectedDateTime])
+  const handleOpenChange = (nextOpen: boolean) => {
+    setOpen(nextOpen)
+    if (nextOpen) {
+      setDraftDate(selectedDateTime ?? undefined)
+      setDraftTime(selectedDateTime ? format(selectedDateTime, 'HH:mm') : '09:00')
+    }
+  }
 
   return (
-    <Popover.Root open={open} onOpenChange={setOpen}>
+    <Popover.Root open={open} onOpenChange={handleOpenChange}>
       <Popover.Trigger asChild>
         <button
           id={id}

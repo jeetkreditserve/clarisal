@@ -80,6 +80,16 @@ export function EmployeeDetailPage() {
       label: location.name,
     })) ?? []),
   ]
+  if (isLoading || !employee) {
+    return (
+      <div className="space-y-5">
+        <SkeletonPageHeader />
+        <SkeletonFormBlock rows={6} />
+        <SkeletonTable rows={6} />
+      </div>
+    )
+  }
+
   const managerSelectOptions = [
     { value: '', label: 'Use self as manager' },
     { value: employee.id, label: 'Self-managed / top-level employee' },
@@ -94,16 +104,6 @@ export function EmployeeDetailPage() {
     value: status,
     label: startCase(status),
   }))
-
-  if (isLoading || !employee) {
-    return (
-      <div className="space-y-5">
-        <SkeletonPageHeader />
-        <SkeletonFormBlock rows={6} />
-        <SkeletonTable rows={6} />
-      </div>
-    )
-  }
 
   const formValues = {
     designation: draft.designation ?? employee.designation ?? '',
