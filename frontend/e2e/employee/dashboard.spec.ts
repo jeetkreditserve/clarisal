@@ -1,4 +1,4 @@
-import { employeeTest as test, expect } from '../../fixtures/auth'
+import { employeeTest as test, expect } from '../fixtures/auth'
 
 test.describe('Employee Dashboard', () => {
   test('dashboard page loads at /me/dashboard', async ({ page }) => {

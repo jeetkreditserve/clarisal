@@ -1,4 +1,4 @@
-import { orgAdminTest as test, expect } from '../../fixtures/auth'
+import { orgAdminTest as test, expect } from '../fixtures/auth'
 import { waitForToast } from '../helpers'
 
 // NOTE: Leave plans require at least one leave cycle to exist.

@@ -1,4 +1,4 @@
-import { employeeTest as test, expect } from '../../fixtures/auth'
+import { employeeTest as test, expect } from '../fixtures/auth'
 import { waitForToast } from '../helpers'
 
 test.describe('Employee Approvals', () => {

@@ -1,4 +1,4 @@
-import { orgAdminTest as test, expect } from '../../fixtures/auth'
+import { orgAdminTest as test, expect } from '../fixtures/auth'
 import { waitForToast, uniqueName } from '../helpers'
 
 test.describe('Org Admin — Locations (read-only)', () => {

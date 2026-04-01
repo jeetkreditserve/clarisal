@@ -1,4 +1,4 @@
-import { orgAdminTest as test, expect } from '../../fixtures/auth'
+import { orgAdminTest as test, expect } from '../fixtures/auth'
 import { waitForToast, uniqueName } from '../helpers'
 
 // NOTE: LeaveCyclesPage renders both the create form and the cycle list on the same page.

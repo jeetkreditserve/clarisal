@@ -1,4 +1,4 @@
-import { ctTest as test, expect } from '../../fixtures/auth'
+import { ctTest as test, expect } from '../fixtures/auth'
 
 test.describe('CT Dashboard', () => {
   test.beforeEach(async ({ page }) => {

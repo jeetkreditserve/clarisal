@@ -1,4 +1,4 @@
-import { orgAdminTest as test, expect } from '../../fixtures/auth'
+import { orgAdminTest as test, expect } from '../fixtures/auth'
 
 test.describe('Org Admin — Dashboard', () => {
   test.beforeEach(async ({ page }) => {

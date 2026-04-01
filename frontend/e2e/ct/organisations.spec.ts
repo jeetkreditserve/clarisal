@@ -1,5 +1,5 @@
-import { ctTest as test, expect } from '../../fixtures/auth'
-import { waitForToast } from '../../helpers'
+import { ctTest as test, expect } from '../fixtures/auth'
+import { waitForToast } from '../helpers'
 
 test.describe('CT Organisations', () => {
   test('Organisations list loads', async ({ page }) => {

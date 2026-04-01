@@ -1,4 +1,4 @@
-import { orgAdminTest as test, expect } from '../../fixtures/auth'
+import { orgAdminTest as test, expect } from '../fixtures/auth'
 import { waitForToast, uniqueName } from '../helpers'
 
 // NOTE: The HolidaysPage renders both the create form and the calendar list on the same page.

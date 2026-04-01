@@ -1,4 +1,4 @@
-import { orgAdminTest as test, expect } from '../../fixtures/auth'
+import { orgAdminTest as test, expect } from '../fixtures/auth'
 import { waitForToast } from '../helpers'
 
 // Shared email for invite + duplicate tests
