@@ -81,7 +81,7 @@ This makes any document locatable by org, employee, and type without a database 
 
 ### Task 3: Locations + Departments API
 
-**Files:** `locations/views.py`, `locations/urls.py`, `departments/views.py`, `departments/urls.py`, `calrisal/urls.py` (add `/api/org/` include), `tests/test_views.py` for each
+**Files:** `locations/views.py`, `locations/urls.py`, `departments/views.py`, `departments/urls.py`, `clarisal/urls.py` (add `/api/org/` include), `tests/test_views.py` for each
 
 **Endpoints:**
 

@@ -47,7 +47,7 @@ On security, the most urgent iss`:que is credential exposure: if a `.env` file c
 | Rate Limiting | 4.1.0 | django-ratelimit |
 | Field Encryption | 45.0.7 | cryptography (Fernet) |
 
-Key settings (`backend/calrisal/settings/base.py`):
+Key settings (`backend/clarisal/settings/base.py`):
 - `AUTH_USER_MODEL = 'accounts.User'`
 - `AUTHENTICATION_BACKENDS = ['apps.accounts.auth_backends.AudienceEmailBackend']`
 - Session cookie: `HttpOnly=True`, `SameSite=Lax`, `age=12h`
@@ -395,11 +395,11 @@ If the `.env` file containing `SECRET_KEY`, `AWS_SECRET_ACCESS_KEY`, `EMAIL_HOST
 3. If tracked: rotate Django `SECRET_KEY`, AWS IAM keys, database password, email credentials
 4. Use a secrets manager (AWS Secrets Manager, HashiCorp Vault, or environment injection via CI/CD) for production
 
-**File**: `backend/calrisal/settings/base.py:16` — default fallback `'django-insecure-dev-key-change-in-production'` confirms the secret key is expected from environment.
+**File**: `backend/clarisal/settings/base.py:16` — default fallback `'django-insecure-dev-key-change-in-production'` confirms the secret key is expected from environment.
 
 #### 4.1.2 FIELD_ENCRYPTION_KEY Defaults to Empty String → Falls Back to SECRET_KEY
 
-**File**: `backend/calrisal/settings/base.py:161`
+**File**: `backend/clarisal/settings/base.py:161`
 ```python
 FIELD_ENCRYPTION_KEY = env('FIELD_ENCRYPTION_KEY', default='')
 ```
@@ -503,7 +503,7 @@ When multiple fields fail simultaneously, the frontend receives only the first. 
 
 #### 4.3.3 No `MAX_PAGE_SIZE` on Pagination
 
-**File**: `backend/calrisal/settings/base.py:140`
+**File**: `backend/clarisal/settings/base.py:140`
 
 No `MAX_PAGE_SIZE` set. A client can request `?page_size=100000` and receive the entire dataset in one response, potentially causing DoS via memory exhaustion.
 
@@ -518,7 +518,7 @@ Should be gated by `import.meta.env.DEV` to avoid leaking stack traces to browse
 ### 4.4 Test Coverage
 
 - 125 Python test files found across backend apps
-- Test configuration (`calrisal/settings/test.py`) uses SQLite in-memory, fast MD5 hashing, disabled throttling — well-structured for CI speed
+- Test configuration (`clarisal/settings/test.py`) uses SQLite in-memory, fast MD5 hashing, disabled throttling — well-structured for CI speed
 - Backend test infrastructure is solid
 - Frontend: Playwright E2E testing configured but no unit or component tests (`*.test.*`, `*.spec.*` absent from `frontend/src/`)
 - No frontend unit tests for hooks, API functions, or component logic
@@ -632,7 +632,7 @@ Overall visual consistency is high — all cards use the same border-radius, all
 | H5 | **No `onError` handlers on mutations** | `useOrgAdmin.ts`, `useEmployeeSelf.ts` | Add `onError: (e) => toast.error(getErrorMessage(e))` to all `useMutation` calls |
 | H6 | **No reports module** | — | Implement 10 core reports: headcount, leave usage, approval turnaround, joiners/leavers, document compliance |
 | H7 | **RBAC has only 3 flat roles** | `accounts/models.py`, permission classes | Design HR_MANAGER and DEPT_MANAGER roles; add department-scoped employee visibility |
-| H8 | **No API versioning** | `calrisal/urls.py` | Add `/api/v1/` prefix; document versioning policy |
+| H8 | **No API versioning** | `clarisal/urls.py` | Add `/api/v1/` prefix; document versioning policy |
 
 ### 🟡 Medium Priority — Next Quarter
 

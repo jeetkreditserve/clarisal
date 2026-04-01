@@ -1,4 +1,4 @@
 import os
 from django.core.wsgi import get_wsgi_application
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'calrisal.settings.production')
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'clarisal.settings.production')
 application = get_wsgi_application()

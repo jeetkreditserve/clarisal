@@ -26,7 +26,7 @@ from apps.timeoff.models import HolidayCalendar, LeaveRequest, OnDutyRequest
 
 @pytest.fixture
 def seed_env(monkeypatch):
-    monkeypatch.setenv('CONTROL_TOWER_EMAIL', 'control.tower@calrisal.com')
+    monkeypatch.setenv('CONTROL_TOWER_EMAIL', 'control.tower@clarisal.com')
     monkeypatch.setenv('CONTROL_TOWER_PASSWORD', 'ControlTower@123')
     monkeypatch.setenv('SEED_ORGANISATION_NAME', 'Northstar People Pvt Ltd')
     monkeypatch.setenv('SEED_ORGANISATION_LICENCE_COUNT', '10')
@@ -62,7 +62,7 @@ class TestSeedControlTowerCommand:
         assert Group.objects.filter(name='employee').exists()
 
         control_tower = User.objects.get(
-            email='control.tower@calrisal.com',
+            email='control.tower@clarisal.com',
             account_type=AccountType.CONTROL_TOWER,
         )
         assert control_tower.account_type == AccountType.CONTROL_TOWER
@@ -90,7 +90,7 @@ class TestSeedControlTowerCommand:
         assert OrganisationMembership.objects.get(user=primary_admin, organisation=primary_org).status == OrganisationMembershipStatus.ACTIVE
 
         shared_admin = User.objects.get(
-            email='control.tower@calrisal.com',
+            email='control.tower@clarisal.com',
             account_type=AccountType.WORKFORCE,
         )
         assert shared_admin.check_password('ControlTower@123')
@@ -171,7 +171,7 @@ class TestSeedControlTowerCommand:
         call_command('seed_control_tower')
         first_primary_org = Organisation.objects.get(name='Northstar People Pvt Ltd')
         first_control_tower = User.objects.get(
-            email='control.tower@calrisal.com',
+            email='control.tower@clarisal.com',
             account_type=AccountType.CONTROL_TOWER,
         )
         first_org_admin = User.objects.get(
@@ -183,7 +183,7 @@ class TestSeedControlTowerCommand:
 
         second_primary_org = Organisation.objects.get(name='Northstar People Pvt Ltd')
         second_control_tower = User.objects.get(
-            email='control.tower@calrisal.com',
+            email='control.tower@clarisal.com',
             account_type=AccountType.CONTROL_TOWER,
         )
         second_org_admin = User.objects.get(
@@ -222,16 +222,16 @@ class TestSeedControlTowerCommand:
         assert Organisation.objects.count() == 0
 
     def test_command_uses_custom_control_tower_email_from_env(self, seed_env):
-        seed_env.setenv('CONTROL_TOWER_EMAIL', 'platform-admin@calrisal.com')
+        seed_env.setenv('CONTROL_TOWER_EMAIL', 'platform-admin@clarisal.com')
 
         call_command('seed_control_tower')
 
         control_tower_user = User.objects.get(
-            email='platform-admin@calrisal.com',
+            email='platform-admin@clarisal.com',
             account_type=AccountType.CONTROL_TOWER,
         )
         workforce_twin = User.objects.get(
-            email='platform-admin@calrisal.com',
+            email='platform-admin@clarisal.com',
             account_type=AccountType.WORKFORCE,
         )
         assert control_tower_user.account_type == AccountType.CONTROL_TOWER

@@ -38,7 +38,7 @@ export function ControlTowerLoginPage() {
     <AuthShell
       variant="control-tower"
       title="Control Tower sign in"
-      description="Separate secure access for Calrisal platform operators and Django admin users."
+      description="Separate secure access for Clarisal platform operators and Django admin users."
       footer={
         <div className="flex items-center justify-between gap-4">
           <a href="/ct/reset-password" className="auth-link">
@@ -63,7 +63,7 @@ export function ControlTowerLoginPage() {
             value={email}
             onChange={(event) => setEmail(event.target.value)}
             className="field-input"
-            placeholder="operator@calrisal.com"
+            placeholder="operator@clarisal.com"
           />
           <FieldErrorText message={fieldErrors.email} />
         </div>

@@ -12,8 +12,8 @@ fs.mkdirSync(AUTH_DIR, { recursive: true })
 
 setup('authenticate as CT', async ({ page }) => {
   await page.goto('/ct/login')
-  await page.fill('#ct-email', 'admin@calrisal.com')
-  await page.fill('#ct-password', 'CalrisalAdmin@2024!')
+  await page.fill('#ct-email', 'admin@clarisal.com')
+  await page.fill('#ct-password', 'ClarisalAdmin@2024!')
   await page.click('button[type="submit"]')
   await page.waitForURL('/ct/dashboard', { timeout: 15000 })
   await page.context().storageState({ path: CT_AUTH_FILE })

@@ -45,7 +45,7 @@ export function ControlTowerRequestPasswordResetPage() {
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               className="field-input"
-              placeholder="operator@calrisal.com"
+              placeholder="operator@clarisal.com"
             />
           </div>
           <button type="submit" disabled={isLoading} className="btn-primary w-full">

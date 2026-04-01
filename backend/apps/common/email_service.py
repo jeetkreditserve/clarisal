@@ -20,7 +20,7 @@ def _parse_sender():
     parsed_name, parsed_email = parseaddr(configured)
     return {
         'address': parsed_email or configured,
-        'name': display_name or parsed_name or 'Calrisal',
+        'name': display_name or parsed_name or 'Clarisal',
     }
 
 

@@ -4,11 +4,11 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data/
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-calrisal}
-      POSTGRES_USER: ${POSTGRES_USER:-calrisal}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-calrisal_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-clarisal}
+      POSTGRES_USER: ${POSTGRES_USER:-clarisal}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-clarisal_dev_password}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-calrisal}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-clarisal}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -25,13 +25,13 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    command: ["/bin/sh", "/app/docker/start-web.sh", "gunicorn", "calrisal.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "4"]
+    command: ["/bin/sh", "/app/docker/start-web.sh", "gunicorn", "clarisal.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "4"]
     volumes:
       - backend_static:/app/staticfiles
     env_file:
       - .env
     environment:
-      DJANGO_SETTINGS_MODULE: calrisal.settings.production
+      DJANGO_SETTINGS_MODULE: clarisal.settings.production
     depends_on:
       db:
         condition: service_healthy
@@ -54,11 +54,11 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    command: celery -A calrisal worker -l info
+    command: celery -A clarisal worker -l info
     env_file:
       - .env
     environment:
-      DJANGO_SETTINGS_MODULE: calrisal.settings.production
+      DJANGO_SETTINGS_MODULE: clarisal.settings.production
     depends_on:
       db:
         condition: service_healthy
@@ -72,11 +72,11 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    command: celery -A calrisal beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    command: celery -A clarisal beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
     env_file:
       - .env
     environment:
-      DJANGO_SETTINGS_MODULE: calrisal.settings.production
+      DJANGO_SETTINGS_MODULE: clarisal.settings.production
     depends_on:
       db:
         condition: service_healthy

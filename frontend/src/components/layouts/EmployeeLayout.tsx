@@ -30,14 +30,14 @@ export function EmployeeLayout() {
 
   return (
     <div className="min-h-screen lg:flex">
-      <SidebarNav items={navItems} title="Calrisal" subtitle="Employee Self-Service" />
+      <SidebarNav items={navItems} title="Clarisal" subtitle="Employee Self-Service" />
       <div className="flex min-w-0 flex-1 flex-col px-4 pb-6 lg:pl-0 lg:pr-6">
         <header className="shell-topbar sticky top-4 z-20 mt-0 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-sm font-medium text-[hsl(var(--muted-foreground))]">Personal workspace</p>
             <div className="mt-2 flex flex-wrap items-center gap-3">
               <h1 className="text-xl font-semibold tracking-tight text-[hsl(var(--foreground-strong))]">{user?.full_name || 'Employee profile'}</h1>
-              <StatusBadge tone="info">{user?.organisation_name || 'Calrisal'}</StatusBadge>
+              <StatusBadge tone="info">{user?.organisation_name || 'Clarisal'}</StatusBadge>
               {user?.active_employee_onboarding_status ? (
                 <StatusBadge tone={user.active_employee_onboarding_status === 'COMPLETE' ? 'success' : 'warning'}>
                   {user.active_employee_onboarding_status}

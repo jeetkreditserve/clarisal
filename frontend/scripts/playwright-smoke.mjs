@@ -1,7 +1,7 @@
 import { chromium } from 'playwright'
 
 const baseUrl = process.env.APP_BASE_URL ?? 'http://127.0.0.1:8080'
-const controlTowerEmail = process.env.CONTROL_TOWER_EMAIL ?? 'admin@calrisal.com'
+const controlTowerEmail = process.env.CONTROL_TOWER_EMAIL ?? 'admin@clarisal.com'
 const controlTowerPassword = process.env.CONTROL_TOWER_PASSWORD ?? 'change-me-in-production'
 const orgAdminEmail = process.env.SEED_ORG_ADMIN_EMAIL ?? 'admin@acmeworkforce.com'
 const orgAdminPassword = process.env.SEED_ORG_ADMIN_PASSWORD ?? 'Admin@12345'
@@ -87,7 +87,7 @@ async function assertAuthPageFits(page, path, viewport) {
 try {
   await run('auth_login_no_scroll', async (page) => {
     await page.addInitScript(() => {
-      localStorage.setItem('calrisal-theme', 'light')
+      localStorage.setItem('clarisal-theme', 'light')
     })
 
     for (const viewport of authViewportMatrix) {
@@ -98,7 +98,7 @@ try {
 
   await run('light_theme_auth_surface', async (page) => {
     await page.addInitScript(() => {
-      localStorage.setItem('calrisal-theme', 'light')
+      localStorage.setItem('clarisal-theme', 'light')
     })
     await page.goto(`${baseUrl}/ct/login`, { waitUntil: 'networkidle' })
 
@@ -139,7 +139,7 @@ try {
     await page.reload({ waitUntil: 'networkidle' })
 
     const theme = await page.evaluate(() => ({
-      theme: localStorage.getItem('calrisal-theme'),
+      theme: localStorage.getItem('clarisal-theme'),
       resolved: document.documentElement.dataset.theme,
     }))
 

@@ -32,7 +32,7 @@ export function OrgLayout() {
 
   return (
     <div className="min-h-screen lg:flex">
-      <SidebarNav items={navItems} title="Calrisal" subtitle="Organisation Console" />
+      <SidebarNav items={navItems} title="Clarisal" subtitle="Organisation Console" />
       <div className="flex min-w-0 flex-1 flex-col px-4 pb-6 lg:pl-0 lg:pr-6">
         <header className="shell-topbar sticky top-4 z-20 mt-0 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>

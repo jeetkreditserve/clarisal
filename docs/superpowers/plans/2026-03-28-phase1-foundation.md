@@ -21,15 +21,15 @@
 - Create: `backend/Dockerfile`
 - Create: `backend/requirements.txt`
 - Create: `backend/manage.py`
-- Create: `backend/calrisal/__init__.py`
-- Create: `backend/calrisal/settings/__init__.py`
-- Create: `backend/calrisal/settings/base.py`
-- Create: `backend/calrisal/settings/development.py`
-- Create: `backend/calrisal/settings/production.py`
-- Create: `backend/calrisal/urls.py`
-- Create: `backend/calrisal/wsgi.py`
-- Create: `backend/calrisal/asgi.py`
-- Create: `backend/calrisal/celery.py`
+- Create: `backend/clarisal/__init__.py`
+- Create: `backend/clarisal/settings/__init__.py`
+- Create: `backend/clarisal/settings/base.py`
+- Create: `backend/clarisal/settings/development.py`
+- Create: `backend/clarisal/settings/production.py`
+- Create: `backend/clarisal/urls.py`
+- Create: `backend/clarisal/wsgi.py`
+- Create: `backend/clarisal/asgi.py`
+- Create: `backend/clarisal/celery.py`
 - Create: `backend/apps/__init__.py`
 - Create: `backend/apps/accounts/` — Custom User model, JWT auth, permissions
 - Create: `backend/apps/organisations/` — Organisation model + state enum
@@ -147,10 +147,10 @@ ALLOWED_HOSTS=localhost,127.0.0.1,backend
 CORS_ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000
 
 # Database
-POSTGRES_DB=calrisal
-POSTGRES_USER=calrisal
-POSTGRES_PASSWORD=calrisal_dev_password
-DATABASE_URL=postgresql://calrisal:calrisal_dev_password@db:5432/calrisal
+POSTGRES_DB=clarisal
+POSTGRES_USER=clarisal
+POSTGRES_PASSWORD=clarisal_dev_password
+DATABASE_URL=postgresql://clarisal:clarisal_dev_password@db:5432/clarisal
 
 # Redis
 REDIS_URL=redis://redis:6379/0
@@ -162,24 +162,24 @@ JWT_REFRESH_TOKEN_LIFETIME_DAYS=7
 # AWS S3
 AWS_ACCESS_KEY_ID=
 AWS_SECRET_ACCESS_KEY=
-AWS_STORAGE_BUCKET_NAME=calrisal-documents
+AWS_STORAGE_BUCKET_NAME=clarisal-documents
 AWS_S3_REGION_NAME=ap-south-1
 
 # Email (Zoho SMTP)
 EMAIL_HOST=smtp.zoho.in
 EMAIL_PORT=587
 EMAIL_USE_TLS=true
-EMAIL_HOST_USER=noreply@calrisal.com
+EMAIL_HOST_USER=noreply@clarisal.com
 EMAIL_HOST_PASSWORD=
-DEFAULT_FROM_EMAIL=Calrisal <noreply@calrisal.com>
+DEFAULT_FROM_EMAIL=Clarisal <noreply@clarisal.com>
 
 # Frontend
 VITE_API_BASE_URL=http://localhost:8000/api
 
 # App
 FRONTEND_URL=http://localhost:5173
-CONTROL_TOWER_EMAIL=admin@calrisal.com
-CONTROL_TOWER_PASSWORD=CalrisalAdmin@2024!
+CONTROL_TOWER_EMAIL=admin@clarisal.com
+CONTROL_TOWER_PASSWORD=ClarisalAdmin@2024!
 ```
 
 - [ ] **Step 1.4: Create backend Dockerfile**
@@ -205,7 +205,7 @@ COPY . .
 
 EXPOSE 8000
 
-CMD ["gunicorn", "calrisal.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "4"]
+CMD ["gunicorn", "clarisal.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "4"]
 ```
 
 - [ ] **Step 1.5: Create frontend Dockerfile**
@@ -245,13 +245,13 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data/
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-calrisal}
-      POSTGRES_USER: ${POSTGRES_USER:-calrisal}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-calrisal_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-clarisal}
+      POSTGRES_USER: ${POSTGRES_USER:-clarisal}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-clarisal_dev_password}
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-calrisal}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-clarisal}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -278,7 +278,7 @@ services:
     env_file:
       - .env
     environment:
-      DJANGO_SETTINGS_MODULE: calrisal.settings.development
+      DJANGO_SETTINGS_MODULE: clarisal.settings.development
     depends_on:
       db:
         condition: service_healthy
@@ -289,13 +289,13 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    command: celery -A calrisal worker -l info
+    command: celery -A clarisal worker -l info
     volumes:
       - ./backend:/app
     env_file:
       - .env
     environment:
-      DJANGO_SETTINGS_MODULE: calrisal.settings.development
+      DJANGO_SETTINGS_MODULE: clarisal.settings.development
     depends_on:
       db:
         condition: service_healthy
@@ -306,13 +306,13 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    command: celery -A calrisal beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    command: celery -A clarisal beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
     volumes:
       - ./backend:/app
     env_file:
       - .env
     environment:
-      DJANGO_SETTINGS_MODULE: calrisal.settings.development
+      DJANGO_SETTINGS_MODULE: clarisal.settings.development
     depends_on:
       db:
         condition: service_healthy
@@ -354,14 +354,14 @@ git commit -m "chore: add docker-compose and Dockerfiles for all services"
 **Files:**
 - Create: `backend/requirements.txt`
 - Create: `backend/manage.py`
-- Create: `backend/calrisal/__init__.py`
-- Create: `backend/calrisal/settings/base.py`
-- Create: `backend/calrisal/settings/development.py`
-- Create: `backend/calrisal/settings/production.py`
-- Create: `backend/calrisal/urls.py`
-- Create: `backend/calrisal/wsgi.py`
-- Create: `backend/calrisal/asgi.py`
-- Create: `backend/calrisal/celery.py`
+- Create: `backend/clarisal/__init__.py`
+- Create: `backend/clarisal/settings/base.py`
+- Create: `backend/clarisal/settings/development.py`
+- Create: `backend/clarisal/settings/production.py`
+- Create: `backend/clarisal/urls.py`
+- Create: `backend/clarisal/wsgi.py`
+- Create: `backend/clarisal/asgi.py`
+- Create: `backend/clarisal/celery.py`
 
 - [ ] **Step 2.1: Create requirements.txt**
 
@@ -406,9 +406,9 @@ faker==30.3.0
 
 ```bash
 cd /home/jeet/PycharmProjects/clarisal/backend
-mkdir -p calrisal/settings apps
-touch calrisal/__init__.py
-touch calrisal/settings/__init__.py
+mkdir -p clarisal/settings apps
+touch clarisal/__init__.py
+touch clarisal/settings/__init__.py
 touch apps/__init__.py
 ```
 
@@ -422,7 +422,7 @@ import sys
 
 
 def main():
-    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'calrisal.settings.development')
+    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'clarisal.settings.development')
     try:
         from django.core.management import execute_from_command_line
     except ImportError as exc:
@@ -440,7 +440,7 @@ if __name__ == '__main__':
 
 - [ ] **Step 2.4: Create settings/base.py**
 
-Create `/home/jeet/PycharmProjects/clarisal/backend/calrisal/settings/base.py`:
+Create `/home/jeet/PycharmProjects/clarisal/backend/clarisal/settings/base.py`:
 ```python
 import os
 from pathlib import Path
@@ -502,7 +502,7 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-ROOT_URLCONF = 'calrisal.urls'
+ROOT_URLCONF = 'clarisal.urls'
 
 TEMPLATES = [
     {
@@ -520,10 +520,10 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'calrisal.wsgi.application'
+WSGI_APPLICATION = 'clarisal.wsgi.application'
 
 DATABASES = {
-    'default': env.db('DATABASE_URL', default='postgresql://calrisal:calrisal_dev_password@localhost:5432/calrisal')
+    'default': env.db('DATABASE_URL', default='postgresql://clarisal:clarisal_dev_password@localhost:5432/clarisal')
 }
 
 AUTH_PASSWORD_VALIDATORS = [
@@ -599,12 +599,12 @@ EMAIL_PORT = env.int('EMAIL_PORT', default=587)
 EMAIL_USE_TLS = env.bool('EMAIL_USE_TLS', default=True)
 EMAIL_HOST_USER = env('EMAIL_HOST_USER', default='')
 EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', default='')
-DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='Calrisal <noreply@calrisal.com>')
+DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='Clarisal <noreply@clarisal.com>')
 
 # AWS S3
 AWS_ACCESS_KEY_ID = env('AWS_ACCESS_KEY_ID', default='')
 AWS_SECRET_ACCESS_KEY = env('AWS_SECRET_ACCESS_KEY', default='')
-AWS_STORAGE_BUCKET_NAME = env('AWS_STORAGE_BUCKET_NAME', default='calrisal-documents')
+AWS_STORAGE_BUCKET_NAME = env('AWS_STORAGE_BUCKET_NAME', default='clarisal-documents')
 AWS_S3_REGION_NAME = env('AWS_S3_REGION_NAME', default='ap-south-1')
 AWS_S3_SIGNATURE_VERSION = 's3v4'
 AWS_DEFAULT_ACL = 'private'
@@ -617,7 +617,7 @@ INVITE_TOKEN_EXPIRY_HOURS = 48
 
 - [ ] **Step 2.5: Create settings/development.py**
 
-Create `/home/jeet/PycharmProjects/clarisal/backend/calrisal/settings/development.py`:
+Create `/home/jeet/PycharmProjects/clarisal/backend/clarisal/settings/development.py`:
 ```python
 from .base import *
 
@@ -657,7 +657,7 @@ LOGGING = {
 
 - [ ] **Step 2.6: Create settings/production.py**
 
-Create `/home/jeet/PycharmProjects/clarisal/backend/calrisal/settings/production.py`:
+Create `/home/jeet/PycharmProjects/clarisal/backend/clarisal/settings/production.py`:
 ```python
 from .base import *
 
@@ -696,9 +696,9 @@ LOGGING = {
 }
 ```
 
-- [ ] **Step 2.7: Create calrisal/urls.py**
+- [ ] **Step 2.7: Create clarisal/urls.py**
 
-Create `/home/jeet/PycharmProjects/clarisal/backend/calrisal/urls.py`:
+Create `/home/jeet/PycharmProjects/clarisal/backend/clarisal/urls.py`:
 ```python
 from django.contrib import admin
 from django.urls import path, include
@@ -706,7 +706,7 @@ from django.http import JsonResponse
 
 
 def health_check(request):
-    return JsonResponse({'status': 'ok', 'service': 'calrisal-api'})
+    return JsonResponse({'status': 'ok', 'service': 'clarisal-api'})
 
 
 urlpatterns = [
@@ -717,39 +717,39 @@ urlpatterns = [
 ]
 ```
 
-- [ ] **Step 2.8: Create calrisal/wsgi.py and asgi.py**
+- [ ] **Step 2.8: Create clarisal/wsgi.py and asgi.py**
 
-Create `/home/jeet/PycharmProjects/clarisal/backend/calrisal/wsgi.py`:
+Create `/home/jeet/PycharmProjects/clarisal/backend/clarisal/wsgi.py`:
 ```python
 import os
 from django.core.wsgi import get_wsgi_application
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'calrisal.settings.production')
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'clarisal.settings.production')
 application = get_wsgi_application()
 ```
 
-Create `/home/jeet/PycharmProjects/clarisal/backend/calrisal/asgi.py`:
+Create `/home/jeet/PycharmProjects/clarisal/backend/clarisal/asgi.py`:
 ```python
 import os
 from django.core.asgi import get_asgi_application
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'calrisal.settings.production')
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'clarisal.settings.production')
 application = get_asgi_application()
 ```
 
-- [ ] **Step 2.9: Create calrisal/celery.py**
+- [ ] **Step 2.9: Create clarisal/celery.py**
 
-Create `/home/jeet/PycharmProjects/clarisal/backend/calrisal/celery.py`:
+Create `/home/jeet/PycharmProjects/clarisal/backend/clarisal/celery.py`:
 ```python
 import os
 from celery import Celery
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'calrisal.settings.development')
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'clarisal.settings.development')
 
-app = Celery('calrisal')
+app = Celery('clarisal')
 app.config_from_object('django.conf:settings', namespace='CELERY')
 app.autodiscover_tasks()
 ```
 
-Create `/home/jeet/PycharmProjects/clarisal/backend/calrisal/__init__.py`:
+Create `/home/jeet/PycharmProjects/clarisal/backend/clarisal/__init__.py`:
 ```python
 from .celery import app as celery_app
 
@@ -760,7 +760,7 @@ __all__ = ('celery_app',)
 
 ```bash
 cd /home/jeet/PycharmProjects/clarisal
-git add backend/requirements.txt backend/manage.py backend/calrisal/
+git add backend/requirements.txt backend/manage.py backend/clarisal/
 git commit -m "feat: scaffold Django project with split settings and Celery config"
 ```
 
@@ -1438,7 +1438,7 @@ Expected output: 8 migration files created, Django resolves circular FKs automat
 
 ```bash
 cd /home/jeet/PycharmProjects/clarisal
-git add backend/apps/ backend/calrisal/
+git add backend/apps/ backend/clarisal/
 git commit -m "feat: create all Django apps and database models"
 ```
 
@@ -1472,7 +1472,7 @@ def api_client():
 @pytest.fixture
 def ct_user(db):
     return User.objects.create_user(
-        email='ct@calrisal.com',
+        email='ct@clarisal.com',
         password='TestPass@123',
         role=UserRole.CONTROL_TOWER,
         is_active=True,
@@ -1483,7 +1483,7 @@ def ct_user(db):
 class TestLogin:
     def test_login_returns_tokens_and_user(self, api_client, ct_user):
         response = api_client.post('/api/auth/login/', {
-            'email': 'ct@calrisal.com',
+            'email': 'ct@clarisal.com',
             'password': 'TestPass@123',
         }, format='json')
         assert response.status_code == 200
@@ -1491,40 +1491,40 @@ class TestLogin:
         assert 'access' in data
         assert 'refresh' in data
         assert data['user']['role'] == UserRole.CONTROL_TOWER
-        assert data['user']['email'] == 'ct@calrisal.com'
+        assert data['user']['email'] == 'ct@clarisal.com'
 
     def test_login_wrong_password_returns_401(self, api_client, ct_user):
         response = api_client.post('/api/auth/login/', {
-            'email': 'ct@calrisal.com',
+            'email': 'ct@clarisal.com',
             'password': 'wrongpassword',
         }, format='json')
         assert response.status_code == 401
 
     def test_login_inactive_user_returns_401(self, api_client, db):
         User.objects.create_user(
-            email='inactive@calrisal.com',
+            email='inactive@clarisal.com',
             password='TestPass@123',
             is_active=False,
         )
         response = api_client.post('/api/auth/login/', {
-            'email': 'inactive@calrisal.com',
+            'email': 'inactive@clarisal.com',
             'password': 'TestPass@123',
         }, format='json')
         assert response.status_code == 401
 
     def test_me_returns_current_user(self, api_client, ct_user):
         login = api_client.post('/api/auth/login/', {
-            'email': 'ct@calrisal.com',
+            'email': 'ct@clarisal.com',
             'password': 'TestPass@123',
         }, format='json')
         api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {login.json()['access']}")
         response = api_client.get('/api/auth/me/')
         assert response.status_code == 200
-        assert response.json()['email'] == 'ct@calrisal.com'
+        assert response.json()['email'] == 'ct@clarisal.com'
 
     def test_logout_blacklists_refresh_token(self, api_client, ct_user):
         login = api_client.post('/api/auth/login/', {
-            'email': 'ct@calrisal.com',
+            'email': 'ct@clarisal.com',
             'password': 'TestPass@123',
         }, format='json')
         api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {login.json()['access']}")
@@ -1741,13 +1741,13 @@ Create `/home/jeet/PycharmProjects/clarisal/backend/conftest.py`:
 import django
 import os
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'calrisal.settings.development')
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'clarisal.settings.development')
 ```
 
 Create `/home/jeet/PycharmProjects/clarisal/backend/pytest.ini`:
 ```ini
 [pytest]
-DJANGO_SETTINGS_MODULE = calrisal.settings.development
+DJANGO_SETTINGS_MODULE = clarisal.settings.development
 python_files = tests/test_*.py
 python_classes = Test
 python_functions = test_
@@ -1812,8 +1812,8 @@ class Command(BaseCommand):
                 self.stdout.write(f'  Created group: {group_name}')
 
         # Create Control Tower user
-        email = os.environ.get('CONTROL_TOWER_EMAIL', 'admin@calrisal.com')
-        password = os.environ.get('CONTROL_TOWER_PASSWORD', 'CalrisalAdmin@2024!')
+        email = os.environ.get('CONTROL_TOWER_EMAIL', 'admin@clarisal.com')
+        password = os.environ.get('CONTROL_TOWER_PASSWORD', 'ClarisalAdmin@2024!')
 
         if User.objects.filter(email=email).exists():
             self.stdout.write(self.style.WARNING(f'Control Tower user {email} already exists, skipping.'))
@@ -1862,7 +1862,7 @@ Expected:
 Created group: control_tower
 Created group: org_admin
 Created group: employee
-Control Tower user created: admin@calrisal.com
+Control Tower user created: admin@clarisal.com
 IMPORTANT: Change the default password in production!
 ```
 
@@ -2485,7 +2485,7 @@ export function CTLayout() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-[hsl(var(--background))]">
-      <SidebarNav items={navItems} title="Calrisal" subtitle="Control Tower" />
+      <SidebarNav items={navItems} title="Clarisal" subtitle="Control Tower" />
       <div className="flex flex-1 flex-col overflow-hidden pl-64">
         <header className="flex h-16 items-center justify-between border-b bg-background px-6">
           <div />
@@ -2537,7 +2537,7 @@ export function OrgLayout() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-[hsl(var(--background))]">
-      <SidebarNav items={navItems} title="Calrisal" subtitle="HR Portal" />
+      <SidebarNav items={navItems} title="Clarisal" subtitle="HR Portal" />
       <div className="flex flex-1 flex-col overflow-hidden pl-64">
         <header className="flex h-16 items-center justify-between border-b bg-background px-6">
           <div />
@@ -2590,7 +2590,7 @@ export function EmployeeLayout() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-[hsl(var(--background))]">
-      <SidebarNav items={navItems} title="Calrisal" subtitle="Employee Portal" />
+      <SidebarNav items={navItems} title="Clarisal" subtitle="Employee Portal" />
       <div className="flex flex-1 flex-col overflow-hidden pl-64">
         <header className="flex h-16 items-center justify-between border-b bg-background px-6">
           <div />
@@ -2699,7 +2699,7 @@ export function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-[hsl(var(--sidebar-background))]">
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
-          <h1 className="text-3xl font-bold text-white tracking-tight">Calrisal</h1>
+          <h1 className="text-3xl font-bold text-white tracking-tight">Clarisal</h1>
           <p className="mt-2 text-sm text-white/60">Employee & Payroll Management</p>
         </div>
         <div className="rounded-xl bg-white p-8 shadow-2xl">
@@ -2846,7 +2846,7 @@ export function InviteAcceptPage() {
     <div className="flex min-h-screen items-center justify-center bg-[hsl(var(--sidebar-background))]">
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
-          <h1 className="text-3xl font-bold text-white tracking-tight">Calrisal</h1>
+          <h1 className="text-3xl font-bold text-white tracking-tight">Clarisal</h1>
           <p className="mt-2 text-sm text-white/60">Set up your account</p>
         </div>
         <div className="rounded-xl bg-white p-8 shadow-2xl">
@@ -2936,7 +2936,7 @@ export function RequestPasswordResetPage() {
     <div className="flex min-h-screen items-center justify-center bg-[hsl(var(--sidebar-background))]">
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
-          <h1 className="text-3xl font-bold text-white tracking-tight">Calrisal</h1>
+          <h1 className="text-3xl font-bold text-white tracking-tight">Clarisal</h1>
         </div>
         <div className="rounded-xl bg-white p-8 shadow-2xl">
           {submitted ? (
@@ -3170,7 +3170,7 @@ Expected:
 Created group: control_tower
 Created group: org_admin
 Created group: employee
-Control Tower user created: admin@calrisal.com
+Control Tower user created: admin@clarisal.com
 ```
 
 - [ ] **Step 10.4: Verify health endpoint**
@@ -3179,14 +3179,14 @@ Control Tower user created: admin@calrisal.com
 curl http://localhost:8000/health/
 ```
 
-Expected: `{"status": "ok", "service": "calrisal-api"}`
+Expected: `{"status": "ok", "service": "clarisal-api"}`
 
 - [ ] **Step 10.5: Verify login via API**
 
 ```bash
 curl -X POST http://localhost:8000/api/auth/login/ \
   -H "Content-Type: application/json" \
-  -d '{"email":"admin@calrisal.com","password":"CalrisalAdmin@2024!"}'
+  -d '{"email":"admin@clarisal.com","password":"ClarisalAdmin@2024!"}'
 ```
 
 Expected: Response with `access`, `refresh`, and `user.role == "CONTROL_TOWER"`.
@@ -3200,12 +3200,12 @@ curl http://localhost:8000/api/auth/me/ \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
-Expected: `{"id":"...","email":"admin@calrisal.com","role":"CONTROL_TOWER",...}`
+Expected: `{"id":"...","email":"admin@clarisal.com","role":"CONTROL_TOWER",...}`
 
 - [ ] **Step 10.7: Verify login via UI**
 
 Open browser at `http://localhost:5173/auth/login`.
-Login with `admin@calrisal.com` / `CalrisalAdmin@2024!`.
+Login with `admin@clarisal.com` / `ClarisalAdmin@2024!`.
 Expected: Redirected to `/ct/dashboard` with the Control Tower dashboard visible.
 
 - [ ] **Step 10.8: Run backend test suite**
@@ -3242,4 +3242,4 @@ git commit -m "feat: Phase 1 complete — Docker foundation, Django models, JWT 
 
 ---
 
-*Plan generated: 2026-03-28 — calrisal Phase 1 Foundation*
+*Plan generated: 2026-03-28 — clarisal Phase 1 Foundation*

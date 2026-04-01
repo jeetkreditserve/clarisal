@@ -12,10 +12,10 @@ import psycopg2
 
 database_url = os.environ.get(
     "DATABASE_URL",
-    "postgresql://calrisal:calrisal_dev_password@db:5432/calrisal",
+    "postgresql://clarisal:clarisal_dev_password@db:5432/clarisal",
 )
 parsed = urlparse(database_url)
-database_name = (parsed.path or "/calrisal").lstrip("/")
+database_name = (parsed.path or "/clarisal").lstrip("/")
 
 for attempt in range(60):
     try:

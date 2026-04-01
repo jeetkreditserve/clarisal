@@ -10,8 +10,8 @@ test.describe('Authentication', () => {
   test.describe('CT login', () => {
     test('CT login with valid credentials → /ct/dashboard', async ({ page }) => {
       await page.goto('/ct/login')
-      await page.fill('#ct-email', 'admin@calrisal.com')
-      await page.fill('#ct-password', 'CalrisalAdmin@2024!')
+      await page.fill('#ct-email', 'admin@clarisal.com')
+      await page.fill('#ct-password', 'ClarisalAdmin@2024!')
       await page.click('button[type="submit"]')
       await page.waitForURL('**/ct/dashboard', { timeout: 15000 })
       expect(page.url()).toContain('/ct/dashboard')
@@ -19,7 +19,7 @@ test.describe('Authentication', () => {
 
     test('CT login with wrong password shows error', async ({ page }) => {
       await page.goto('/ct/login')
-      await page.fill('#ct-email', 'admin@calrisal.com')
+      await page.fill('#ct-email', 'admin@clarisal.com')
       await page.fill('#ct-password', 'wrongpassword')
       await page.click('button[type="submit"]')
       await expect(page.locator('.notice-error')).toBeVisible({ timeout: 10000 })

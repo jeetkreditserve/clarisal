@@ -16,22 +16,22 @@ def send_password_reset_email(self, reset_token_id: str, raw_token: str):
         reset_url = f"{settings.FRONTEND_URL}/ct/reset-password/{raw_token}"
     else:
         reset_url = f"{settings.FRONTEND_URL}/auth/reset-password/{raw_token}"
-    subject = 'Reset your Calrisal password'
+    subject = 'Reset your Clarisal password'
     body = (
         f"Hi {reset_token.user.full_name},\n\n"
-        "We received a request to reset your Calrisal password.\n\n"
+        "We received a request to reset your Clarisal password.\n\n"
         f"Reset it here:\n{reset_url}\n\n"
         f"This link expires in {settings.PASSWORD_RESET_TOKEN_EXPIRY_MINUTES} minutes.\n"
         "If you did not request this, you can ignore this email.\n\n"
-        "— The Calrisal Team"
+        "— The Clarisal Team"
     )
     html_body = (
         f"<p>Hi {reset_token.user.full_name},</p>"
-        "<p>We received a request to reset your Calrisal password.</p>"
+        "<p>We received a request to reset your Clarisal password.</p>"
         f"<p><a href=\"{reset_url}\">{reset_url}</a></p>"
         f"<p>This link expires in {settings.PASSWORD_RESET_TOKEN_EXPIRY_MINUTES} minutes.</p>"
         "<p>If you did not request this, you can ignore this email.</p>"
-        "<p>— The Calrisal Team</p>"
+        "<p>— The Clarisal Team</p>"
     )
     send_transactional_email(
         subject=subject,

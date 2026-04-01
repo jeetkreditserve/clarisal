@@ -29,7 +29,7 @@ const contentByVariant = {
   },
   'control-tower': {
     eyebrow: 'Platform operations',
-    headline: 'Control Tower access is reserved for Calrisal operators.',
+    headline: 'Control Tower access is reserved for Clarisal operators.',
     body: 'Use this sign-in for tenant provisioning, licence management, organisation activation, and platform-level administration.',
     chips: ['Platform operator', 'Django admin'],
     panelTitle: 'Use this login for',
@@ -55,7 +55,7 @@ const contentByVariant = {
     ],
     noteLabel: 'If you already have access',
     noteTitle: 'Use the correct login instead of a setup link.',
-    noteBody: 'Workforce users should sign in from the default login page, while Calrisal operators should use Control Tower.',
+    noteBody: 'Workforce users should sign in from the default login page, while Clarisal operators should use Control Tower.',
   },
 } as const
 
@@ -101,7 +101,7 @@ export function AuthShell({
               transition={{ duration: 0.28, ease: 'easeOut' }}
               className="space-y-4"
             >
-              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[hsl(var(--auth-hero-muted))]">Calrisal</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[hsl(var(--auth-hero-muted))]">Clarisal</p>
               <div className="flex flex-wrap gap-2">
                 {content.chips.map((chip) => (
                   <span key={chip} className="auth-hero-chip rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em]">

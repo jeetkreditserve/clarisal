@@ -517,19 +517,19 @@ def send_invite_email(self, invite_id: str):
             return  # idempotency — already sent
 
         invite_url = f"{settings.FRONTEND_URL}/auth/invite/{invite.token}"
-        org_name = invite.organisation.name if invite.organisation else 'Calrisal'
+        org_name = invite.organisation.name if invite.organisation else 'Clarisal'
         invited_by_name = invite.invited_by.full_name if invite.invited_by else 'the platform admin'
 
-        subject = f"You've been invited to join {org_name} on Calrisal"
+        subject = f"You've been invited to join {org_name} on Clarisal"
         body = (
             f"Hi {invite.email},\n\n"
-            f"{invited_by_name} has invited you to join {org_name} on Calrisal "
+            f"{invited_by_name} has invited you to join {org_name} on Clarisal "
             f"as {invite.role}.\n\n"
             f"Click the link below to set your password and get started:\n\n"
             f"{invite_url}\n\n"
             f"This link expires in 48 hours.\n\n"
             f"If you weren't expecting this invitation, you can safely ignore this email.\n\n"
-            f"— The Calrisal Team"
+            f"— The Clarisal Team"
         )
 
         send_mail(
@@ -685,7 +685,7 @@ def accept_invitation(token, password):
 **Files:**
 - `backend/apps/organisations/views.py` — create
 - `backend/apps/organisations/urls.py` — create
-- `backend/calrisal/urls.py` — modify: add `/api/ct/` include
+- `backend/clarisal/urls.py` — modify: add `/api/ct/` include
 - `backend/apps/organisations/tests/test_views.py` — create
 
 ---
@@ -924,7 +924,7 @@ urlpatterns = [
 ]
 ```
 
-- [ ] Modify `backend/calrisal/urls.py` — add the CT include after the existing `api/auth/` line. The resulting file must be:
+- [ ] Modify `backend/clarisal/urls.py` — add the CT include after the existing `api/auth/` line. The resulting file must be:
 
 ```python
 from django.contrib import admin
@@ -933,7 +933,7 @@ from django.http import JsonResponse
 
 
 def health_check(request):
-    return JsonResponse({'status': 'ok', 'service': 'calrisal-api'})
+    return JsonResponse({'status': 'ok', 'service': 'clarisal-api'})
 
 
 urlpatterns = [
@@ -955,7 +955,7 @@ urlpatterns = [
 
 ### Step 3.5: Commit
 
-- [ ] `git add backend/apps/organisations/views.py backend/apps/organisations/urls.py backend/calrisal/urls.py backend/apps/organisations/tests/test_views.py`
+- [ ] `git add backend/apps/organisations/views.py backend/apps/organisations/urls.py backend/clarisal/urls.py backend/apps/organisations/tests/test_views.py`
 - [ ] `git commit -m "feat(organisations): add CT API views, urls, and wire to main router"`
 
 ---
@@ -2488,7 +2488,7 @@ export function InviteAcceptPage() {
     <div className="flex min-h-screen items-center justify-center bg-[hsl(var(--sidebar-background))]">
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
-          <h1 className="text-3xl font-bold text-white tracking-tight">Calrisal</h1>
+          <h1 className="text-3xl font-bold text-white tracking-tight">Clarisal</h1>
           <p className="mt-2 text-sm text-white/60">Set up your account</p>
         </div>
         <div className="rounded-xl bg-white p-8 shadow-2xl">

@@ -99,8 +99,8 @@ export function InviteAcceptPage() {
       description={
         inviteInfo
           ? inviteInfo.requires_password_setup
-            ? `${inviteInfo.email} was invited to ${inviteInfo.organisation_name || 'Calrisal'}. Create a password to activate the account.`
-            : `${inviteInfo.email} already has a workforce account. Accept access to join ${inviteInfo.organisation_name || 'Calrisal'}.`
+            ? `${inviteInfo.email} was invited to ${inviteInfo.organisation_name || 'Clarisal'}. Create a password to activate the account.`
+            : `${inviteInfo.email} already has a workforce account. Accept access to join ${inviteInfo.organisation_name || 'Clarisal'}.`
           : 'Create a password to finish your account setup.'
       }
     >

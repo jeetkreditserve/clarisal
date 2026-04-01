@@ -60,7 +60,7 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-ROOT_URLCONF = 'calrisal.urls'
+ROOT_URLCONF = 'clarisal.urls'
 
 TEMPLATES = [
     {
@@ -78,11 +78,11 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'calrisal.wsgi.application'
+WSGI_APPLICATION = 'clarisal.wsgi.application'
 
 DATABASES = {
     'default': {
-        **env.db('DATABASE_URL', default='postgresql://calrisal:calrisal_dev_password@localhost:5432/calrisal'),
+        **env.db('DATABASE_URL', default='postgresql://clarisal:clarisal_dev_password@localhost:5432/clarisal'),
         'CONN_MAX_AGE': 60,
     }
 }
@@ -170,7 +170,7 @@ CSRF_TRUSTED_ORIGINS = env.list(
 )
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 USE_X_FORWARDED_HOST = True
-SESSION_COOKIE_NAME = 'calrisal_sessionid'
+SESSION_COOKIE_NAME = 'clarisal_sessionid'
 SESSION_COOKIE_AGE = env.int('SESSION_COOKIE_AGE', default=60 * 60 * 12)
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_DOMAIN = env('SESSION_COOKIE_DOMAIN', default=None) or None
@@ -207,16 +207,16 @@ EMAIL_PORT = env.int('EMAIL_PORT', default=587)
 EMAIL_USE_TLS = env.bool('EMAIL_USE_TLS', default=True)
 EMAIL_HOST_USER = env('EMAIL_HOST_USER', default='')
 EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', default='')
-DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='Calrisal <noreply@calrisal.com>')
+DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='Clarisal <noreply@clarisal.com>')
 ZEPTOMAIL_API_URL = env('ZEPTOMAIL_API_URL', default='')
 ZEPTOMAIL_API_KEY = env('ZEPTOMAIL_API_KEY', default='')
 ZEPTOMAIL_FROM_EMAIL = env('ZEPTOMAIL_FROM_EMAIL', default=DEFAULT_FROM_EMAIL)
-ZEPTOMAIL_FROM_NAME = env('ZEPTOMAIL_FROM_NAME', default='Calrisal')
+ZEPTOMAIL_FROM_NAME = env('ZEPTOMAIL_FROM_NAME', default='Clarisal')
 
 # AWS S3
 AWS_ACCESS_KEY_ID = env('AWS_ACCESS_KEY_ID', default='')
 AWS_SECRET_ACCESS_KEY = env('AWS_SECRET_ACCESS_KEY', default='')
-AWS_STORAGE_BUCKET_NAME = env('AWS_STORAGE_BUCKET_NAME', default='calrisal-documents')
+AWS_STORAGE_BUCKET_NAME = env('AWS_STORAGE_BUCKET_NAME', default='clarisal-documents')
 AWS_S3_REGION_NAME = env('AWS_S3_REGION_NAME', default='ap-south-1')
 AWS_S3_SIGNATURE_VERSION = 's3v4'
 AWS_DEFAULT_ACL = 'private'

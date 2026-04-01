@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { ThemeContext, type ResolvedTheme, type ThemePreference } from './theme-context'
 
-const THEME_STORAGE_KEY = 'calrisal-theme'
+const THEME_STORAGE_KEY = 'clarisal-theme'
 
 function getSystemTheme(): ResolvedTheme {
   if (typeof window === 'undefined') return 'light'

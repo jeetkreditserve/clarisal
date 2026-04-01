@@ -418,7 +418,7 @@ class Command(BaseCommand):
         return groups
 
     def _ensure_control_tower_user(self, password, group):
-        email = os.environ.get('CONTROL_TOWER_EMAIL', 'admin@calrisal.com')
+        email = os.environ.get('CONTROL_TOWER_EMAIL', 'admin@clarisal.com')
         user, created = User.objects.get_or_create(
             email=email,
             account_type=AccountType.CONTROL_TOWER,

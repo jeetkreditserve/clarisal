@@ -20,7 +20,7 @@ def api_client():
 @pytest.fixture
 def ct_user(db):
     return User.objects.create_superuser(
-        email='ct@calrisal.com',
+        email='ct@clarisal.com',
         password='TestPass@123',
         role=UserRole.CONTROL_TOWER,
         is_active=True,
@@ -30,7 +30,7 @@ def ct_user(db):
 @pytest.fixture
 def workforce_user(db):
     ct = User.objects.create_superuser(
-        email='seed-ct@calrisal.com',
+        email='seed-ct@clarisal.com',
         password='SeedPass@123',
         role=UserRole.CONTROL_TOWER,
         is_active=True,
@@ -65,7 +65,7 @@ class TestLogin:
         response = api_client.post(
             '/api/auth/control-tower/login/',
             {
-                'email': 'ct@calrisal.com',
+                'email': 'ct@clarisal.com',
                 'password': 'TestPass@123',
             },
             format='json',
@@ -73,10 +73,10 @@ class TestLogin:
         assert response.status_code == 200
         data = response.json()
         assert 'user' in data
-        assert 'sessionid' in ''.join(response.cookies.keys()) or 'calrisal_sessionid' in ''.join(response.cookies.keys())
+        assert 'sessionid' in ''.join(response.cookies.keys()) or 'clarisal_sessionid' in ''.join(response.cookies.keys())
         assert data['user']['role'] == UserRole.CONTROL_TOWER
         assert data['user']['account_type'] == AccountType.CONTROL_TOWER
-        assert data['user']['email'] == 'ct@calrisal.com'
+        assert data['user']['email'] == 'ct@clarisal.com'
 
     def test_workforce_login_returns_memberships_and_default_route(self, api_client, workforce_user):
         response = api_client.post(
@@ -99,7 +99,7 @@ class TestLogin:
         response = api_client.post(
             '/api/auth/login/',
             {
-                'email': 'ct@calrisal.com',
+                'email': 'ct@clarisal.com',
                 'password': 'TestPass@123',
             },
             format='json',
@@ -110,20 +110,20 @@ class TestLogin:
         api_client.post(
             '/api/auth/control-tower/login/',
             {
-                'email': 'ct@calrisal.com',
+                'email': 'ct@clarisal.com',
                 'password': 'TestPass@123',
             },
             format='json',
         )
         response = api_client.get('/api/auth/me/')
         assert response.status_code == 200
-        assert response.json()['email'] == 'ct@calrisal.com'
+        assert response.json()['email'] == 'ct@clarisal.com'
 
     def test_logout_clears_session(self, api_client, ct_user):
         api_client.post(
             '/api/auth/control-tower/login/',
             {
-                'email': 'ct@calrisal.com',
+                'email': 'ct@clarisal.com',
                 'password': 'TestPass@123',
             },
             format='json',
@@ -135,7 +135,7 @@ class TestLogin:
 
     def test_same_email_can_authenticate_separately_for_control_tower_and_workforce(self, db):
         control_tower = User.objects.create_superuser(
-            email='shared@calrisal.com',
+            email='shared@clarisal.com',
             password='ControlTower@123',
             role=UserRole.CONTROL_TOWER,
             is_active=True,
@@ -149,7 +149,7 @@ class TestLogin:
             access_state=OrganisationAccessState.ACTIVE,
         )
         workforce = User.objects.create_user(
-            email='shared@calrisal.com',
+            email='shared@clarisal.com',
             password='Workforce@123',
             account_type=AccountType.WORKFORCE,
             role=UserRole.ORG_ADMIN,
@@ -165,7 +165,7 @@ class TestLogin:
         ct_client = APIClient()
         ct_response = ct_client.post(
             '/api/auth/control-tower/login/',
-            {'email': 'shared@calrisal.com', 'password': 'ControlTower@123'},
+            {'email': 'shared@clarisal.com', 'password': 'ControlTower@123'},
             format='json',
         )
         assert ct_response.status_code == 200
@@ -174,7 +174,7 @@ class TestLogin:
         workforce_client = APIClient()
         workforce_response = workforce_client.post(
             '/api/auth/login/',
-            {'email': 'shared@calrisal.com', 'password': 'Workforce@123'},
+            {'email': 'shared@clarisal.com', 'password': 'Workforce@123'},
             format='json',
         )
         assert workforce_response.status_code == 200
@@ -186,7 +186,7 @@ class TestLogin:
 
     def test_workforce_user_can_have_multiple_admin_and_employee_workspaces(self, api_client, db):
         control_tower = User.objects.create_superuser(
-            email='seed-ct@calrisal.com',
+            email='seed-ct@clarisal.com',
             password='SeedPass@123',
             role=UserRole.CONTROL_TOWER,
             is_active=True,

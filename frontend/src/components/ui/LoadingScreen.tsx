@@ -20,7 +20,7 @@ export function LoadingScreen({ message = 'Preparing your workspace' }: LoadingS
         className="surface-card grid w-full max-w-6xl gap-8 rounded-[36px] p-8 lg:grid-cols-[320px_minmax(0,1fr)]"
       >
         <div className="sidebar-surface space-y-4 rounded-[30px] p-6">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[hsl(var(--sidebar-muted))]">Calrisal</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[hsl(var(--sidebar-muted))]">Clarisal</p>
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">Loading platform context</h1>
             <p className="mt-2 text-sm leading-6 text-[hsl(var(--sidebar-muted))]">{message}</p>

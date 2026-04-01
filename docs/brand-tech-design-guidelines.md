@@ -1,15 +1,15 @@
-# Calrisal Brand Tech Design Guidelines
+# Clarisal Brand Tech Design Guidelines
 
 ## Purpose
 
-This document defines the visual, interaction, and implementation standards for Calrisal's frontend. It is intended to keep Control Tower, organisation admin, and employee self-service surfaces coherent as the product expands.
+This document defines the visual, interaction, and implementation standards for Clarisal's frontend. It is intended to keep Control Tower, organisation admin, and employee self-service surfaces coherent as the product expands.
 
-Calrisal is an enterprise workforce platform. The design language must feel operationally sharp, credible, calm under pressure, and premium without becoming decorative or soft.
+Clarisal is an enterprise workforce platform. The design language must feel operationally sharp, credible, calm under pressure, and premium without becoming decorative or soft.
 
 ## Brand Principles
 
 1. Build trust first.
-Calrisal handles employee records, onboarding state, licences, and payroll-adjacent data. Visuals must communicate control, precision, and stability.
+Clarisal handles employee records, onboarding state, licences, and payroll-adjacent data. Visuals must communicate control, precision, and stability.
 
 2. Separate power from noise.
 The UI should feel rich, but density must never make workflows harder to scan. Important actions should be visually obvious, not visually loud.
@@ -278,4 +278,4 @@ A page is not done until it satisfies all of the following:
 - Has intentional loading, empty, success, and error states
 - Preserves keyboard and focus usability
 - Uses semantic tokens instead of ad hoc colors
-- Feels like Calrisal, not a generic admin template
+- Feels like Clarisal, not a generic admin template
