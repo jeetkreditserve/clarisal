@@ -3,6 +3,7 @@ import logging
 from email.utils import parseaddr
 from urllib import error as urllib_error
 from urllib import request as urllib_request
+from urllib.parse import urlsplit, urlunsplit
 
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
@@ -26,9 +27,23 @@ def _parse_sender():
 
 def _zeptomail_is_configured():
     return bool(
-        getattr(settings, 'ZEPTOMAIL_API_URL', '')
+        _normalized_zeptomail_api_url()
         and getattr(settings, 'ZEPTOMAIL_API_KEY', '')
     )
+
+
+def _normalized_zeptomail_api_url():
+    configured = (getattr(settings, 'ZEPTOMAIL_API_URL', '') or '').strip()
+    if not configured:
+        return ''
+
+    candidate = configured if '://' in configured else f'https://{configured}'
+    parsed = urlsplit(candidate)
+    netloc = parsed.netloc or parsed.path
+    path = parsed.path if parsed.netloc else ''
+    if not path or path == '/':
+        path = '/v1.1/email'
+    return urlunsplit((parsed.scheme or 'https', netloc, path, parsed.query, parsed.fragment))
 
 
 def _send_via_zeptomail(*, subject, recipient_email, text_body, html_body=''):
@@ -51,7 +66,7 @@ def _send_via_zeptomail(*, subject, recipient_email, text_body, html_body=''):
     }
     body = json.dumps(payload).encode('utf-8')
     req = urllib_request.Request(
-        getattr(settings, 'ZEPTOMAIL_API_URL'),
+        _normalized_zeptomail_api_url(),
         data=body,
         headers={
             'Accept': 'application/json',
