@@ -5,6 +5,8 @@ from rest_framework.test import APIClient
 from apps.accounts.models import AccountType, User, UserRole
 from apps.organisations.models import (
     Organisation,
+    OrganisationAddress,
+    OrganisationAddressType,
     OrganisationAccessState,
     OrganisationBillingStatus,
     OrganisationMembership,
@@ -57,7 +59,7 @@ def ct_client(db):
         first_name='Control', last_name='Tower', role=UserRole.CONTROL_TOWER,
     )
     client = APIClient()
-    client.post('/api/auth/control-tower/login/', {'email': 'ct@test.com', 'password': 'pass123!'}, format='json')
+    client.force_authenticate(user=user)
     return client, user
 
 
@@ -390,3 +392,241 @@ class TestCtOrganisationDetailTabsSupport:
             'approval_workflows',
             'notices',
         }
+
+
+@pytest.mark.django_db
+class TestCtOrganisationEditingParity:
+    def test_ct_admin_list_includes_invited_and_inactive_memberships(self, ct_client, org):
+        client, _ = ct_client
+        invited_user = User.objects.create_user(
+            email='pending-admin@test.com',
+            password='pass123!',
+            account_type=AccountType.WORKFORCE,
+            role=UserRole.ORG_ADMIN,
+            is_active=False,
+        )
+        inactive_user = User.objects.create_user(
+            email='inactive-admin@test.com',
+            password='pass123!',
+            account_type=AccountType.WORKFORCE,
+            role=UserRole.ORG_ADMIN,
+            is_active=True,
+        )
+        OrganisationMembership.objects.create(
+            user=invited_user,
+            organisation=org,
+            is_org_admin=True,
+            status=OrganisationMembershipStatus.INVITED,
+        )
+        OrganisationMembership.objects.create(
+            user=inactive_user,
+            organisation=org,
+            is_org_admin=True,
+            status=OrganisationMembershipStatus.INACTIVE,
+        )
+
+        response = client.get(f'/api/ct/organisations/{org.id}/admins/')
+
+        assert response.status_code == 200
+        assert {item['membership_status'] for item in response.data} >= {'INVITED', 'INACTIVE'}
+
+    def test_ct_can_deactivate_and_reactivate_additional_org_admin(self, ct_client, org):
+        client, ct_user = ct_client
+        primary = User.objects.create_user(
+            email='primary@test.com',
+            password='pass123!',
+            account_type=AccountType.WORKFORCE,
+            role=UserRole.ORG_ADMIN,
+            is_active=True,
+        )
+        secondary = User.objects.create_user(
+            email='secondary@test.com',
+            password='pass123!',
+            account_type=AccountType.WORKFORCE,
+            role=UserRole.ORG_ADMIN,
+            is_active=True,
+        )
+        org.primary_admin_user = primary
+        org.save(update_fields=['primary_admin_user', 'updated_at'])
+        OrganisationMembership.objects.create(
+            user=primary,
+            organisation=org,
+            is_org_admin=True,
+            status=OrganisationMembershipStatus.ACTIVE,
+            invited_by=ct_user,
+        )
+        OrganisationMembership.objects.create(
+            user=secondary,
+            organisation=org,
+            is_org_admin=True,
+            status=OrganisationMembershipStatus.ACTIVE,
+            invited_by=ct_user,
+        )
+
+        deactivate_response = client.post(f'/api/ct/organisations/{org.id}/admins/{secondary.id}/deactivate/')
+        reactivate_response = client.post(f'/api/ct/organisations/{org.id}/admins/{secondary.id}/reactivate/')
+
+        assert deactivate_response.status_code == 200
+        assert deactivate_response.data['membership_status'] == 'INACTIVE'
+        assert reactivate_response.status_code == 200
+        assert reactivate_response.data['membership_status'] == 'ACTIVE'
+
+    def test_ct_can_revoke_pending_admin_invite(self, ct_client, org):
+        client, ct_user = ct_client
+        pending_user = User.objects.create_user(
+            email='revoke-admin@test.com',
+            password='pass123!',
+            account_type=AccountType.WORKFORCE,
+            role=UserRole.ORG_ADMIN,
+            is_active=False,
+        )
+        OrganisationMembership.objects.create(
+            user=pending_user,
+            organisation=org,
+            is_org_admin=True,
+            status=OrganisationMembershipStatus.INVITED,
+            invited_by=ct_user,
+        )
+
+        response = client.post(f'/api/ct/organisations/{org.id}/admins/{pending_user.id}/revoke-pending/')
+
+        assert response.status_code == 200
+        assert response.data['membership_status'] == 'REVOKED'
+
+    def test_ct_can_manage_locations_and_departments(self, ct_client, org):
+        client, _ = ct_client
+        registered_address = OrganisationAddress.objects.create(
+            organisation=org,
+            address_type=OrganisationAddressType.REGISTERED,
+            label='Registered Office',
+            line1='1 Residency Road',
+            city='Bengaluru',
+            state='Karnataka',
+            state_code='KA',
+            country='India',
+            country_code='IN',
+            pincode='560001',
+            is_active=True,
+        )
+        OrganisationAddress.objects.create(
+            organisation=org,
+            address_type=OrganisationAddressType.BILLING,
+            label='Billing Address',
+            line1='2 MG Road',
+            city='Bengaluru',
+            state='Karnataka',
+            state_code='KA',
+            country='India',
+            country_code='IN',
+            pincode='560002',
+            gstin='29ABCDE1234F1Z5',
+            is_active=True,
+        )
+
+        location_response = client.post(
+            f'/api/ct/organisations/{org.id}/locations/',
+            {'name': 'HQ', 'organisation_address_id': str(registered_address.id), 'is_remote': False},
+            format='json',
+        )
+        department_response = client.post(
+            f'/api/ct/organisations/{org.id}/departments/',
+            {'name': 'Engineering', 'description': 'Product engineering'},
+            format='json',
+        )
+
+        assert location_response.status_code == 201
+        assert location_response.data['name'] == 'HQ'
+        assert department_response.status_code == 201
+        assert department_response.data['name'] == 'Engineering'
+
+    def test_ct_can_manage_leave_and_notice_configuration(self, ct_client, org):
+        client, _ = ct_client
+        cycle_response = client.post(
+            f'/api/ct/organisations/{org.id}/leave-cycles/',
+            {
+                'name': 'Calendar Year',
+                'cycle_type': 'CALENDAR_YEAR',
+                'start_month': 1,
+                'start_day': 1,
+                'is_default': True,
+                'is_active': True,
+            },
+            format='json',
+        )
+        assert cycle_response.status_code == 201
+
+        plan_response = client.post(
+            f'/api/ct/organisations/{org.id}/leave-plans/',
+            {
+                'leave_cycle_id': cycle_response.data['id'],
+                'name': 'General Plan',
+                'description': '',
+                'is_default': True,
+                'is_active': True,
+                'priority': 100,
+                'leave_types': [
+                    {
+                        'code': 'CL',
+                        'name': 'Casual Leave',
+                        'annual_entitlement': '12.00',
+                        'credit_frequency': 'MONTHLY',
+                    }
+                ],
+                'rules': [],
+            },
+            format='json',
+        )
+        policy_response = client.post(
+            f'/api/ct/organisations/{org.id}/on-duty-policies/',
+            {
+                'name': 'Default Policy',
+                'description': '',
+                'is_default': True,
+                'is_active': True,
+                'allow_half_day': True,
+                'allow_time_range': True,
+                'requires_attachment': False,
+            },
+            format='json',
+        )
+        workflow_response = client.post(
+            f'/api/ct/organisations/{org.id}/approval-workflows/',
+            {
+                'name': 'Default Workflow',
+                'description': '',
+                'is_default': True,
+                'is_active': True,
+                'rules': [{'name': 'Default leave rule', 'request_kind': 'LEAVE', 'priority': 100, 'is_active': True}],
+                'stages': [
+                    {
+                        'name': 'Primary admin approval',
+                        'sequence': 1,
+                        'mode': 'ALL',
+                        'fallback_type': 'PRIMARY_ORG_ADMIN',
+                        'approvers': [{'approver_type': 'PRIMARY_ORG_ADMIN'}],
+                    }
+                ],
+            },
+            format='json',
+        )
+        notice_response = client.post(
+            f'/api/ct/organisations/{org.id}/notices/',
+            {
+                'title': 'Office advisory',
+                'body': 'Quarter-end blackout window',
+                'audience_type': 'ALL_EMPLOYEES',
+                'status': 'DRAFT',
+            },
+            format='json',
+        )
+
+        assert plan_response.status_code == 201
+        assert policy_response.status_code == 201
+        assert workflow_response.status_code == 201
+        assert notice_response.status_code == 201
+
+        publish_response = client.post(
+            f"/api/ct/organisations/{org.id}/notices/{notice_response.data['id']}/publish/"
+        )
+        assert publish_response.status_code == 200
+        assert publish_response.data['status'] == 'PUBLISHED'

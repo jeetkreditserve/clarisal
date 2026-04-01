@@ -89,6 +89,19 @@ export async function updateOrganisation(id: string, payload: {
   return data
 }
 
+export async function updateCtBootstrapAdmin(
+  id: string,
+  payload: {
+    first_name: string
+    last_name: string
+    email: string
+    phone?: string
+  }
+): Promise<OrganisationDetail> {
+  const { data } = await api.patch(`/ct/organisations/${id}/`, { primary_admin: payload })
+  return data
+}
+
 export async function createOrganisationAddress(id: string, payload: OrganisationAddressInput): Promise<OrganisationAddress> {
   const { data } = await api.post(`/ct/organisations/${id}/addresses/`, payload)
   return data
@@ -253,4 +266,134 @@ export async function inviteOrgAdmin(id: string, payload: {
 
 export async function resendOrgAdminInvite(orgId: string, userId: string): Promise<void> {
   await api.post(`/ct/organisations/${orgId}/admins/${userId}/resend-invite/`)
+}
+
+export async function deactivateCtOrgAdmin(orgId: string, userId: string): Promise<OrgAdmin> {
+  const { data } = await api.post(`/ct/organisations/${orgId}/admins/${userId}/deactivate/`)
+  return data
+}
+
+export async function reactivateCtOrgAdmin(orgId: string, userId: string): Promise<OrgAdmin> {
+  const { data } = await api.post(`/ct/organisations/${orgId}/admins/${userId}/reactivate/`)
+  return data
+}
+
+export async function revokePendingCtOrgAdmin(orgId: string, userId: string): Promise<OrgAdmin> {
+  const { data } = await api.post(`/ct/organisations/${orgId}/admins/${userId}/revoke-pending/`)
+  return data
+}
+
+export async function createCtLocation(
+  id: string,
+  payload: {
+    name: string
+    organisation_address_id: string
+    is_remote?: boolean
+  },
+): Promise<Location> {
+  const { data } = await api.post(`/ct/organisations/${id}/locations/`, payload)
+  return data
+}
+
+export async function updateCtLocation(
+  id: string,
+  locationId: string,
+  payload: Partial<{
+    name: string
+    organisation_address_id: string
+    is_remote: boolean
+  }>,
+): Promise<Location> {
+  const { data } = await api.patch(`/ct/organisations/${id}/locations/${locationId}/`, payload)
+  return data
+}
+
+export async function deactivateCtLocation(id: string, locationId: string): Promise<Location> {
+  const { data } = await api.post(`/ct/organisations/${id}/locations/${locationId}/deactivate/`)
+  return data
+}
+
+export async function createCtDepartment(
+  id: string,
+  payload: {
+    name: string
+    description?: string
+    parent_department_id?: string | null
+  },
+): Promise<Department> {
+  const { data } = await api.post(`/ct/organisations/${id}/departments/`, payload)
+  return data
+}
+
+export async function updateCtDepartment(
+  id: string,
+  departmentId: string,
+  payload: Partial<{ name: string; description: string; parent_department_id: string | null }>,
+): Promise<Department> {
+  const { data } = await api.patch(`/ct/organisations/${id}/departments/${departmentId}/`, payload)
+  return data
+}
+
+export async function deactivateCtDepartment(id: string, departmentId: string): Promise<Department> {
+  const { data } = await api.post(`/ct/organisations/${id}/departments/${departmentId}/deactivate/`)
+  return data
+}
+
+export async function createCtLeaveCycle(id: string, payload: Record<string, unknown>): Promise<LeaveCycle> {
+  const { data } = await api.post(`/ct/organisations/${id}/leave-cycles/`, payload)
+  return data
+}
+
+export async function updateCtLeaveCycle(id: string, cycleId: string, payload: Record<string, unknown>): Promise<LeaveCycle> {
+  const { data } = await api.patch(`/ct/organisations/${id}/leave-cycles/${cycleId}/`, payload)
+  return data
+}
+
+export async function createCtLeavePlan(id: string, payload: Record<string, unknown>): Promise<LeavePlan> {
+  const { data } = await api.post(`/ct/organisations/${id}/leave-plans/`, payload)
+  return data
+}
+
+export async function updateCtLeavePlan(id: string, planId: string, payload: Record<string, unknown>): Promise<LeavePlan> {
+  const { data } = await api.patch(`/ct/organisations/${id}/leave-plans/${planId}/`, payload)
+  return data
+}
+
+export async function createCtOnDutyPolicy(id: string, payload: Record<string, unknown>): Promise<OnDutyPolicy> {
+  const { data } = await api.post(`/ct/organisations/${id}/on-duty-policies/`, payload)
+  return data
+}
+
+export async function updateCtOnDutyPolicy(id: string, policyId: string, payload: Record<string, unknown>): Promise<OnDutyPolicy> {
+  const { data } = await api.patch(`/ct/organisations/${id}/on-duty-policies/${policyId}/`, payload)
+  return data
+}
+
+export async function createCtApprovalWorkflow(id: string, payload: Record<string, unknown>): Promise<ApprovalWorkflowConfig> {
+  const { data } = await api.post(`/ct/organisations/${id}/approval-workflows/`, payload)
+  return data
+}
+
+export async function updateCtApprovalWorkflow(
+  id: string,
+  workflowId: string,
+  payload: Record<string, unknown>,
+): Promise<ApprovalWorkflowConfig> {
+  const { data } = await api.patch(`/ct/organisations/${id}/approval-workflows/${workflowId}/`, payload)
+  return data
+}
+
+export async function createCtNotice(id: string, payload: Record<string, unknown>): Promise<NoticeItem> {
+  const { data } = await api.post(`/ct/organisations/${id}/notices/`, payload)
+  return data
+}
+
+export async function updateCtNotice(id: string, noticeId: string, payload: Record<string, unknown>): Promise<NoticeItem> {
+  const { data } = await api.patch(`/ct/organisations/${id}/notices/${noticeId}/`, payload)
+  return data
+}
+
+export async function publishCtNotice(id: string, noticeId: string): Promise<NoticeItem> {
+  const { data } = await api.post(`/ct/organisations/${id}/notices/${noticeId}/publish/`)
+  return data
 }

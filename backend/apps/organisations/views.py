@@ -6,24 +6,32 @@ from django.shortcuts import get_object_or_404
 from apps.accounts.permissions import BelongsToActiveOrg, IsControlTowerUser, IsOrgAdmin, OrgAdminMutationAllowed
 from apps.accounts.workspaces import get_active_admin_organisation
 from apps.approvals.models import ApprovalWorkflow
-from apps.approvals.serializers import ApprovalWorkflowSerializer
+from apps.approvals.serializers import ApprovalWorkflowSerializer, ApprovalWorkflowWriteSerializer
+from apps.approvals.views import _upsert_workflow as upsert_approval_workflow
 from apps.communications.models import Notice
-from apps.communications.serializers import NoticeSerializer
+from apps.communications.serializers import NoticeSerializer, NoticeWriteSerializer
+from apps.communications.services import create_notice, publish_notice, update_notice
 from apps.departments.models import Department
 from apps.departments.repositories import list_departments
-from apps.departments.serializers import DepartmentSerializer
+from apps.departments.serializers import DepartmentCreateUpdateSerializer, DepartmentSerializer
+from apps.departments.services import create_department, deactivate_department, update_department
 from apps.employees.repositories import get_employee, list_employees
 from apps.employees.serializers import EmployeeDetailSerializer, EmployeeListSerializer
+from apps.employees.models import Employee
 from apps.locations.models import OfficeLocation
 from apps.locations.repositories import list_locations
-from apps.locations.serializers import LocationSerializer
-from apps.timeoff.models import HolidayCalendar, LeaveCycle, LeavePlan, OnDutyPolicy
+from apps.locations.serializers import LocationCreateUpdateSerializer, LocationSerializer
+from apps.locations.services import create_location, deactivate_location, update_location
+from apps.timeoff.models import HolidayCalendar, LeaveCycle, LeavePlan, LeaveType, OnDutyPolicy
 from apps.timeoff.serializers import (
     HolidayCalendarSerializer,
     HolidayCalendarWriteSerializer,
     LeaveCycleSerializer,
+    LeaveCycleWriteSerializer,
     LeavePlanSerializer,
+    LeavePlanWriteSerializer,
     OnDutyPolicySerializer,
+    OnDutyPolicyWriteSerializer,
 )
 from apps.timeoff.services import create_holiday_calendar, publish_holiday_calendar, update_holiday_calendar
 from .models import Organisation, OrganisationAddress, OrganisationLicenceBatch, OrganisationNote, OrganisationStatus
@@ -48,10 +56,35 @@ from .services import (
     deactivate_organisation_address,
     get_ct_dashboard_stats, get_org_dashboard_stats, get_org_licence_summary,
     mark_licence_batch_paid,
+    deactivate_org_admin_membership,
+    reactivate_org_admin_membership,
+    revoke_org_admin_membership_invitation,
     update_organisation_address,
     update_licence_batch,
     update_organisation_profile,
 )
+from apps.timeoff.services import create_leave_plan, update_leave_plan, upsert_leave_cycle, upsert_on_duty_policy
+
+
+def _get_ct_organisation(pk):
+    return get_object_or_404(Organisation, id=pk)
+
+
+def _resolve_leave_plan_rules(organisation, rules_payload):
+    return [
+        {
+            'id': rule.get('id'),
+            'name': rule['name'],
+            'priority': rule.get('priority', 100),
+            'is_active': rule.get('is_active', True),
+            'department': get_object_or_404(Department, organisation=organisation, id=rule['department_id']) if rule.get('department_id') else None,
+            'office_location': get_object_or_404(OfficeLocation, organisation=organisation, id=rule['office_location_id']) if rule.get('office_location_id') else None,
+            'specific_employee': get_object_or_404(Employee, organisation=organisation, id=rule['specific_employee_id']) if rule.get('specific_employee_id') else None,
+            'employment_type': rule.get('employment_type', ''),
+            'designation': rule.get('designation', ''),
+        }
+        for rule in rules_payload
+    ]
 
 
 class OrganisationListCreateView(APIView):
@@ -202,8 +235,59 @@ class OrganisationAdminsView(APIView):
 
     def get(self, request, pk):
         org = get_object_or_404(Organisation, id=pk)
-        admins = get_org_admins(org)
+        admins = get_org_admins(org, include_inactive=True)
         return Response(OrgAdminSerializer(admins, many=True).data)
+
+
+class CtOrganisationAdminDeactivateView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def post(self, request, pk, admin_id):
+        organisation = _get_ct_organisation(pk)
+        membership = get_object_or_404(
+            organisation.memberships.select_related('user'),
+            user_id=admin_id,
+            is_org_admin=True,
+        )
+        try:
+            membership = deactivate_org_admin_membership(organisation, membership.user, actor=request.user)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(OrgAdminSerializer(membership).data)
+
+
+class CtOrganisationAdminReactivateView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def post(self, request, pk, admin_id):
+        organisation = _get_ct_organisation(pk)
+        membership = get_object_or_404(
+            organisation.memberships.select_related('user'),
+            user_id=admin_id,
+            is_org_admin=True,
+        )
+        try:
+            membership = reactivate_org_admin_membership(organisation, membership.user, actor=request.user)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(OrgAdminSerializer(membership).data)
+
+
+class CtOrganisationAdminRevokePendingView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def post(self, request, pk, admin_id):
+        organisation = _get_ct_organisation(pk)
+        membership = get_object_or_404(
+            organisation.memberships.select_related('user'),
+            user_id=admin_id,
+            is_org_admin=True,
+        )
+        try:
+            membership = revoke_org_admin_membership_invitation(organisation, membership.user, actor=request.user)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(OrgAdminSerializer(membership).data)
 
 
 class CtOrganisationEmployeesView(APIView):
@@ -303,6 +387,245 @@ class CtOrganisationConfigurationView(APIView):
                 'notices': NoticeSerializer(notices, many=True).data,
             }
         )
+
+
+class CtOrganisationLocationListCreateView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def post(self, request, pk):
+        organisation = _get_ct_organisation(pk)
+        serializer = LocationCreateUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            location = create_location(organisation, actor=request.user, **serializer.validated_data)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(LocationSerializer(location).data, status=status.HTTP_201_CREATED)
+
+
+class CtOrganisationLocationDetailView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def patch(self, request, pk, location_id):
+        organisation = _get_ct_organisation(pk)
+        location = get_object_or_404(OfficeLocation, organisation=organisation, id=location_id)
+        serializer = LocationCreateUpdateSerializer(data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        try:
+            location = update_location(location, actor=request.user, **serializer.validated_data)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(LocationSerializer(location).data)
+
+
+class CtOrganisationLocationDeactivateView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def post(self, request, pk, location_id):
+        organisation = _get_ct_organisation(pk)
+        location = get_object_or_404(OfficeLocation, organisation=organisation, id=location_id)
+        try:
+            location = deactivate_location(location, actor=request.user)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(LocationSerializer(location).data)
+
+
+class CtOrganisationDepartmentListCreateView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def post(self, request, pk):
+        organisation = _get_ct_organisation(pk)
+        serializer = DepartmentCreateUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            department = create_department(organisation, actor=request.user, **serializer.validated_data)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(DepartmentSerializer(department).data, status=status.HTTP_201_CREATED)
+
+
+class CtOrganisationDepartmentDetailView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def patch(self, request, pk, department_id):
+        organisation = _get_ct_organisation(pk)
+        department = get_object_or_404(Department, organisation=organisation, id=department_id)
+        serializer = DepartmentCreateUpdateSerializer(data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        try:
+            department = update_department(department, actor=request.user, **serializer.validated_data)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(DepartmentSerializer(department).data)
+
+
+class CtOrganisationDepartmentDeactivateView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def post(self, request, pk, department_id):
+        organisation = _get_ct_organisation(pk)
+        department = get_object_or_404(Department, organisation=organisation, id=department_id)
+        try:
+            department = deactivate_department(department, actor=request.user)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(DepartmentSerializer(department).data)
+
+
+class CtOrganisationLeaveCycleListCreateView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def post(self, request, pk):
+        organisation = _get_ct_organisation(pk)
+        serializer = LeaveCycleWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        cycle = upsert_leave_cycle(organisation, actor=request.user, **serializer.validated_data)
+        return Response(LeaveCycleSerializer(cycle).data, status=status.HTTP_201_CREATED)
+
+
+class CtOrganisationLeaveCycleDetailView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def patch(self, request, pk, cycle_id):
+        organisation = _get_ct_organisation(pk)
+        cycle = get_object_or_404(LeaveCycle, organisation=organisation, id=cycle_id)
+        serializer = LeaveCycleWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        cycle = upsert_leave_cycle(organisation, actor=request.user, cycle=cycle, **serializer.validated_data)
+        return Response(LeaveCycleSerializer(cycle).data)
+
+
+class CtOrganisationLeavePlanListCreateView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def post(self, request, pk):
+        organisation = _get_ct_organisation(pk)
+        serializer = LeavePlanWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        cycle = get_object_or_404(LeaveCycle, organisation=organisation, id=serializer.validated_data['leave_cycle_id'])
+        plan = create_leave_plan(
+            organisation,
+            actor=request.user,
+            leave_cycle=cycle,
+            name=serializer.validated_data['name'],
+            description=serializer.validated_data.get('description', ''),
+            is_default=serializer.validated_data.get('is_default', False),
+            is_active=serializer.validated_data.get('is_active', True),
+            priority=serializer.validated_data.get('priority', 100),
+            leave_types=serializer.validated_data.get('leave_types', []),
+            rules=_resolve_leave_plan_rules(organisation, serializer.validated_data.get('rules', [])),
+        )
+        return Response(LeavePlanSerializer(plan).data, status=status.HTTP_201_CREATED)
+
+
+class CtOrganisationLeavePlanDetailView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def patch(self, request, pk, plan_id):
+        organisation = _get_ct_organisation(pk)
+        plan = get_object_or_404(LeavePlan, organisation=organisation, id=plan_id)
+        serializer = LeavePlanWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        cycle = get_object_or_404(LeaveCycle, organisation=organisation, id=serializer.validated_data['leave_cycle_id'])
+        plan = update_leave_plan(
+            plan,
+            actor=request.user,
+            leave_cycle=cycle,
+            name=serializer.validated_data['name'],
+            description=serializer.validated_data.get('description', ''),
+            is_default=serializer.validated_data.get('is_default', False),
+            is_active=serializer.validated_data.get('is_active', True),
+            priority=serializer.validated_data.get('priority', 100),
+            leave_types=serializer.validated_data.get('leave_types', []),
+            rules=_resolve_leave_plan_rules(organisation, serializer.validated_data.get('rules', [])),
+        )
+        return Response(LeavePlanSerializer(plan).data)
+
+
+class CtOrganisationOnDutyPolicyListCreateView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def post(self, request, pk):
+        organisation = _get_ct_organisation(pk)
+        serializer = OnDutyPolicyWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        policy = upsert_on_duty_policy(organisation, actor=request.user, **serializer.validated_data)
+        return Response(OnDutyPolicySerializer(policy).data, status=status.HTTP_201_CREATED)
+
+
+class CtOrganisationOnDutyPolicyDetailView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def patch(self, request, pk, policy_id):
+        organisation = _get_ct_organisation(pk)
+        policy = get_object_or_404(OnDutyPolicy, organisation=organisation, id=policy_id)
+        serializer = OnDutyPolicyWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        policy = upsert_on_duty_policy(organisation, actor=request.user, policy=policy, **serializer.validated_data)
+        return Response(OnDutyPolicySerializer(policy).data)
+
+
+class CtOrganisationApprovalWorkflowListCreateView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def post(self, request, pk):
+        organisation = _get_ct_organisation(pk)
+        serializer = ApprovalWorkflowWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            workflow = upsert_approval_workflow(organisation, serializer.validated_data, request.user)
+        except (ValueError, Department.DoesNotExist, OfficeLocation.DoesNotExist, Employee.DoesNotExist, LeaveType.DoesNotExist) as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(ApprovalWorkflowSerializer(workflow).data, status=status.HTTP_201_CREATED)
+
+
+class CtOrganisationApprovalWorkflowDetailView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def patch(self, request, pk, workflow_id):
+        organisation = _get_ct_organisation(pk)
+        workflow = get_object_or_404(ApprovalWorkflow, organisation=organisation, id=workflow_id)
+        serializer = ApprovalWorkflowWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            workflow = upsert_approval_workflow(organisation, serializer.validated_data, request.user, workflow=workflow)
+        except (ValueError, Department.DoesNotExist, OfficeLocation.DoesNotExist, Employee.DoesNotExist, LeaveType.DoesNotExist) as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(ApprovalWorkflowSerializer(workflow).data)
+
+
+class CtOrganisationNoticeListCreateView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def post(self, request, pk):
+        organisation = _get_ct_organisation(pk)
+        serializer = NoticeWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        notice = create_notice(organisation, actor=request.user, **serializer.validated_data)
+        return Response(NoticeSerializer(notice).data, status=status.HTTP_201_CREATED)
+
+
+class CtOrganisationNoticeDetailView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def patch(self, request, pk, notice_id):
+        organisation = _get_ct_organisation(pk)
+        notice = get_object_or_404(Notice, organisation=organisation, id=notice_id)
+        serializer = NoticeWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        notice = update_notice(notice, actor=request.user, **serializer.validated_data)
+        return Response(NoticeSerializer(notice).data)
+
+
+class CtOrganisationNoticePublishView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def post(self, request, pk, notice_id):
+        organisation = _get_ct_organisation(pk)
+        notice = get_object_or_404(Notice, organisation=organisation, id=notice_id)
+        notice = publish_notice(notice, actor=request.user)
+        return Response(NoticeSerializer(notice).data)
 
 
 class CtOrganisationNotesView(APIView):

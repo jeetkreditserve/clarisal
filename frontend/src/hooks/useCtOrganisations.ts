@@ -1,10 +1,22 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { fetchCtAuditLogs } from '@/lib/api/audit'
 import {
+  createCtApprovalWorkflow,
   createCtHolidayCalendar,
+  createCtLeaveCycle,
+  createCtLeavePlan,
+  createCtLocation,
   createCtOrgNote,
+  createCtNotice,
+  createCtOnDutyPolicy,
   createLicenceBatch,
   createOrganisation,
+  createOrganisationAddress,
+  createCtDepartment,
+  deactivateCtDepartment,
+  deactivateCtLocation,
+  deactivateCtOrgAdmin,
+  deactivateOrganisationAddress,
   fetchCtHolidayCalendars,
   fetchCtOrgConfiguration,
   fetchCtOrgEmployeeDetail,
@@ -17,14 +29,26 @@ import {
   fetchOrganisations,
   inviteOrgAdmin,
   publishCtHolidayCalendar,
+  publishCtNotice,
   markLicenceBatchPaid,
   markOrganisationPaid,
+  reactivateCtOrgAdmin,
   resendOrgAdminInvite,
   restoreOrganisation,
+  revokePendingCtOrgAdmin,
   suspendOrganisation,
+  updateCtApprovalWorkflow,
+  updateCtBootstrapAdmin,
+  updateCtDepartment,
   updateCtHolidayCalendar,
+  updateCtLeaveCycle,
+  updateCtLeavePlan,
+  updateCtLocation,
+  updateCtNotice,
+  updateCtOnDutyPolicy,
   updateLicenceBatch,
   updateOrganisation,
+  updateOrganisationAddress,
 } from '@/lib/api/organisations'
 
 export function useCtStats() {
@@ -67,6 +91,51 @@ export function useUpdateOrganisation(id: string) {
   return useMutation({
     mutationFn: (payload: Parameters<typeof updateOrganisation>[1]) => updateOrganisation(id, payload),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['ct', 'organisations', id] }),
+  })
+}
+
+export function useUpdateCtBootstrapAdmin(id: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: Parameters<typeof updateCtBootstrapAdmin>[1]) => updateCtBootstrapAdmin(id, payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ct', 'organisations', id] })
+      qc.invalidateQueries({ queryKey: ['ct', 'organisations', id, 'admins'] })
+    },
+  })
+}
+
+export function useCreateOrganisationAddress(id: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: Parameters<typeof createOrganisationAddress>[1]) => createOrganisationAddress(id, payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ct', 'organisations', id] })
+      qc.invalidateQueries({ queryKey: ['ct', 'organisations', id, 'configuration'] })
+    },
+  })
+}
+
+export function useUpdateOrganisationAddress(id: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ addressId, payload }: { addressId: string; payload: Parameters<typeof updateOrganisationAddress>[2] }) =>
+      updateOrganisationAddress(id, addressId, payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ct', 'organisations', id] })
+      qc.invalidateQueries({ queryKey: ['ct', 'organisations', id, 'configuration'] })
+    },
+  })
+}
+
+export function useDeactivateOrganisationAddress(id: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (addressId: string) => deactivateOrganisationAddress(id, addressId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ct', 'organisations', id] })
+      qc.invalidateQueries({ queryKey: ['ct', 'organisations', id, 'configuration'] })
+    },
   })
 }
 
@@ -223,6 +292,39 @@ export function useResendOrgAdminInvite(orgId: string) {
   })
 }
 
+export function useDeactivateCtOrgAdmin(orgId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (userId: string) => deactivateCtOrgAdmin(orgId, userId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ct', 'organisations', orgId, 'admins'] })
+      qc.invalidateQueries({ queryKey: ['ct', 'organisations', orgId] })
+    },
+  })
+}
+
+export function useReactivateCtOrgAdmin(orgId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (userId: string) => reactivateCtOrgAdmin(orgId, userId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ct', 'organisations', orgId, 'admins'] })
+      qc.invalidateQueries({ queryKey: ['ct', 'organisations', orgId] })
+    },
+  })
+}
+
+export function useRevokePendingCtOrgAdmin(orgId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (userId: string) => revokePendingCtOrgAdmin(orgId, userId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ct', 'organisations', orgId, 'admins'] })
+      qc.invalidateQueries({ queryKey: ['ct', 'organisations', orgId] })
+    },
+  })
+}
+
 export function useCreateLicenceBatch(orgId: string) {
   const qc = useQueryClient()
   return useMutation({
@@ -259,5 +361,153 @@ export function useMarkLicenceBatchPaid(orgId: string) {
       qc.invalidateQueries({ queryKey: ['ct', 'stats'] })
       qc.invalidateQueries({ queryKey: ['ct', 'organisations', orgId, 'licence-batches'] })
     },
+  })
+}
+
+function invalidateCtConfiguration(qc: ReturnType<typeof useQueryClient>, orgId: string) {
+  qc.invalidateQueries({ queryKey: ['ct', 'organisations', orgId] })
+  qc.invalidateQueries({ queryKey: ['ct', 'organisations', orgId, 'configuration'] })
+}
+
+export function useCreateCtLocation(orgId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: Parameters<typeof createCtLocation>[1]) => createCtLocation(orgId, payload),
+    onSuccess: () => invalidateCtConfiguration(qc, orgId),
+  })
+}
+
+export function useUpdateCtLocation(orgId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ locationId, payload }: { locationId: string; payload: Parameters<typeof updateCtLocation>[2] }) =>
+      updateCtLocation(orgId, locationId, payload),
+    onSuccess: () => invalidateCtConfiguration(qc, orgId),
+  })
+}
+
+export function useDeactivateCtLocation(orgId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (locationId: string) => deactivateCtLocation(orgId, locationId),
+    onSuccess: () => invalidateCtConfiguration(qc, orgId),
+  })
+}
+
+export function useCreateCtDepartment(orgId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: Parameters<typeof createCtDepartment>[1]) => createCtDepartment(orgId, payload),
+    onSuccess: () => invalidateCtConfiguration(qc, orgId),
+  })
+}
+
+export function useUpdateCtDepartment(orgId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ departmentId, payload }: { departmentId: string; payload: Parameters<typeof updateCtDepartment>[2] }) =>
+      updateCtDepartment(orgId, departmentId, payload),
+    onSuccess: () => invalidateCtConfiguration(qc, orgId),
+  })
+}
+
+export function useDeactivateCtDepartment(orgId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (departmentId: string) => deactivateCtDepartment(orgId, departmentId),
+    onSuccess: () => invalidateCtConfiguration(qc, orgId),
+  })
+}
+
+export function useCreateCtLeaveCycle(orgId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: Record<string, unknown>) => createCtLeaveCycle(orgId, payload),
+    onSuccess: () => invalidateCtConfiguration(qc, orgId),
+  })
+}
+
+export function useUpdateCtLeaveCycle(orgId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ cycleId, payload }: { cycleId: string; payload: Record<string, unknown> }) =>
+      updateCtLeaveCycle(orgId, cycleId, payload),
+    onSuccess: () => invalidateCtConfiguration(qc, orgId),
+  })
+}
+
+export function useCreateCtLeavePlan(orgId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: Record<string, unknown>) => createCtLeavePlan(orgId, payload),
+    onSuccess: () => invalidateCtConfiguration(qc, orgId),
+  })
+}
+
+export function useUpdateCtLeavePlan(orgId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ planId, payload }: { planId: string; payload: Record<string, unknown> }) =>
+      updateCtLeavePlan(orgId, planId, payload),
+    onSuccess: () => invalidateCtConfiguration(qc, orgId),
+  })
+}
+
+export function useCreateCtOnDutyPolicy(orgId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: Record<string, unknown>) => createCtOnDutyPolicy(orgId, payload),
+    onSuccess: () => invalidateCtConfiguration(qc, orgId),
+  })
+}
+
+export function useUpdateCtOnDutyPolicy(orgId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ policyId, payload }: { policyId: string; payload: Record<string, unknown> }) =>
+      updateCtOnDutyPolicy(orgId, policyId, payload),
+    onSuccess: () => invalidateCtConfiguration(qc, orgId),
+  })
+}
+
+export function useCreateCtApprovalWorkflow(orgId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: Record<string, unknown>) => createCtApprovalWorkflow(orgId, payload),
+    onSuccess: () => invalidateCtConfiguration(qc, orgId),
+  })
+}
+
+export function useUpdateCtApprovalWorkflow(orgId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ workflowId, payload }: { workflowId: string; payload: Record<string, unknown> }) =>
+      updateCtApprovalWorkflow(orgId, workflowId, payload),
+    onSuccess: () => invalidateCtConfiguration(qc, orgId),
+  })
+}
+
+export function useCreateCtNotice(orgId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: Record<string, unknown>) => createCtNotice(orgId, payload),
+    onSuccess: () => invalidateCtConfiguration(qc, orgId),
+  })
+}
+
+export function useUpdateCtNotice(orgId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ noticeId, payload }: { noticeId: string; payload: Record<string, unknown> }) =>
+      updateCtNotice(orgId, noticeId, payload),
+    onSuccess: () => invalidateCtConfiguration(qc, orgId),
+  })
+}
+
+export function usePublishCtNotice(orgId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (noticeId: string) => publishCtNotice(orgId, noticeId),
+    onSuccess: () => invalidateCtConfiguration(qc, orgId),
   })
 }

@@ -544,10 +544,26 @@ class OrgAdminSerializer(serializers.ModelSerializer):
     full_name = serializers.CharField(source='user.full_name', read_only=True)
     is_active = serializers.SerializerMethodField()
     is_onboarding_email_sent = serializers.BooleanField(source='user.is_onboarding_email_sent', read_only=True)
+    membership_status = serializers.CharField(source='status', read_only=True)
+    invited_at = serializers.DateTimeField(read_only=True)
+    accepted_at = serializers.DateTimeField(read_only=True)
+    last_used_at = serializers.DateTimeField(read_only=True)
 
     class Meta:
         model = OrganisationMembership
-        fields = ['id', 'email', 'first_name', 'last_name', 'full_name', 'is_active', 'is_onboarding_email_sent']
+        fields = [
+            'id',
+            'email',
+            'first_name',
+            'last_name',
+            'full_name',
+            'is_active',
+            'is_onboarding_email_sent',
+            'membership_status',
+            'invited_at',
+            'accepted_at',
+            'last_used_at',
+        ]
 
     def get_is_active(self, obj):
         return obj.user.is_active

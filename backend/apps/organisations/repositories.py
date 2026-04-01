@@ -28,15 +28,13 @@ def get_organisation_by_id(pk):
     return get_organisations().get(id=pk)
 
 
-def get_org_admins(organisation):
+def get_org_admins(organisation, include_inactive=False):
     from .models import OrganisationMembership, OrganisationMembershipStatus
 
-    return (
-        OrganisationMembership.objects.select_related('user')
-        .filter(
-            organisation=organisation,
-            is_org_admin=True,
-            status=OrganisationMembershipStatus.ACTIVE,
-        )
-        .order_by('created_at')
+    queryset = OrganisationMembership.objects.select_related('user').filter(
+        organisation=organisation,
+        is_org_admin=True,
     )
+    if not include_inactive:
+        queryset = queryset.filter(status=OrganisationMembershipStatus.ACTIVE)
+    return queryset.order_by('created_at')

@@ -9,7 +9,7 @@ from django.db.models import Count, F, Q, Sum
 from django.utils import timezone
 
 from apps.accounts.contact_services import normalize_email_address, resolve_person_contacts
-from apps.accounts.workspaces import ACTIVE_EMPLOYEE_STATUSES
+from apps.accounts.workspaces import ACTIVE_EMPLOYEE_STATUSES, sync_user_role
 from apps.audit.services import log_audit_event
 from apps.employees.models import Employee, EmployeeStatus
 from .country_metadata import (
@@ -1153,6 +1153,112 @@ def ensure_org_admin_membership(organisation, user, invited_by=None, status=Orga
         changed = True
     if changed:
         membership.save()
+    return membership
+
+
+def deactivate_org_admin_membership(organisation, user, actor=None):
+    membership = OrganisationMembership.objects.select_related('user').filter(
+        organisation=organisation,
+        user=user,
+        is_org_admin=True,
+    ).first()
+    if membership is None:
+        raise ValueError('Organisation admin membership not found.')
+    if membership.status != OrganisationMembershipStatus.ACTIVE:
+        raise ValueError('Only active organisation admins can be deactivated.')
+    if organisation.primary_admin_user_id == user.id:
+        raise ValueError('Reassign the primary organisation admin before deactivating this admin.')
+    if not OrganisationMembership.objects.filter(
+        organisation=organisation,
+        is_org_admin=True,
+        status=OrganisationMembershipStatus.ACTIVE,
+    ).exclude(id=membership.id).exists():
+        raise ValueError('At least one active organisation admin must remain assigned.')
+
+    membership.status = OrganisationMembershipStatus.INACTIVE
+    membership.save(update_fields=['status', 'updated_at'])
+    sync_user_role(user)
+    log_audit_event(
+        actor,
+        'organisation.admin.deactivated',
+        organisation=organisation,
+        target=user,
+        payload={'email': user.email},
+    )
+    return membership
+
+
+def reactivate_org_admin_membership(organisation, user, actor=None):
+    membership = OrganisationMembership.objects.select_related('user').filter(
+        organisation=organisation,
+        user=user,
+        is_org_admin=True,
+    ).first()
+    if membership is None:
+        raise ValueError('Organisation admin membership not found.')
+    if membership.status != OrganisationMembershipStatus.INACTIVE:
+        raise ValueError('Only inactive organisation admins can be reactivated.')
+    if not user.is_active:
+        raise ValueError('This admin account is inactive. Resend the invite instead.')
+
+    membership.status = OrganisationMembershipStatus.ACTIVE
+    if membership.accepted_at is None:
+        membership.accepted_at = timezone.now()
+        membership.save(update_fields=['status', 'accepted_at', 'updated_at'])
+    else:
+        membership.save(update_fields=['status', 'updated_at'])
+    sync_user_role(user)
+    log_audit_event(
+        actor,
+        'organisation.admin.reactivated',
+        organisation=organisation,
+        target=user,
+        payload={'email': user.email},
+    )
+    return membership
+
+
+def revoke_org_admin_membership_invitation(organisation, user, actor=None):
+    from apps.invitations.models import Invitation, InvitationRole, InvitationStatus
+
+    membership = OrganisationMembership.objects.select_related('user').filter(
+        organisation=organisation,
+        user=user,
+        is_org_admin=True,
+    ).first()
+    if membership is None:
+        raise ValueError('Organisation admin membership not found.')
+    if membership.status != OrganisationMembershipStatus.INVITED:
+        raise ValueError('Only invited organisation admins can be revoked.')
+
+    Invitation.objects.filter(
+        organisation=organisation,
+        user=user,
+        role=InvitationRole.ORG_ADMIN,
+        status=InvitationStatus.PENDING,
+    ).update(status=InvitationStatus.REVOKED, revoked_at=timezone.now())
+
+    membership.status = OrganisationMembershipStatus.REVOKED
+    membership.save(update_fields=['status', 'updated_at'])
+
+    bootstrap_admin = getattr(organisation, 'bootstrap_admin', None)
+    if bootstrap_admin and normalize_email_address(bootstrap_admin.email) == normalize_email_address(user.email):
+        bootstrap_admin.status = BootstrapAdminStatus.DRAFT
+        bootstrap_admin.invited_user = None
+        bootstrap_admin.invitation_sent_at = None
+        bootstrap_admin.save(update_fields=['status', 'invited_user', 'invitation_sent_at', 'updated_at'])
+        if organisation.primary_admin_user_id == user.id:
+            organisation.primary_admin_user = None
+            organisation.save(update_fields=['primary_admin_user', 'updated_at'])
+
+    sync_user_role(user)
+    log_audit_event(
+        actor,
+        'organisation.admin.invitation.revoked',
+        organisation=organisation,
+        target=user,
+        payload={'email': user.email},
+    )
     return membership
 
 

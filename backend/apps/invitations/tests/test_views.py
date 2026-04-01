@@ -15,7 +15,7 @@ def ct_client(db):
         email='ct@test.com', password='pass123!', role=UserRole.CONTROL_TOWER,
     )
     client = APIClient()
-    client.post('/api/auth/control-tower/login/', {'email': 'ct@test.com', 'password': 'pass123!'}, format='json')
+    client.force_authenticate(user=user)
     return client, user
 
 

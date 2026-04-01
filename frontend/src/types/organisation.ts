@@ -231,6 +231,10 @@ export interface OrgAdmin {
   full_name: string
   is_active: boolean
   is_onboarding_email_sent: boolean
+  membership_status: 'INVITED' | 'ACTIVE' | 'INACTIVE' | 'REVOKED'
+  invited_at: string | null
+  accepted_at: string | null
+  last_used_at: string | null
 }
 
 export interface CtDashboardStats {

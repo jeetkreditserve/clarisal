@@ -17,6 +17,7 @@ import {
 import { toast } from 'sonner'
 
 import { AuditTimeline } from '@/components/ui/AuditTimeline'
+import { AppCheckbox } from '@/components/ui/AppCheckbox'
 import { AppDatePicker } from '@/components/ui/AppDatePicker'
 import { AppDialog } from '@/components/ui/AppDialog'
 import { AppSelect } from '@/components/ui/AppSelect'
@@ -31,32 +32,85 @@ import {
 } from '@/components/ui/Skeleton'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import {
+  useCreateCtApprovalWorkflow,
+  useCreateCtDepartment,
   useCreateCtHolidayCalendar,
+  useCreateCtLeaveCycle,
+  useCreateCtLeavePlan,
+  useCreateCtLocation,
   useCreateCtOrgNote,
+  useCreateCtNotice,
+  useCreateCtOnDutyPolicy,
   useCreateLicenceBatch,
+  useCreateOrganisationAddress,
   useCtAuditLogs,
   useCtHolidayCalendars,
   useCtOrgConfiguration,
   useCtOrgEmployeeDetail,
   useCtOrgEmployees,
   useCtOrgNotes,
+  useDeactivateCtDepartment,
+  useDeactivateCtLocation,
+  useDeactivateCtOrgAdmin,
+  useDeactivateOrganisationAddress,
   useInviteOrgAdmin,
   useMarkLicenceBatchPaid,
   useOrganisation,
   useOrgAdmins,
+  usePublishCtNotice,
   usePublishCtHolidayCalendar,
+  useReactivateCtOrgAdmin,
+  useRevokePendingCtOrgAdmin,
   useResendOrgAdminInvite,
   useRestoreOrganisation,
   useSuspendOrganisation,
+  useUpdateCtApprovalWorkflow,
+  useUpdateCtBootstrapAdmin,
+  useUpdateCtDepartment,
   useUpdateCtHolidayCalendar,
+  useUpdateCtLeaveCycle,
+  useUpdateCtLeavePlan,
+  useUpdateCtLocation,
+  useUpdateCtNotice,
+  useUpdateCtOnDutyPolicy,
   useUpdateLicenceBatch,
+  useUpdateOrganisation,
+  useUpdateOrganisationAddress,
 } from '@/hooks/useCtOrganisations'
-import { createDefaultHolidayCalendarForm, HOLIDAY_CLASSIFICATION_OPTIONS, HOLIDAY_SESSION_OPTIONS } from '@/lib/constants'
+import {
+  createDefaultApprovalWorkflow,
+  createDefaultHolidayCalendarForm,
+  createDefaultLeaveCycleForm,
+  createDefaultLeavePlanForm,
+  createDefaultNoticeForm,
+  createDefaultOnDutyPolicyForm,
+  HOLIDAY_CLASSIFICATION_OPTIONS,
+  HOLIDAY_SESSION_OPTIONS,
+  LEAVE_CREDIT_FREQUENCY_OPTIONS,
+  NOTICE_AUDIENCE_TYPE_OPTIONS,
+} from '@/lib/constants'
+import {
+  getAddressCountryName,
+  getAddressCountryOption,
+  getAddressCountryRule,
+  getBillingTaxLabel,
+  getSubdivisionName,
+  getSubdivisionOptions,
+  resolveSubdivisionCode,
+} from '@/lib/addressMetadata'
 import { getErrorMessage } from '@/lib/errors'
 import { formatDate, formatDateTime, startCase } from '@/lib/format'
+import {
+  COUNTRY_OPTIONS,
+  CURRENCY_OPTIONS,
+  DEFAULT_COUNTRY_OPTION,
+  ORGANISATION_ENTITY_TYPE_OPTIONS,
+  getCountryOption,
+  validatePhoneForCountry,
+} from '@/lib/organisationMetadata'
 import { ORG_ONBOARDING_STEPS } from '@/lib/status'
-import type { HolidayCalendar } from '@/types/hr'
-import type { LicenceBatch } from '@/types/organisation'
+import type { ApprovalWorkflowConfig, Department, HolidayCalendar, LeaveCycle, LeavePlan, Location, NoticeItem, OnDutyPolicy } from '@/types/hr'
+import type { LicenceBatch, OrganisationAddress, OrganisationAddressType, OrganisationDetail, OrganisationEntityType } from '@/types/organisation'
 
 type DetailTabKey =
   | 'overview'
@@ -77,10 +131,130 @@ type BatchFormState = {
   note: string
 }
 
+type ProfileFormState = {
+  name: string
+  pan_number: string
+  country_code: string
+  currency: string
+  entity_type: OrganisationEntityType
+}
+
+type BootstrapAdminFormState = {
+  first_name: string
+  last_name: string
+  email: string
+  phone: string
+}
+
+type AddressFormState = {
+  address_type: OrganisationAddressType
+  label: string
+  line1: string
+  line2: string
+  city: string
+  state: string
+  state_code: string
+  country: string
+  country_code: string
+  pincode: string
+  gstin: string
+}
+
+type LocationFormState = {
+  name: string
+  organisation_address_id: string
+  is_remote: boolean
+}
+
+type DepartmentFormState = {
+  name: string
+  description: string
+  parent_department_id: string
+}
+
+type LeaveCycleFormState = ReturnType<typeof createDefaultLeaveCycleForm>
+
+type LeaveTypeFormState = {
+  id?: string
+  code: string
+  name: string
+  description: string
+  color: string
+  is_paid: boolean
+  is_loss_of_pay: boolean
+  annual_entitlement: string
+  credit_frequency: string
+  credit_day_of_period: number | null
+  prorate_on_join: boolean
+  carry_forward_mode: string
+  carry_forward_cap: string | null
+  max_balance: string | null
+  allows_half_day: boolean
+  requires_attachment: boolean
+  attachment_after_days: string | null
+  min_notice_days: number
+  max_consecutive_days: number | null
+  allow_past_request: boolean
+  allow_future_request: boolean
+  is_active: boolean
+}
+
+type LeavePlanRuleFormState = {
+  id?: string
+  name: string
+  priority: number
+  is_active: boolean
+  department_id: string
+  office_location_id: string
+  specific_employee_id: string
+  employment_type: string
+  designation: string
+}
+
+type LeavePlanFormState = {
+  leave_cycle_id: string
+  name: string
+  description: string
+  is_default: boolean
+  is_active: boolean
+  priority: number
+  leave_types: LeaveTypeFormState[]
+  rules: LeavePlanRuleFormState[]
+}
+
+type HolidayFormState = ReturnType<typeof createDefaultHolidayCalendarForm>
+type OnDutyPolicyFormState = ReturnType<typeof createDefaultOnDutyPolicyForm>
+type WorkflowFormState = ReturnType<typeof createDefaultApprovalWorkflow>
+type NoticeFormState = ReturnType<typeof createDefaultNoticeForm>
+
 type ActionDialogState = {
   open: boolean
   note: string
 }
+
+const mandatoryAddressTypes: OrganisationAddressType[] = ['REGISTERED', 'BILLING']
+const COUNTRY_SELECT_OPTIONS = COUNTRY_OPTIONS.map((country) => ({
+  value: country.code,
+  label: country.name,
+  hint: `${country.dialCode} • ${country.defaultCurrency}`,
+  keywords: [country.dialCode, country.defaultCurrency],
+}))
+const CURRENCY_SELECT_OPTIONS = CURRENCY_OPTIONS.map((currency) => ({
+  value: currency.code,
+  label: currency.label,
+}))
+const ENTITY_TYPE_OPTIONS = ORGANISATION_ENTITY_TYPE_OPTIONS.map((option) => ({
+  value: option.value,
+  label: option.label,
+}))
+const ADDRESS_TYPE_OPTIONS = ['REGISTERED', 'BILLING', 'HEADQUARTERS', 'WAREHOUSE', 'CUSTOM'].map((type) => ({
+  value: type,
+  label: startCase(type),
+}))
+const NOTICE_AUDIENCE_OPTIONS = NOTICE_AUDIENCE_TYPE_OPTIONS.map((value) => ({
+  value,
+  label: startCase(value),
+}))
 
 const TAB_OPTIONS: Array<{
   key: DetailTabKey
@@ -124,6 +298,235 @@ function emptyBatchForm(): BatchFormState {
     start_date: '',
     end_date: '',
     note: '',
+  }
+}
+
+function createEmptyAddressForm(countryCode = DEFAULT_COUNTRY_OPTION.code): AddressFormState {
+  return {
+    address_type: 'CUSTOM',
+    label: '',
+    line1: '',
+    line2: '',
+    city: '',
+    state: '',
+    state_code: '',
+    country: getAddressCountryName(countryCode),
+    country_code: countryCode,
+    pincode: '',
+    gstin: '',
+  }
+}
+
+function createEmptyLeaveTypeFormState(): LeaveTypeFormState {
+  return {
+    code: '',
+    name: '',
+    description: '',
+    color: '#2563eb',
+    is_paid: true,
+    is_loss_of_pay: false,
+    annual_entitlement: '0.00',
+    credit_frequency: 'YEARLY',
+    credit_day_of_period: null,
+    prorate_on_join: true,
+    carry_forward_mode: 'NONE',
+    carry_forward_cap: null,
+    max_balance: null,
+    allows_half_day: true,
+    requires_attachment: false,
+    attachment_after_days: null,
+    min_notice_days: 0,
+    max_consecutive_days: null,
+    allow_past_request: false,
+    allow_future_request: true,
+    is_active: true,
+  }
+}
+
+function createProfileFormState(organisation: OrganisationDetail): ProfileFormState {
+  return {
+    name: organisation.name,
+    pan_number: organisation.pan_number ?? '',
+    country_code: organisation.country_code || DEFAULT_COUNTRY_OPTION.code,
+    currency: organisation.currency || DEFAULT_COUNTRY_OPTION.defaultCurrency,
+    entity_type: organisation.entity_type,
+  }
+}
+
+function createBootstrapAdminFormState(
+  bootstrapAdmin: OrganisationDetail['bootstrap_admin'],
+): BootstrapAdminFormState {
+  return {
+    first_name: bootstrapAdmin?.first_name ?? '',
+    last_name: bootstrapAdmin?.last_name ?? '',
+    email: bootstrapAdmin?.email ?? '',
+    phone: bootstrapAdmin?.phone ?? '',
+  }
+}
+
+function createAddressFormState(address: OrganisationAddress): AddressFormState {
+  return {
+    address_type: address.address_type,
+    label: address.label,
+    line1: address.line1,
+    line2: address.line2 ?? '',
+    city: address.city,
+    state: address.state,
+    state_code: address.state_code,
+    country: address.country,
+    country_code: address.country_code,
+    pincode: address.pincode,
+    gstin: address.gstin ?? '',
+  }
+}
+
+function createLocationFormState(location?: Location): LocationFormState {
+  return {
+    name: location?.name ?? '',
+    organisation_address_id: location?.organisation_address_id ?? '',
+    is_remote: location?.is_remote ?? false,
+  }
+}
+
+function createDepartmentFormState(department?: Department): DepartmentFormState {
+  return {
+    name: department?.name ?? '',
+    description: department?.description ?? '',
+    parent_department_id: department?.parent_department_id ?? '',
+  }
+}
+
+function createLeaveCycleDialogForm(cycle?: LeaveCycle): LeaveCycleFormState {
+  if (!cycle) return createDefaultLeaveCycleForm()
+  return {
+    name: cycle.name,
+    cycle_type: cycle.cycle_type,
+    start_month: cycle.start_month,
+    start_day: cycle.start_day,
+    is_default: cycle.is_default,
+    is_active: cycle.is_active,
+  }
+}
+
+function createLeavePlanDialogForm(plan?: LeavePlan): LeavePlanFormState {
+  if (!plan) {
+    const defaultForm = createDefaultLeavePlanForm()
+    return {
+      ...defaultForm,
+      leave_types: defaultForm.leave_types.map((leaveType) => ({
+        ...createEmptyLeaveTypeFormState(),
+        ...leaveType,
+      })),
+      rules: [],
+    }
+  }
+  return {
+    leave_cycle_id: plan.leave_cycle.id,
+    name: plan.name,
+    description: plan.description ?? '',
+    is_default: plan.is_default,
+    is_active: plan.is_active,
+    priority: plan.priority,
+    leave_types: plan.leave_types.map((leaveType) => ({
+      id: leaveType.id,
+      code: leaveType.code,
+      name: leaveType.name,
+      description: leaveType.description ?? '',
+      color: leaveType.color,
+      is_paid: leaveType.is_paid,
+      is_loss_of_pay: leaveType.is_loss_of_pay,
+      annual_entitlement: leaveType.annual_entitlement,
+      credit_frequency: leaveType.credit_frequency,
+      credit_day_of_period: leaveType.credit_day_of_period ?? null,
+      prorate_on_join: leaveType.prorate_on_join,
+      carry_forward_mode: leaveType.carry_forward_mode,
+      carry_forward_cap: leaveType.carry_forward_cap ?? null,
+      max_balance: leaveType.max_balance ?? null,
+      allows_half_day: leaveType.allows_half_day,
+      requires_attachment: leaveType.requires_attachment,
+      attachment_after_days: leaveType.attachment_after_days ?? null,
+      min_notice_days: leaveType.min_notice_days,
+      max_consecutive_days: leaveType.max_consecutive_days ?? null,
+      allow_past_request: leaveType.allow_past_request,
+      allow_future_request: leaveType.allow_future_request,
+      is_active: leaveType.is_active,
+    })),
+    rules: plan.rules.map((rule) => ({
+      id: rule.id,
+      name: rule.name,
+      priority: rule.priority,
+      is_active: rule.is_active,
+      department_id: rule.department ?? '',
+      office_location_id: rule.office_location ?? '',
+      specific_employee_id: rule.specific_employee ?? '',
+      employment_type: rule.employment_type,
+      designation: rule.designation,
+    })),
+  }
+}
+
+function createOnDutyPolicyDialogForm(policy?: OnDutyPolicy): OnDutyPolicyFormState {
+  if (!policy) return createDefaultOnDutyPolicyForm()
+  return {
+    name: policy.name,
+    description: policy.description ?? '',
+    is_default: policy.is_default,
+    is_active: policy.is_active,
+    allow_half_day: policy.allow_half_day,
+    allow_time_range: policy.allow_time_range,
+    requires_attachment: policy.requires_attachment,
+    min_notice_days: policy.min_notice_days,
+    allow_past_request: policy.allow_past_request,
+    allow_future_request: policy.allow_future_request,
+  }
+}
+
+function createWorkflowDialogForm(workflow?: ApprovalWorkflowConfig): WorkflowFormState {
+  if (!workflow) return createDefaultApprovalWorkflow()
+  return {
+    name: workflow.name,
+    description: workflow.description ?? '',
+    is_default: workflow.is_default,
+    is_active: workflow.is_active,
+    rules: workflow.rules.map((rule) => ({
+      id: rule.id,
+      name: rule.name,
+      request_kind: rule.request_kind,
+      priority: rule.priority,
+      is_active: rule.is_active,
+      department_id: rule.department,
+      office_location_id: rule.office_location,
+      specific_employee_id: rule.specific_employee,
+      employment_type: rule.employment_type,
+      designation: rule.designation,
+      leave_type_id: rule.leave_type,
+    })),
+    stages: workflow.stages.map((stage) => ({
+      id: stage.id,
+      name: stage.name,
+      sequence: stage.sequence,
+      mode: stage.mode,
+      fallback_type: stage.fallback_type,
+      fallback_employee_id: stage.fallback_employee_id,
+      approvers: stage.approvers.map((approver) => ({
+        id: approver.id,
+        approver_type: approver.approver_type,
+        approver_employee_id: approver.approver_employee_id,
+      })),
+    })),
+  }
+}
+
+function createNoticeDialogForm(notice?: NoticeItem): NoticeFormState {
+  if (!notice) return createDefaultNoticeForm()
+  return {
+    title: notice.title,
+    body: notice.body,
+    audience_type: notice.audience_type,
+    status: notice.status,
+    department_ids: [...notice.department_ids],
+    office_location_ids: [...notice.office_location_ids],
+    employee_ids: [...notice.employee_ids],
   }
 }
 
@@ -213,6 +616,16 @@ export function OrganisationDetailPage() {
   const [markPaidDialogOpen, setMarkPaidDialogOpen] = useState(false)
   const [holidayDialogOpen, setHolidayDialogOpen] = useState(false)
   const [employeeDetailOpen, setEmployeeDetailOpen] = useState(false)
+  const [profileDialogOpen, setProfileDialogOpen] = useState(false)
+  const [bootstrapAdminDialogOpen, setBootstrapAdminDialogOpen] = useState(false)
+  const [addressDialogOpen, setAddressDialogOpen] = useState(false)
+  const [locationDialogOpen, setLocationDialogOpen] = useState(false)
+  const [departmentDialogOpen, setDepartmentDialogOpen] = useState(false)
+  const [leaveCycleDialogOpen, setLeaveCycleDialogOpen] = useState(false)
+  const [leavePlanDialogOpen, setLeavePlanDialogOpen] = useState(false)
+  const [onDutyPolicyDialogOpen, setOnDutyPolicyDialogOpen] = useState(false)
+  const [workflowDialogOpen, setWorkflowDialogOpen] = useState(false)
+  const [noticeDialogOpen, setNoticeDialogOpen] = useState(false)
   const [suspendDialog, setSuspendDialog] = useState<ActionDialogState>({ open: false, note: '' })
   const [restoreDialog, setRestoreDialog] = useState<ActionDialogState>({ open: false, note: '' })
   const [inviteForm, setInviteForm] = useState({ email: '', first_name: '', last_name: '' })
@@ -226,7 +639,26 @@ export function OrganisationDetailPage() {
   const [batchPaidAt, setBatchPaidAt] = useState('')
   const [batchForm, setBatchForm] = useState<BatchFormState>(emptyBatchForm)
   const [editingHolidayId, setEditingHolidayId] = useState<string | null>(null)
-  const [holidayForm, setHolidayForm] = useState(createDefaultHolidayCalendarForm)
+  const [holidayForm, setHolidayForm] = useState<HolidayFormState>(createDefaultHolidayCalendarForm)
+  const [profileForm, setProfileForm] = useState<ProfileFormState | null>(null)
+  const [bootstrapAdminForm, setBootstrapAdminForm] = useState<BootstrapAdminFormState | null>(null)
+  const [editingAddressId, setEditingAddressId] = useState<string | null>(null)
+  const [addressForm, setAddressForm] = useState<AddressFormState>(createEmptyAddressForm())
+  const [editingLocationId, setEditingLocationId] = useState<string | null>(null)
+  const [locationForm, setLocationForm] = useState<LocationFormState>(createLocationFormState())
+  const [editingDepartmentId, setEditingDepartmentId] = useState<string | null>(null)
+  const [departmentForm, setDepartmentForm] = useState<DepartmentFormState>(createDepartmentFormState())
+  const [editingLeaveCycleId, setEditingLeaveCycleId] = useState<string | null>(null)
+  const [leaveCycleForm, setLeaveCycleForm] = useState<LeaveCycleFormState>(createDefaultLeaveCycleForm)
+  const [editingLeavePlanId, setEditingLeavePlanId] = useState<string | null>(null)
+  const [leavePlanForm, setLeavePlanForm] = useState<LeavePlanFormState>(createLeavePlanDialogForm())
+  const [editingOnDutyPolicyId, setEditingOnDutyPolicyId] = useState<string | null>(null)
+  const [onDutyPolicyForm, setOnDutyPolicyForm] = useState<OnDutyPolicyFormState>(createDefaultOnDutyPolicyForm)
+  const [editingWorkflowId, setEditingWorkflowId] = useState<string | null>(null)
+  const [workflowForm, setWorkflowForm] = useState<WorkflowFormState>(createDefaultApprovalWorkflow)
+  const [editingNoticeId, setEditingNoticeId] = useState<string | null>(null)
+  const [noticeForm, setNoticeForm] = useState<NoticeFormState>(createDefaultNoticeForm)
+  const [hasProfileCurrencyManualOverride, setHasProfileCurrencyManualOverride] = useState(false)
 
   const { data: organisation, isLoading } = useOrganisation(organisationId)
   const { data: admins } = useOrgAdmins(organisationId, activeTab === 'admins')
@@ -246,15 +678,23 @@ export function OrganisationDetailPage() {
   )
   const { data: configuration, isLoading: configurationLoading } = useCtOrgConfiguration(
     organisationId,
-    activeTab === 'configuration' || holidayDialogOpen,
+    Boolean(organisationId),
   )
   const { data: auditLogs } = useCtAuditLogs(organisationId, activeTab === 'audit')
   const { data: notes, isLoading: notesLoading } = useCtOrgNotes(organisationId, activeTab === 'notes')
 
+  const updateOrganisationMutation = useUpdateOrganisation(organisationId)
+  const updateBootstrapAdminMutation = useUpdateCtBootstrapAdmin(organisationId)
+  const createAddressMutation = useCreateOrganisationAddress(organisationId)
+  const updateAddressMutation = useUpdateOrganisationAddress(organisationId)
+  const deactivateAddressMutation = useDeactivateOrganisationAddress(organisationId)
   const suspendMutation = useSuspendOrganisation()
   const restoreMutation = useRestoreOrganisation()
   const inviteAdminMutation = useInviteOrgAdmin(organisationId)
   const resendInviteMutation = useResendOrgAdminInvite(organisationId)
+  const deactivateAdminMutation = useDeactivateCtOrgAdmin(organisationId)
+  const reactivateAdminMutation = useReactivateCtOrgAdmin(organisationId)
+  const revokeAdminMutation = useRevokePendingCtOrgAdmin(organisationId)
   const createBatchMutation = useCreateLicenceBatch(organisationId)
   const updateBatchMutation = useUpdateLicenceBatch(organisationId)
   const markBatchPaidMutation = useMarkLicenceBatchPaid(organisationId)
@@ -262,6 +702,23 @@ export function OrganisationDetailPage() {
   const updateHolidayMutation = useUpdateCtHolidayCalendar(organisationId)
   const publishHolidayMutation = usePublishCtHolidayCalendar(organisationId)
   const createNoteMutation = useCreateCtOrgNote(organisationId)
+  const createLocationMutation = useCreateCtLocation(organisationId)
+  const updateLocationMutation = useUpdateCtLocation(organisationId)
+  const deactivateLocationMutation = useDeactivateCtLocation(organisationId)
+  const createDepartmentMutation = useCreateCtDepartment(organisationId)
+  const updateDepartmentMutation = useUpdateCtDepartment(organisationId)
+  const deactivateDepartmentMutation = useDeactivateCtDepartment(organisationId)
+  const createLeaveCycleMutation = useCreateCtLeaveCycle(organisationId)
+  const updateLeaveCycleMutation = useUpdateCtLeaveCycle(organisationId)
+  const createLeavePlanMutation = useCreateCtLeavePlan(organisationId)
+  const updateLeavePlanMutation = useUpdateCtLeavePlan(organisationId)
+  const createOnDutyPolicyMutation = useCreateCtOnDutyPolicy(organisationId)
+  const updateOnDutyPolicyMutation = useUpdateCtOnDutyPolicy(organisationId)
+  const createWorkflowMutation = useCreateCtApprovalWorkflow(organisationId)
+  const updateWorkflowMutation = useUpdateCtApprovalWorkflow(organisationId)
+  const createNoticeMutation = useCreateCtNotice(organisationId)
+  const updateNoticeMutation = useUpdateCtNotice(organisationId)
+  const publishNoticeMutation = usePublishCtNotice(organisationId)
 
   const bootstrapAdmin = organisation?.bootstrap_admin ?? organisation?.primary_admin ?? null
   const additionalAdmins = useMemo(
@@ -313,6 +770,34 @@ export function OrganisationDetailPage() {
         hint: location.organisation_address ? `${location.organisation_address.label} • ${location.city}` : 'No linked address',
       })) ?? []
 
+  const selectedProfileCountry =
+    getCountryOption(profileForm?.country_code ?? organisation?.country_code ?? DEFAULT_COUNTRY_OPTION.code) ?? DEFAULT_COUNTRY_OPTION
+  const addressCountry = getAddressCountryOption(addressForm.country_code || addressForm.country) ?? selectedProfileCountry
+  const addressRule = getAddressCountryRule(addressCountry.code)
+  const addressSubdivisions = getSubdivisionOptions(addressCountry.code).map((subdivision) => ({
+    value: subdivision.code,
+    label: subdivision.label,
+    hint: subdivision.taxRegionCode ? `Tax region ${subdivision.taxRegionCode}` : undefined,
+  }))
+  const departmentOptions = [
+    { value: '', label: 'No parent department' },
+    ...(configuration?.departments
+      .filter((department) => department.is_active && department.id !== editingDepartmentId)
+      .map((department) => ({
+        value: department.id,
+        label: department.name,
+      })) ?? []),
+  ]
+  const leaveCycleOptions = [
+    { value: '', label: 'Select leave cycle' },
+    ...(configuration?.leave_cycles.map((cycle) => ({
+      value: cycle.id,
+      label: cycle.name,
+    })) ?? []),
+  ]
+  const noticeDepartmentOptions =
+    configuration?.departments.filter((department) => department.is_active) ?? []
+
   const tabSelectOptions = TAB_OPTIONS.map((tab) => ({ value: tab.key, label: tab.label }))
   const employeeStatusOptions = [
     { value: '', label: 'All statuses' },
@@ -331,11 +816,114 @@ export function OrganisationDetailPage() {
     value: session,
     label: startCase(session),
   }))
+  const noticeAudienceOptions = NOTICE_AUDIENCE_OPTIONS
+  const leaveCreditFrequencyOptions = LEAVE_CREDIT_FREQUENCY_OPTIONS.map((frequency) => ({
+    value: frequency,
+    label: startCase(frequency),
+  }))
 
   const setActiveTab = (tab: DetailTabKey) => {
     const next = new URLSearchParams(searchParams)
     next.set('tab', tab)
     setSearchParams(next, { replace: true })
+  }
+
+  const openProfileDialog = () => {
+    if (!organisation) return
+    setProfileForm(createProfileFormState(organisation))
+    setHasProfileCurrencyManualOverride(false)
+    setProfileDialogOpen(true)
+  }
+
+  const openBootstrapAdminDialog = () => {
+    setBootstrapAdminForm(createBootstrapAdminFormState(bootstrapAdmin))
+    setBootstrapAdminDialogOpen(true)
+  }
+
+  const openAddressDialog = (address?: OrganisationAddress) => {
+    setEditingAddressId(address?.id ?? null)
+    setAddressForm(address ? createAddressFormState(address) : createEmptyAddressForm(selectedProfileCountry.code))
+    setAddressDialogOpen(true)
+  }
+
+  const openLocationDialog = (location?: Location) => {
+    setEditingLocationId(location?.id ?? null)
+    setLocationForm(createLocationFormState(location))
+    setLocationDialogOpen(true)
+  }
+
+  const openDepartmentDialog = (department?: Department) => {
+    setEditingDepartmentId(department?.id ?? null)
+    setDepartmentForm(createDepartmentFormState(department))
+    setDepartmentDialogOpen(true)
+  }
+
+  const openLeaveCycleDialog = (cycle?: LeaveCycle) => {
+    setEditingLeaveCycleId(cycle?.id ?? null)
+    setLeaveCycleForm(createLeaveCycleDialogForm(cycle))
+    setLeaveCycleDialogOpen(true)
+  }
+
+  const openLeavePlanDialog = (plan?: LeavePlan) => {
+    setEditingLeavePlanId(plan?.id ?? null)
+    setLeavePlanForm(createLeavePlanDialogForm(plan))
+    setLeavePlanDialogOpen(true)
+  }
+
+  const openOnDutyPolicyDialog = (policy?: OnDutyPolicy) => {
+    setEditingOnDutyPolicyId(policy?.id ?? null)
+    setOnDutyPolicyForm(createOnDutyPolicyDialogForm(policy))
+    setOnDutyPolicyDialogOpen(true)
+  }
+
+  const openWorkflowDialog = (workflow?: ApprovalWorkflowConfig) => {
+    setEditingWorkflowId(workflow?.id ?? null)
+    setWorkflowForm(createWorkflowDialogForm(workflow))
+    setWorkflowDialogOpen(true)
+  }
+
+  const openNoticeDialog = (notice?: NoticeItem) => {
+    setEditingNoticeId(notice?.id ?? null)
+    setNoticeForm(createNoticeDialogForm(notice))
+    setNoticeDialogOpen(true)
+  }
+
+  const setAddressCountry = (countryCode: string) => {
+    setAddressForm((current) => ({
+      ...current,
+      country_code: countryCode,
+      country: getAddressCountryName(countryCode),
+      state: '',
+      state_code: '',
+      pincode: '',
+      gstin: '',
+    }))
+  }
+
+  const setAddressState = (stateCode: string) => {
+    setAddressForm((current) => ({
+      ...current,
+      state_code: stateCode,
+      state: getSubdivisionName(addressCountry.code, stateCode, ''),
+    }))
+  }
+
+  const handleProfileCountryChange = (nextCountryCode: string) => {
+    setProfileForm((current) => {
+      if (!current) return current
+      const previousCountry = getCountryOption(current.country_code) ?? DEFAULT_COUNTRY_OPTION
+      const nextCountry = getCountryOption(nextCountryCode) ?? DEFAULT_COUNTRY_OPTION
+      const shouldAutoUpdateCurrency =
+        !hasProfileCurrencyManualOverride || current.currency === previousCountry.defaultCurrency
+      return {
+        ...current,
+        country_code: nextCountryCode,
+        currency: shouldAutoUpdateCurrency ? nextCountry.defaultCurrency : current.currency,
+      }
+    })
+    if (!hasProfileCurrencyManualOverride || profileForm?.currency === selectedProfileCountry.defaultCurrency) {
+      setHasProfileCurrencyManualOverride(false)
+    }
   }
 
   const resetBatchDialog = () => {
@@ -395,6 +983,250 @@ export function OrganisationDetailPage() {
       toast.success('Invite resent.')
     } catch (error) {
       toast.error(getErrorMessage(error, 'Unable to resend invite.'))
+    }
+  }
+
+  const handleDeactivateAdmin = async (userId: string) => {
+    try {
+      await deactivateAdminMutation.mutateAsync(userId)
+      toast.success('Organisation admin deactivated.')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to deactivate this admin.'))
+    }
+  }
+
+  const handleReactivateAdmin = async (userId: string) => {
+    try {
+      await reactivateAdminMutation.mutateAsync(userId)
+      toast.success('Organisation admin reactivated.')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to reactivate this admin.'))
+    }
+  }
+
+  const handleRevokePendingAdmin = async (userId: string) => {
+    try {
+      await revokeAdminMutation.mutateAsync(userId)
+      toast.success('Pending admin invite revoked.')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to revoke this pending invite.'))
+    }
+  }
+
+  const handleSaveProfile = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!profileForm) return
+    try {
+      await updateOrganisationMutation.mutateAsync(profileForm)
+      toast.success('Organisation profile updated.')
+      setProfileDialogOpen(false)
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to update organisation profile.'))
+    }
+  }
+
+  const handleSaveBootstrapAdmin = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!bootstrapAdminForm || !organisation) return
+    try {
+      const phoneError = validatePhoneForCountry(bootstrapAdminForm.phone, organisation.country_code)
+      if (phoneError) {
+        toast.error(phoneError)
+        return
+      }
+      await updateBootstrapAdminMutation.mutateAsync(bootstrapAdminForm)
+      toast.success('Bootstrap admin updated.')
+      setBootstrapAdminDialogOpen(false)
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to update bootstrap admin.'))
+    }
+  }
+
+  const handleSaveAddress = async (event: React.FormEvent) => {
+    event.preventDefault()
+    const payload = {
+      ...addressForm,
+      label: mandatoryAddressTypes.includes(addressForm.address_type) ? undefined : addressForm.label,
+      gstin: addressForm.gstin || null,
+    }
+    try {
+      if (editingAddressId) {
+        await updateAddressMutation.mutateAsync({ addressId: editingAddressId, payload })
+        toast.success('Address updated.')
+      } else {
+        await createAddressMutation.mutateAsync(payload)
+        toast.success('Address created.')
+      }
+      setAddressDialogOpen(false)
+      setEditingAddressId(null)
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to save address.'))
+    }
+  }
+
+  const handleDeactivateAddress = async (addressId: string) => {
+    try {
+      await deactivateAddressMutation.mutateAsync(addressId)
+      toast.success('Address deactivated.')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to deactivate this address.'))
+    }
+  }
+
+  const handleSaveLocation = async (event: React.FormEvent) => {
+    event.preventDefault()
+    try {
+      if (editingLocationId) {
+        await updateLocationMutation.mutateAsync({ locationId: editingLocationId, payload: locationForm })
+        toast.success('Location updated.')
+      } else {
+        await createLocationMutation.mutateAsync(locationForm)
+        toast.success('Location created.')
+      }
+      setLocationDialogOpen(false)
+      setEditingLocationId(null)
+      setLocationForm(createLocationFormState())
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to save location.'))
+    }
+  }
+
+  const handleDeactivateLocation = async (locationId: string) => {
+    try {
+      await deactivateLocationMutation.mutateAsync(locationId)
+      toast.success('Location deactivated.')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to deactivate this location.'))
+    }
+  }
+
+  const handleSaveDepartment = async (event: React.FormEvent) => {
+    event.preventDefault()
+    const payload = {
+      ...departmentForm,
+      parent_department_id: departmentForm.parent_department_id || null,
+    }
+    try {
+      if (editingDepartmentId) {
+        await updateDepartmentMutation.mutateAsync({ departmentId: editingDepartmentId, payload })
+        toast.success('Department updated.')
+      } else {
+        await createDepartmentMutation.mutateAsync(payload)
+        toast.success('Department created.')
+      }
+      setDepartmentDialogOpen(false)
+      setEditingDepartmentId(null)
+      setDepartmentForm(createDepartmentFormState())
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to save department.'))
+    }
+  }
+
+  const handleDeactivateDepartment = async (departmentId: string) => {
+    try {
+      await deactivateDepartmentMutation.mutateAsync(departmentId)
+      toast.success('Department deactivated.')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to deactivate this department.'))
+    }
+  }
+
+  const handleSaveLeaveCycle = async (event: React.FormEvent) => {
+    event.preventDefault()
+    try {
+      if (editingLeaveCycleId) {
+        await updateLeaveCycleMutation.mutateAsync({ cycleId: editingLeaveCycleId, payload: leaveCycleForm })
+        toast.success('Leave cycle updated.')
+      } else {
+        await createLeaveCycleMutation.mutateAsync(leaveCycleForm)
+        toast.success('Leave cycle created.')
+      }
+      setLeaveCycleDialogOpen(false)
+      setEditingLeaveCycleId(null)
+      setLeaveCycleForm(createDefaultLeaveCycleForm())
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to save leave cycle.'))
+    }
+  }
+
+  const handleSaveLeavePlan = async (event: React.FormEvent) => {
+    event.preventDefault()
+    try {
+      if (editingLeavePlanId) {
+        await updateLeavePlanMutation.mutateAsync({ planId: editingLeavePlanId, payload: leavePlanForm })
+        toast.success('Leave plan updated.')
+      } else {
+        await createLeavePlanMutation.mutateAsync(leavePlanForm)
+        toast.success('Leave plan created.')
+      }
+      setLeavePlanDialogOpen(false)
+      setEditingLeavePlanId(null)
+      setLeavePlanForm(createLeavePlanDialogForm())
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to save leave plan.'))
+    }
+  }
+
+  const handleSaveOnDutyPolicy = async (event: React.FormEvent) => {
+    event.preventDefault()
+    try {
+      if (editingOnDutyPolicyId) {
+        await updateOnDutyPolicyMutation.mutateAsync({ policyId: editingOnDutyPolicyId, payload: onDutyPolicyForm })
+        toast.success('On-duty policy updated.')
+      } else {
+        await createOnDutyPolicyMutation.mutateAsync(onDutyPolicyForm)
+        toast.success('On-duty policy created.')
+      }
+      setOnDutyPolicyDialogOpen(false)
+      setEditingOnDutyPolicyId(null)
+      setOnDutyPolicyForm(createDefaultOnDutyPolicyForm())
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to save on-duty policy.'))
+    }
+  }
+
+  const handleSaveWorkflow = async (event: React.FormEvent) => {
+    event.preventDefault()
+    try {
+      if (editingWorkflowId) {
+        await updateWorkflowMutation.mutateAsync({ workflowId: editingWorkflowId, payload: workflowForm })
+        toast.success('Approval workflow updated.')
+      } else {
+        await createWorkflowMutation.mutateAsync(workflowForm)
+        toast.success('Approval workflow created.')
+      }
+      setWorkflowDialogOpen(false)
+      setEditingWorkflowId(null)
+      setWorkflowForm(createDefaultApprovalWorkflow())
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to save approval workflow.'))
+    }
+  }
+
+  const handleSaveNotice = async (event: React.FormEvent) => {
+    event.preventDefault()
+    try {
+      if (editingNoticeId) {
+        await updateNoticeMutation.mutateAsync({ noticeId: editingNoticeId, payload: noticeForm })
+        toast.success('Notice updated.')
+      } else {
+        await createNoticeMutation.mutateAsync(noticeForm)
+        toast.success('Notice created.')
+      }
+      setNoticeDialogOpen(false)
+      setEditingNoticeId(null)
+      setNoticeForm(createDefaultNoticeForm())
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to save notice.'))
+    }
+  }
+
+  const handlePublishNotice = async (noticeId: string) => {
+    try {
+      await publishNoticeMutation.mutateAsync(noticeId)
+      toast.success('Notice published.')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to publish this notice.'))
     }
   }
 
@@ -586,7 +1418,15 @@ export function OrganisationDetailPage() {
 
   const renderDetailsTab = () => (
     <div className="space-y-6">
-      <SectionCard title="Legal profile" description="Core organisation identity, geography, and commercial defaults.">
+      <SectionCard
+        title="Legal profile"
+        description="Core organisation identity, geography, and commercial defaults."
+        action={
+          <button type="button" className="btn-secondary" onClick={openProfileDialog}>
+            Edit details
+          </button>
+        }
+      >
         <InfoStack
           items={[
             { label: 'Organisation name', value: organisation.name },
@@ -601,7 +1441,51 @@ export function OrganisationDetailPage() {
         />
       </SectionCard>
 
-      <SectionCard title="Address directory" description="Registered, billing, and operational addresses saved for this organisation.">
+      <SectionCard
+        title="Bootstrap admin"
+        description="Primary organisation admin bootstrap details can be edited until the first paid batch is confirmed."
+        action={
+          organisation.billing_status !== 'PAID' ? (
+            <button type="button" className="btn-secondary" onClick={openBootstrapAdminDialog}>
+              Edit bootstrap admin
+            </button>
+          ) : null
+        }
+      >
+        {bootstrapAdmin ? (
+          <InfoStack
+            items={[
+              { label: 'Full name', value: bootstrapAdmin.full_name },
+              { label: 'Email', value: bootstrapAdmin.email },
+              { label: 'Phone', value: bootstrapAdmin.phone },
+              { label: 'Status', value: startCase(bootstrapAdmin.status) },
+              { label: 'Invite sent', value: formatDateTime(bootstrapAdmin.invitation_sent_at) },
+              { label: 'Accepted', value: formatDateTime(bootstrapAdmin.accepted_at) },
+            ]}
+          />
+        ) : (
+          <EmptyState
+            title="Bootstrap admin not configured"
+            description="Capture the primary admin so onboarding can be sent once the first batch is paid."
+            icon={Mail}
+            action={
+              <button type="button" className="btn-primary" onClick={openBootstrapAdminDialog}>
+                Add bootstrap admin
+              </button>
+            }
+          />
+        )}
+      </SectionCard>
+
+      <SectionCard
+        title="Address directory"
+        description="Registered, billing, and operational addresses saved for this organisation."
+        action={
+          <button type="button" className="btn-primary" onClick={() => openAddressDialog()}>
+            Add address
+          </button>
+        }
+      >
         <div className="grid gap-4 xl:grid-cols-2">
           {organisation.addresses.map((address) => (
             <DetailListCard
@@ -618,6 +1502,16 @@ export function OrganisationDetailPage() {
             >
               <p>{[address.line1, address.line2].filter(Boolean).join(', ')}</p>
               <p>{[address.city, address.state, address.country, address.pincode].filter(Boolean).join(', ')}</p>
+              <div className="mt-3 flex flex-wrap gap-3">
+                <button type="button" className="btn-secondary" onClick={() => openAddressDialog(address)}>
+                  Edit
+                </button>
+                {address.is_active ? (
+                  <button type="button" className="btn-danger" onClick={() => void handleDeactivateAddress(address.id)}>
+                    Deactivate
+                  </button>
+                ) : null}
+              </div>
             </DetailListCard>
           ))}
         </div>
@@ -791,6 +1685,13 @@ export function OrganisationDetailPage() {
                 <p className="mt-1 text-sm text-[hsl(var(--foreground-strong))]">{formatDateTime(bootstrapAdmin.accepted_at)}</p>
               </div>
             </div>
+            {organisation.billing_status !== 'PAID' ? (
+              <div className="mt-4">
+                <button type="button" className="btn-secondary" onClick={openBootstrapAdminDialog}>
+                  Edit bootstrap admin
+                </button>
+              </div>
+            ) : null}
           </div>
         ) : (
           <EmptyState
@@ -810,16 +1711,43 @@ export function OrganisationDetailPage() {
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="font-semibold text-[hsl(var(--foreground-strong))]">{admin.full_name || admin.email}</p>
-                      <StatusBadge tone={admin.is_active ? 'success' : 'warning'}>
-                        {admin.is_active ? 'Active' : 'Inactive'}
+                      <StatusBadge
+                        tone={
+                          admin.membership_status === 'ACTIVE'
+                            ? 'success'
+                            : admin.membership_status === 'INVITED'
+                              ? 'warning'
+                              : 'neutral'
+                        }
+                      >
+                        {startCase(admin.membership_status)}
                       </StatusBadge>
                     </div>
                     <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">{admin.email}</p>
+                    <p className="mt-2 text-xs uppercase tracking-[0.16em] text-[hsl(var(--muted-foreground))]">
+                      Invited {formatDateTime(admin.invited_at)}
+                      {admin.accepted_at ? ` • Accepted ${formatDateTime(admin.accepted_at)}` : ''}
+                    </p>
                   </div>
                   <div className="flex flex-wrap gap-3">
-                    {admin.is_onboarding_email_sent ? (
+                    {admin.membership_status === 'INVITED' && admin.is_onboarding_email_sent ? (
                       <button type="button" className="btn-secondary" onClick={() => handleResendInvite(admin.id)}>
                         Resend invite
+                      </button>
+                    ) : null}
+                    {admin.membership_status === 'INVITED' ? (
+                      <button type="button" className="btn-danger" onClick={() => void handleRevokePendingAdmin(admin.id)}>
+                        Revoke invite
+                      </button>
+                    ) : null}
+                    {admin.membership_status === 'ACTIVE' ? (
+                      <button type="button" className="btn-danger" onClick={() => void handleDeactivateAdmin(admin.id)}>
+                        Deactivate
+                      </button>
+                    ) : null}
+                    {admin.membership_status === 'INACTIVE' ? (
+                      <button type="button" className="btn-primary" onClick={() => void handleReactivateAdmin(admin.id)}>
+                        Reactivate
                       </button>
                     ) : null}
                   </div>
@@ -1026,7 +1954,20 @@ export function OrganisationDetailPage() {
 
   const renderConfigurationTab = () => (
     <div className="space-y-6">
-      <SectionCard title="Workplace structure" description="Locations and departments configured for this tenant.">
+      <SectionCard
+        title="Workplace structure"
+        description="Locations and departments configured for this tenant."
+        action={
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className="btn-secondary" onClick={() => openLocationDialog()}>
+              Add location
+            </button>
+            <button type="button" className="btn-primary" onClick={() => openDepartmentDialog()}>
+              Add department
+            </button>
+          </div>
+        }
+      >
         {configurationLoading ? (
           <SkeletonTable rows={5} />
         ) : (
@@ -1034,9 +1975,21 @@ export function OrganisationDetailPage() {
             <DetailListCard title={`Locations (${configuration?.locations.length ?? 0})`}>
               {configuration?.locations.length ? (
                 configuration.locations.map((location) => (
-                  <p key={location.id}>
-                    {location.name} • {location.is_remote ? 'Remote' : 'Office'} • {location.is_active ? 'Active' : 'Inactive'}
-                  </p>
+                  <div key={location.id} className="space-y-2 rounded-[18px] border border-[hsl(var(--border)_/_0.72)] px-3 py-3">
+                    <p>
+                      {location.name} • {location.is_remote ? 'Remote' : 'Office'} • {location.is_active ? 'Active' : 'Inactive'}
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <button type="button" className="btn-secondary" onClick={() => openLocationDialog(location)}>
+                        Edit
+                      </button>
+                      {location.is_active ? (
+                        <button type="button" className="btn-danger" onClick={() => void handleDeactivateLocation(location.id)}>
+                          Deactivate
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
                 ))
               ) : (
                 <p>No office locations configured.</p>
@@ -1045,11 +1998,23 @@ export function OrganisationDetailPage() {
             <DetailListCard title={`Departments (${configuration?.departments.length ?? 0})`}>
               {configuration?.departments.length ? (
                 configuration.departments.map((department) => (
-                  <p key={department.id}>
-                    {department.name}
-                    {department.parent_department_name ? ` • Parent: ${department.parent_department_name}` : ' • Top level'}
-                    {department.is_active ? ' • Active' : ' • Inactive'}
-                  </p>
+                  <div key={department.id} className="space-y-2 rounded-[18px] border border-[hsl(var(--border)_/_0.72)] px-3 py-3">
+                    <p>
+                      {department.name}
+                      {department.parent_department_name ? ` • Parent: ${department.parent_department_name}` : ' • Top level'}
+                      {department.is_active ? ' • Active' : ' • Inactive'}
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <button type="button" className="btn-secondary" onClick={() => openDepartmentDialog(department)}>
+                        Edit
+                      </button>
+                      {department.is_active ? (
+                        <button type="button" className="btn-danger" onClick={() => void handleDeactivateDepartment(department.id)}>
+                          Deactivate
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
                 ))
               ) : (
                 <p>No departments configured.</p>
@@ -1059,7 +2024,23 @@ export function OrganisationDetailPage() {
         )}
       </SectionCard>
 
-      <SectionCard title="Leave and attendance configuration" description="Leave cycles, plans, and on-duty policies visible to Control Tower.">
+      <SectionCard
+        title="Leave and attendance configuration"
+        description="Leave cycles, plans, and on-duty policies visible to Control Tower."
+        action={
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className="btn-secondary" onClick={() => openLeaveCycleDialog()}>
+              Add cycle
+            </button>
+            <button type="button" className="btn-secondary" onClick={() => openLeavePlanDialog()}>
+              Add plan
+            </button>
+            <button type="button" className="btn-primary" onClick={() => openOnDutyPolicyDialog()}>
+              Add OD policy
+            </button>
+          </div>
+        }
+      >
         {configurationLoading ? (
           <SkeletonTable rows={5} />
         ) : (
@@ -1067,10 +2048,16 @@ export function OrganisationDetailPage() {
             <DetailListCard title={`Leave cycles (${configuration?.leave_cycles.length ?? 0})`}>
               {configuration?.leave_cycles.length ? (
                 configuration.leave_cycles.map((cycle) => (
-                  <p key={cycle.id}>
-                    {cycle.name} • {startCase(cycle.cycle_type)}
-                    {cycle.is_default ? ' • Default' : ''}
-                  </p>
+                  <div key={cycle.id} className="space-y-2 rounded-[18px] border border-[hsl(var(--border)_/_0.72)] px-3 py-3">
+                    <p>
+                      {cycle.name} • {startCase(cycle.cycle_type)}
+                      {cycle.is_default ? ' • Default' : ''}
+                      {cycle.is_active ? ' • Active' : ' • Inactive'}
+                    </p>
+                    <button type="button" className="btn-secondary" onClick={() => openLeaveCycleDialog(cycle)}>
+                      Edit
+                    </button>
+                  </div>
                 ))
               ) : (
                 <p>No leave cycles configured.</p>
@@ -1079,9 +2066,14 @@ export function OrganisationDetailPage() {
             <DetailListCard title={`Leave plans (${configuration?.leave_plans.length ?? 0})`}>
               {configuration?.leave_plans.length ? (
                 configuration.leave_plans.map((plan) => (
-                  <p key={plan.id}>
-                    {plan.name} • {plan.leave_cycle?.name || 'No cycle'} • {plan.leave_types.length} leave types
-                  </p>
+                  <div key={plan.id} className="space-y-2 rounded-[18px] border border-[hsl(var(--border)_/_0.72)] px-3 py-3">
+                    <p>
+                      {plan.name} • {plan.leave_cycle?.name || 'No cycle'} • {plan.leave_types.length} leave types
+                    </p>
+                    <button type="button" className="btn-secondary" onClick={() => openLeavePlanDialog(plan)}>
+                      Edit
+                    </button>
+                  </div>
                 ))
               ) : (
                 <p>No leave plans configured.</p>
@@ -1090,11 +2082,16 @@ export function OrganisationDetailPage() {
             <DetailListCard title={`On-duty policies (${configuration?.on_duty_policies.length ?? 0})`}>
               {configuration?.on_duty_policies.length ? (
                 configuration.on_duty_policies.map((policy) => (
-                  <p key={policy.id}>
-                    {policy.name}
-                    {policy.is_default ? ' • Default' : ''}
-                    {policy.is_active ? ' • Active' : ' • Inactive'}
-                  </p>
+                  <div key={policy.id} className="space-y-2 rounded-[18px] border border-[hsl(var(--border)_/_0.72)] px-3 py-3">
+                    <p>
+                      {policy.name}
+                      {policy.is_default ? ' • Default' : ''}
+                      {policy.is_active ? ' • Active' : ' • Inactive'}
+                    </p>
+                    <button type="button" className="btn-secondary" onClick={() => openOnDutyPolicyDialog(policy)}>
+                      Edit
+                    </button>
+                  </div>
                 ))
               ) : (
                 <p>No on-duty policies configured.</p>
@@ -1104,7 +2101,20 @@ export function OrganisationDetailPage() {
         )}
       </SectionCard>
 
-      <SectionCard title="Approvals and communication" description="Approval workflow routing and employee noticeboard visibility from Control Tower.">
+      <SectionCard
+        title="Approvals and communication"
+        description="Approval workflow routing and employee noticeboard visibility from Control Tower."
+        action={
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className="btn-secondary" onClick={() => openWorkflowDialog()}>
+              Add workflow
+            </button>
+            <button type="button" className="btn-primary" onClick={() => openNoticeDialog()}>
+              Add notice
+            </button>
+          </div>
+        }
+      >
         {configurationLoading ? (
           <SkeletonTable rows={5} />
         ) : (
@@ -1112,10 +2122,16 @@ export function OrganisationDetailPage() {
             <DetailListCard title={`Approval workflows (${configuration?.approval_workflows.length ?? 0})`}>
               {configuration?.approval_workflows.length ? (
                 configuration.approval_workflows.map((workflow) => (
-                  <p key={workflow.id}>
-                    {workflow.name} • {workflow.rules.length} rules • {workflow.stages.length} stages
-                    {workflow.is_default ? ' • Default' : ''}
-                  </p>
+                  <div key={workflow.id} className="space-y-2 rounded-[18px] border border-[hsl(var(--border)_/_0.72)] px-3 py-3">
+                    <p>
+                      {workflow.name} • {workflow.rules.length} rules • {workflow.stages.length} stages
+                      {workflow.is_default ? ' • Default' : ''}
+                      {workflow.is_active ? ' • Active' : ' • Inactive'}
+                    </p>
+                    <button type="button" className="btn-secondary" onClick={() => openWorkflowDialog(workflow)}>
+                      Edit
+                    </button>
+                  </div>
                 ))
               ) : (
                 <p>No approval workflows configured.</p>
@@ -1124,10 +2140,22 @@ export function OrganisationDetailPage() {
             <DetailListCard title={`Notices (${configuration?.notices.length ?? 0})`}>
               {configuration?.notices.length ? (
                 configuration.notices.map((notice) => (
-                  <p key={notice.id}>
-                    {notice.title} • {startCase(notice.status)}
-                    {notice.published_at ? ` • ${formatDateTime(notice.published_at)}` : ''}
-                  </p>
+                  <div key={notice.id} className="space-y-2 rounded-[18px] border border-[hsl(var(--border)_/_0.72)] px-3 py-3">
+                    <p>
+                      {notice.title} • {startCase(notice.status)}
+                      {notice.published_at ? ` • ${formatDateTime(notice.published_at)}` : ''}
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <button type="button" className="btn-secondary" onClick={() => openNoticeDialog(notice)}>
+                        Edit
+                      </button>
+                      {notice.status !== 'PUBLISHED' ? (
+                        <button type="button" className="btn-primary" onClick={() => void handlePublishNotice(notice.id)}>
+                          Publish
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
                 ))
               ) : (
                 <p>No notices configured.</p>
@@ -1290,6 +2318,991 @@ export function OrganisationDetailPage() {
       {activeTab === 'configuration' ? renderConfigurationTab() : null}
       {activeTab === 'audit' ? renderAuditTab() : null}
       {activeTab === 'notes' ? renderNotesTab() : null}
+
+      <AppDialog
+        open={profileDialogOpen}
+        onOpenChange={setProfileDialogOpen}
+        title="Edit organisation profile"
+        description="Update the legal identity and country/currency defaults for this tenant."
+      >
+        <form onSubmit={handleSaveProfile} className="grid gap-4">
+          <div>
+            <label className="field-label" htmlFor="ct-org-name">
+              Organisation name
+            </label>
+            <input
+              id="ct-org-name"
+              className="field-input"
+              value={profileForm?.name ?? ''}
+              onChange={(event) => setProfileForm((current) => (current ? { ...current, name: event.target.value } : current))}
+              required
+            />
+          </div>
+          <div>
+            <label className="field-label" htmlFor="ct-org-pan">
+              PAN number
+            </label>
+            <input
+              id="ct-org-pan"
+              className="field-input"
+              value={profileForm?.pan_number ?? ''}
+              onChange={(event) => setProfileForm((current) => (current ? { ...current, pan_number: event.target.value.toUpperCase() } : current))}
+              required
+            />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="field-label">Country</label>
+              <AppSelect
+                value={profileForm?.country_code ?? DEFAULT_COUNTRY_OPTION.code}
+                onValueChange={handleProfileCountryChange}
+                options={COUNTRY_SELECT_OPTIONS}
+              />
+            </div>
+            <div>
+              <label className="field-label">Currency</label>
+              <AppSelect
+                value={profileForm?.currency ?? DEFAULT_COUNTRY_OPTION.defaultCurrency}
+                onValueChange={(value) => {
+                  setHasProfileCurrencyManualOverride(true)
+                  setProfileForm((current) => (current ? { ...current, currency: value } : current))
+                }}
+                options={CURRENCY_SELECT_OPTIONS}
+              />
+            </div>
+          </div>
+          <div>
+            <label className="field-label">Entity type</label>
+            <AppSelect
+              value={profileForm?.entity_type ?? organisation.entity_type}
+              onValueChange={(value) =>
+                setProfileForm((current) => (current ? { ...current, entity_type: value as OrganisationEntityType } : current))
+              }
+              options={ENTITY_TYPE_OPTIONS}
+            />
+          </div>
+          <div className="flex flex-wrap justify-end gap-3">
+            <button type="button" className="btn-secondary" onClick={() => setProfileDialogOpen(false)}>
+              Cancel
+            </button>
+            <button type="submit" className="btn-primary" disabled={updateOrganisationMutation.isPending}>
+              Save changes
+            </button>
+          </div>
+        </form>
+      </AppDialog>
+
+      <AppDialog
+        open={bootstrapAdminDialogOpen}
+        onOpenChange={setBootstrapAdminDialogOpen}
+        title="Edit bootstrap admin"
+        description="These details define the primary org-admin onboarding recipient until the first paid batch is confirmed."
+      >
+        <form onSubmit={handleSaveBootstrapAdmin} className="grid gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="field-label" htmlFor="bootstrap-first-name">
+                First name
+              </label>
+              <input
+                id="bootstrap-first-name"
+                className="field-input"
+                value={bootstrapAdminForm?.first_name ?? ''}
+                onChange={(event) =>
+                  setBootstrapAdminForm((current) => (current ? { ...current, first_name: event.target.value } : current))
+                }
+                required
+              />
+            </div>
+            <div>
+              <label className="field-label" htmlFor="bootstrap-last-name">
+                Last name
+              </label>
+              <input
+                id="bootstrap-last-name"
+                className="field-input"
+                value={bootstrapAdminForm?.last_name ?? ''}
+                onChange={(event) =>
+                  setBootstrapAdminForm((current) => (current ? { ...current, last_name: event.target.value } : current))
+                }
+                required
+              />
+            </div>
+          </div>
+          <div>
+            <label className="field-label" htmlFor="bootstrap-email">
+              Email
+            </label>
+            <input
+              id="bootstrap-email"
+              className="field-input"
+              type="email"
+              value={bootstrapAdminForm?.email ?? ''}
+              onChange={(event) =>
+                setBootstrapAdminForm((current) => (current ? { ...current, email: event.target.value } : current))
+              }
+              required
+            />
+          </div>
+          <div>
+            <label className="field-label" htmlFor="bootstrap-phone">
+              Phone
+            </label>
+            <input
+              id="bootstrap-phone"
+              className="field-input"
+              value={bootstrapAdminForm?.phone ?? ''}
+              onChange={(event) =>
+                setBootstrapAdminForm((current) => (current ? { ...current, phone: event.target.value } : current))
+              }
+              placeholder={`Must start with ${selectedProfileCountry.dialCode}`}
+            />
+          </div>
+          <div className="flex flex-wrap justify-end gap-3">
+            <button type="button" className="btn-secondary" onClick={() => setBootstrapAdminDialogOpen(false)}>
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="btn-primary"
+              disabled={updateBootstrapAdminMutation.isPending || organisation.billing_status === 'PAID'}
+            >
+              Save changes
+            </button>
+          </div>
+        </form>
+      </AppDialog>
+
+      <AppDialog
+        open={addressDialogOpen}
+        onOpenChange={(open) => {
+          setAddressDialogOpen(open)
+          if (!open) {
+            setEditingAddressId(null)
+            setAddressForm(createEmptyAddressForm(selectedProfileCountry.code))
+          }
+        }}
+        title={editingAddressId ? 'Edit address' : 'Add address'}
+        description="Manage the registered, billing, and operational address directory used across the tenant."
+        contentClassName="sm:w-[min(94vw,52rem)]"
+      >
+        <form onSubmit={handleSaveAddress} className="grid gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="field-label">Address type</label>
+              <AppSelect
+                value={addressForm.address_type}
+                onValueChange={(value) =>
+                  setAddressForm((current) => ({
+                    ...current,
+                    address_type: value as OrganisationAddressType,
+                    label: mandatoryAddressTypes.includes(value as OrganisationAddressType) ? '' : current.label,
+                  }))
+                }
+                options={ADDRESS_TYPE_OPTIONS}
+              />
+            </div>
+            {!mandatoryAddressTypes.includes(addressForm.address_type) ? (
+              <div>
+                <label className="field-label" htmlFor="address-label">
+                  Label
+                </label>
+                <input
+                  id="address-label"
+                  className="field-input"
+                  value={addressForm.label}
+                  onChange={(event) => setAddressForm((current) => ({ ...current, label: event.target.value }))}
+                  required
+                />
+              </div>
+            ) : null}
+          </div>
+          <div>
+            <label className="field-label" htmlFor="address-line1">
+              Address line 1
+            </label>
+            <input
+              id="address-line1"
+              className="field-input"
+              value={addressForm.line1}
+              onChange={(event) => setAddressForm((current) => ({ ...current, line1: event.target.value }))}
+              required
+            />
+          </div>
+          <div>
+            <label className="field-label" htmlFor="address-line2">
+              Address line 2
+            </label>
+            <input
+              id="address-line2"
+              className="field-input"
+              value={addressForm.line2}
+              onChange={(event) => setAddressForm((current) => ({ ...current, line2: event.target.value }))}
+            />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="field-label">Country</label>
+              <AppSelect
+                value={addressForm.country_code}
+                onValueChange={setAddressCountry}
+                options={COUNTRY_SELECT_OPTIONS}
+              />
+            </div>
+            <div>
+              <label className="field-label" htmlFor="address-city">
+                City
+              </label>
+              <input
+                id="address-city"
+                className="field-input"
+                value={addressForm.city}
+                onChange={(event) => setAddressForm((current) => ({ ...current, city: event.target.value }))}
+                required
+              />
+            </div>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="field-label">{addressRule.subdivisionLabel}</label>
+              {addressSubdivisions.length > 0 ? (
+                <AppSelect
+                  value={addressForm.state_code || resolveSubdivisionCode(addressCountry.code, addressForm.state, '')}
+                  onValueChange={setAddressState}
+                  options={addressSubdivisions}
+                  placeholder={`Select ${addressRule.subdivisionLabel.toLowerCase()}`}
+                />
+              ) : (
+                <input
+                  className="field-input"
+                  value={addressForm.state}
+                  onChange={(event) =>
+                    setAddressForm((current) => ({
+                      ...current,
+                      state: event.target.value,
+                      state_code: '',
+                    }))
+                  }
+                  required
+                />
+              )}
+            </div>
+            <div>
+              <label className="field-label" htmlFor="address-postal">
+                {addressRule.postalLabel}
+              </label>
+              <input
+                id="address-postal"
+                className="field-input"
+                value={addressForm.pincode}
+                onChange={(event) => setAddressForm((current) => ({ ...current, pincode: event.target.value }))}
+                required
+              />
+            </div>
+          </div>
+          <div>
+            <label className="field-label" htmlFor="address-tax-id">
+              {getBillingTaxLabel(addressCountry.code)}
+            </label>
+            <input
+              id="address-tax-id"
+              className="field-input"
+              value={addressForm.gstin}
+              onChange={(event) => setAddressForm((current) => ({ ...current, gstin: event.target.value.toUpperCase() }))}
+              placeholder={addressForm.address_type === 'BILLING' ? 'Required for billing where applicable' : 'Optional unless required by country rule'}
+            />
+          </div>
+          <div className="flex flex-wrap justify-end gap-3">
+            <button type="button" className="btn-secondary" onClick={() => setAddressDialogOpen(false)}>
+              Cancel
+            </button>
+            <button type="submit" className="btn-primary" disabled={createAddressMutation.isPending || updateAddressMutation.isPending}>
+              {editingAddressId ? 'Save changes' : 'Create address'}
+            </button>
+          </div>
+        </form>
+      </AppDialog>
+
+      <AppDialog
+        open={locationDialogOpen}
+        onOpenChange={(open) => {
+          setLocationDialogOpen(open)
+          if (!open) {
+            setEditingLocationId(null)
+            setLocationForm(createLocationFormState())
+          }
+        }}
+        title={editingLocationId ? 'Edit location' : 'Add location'}
+        description="Every office location must point to an active organisation address."
+      >
+        <form onSubmit={handleSaveLocation} className="grid gap-4">
+          <div>
+            <label className="field-label" htmlFor="ct-location-name">
+              Location name
+            </label>
+            <input
+              id="ct-location-name"
+              className="field-input"
+              value={locationForm.name}
+              onChange={(event) => setLocationForm((current) => ({ ...current, name: event.target.value }))}
+              required
+            />
+          </div>
+          <div>
+            <label className="field-label">Linked address</label>
+            <AppSelect
+              value={locationForm.organisation_address_id}
+              onValueChange={(value) => setLocationForm((current) => ({ ...current, organisation_address_id: value }))}
+              options={organisation.addresses.filter((address) => address.is_active).map((address) => ({
+                value: address.id,
+                label: `${address.label} • ${address.city}, ${address.state}`,
+              }))}
+              placeholder="Select an organisation address"
+            />
+          </div>
+          <AppCheckbox
+            checked={locationForm.is_remote}
+            onCheckedChange={(checked) => setLocationForm((current) => ({ ...current, is_remote: checked }))}
+            label="Mark as remote office location"
+          />
+          <div className="flex flex-wrap justify-end gap-3">
+            <button type="button" className="btn-secondary" onClick={() => setLocationDialogOpen(false)}>
+              Cancel
+            </button>
+            <button type="submit" className="btn-primary" disabled={createLocationMutation.isPending || updateLocationMutation.isPending}>
+              {editingLocationId ? 'Save changes' : 'Create location'}
+            </button>
+          </div>
+        </form>
+      </AppDialog>
+
+      <AppDialog
+        open={departmentDialogOpen}
+        onOpenChange={(open) => {
+          setDepartmentDialogOpen(open)
+          if (!open) {
+            setEditingDepartmentId(null)
+            setDepartmentForm(createDepartmentFormState())
+          }
+        }}
+        title={editingDepartmentId ? 'Edit department' : 'Add department'}
+        description="Define the hierarchy and descriptions org admins will use for workforce assignment."
+      >
+        <form onSubmit={handleSaveDepartment} className="grid gap-4">
+          <div>
+            <label className="field-label" htmlFor="ct-department-name">
+              Department name
+            </label>
+            <input
+              id="ct-department-name"
+              className="field-input"
+              value={departmentForm.name}
+              onChange={(event) => setDepartmentForm((current) => ({ ...current, name: event.target.value }))}
+              required
+            />
+          </div>
+          <div>
+            <label className="field-label" htmlFor="ct-department-description">
+              Description
+            </label>
+            <textarea
+              id="ct-department-description"
+              className="field-textarea"
+              value={departmentForm.description}
+              onChange={(event) => setDepartmentForm((current) => ({ ...current, description: event.target.value }))}
+            />
+          </div>
+          <div>
+            <label className="field-label">Parent department</label>
+            <AppSelect
+              value={departmentForm.parent_department_id}
+              onValueChange={(value) => setDepartmentForm((current) => ({ ...current, parent_department_id: value }))}
+              options={departmentOptions}
+              placeholder="No parent department"
+            />
+          </div>
+          <div className="flex flex-wrap justify-end gap-3">
+            <button type="button" className="btn-secondary" onClick={() => setDepartmentDialogOpen(false)}>
+              Cancel
+            </button>
+            <button type="submit" className="btn-primary" disabled={createDepartmentMutation.isPending || updateDepartmentMutation.isPending}>
+              {editingDepartmentId ? 'Save changes' : 'Create department'}
+            </button>
+          </div>
+        </form>
+      </AppDialog>
+
+      <AppDialog
+        open={leaveCycleDialogOpen}
+        onOpenChange={(open) => {
+          setLeaveCycleDialogOpen(open)
+          if (!open) {
+            setEditingLeaveCycleId(null)
+            setLeaveCycleForm(createDefaultLeaveCycleForm())
+          }
+        }}
+        title={editingLeaveCycleId ? 'Edit leave cycle' : 'Add leave cycle'}
+        description="Control Tower can shape the leave year model used by this tenant."
+      >
+        <form onSubmit={handleSaveLeaveCycle} className="grid gap-4">
+          <div>
+            <label className="field-label" htmlFor="ct-leave-cycle-name">
+              Cycle name
+            </label>
+            <input
+              id="ct-leave-cycle-name"
+              className="field-input"
+              value={leaveCycleForm.name}
+              onChange={(event) => setLeaveCycleForm((current) => ({ ...current, name: event.target.value }))}
+              required
+            />
+          </div>
+          <div>
+            <label className="field-label">Cycle type</label>
+            <AppSelect
+              value={leaveCycleForm.cycle_type}
+              onValueChange={(value) => setLeaveCycleForm((current) => ({ ...current, cycle_type: value }))}
+              options={[
+                { value: 'CALENDAR_YEAR', label: 'Calendar year' },
+                { value: 'FINANCIAL_YEAR', label: 'Financial year' },
+                { value: 'CUSTOM_FIXED_START', label: 'Custom fixed start' },
+                { value: 'EMPLOYEE_JOINING_DATE', label: 'Employee joining date' },
+              ]}
+            />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="field-label" htmlFor="ct-leave-cycle-month">
+                Start month
+              </label>
+              <input
+                id="ct-leave-cycle-month"
+                className="field-input"
+                type="number"
+                min={1}
+                max={12}
+                value={leaveCycleForm.start_month}
+                onChange={(event) => setLeaveCycleForm((current) => ({ ...current, start_month: Number(event.target.value) }))}
+              />
+            </div>
+            <div>
+              <label className="field-label" htmlFor="ct-leave-cycle-day">
+                Start day
+              </label>
+              <input
+                id="ct-leave-cycle-day"
+                className="field-input"
+                type="number"
+                min={1}
+                max={31}
+                value={leaveCycleForm.start_day}
+                onChange={(event) => setLeaveCycleForm((current) => ({ ...current, start_day: Number(event.target.value) }))}
+              />
+            </div>
+          </div>
+          <AppCheckbox
+            checked={leaveCycleForm.is_default}
+            onCheckedChange={(checked) => setLeaveCycleForm((current) => ({ ...current, is_default: checked }))}
+            label="Default leave cycle"
+          />
+          <AppCheckbox
+            checked={leaveCycleForm.is_active}
+            onCheckedChange={(checked) => setLeaveCycleForm((current) => ({ ...current, is_active: checked }))}
+            label="Cycle is active"
+          />
+          <div className="flex flex-wrap justify-end gap-3">
+            <button type="button" className="btn-secondary" onClick={() => setLeaveCycleDialogOpen(false)}>
+              Cancel
+            </button>
+            <button type="submit" className="btn-primary" disabled={createLeaveCycleMutation.isPending || updateLeaveCycleMutation.isPending}>
+              {editingLeaveCycleId ? 'Save changes' : 'Create cycle'}
+            </button>
+          </div>
+        </form>
+      </AppDialog>
+
+      <AppDialog
+        open={leavePlanDialogOpen}
+        onOpenChange={(open) => {
+          setLeavePlanDialogOpen(open)
+          if (!open) {
+            setEditingLeavePlanId(null)
+            setLeavePlanForm(createLeavePlanDialogForm())
+          }
+        }}
+        title={editingLeavePlanId ? 'Edit leave plan' : 'Add leave plan'}
+        description="Manage the current leave-plan shape and its visible leave types from Control Tower."
+        contentClassName="sm:w-[min(94vw,52rem)]"
+      >
+        <form onSubmit={handleSaveLeavePlan} className="grid gap-4">
+          <div>
+            <label className="field-label">Leave cycle</label>
+            <AppSelect
+              value={leavePlanForm.leave_cycle_id}
+              onValueChange={(value) => setLeavePlanForm((current) => ({ ...current, leave_cycle_id: value }))}
+              options={leaveCycleOptions}
+              placeholder="Select leave cycle"
+            />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="field-label" htmlFor="ct-leave-plan-name">
+                Plan name
+              </label>
+              <input
+                id="ct-leave-plan-name"
+                className="field-input"
+                value={leavePlanForm.name}
+                onChange={(event) => setLeavePlanForm((current) => ({ ...current, name: event.target.value }))}
+                required
+              />
+            </div>
+            <div>
+              <label className="field-label" htmlFor="ct-leave-plan-priority">
+                Priority
+              </label>
+              <input
+                id="ct-leave-plan-priority"
+                className="field-input"
+                type="number"
+                min={0}
+                value={leavePlanForm.priority}
+                onChange={(event) => setLeavePlanForm((current) => ({ ...current, priority: Number(event.target.value) }))}
+              />
+            </div>
+          </div>
+          <div>
+            <label className="field-label" htmlFor="ct-leave-plan-description">
+              Description
+            </label>
+            <textarea
+              id="ct-leave-plan-description"
+              className="field-textarea"
+              value={leavePlanForm.description}
+              onChange={(event) => setLeavePlanForm((current) => ({ ...current, description: event.target.value }))}
+            />
+          </div>
+          <AppCheckbox
+            checked={leavePlanForm.is_default}
+            onCheckedChange={(checked) => setLeavePlanForm((current) => ({ ...current, is_default: checked }))}
+            label="Default leave plan"
+          />
+          <AppCheckbox
+            checked={leavePlanForm.is_active}
+            onCheckedChange={(checked) => setLeavePlanForm((current) => ({ ...current, is_active: checked }))}
+            label="Plan is active"
+          />
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <p className="field-label !mb-0">Leave types</p>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() =>
+                  setLeavePlanForm((current) => ({
+                    ...current,
+                    leave_types: [
+                      ...current.leave_types,
+                      createEmptyLeaveTypeFormState(),
+                    ],
+                  }))
+                }
+              >
+                Add leave type
+              </button>
+            </div>
+            {leavePlanForm.leave_types.map((leaveType, index) => (
+              <div key={`${leaveType.code || 'leave-type'}-${index}`} className="surface-muted rounded-[22px] p-4">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="field-label">Leave type name</label>
+                    <input
+                      className="field-input"
+                      value={leaveType.name}
+                      onChange={(event) =>
+                        setLeavePlanForm((current) => ({
+                          ...current,
+                          leave_types: current.leave_types.map((item, itemIndex) =>
+                            itemIndex === index ? { ...item, name: event.target.value } : item,
+                          ),
+                        }))
+                      }
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="field-label">Code</label>
+                    <input
+                      className="field-input"
+                      value={leaveType.code}
+                      onChange={(event) =>
+                        setLeavePlanForm((current) => ({
+                          ...current,
+                          leave_types: current.leave_types.map((item, itemIndex) =>
+                            itemIndex === index ? { ...item, code: event.target.value.toUpperCase() } : item,
+                          ),
+                        }))
+                      }
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="field-label">Annual entitlement</label>
+                    <input
+                      className="field-input"
+                      value={leaveType.annual_entitlement}
+                      onChange={(event) =>
+                        setLeavePlanForm((current) => ({
+                          ...current,
+                          leave_types: current.leave_types.map((item, itemIndex) =>
+                            itemIndex === index ? { ...item, annual_entitlement: event.target.value } : item,
+                          ),
+                        }))
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className="field-label">Credit frequency</label>
+                    <AppSelect
+                      value={leaveType.credit_frequency}
+                      onValueChange={(value) =>
+                        setLeavePlanForm((current) => ({
+                          ...current,
+                          leave_types: current.leave_types.map((item, itemIndex) =>
+                            itemIndex === index ? { ...item, credit_frequency: value } : item,
+                          ),
+                        }))
+                      }
+                      options={leaveCreditFrequencyOptions}
+                    />
+                  </div>
+                </div>
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <AppCheckbox
+                    checked={leaveType.is_active}
+                    onCheckedChange={(checked) =>
+                      setLeavePlanForm((current) => ({
+                        ...current,
+                        leave_types: current.leave_types.map((item, itemIndex) =>
+                          itemIndex === index ? { ...item, is_active: checked } : item,
+                        ),
+                      }))
+                    }
+                    label="Active"
+                  />
+                  <AppCheckbox
+                    checked={leaveType.is_paid}
+                    onCheckedChange={(checked) =>
+                      setLeavePlanForm((current) => ({
+                        ...current,
+                        leave_types: current.leave_types.map((item, itemIndex) =>
+                          itemIndex === index ? { ...item, is_paid: checked } : item,
+                        ),
+                      }))
+                    }
+                    label="Paid"
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="flex flex-wrap justify-end gap-3">
+            <button type="button" className="btn-secondary" onClick={() => setLeavePlanDialogOpen(false)}>
+              Cancel
+            </button>
+            <button type="submit" className="btn-primary" disabled={createLeavePlanMutation.isPending || updateLeavePlanMutation.isPending}>
+              {editingLeavePlanId ? 'Save changes' : 'Create plan'}
+            </button>
+          </div>
+        </form>
+      </AppDialog>
+
+      <AppDialog
+        open={onDutyPolicyDialogOpen}
+        onOpenChange={(open) => {
+          setOnDutyPolicyDialogOpen(open)
+          if (!open) {
+            setEditingOnDutyPolicyId(null)
+            setOnDutyPolicyForm(createDefaultOnDutyPolicyForm())
+          }
+        }}
+        title={editingOnDutyPolicyId ? 'Edit on-duty policy' : 'Add on-duty policy'}
+        description="Control Tower can manage OD rules without touching employee requests."
+      >
+        <form onSubmit={handleSaveOnDutyPolicy} className="grid gap-4">
+          <div>
+            <label className="field-label" htmlFor="ct-od-name">
+              Policy name
+            </label>
+            <input
+              id="ct-od-name"
+              className="field-input"
+              value={onDutyPolicyForm.name}
+              onChange={(event) => setOnDutyPolicyForm((current) => ({ ...current, name: event.target.value }))}
+              required
+            />
+          </div>
+          <div>
+            <label className="field-label" htmlFor="ct-od-description">
+              Description
+            </label>
+            <textarea
+              id="ct-od-description"
+              className="field-textarea"
+              value={onDutyPolicyForm.description}
+              onChange={(event) => setOnDutyPolicyForm((current) => ({ ...current, description: event.target.value }))}
+            />
+          </div>
+          <div className="grid gap-3">
+            <AppCheckbox checked={onDutyPolicyForm.is_default} onCheckedChange={(checked) => setOnDutyPolicyForm((current) => ({ ...current, is_default: checked }))} label="Default policy" />
+            <AppCheckbox checked={onDutyPolicyForm.is_active} onCheckedChange={(checked) => setOnDutyPolicyForm((current) => ({ ...current, is_active: checked }))} label="Policy is active" />
+            <AppCheckbox checked={onDutyPolicyForm.allow_half_day} onCheckedChange={(checked) => setOnDutyPolicyForm((current) => ({ ...current, allow_half_day: checked }))} label="Allow half-day OD" />
+            <AppCheckbox checked={onDutyPolicyForm.allow_time_range} onCheckedChange={(checked) => setOnDutyPolicyForm((current) => ({ ...current, allow_time_range: checked }))} label="Allow time-range OD" />
+            <AppCheckbox checked={onDutyPolicyForm.requires_attachment} onCheckedChange={(checked) => setOnDutyPolicyForm((current) => ({ ...current, requires_attachment: checked }))} label="Require attachment" />
+          </div>
+          <div className="flex flex-wrap justify-end gap-3">
+            <button type="button" className="btn-secondary" onClick={() => setOnDutyPolicyDialogOpen(false)}>
+              Cancel
+            </button>
+            <button type="submit" className="btn-primary" disabled={createOnDutyPolicyMutation.isPending || updateOnDutyPolicyMutation.isPending}>
+              {editingOnDutyPolicyId ? 'Save changes' : 'Create policy'}
+            </button>
+          </div>
+        </form>
+      </AppDialog>
+
+      <AppDialog
+        open={workflowDialogOpen}
+        onOpenChange={(open) => {
+          setWorkflowDialogOpen(open)
+          if (!open) {
+            setEditingWorkflowId(null)
+            setWorkflowForm(createDefaultApprovalWorkflow())
+          }
+        }}
+        title={editingWorkflowId ? 'Edit approval workflow' : 'Add approval workflow'}
+        description="Manage workflow metadata and the current visible stage/rule structure from Control Tower."
+        contentClassName="sm:w-[min(94vw,52rem)]"
+      >
+        <form onSubmit={handleSaveWorkflow} className="grid gap-4">
+          <div>
+            <label className="field-label" htmlFor="ct-workflow-name">
+              Workflow name
+            </label>
+            <input
+              id="ct-workflow-name"
+              className="field-input"
+              value={workflowForm.name}
+              onChange={(event) => setWorkflowForm((current) => ({ ...current, name: event.target.value }))}
+              required
+            />
+          </div>
+          <div>
+            <label className="field-label" htmlFor="ct-workflow-description">
+              Description
+            </label>
+            <textarea
+              id="ct-workflow-description"
+              className="field-textarea"
+              value={workflowForm.description}
+              onChange={(event) => setWorkflowForm((current) => ({ ...current, description: event.target.value }))}
+            />
+          </div>
+          <div className="grid gap-3">
+            <AppCheckbox checked={workflowForm.is_default} onCheckedChange={(checked) => setWorkflowForm((current) => ({ ...current, is_default: checked }))} label="Default workflow" />
+            <AppCheckbox checked={workflowForm.is_active} onCheckedChange={(checked) => setWorkflowForm((current) => ({ ...current, is_active: checked }))} label="Workflow is active" />
+          </div>
+          <SectionCard title="Rules" description="Lightweight rule editing keeps the current routing visible without entering employee actions.">
+            <div className="space-y-3">
+              {workflowForm.rules.map((rule, index) => (
+                <div key={`${rule.name || 'rule'}-${index}`} className="surface-muted rounded-[20px] p-4">
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <input
+                      className="field-input"
+                      value={rule.name}
+                      onChange={(event) =>
+                        setWorkflowForm((current) => ({
+                          ...current,
+                          rules: current.rules.map((item, itemIndex) =>
+                            itemIndex === index ? { ...item, name: event.target.value } : item,
+                          ),
+                        }))
+                      }
+                      placeholder="Rule name"
+                    />
+                    <AppSelect
+                      value={rule.request_kind}
+                      onValueChange={(value) =>
+                        setWorkflowForm((current) => ({
+                          ...current,
+                          rules: current.rules.map((item, itemIndex) =>
+                            itemIndex === index ? { ...item, request_kind: value } : item,
+                          ),
+                        }))
+                      }
+                      options={[
+                        { value: 'LEAVE', label: 'Leave' },
+                        { value: 'ON_DUTY', label: 'On duty' },
+                      ]}
+                    />
+                    <input
+                      className="field-input"
+                      type="number"
+                      min={0}
+                      value={rule.priority}
+                      onChange={(event) =>
+                        setWorkflowForm((current) => ({
+                          ...current,
+                          rules: current.rules.map((item, itemIndex) =>
+                            itemIndex === index ? { ...item, priority: Number(event.target.value) } : item,
+                          ),
+                        }))
+                      }
+                      placeholder="Priority"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </SectionCard>
+          <SectionCard title="Stages" description="Stage ordering and approver routing remain editable from Control Tower.">
+            <div className="space-y-3">
+              {workflowForm.stages.map((stage, index) => (
+                <div key={`${stage.name || 'stage'}-${index}`} className="surface-muted rounded-[20px] p-4">
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <input
+                      className="field-input"
+                      value={stage.name}
+                      onChange={(event) =>
+                        setWorkflowForm((current) => ({
+                          ...current,
+                          stages: current.stages.map((item, itemIndex) =>
+                            itemIndex === index ? { ...item, name: event.target.value } : item,
+                          ),
+                        }))
+                      }
+                      placeholder="Stage name"
+                    />
+                    <input
+                      className="field-input"
+                      type="number"
+                      min={1}
+                      value={stage.sequence}
+                      onChange={(event) =>
+                        setWorkflowForm((current) => ({
+                          ...current,
+                          stages: current.stages.map((item, itemIndex) =>
+                            itemIndex === index ? { ...item, sequence: Number(event.target.value) } : item,
+                          ),
+                        }))
+                      }
+                    />
+                    <AppSelect
+                      value={stage.mode}
+                      onValueChange={(value) =>
+                        setWorkflowForm((current) => ({
+                          ...current,
+                          stages: current.stages.map((item, itemIndex) =>
+                            itemIndex === index ? { ...item, mode: value } : item,
+                          ),
+                        }))
+                      }
+                      options={[
+                        { value: 'ALL', label: 'All approvers' },
+                        { value: 'ANY', label: 'Any approver' },
+                      ]}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </SectionCard>
+          <div className="flex flex-wrap justify-end gap-3">
+            <button type="button" className="btn-secondary" onClick={() => setWorkflowDialogOpen(false)}>
+              Cancel
+            </button>
+            <button type="submit" className="btn-primary" disabled={createWorkflowMutation.isPending || updateWorkflowMutation.isPending}>
+              {editingWorkflowId ? 'Save changes' : 'Create workflow'}
+            </button>
+          </div>
+        </form>
+      </AppDialog>
+
+      <AppDialog
+        open={noticeDialogOpen}
+        onOpenChange={(open) => {
+          setNoticeDialogOpen(open)
+          if (!open) {
+            setEditingNoticeId(null)
+            setNoticeForm(createDefaultNoticeForm())
+          }
+        }}
+        title={editingNoticeId ? 'Edit notice' : 'Add notice'}
+        description="Control Tower can publish or update the noticeboard configuration for this tenant."
+      >
+        <form onSubmit={handleSaveNotice} className="grid gap-4">
+          <div>
+            <label className="field-label" htmlFor="ct-notice-title">
+              Title
+            </label>
+            <input
+              id="ct-notice-title"
+              className="field-input"
+              value={noticeForm.title}
+              onChange={(event) => setNoticeForm((current) => ({ ...current, title: event.target.value }))}
+              required
+            />
+          </div>
+          <div>
+            <label className="field-label" htmlFor="ct-notice-body">
+              Body
+            </label>
+            <textarea
+              id="ct-notice-body"
+              className="field-textarea"
+              value={noticeForm.body}
+              onChange={(event) => setNoticeForm((current) => ({ ...current, body: event.target.value }))}
+              required
+            />
+          </div>
+          <div>
+            <label className="field-label">Audience</label>
+            <AppSelect
+              value={noticeForm.audience_type}
+              onValueChange={(value) => setNoticeForm((current) => ({ ...current, audience_type: value }))}
+              options={noticeAudienceOptions}
+            />
+          </div>
+          {noticeForm.audience_type === 'DEPARTMENTS' ? (
+            <div className="grid gap-2">
+              {noticeDepartmentOptions.map((department) => (
+                <AppCheckbox
+                  key={department.id}
+                  id={`ct-notice-department-${department.id}`}
+                  checked={noticeForm.department_ids.includes(department.id)}
+                  onCheckedChange={(checked) =>
+                    setNoticeForm((current) => ({
+                      ...current,
+                      department_ids: checked
+                        ? [...current.department_ids, department.id]
+                        : current.department_ids.filter((id) => id !== department.id),
+                    }))
+                  }
+                  label={department.name}
+                />
+              ))}
+            </div>
+          ) : null}
+          <div className="flex flex-wrap justify-end gap-3">
+            <button type="button" className="btn-secondary" onClick={() => setNoticeDialogOpen(false)}>
+              Cancel
+            </button>
+            <button type="submit" className="btn-primary" disabled={createNoticeMutation.isPending || updateNoticeMutation.isPending}>
+              {editingNoticeId ? 'Save changes' : 'Create notice'}
+            </button>
+          </div>
+        </form>
+      </AppDialog>
 
       <AppDialog
         open={batchDialogOpen}
