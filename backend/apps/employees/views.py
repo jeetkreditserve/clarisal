@@ -6,6 +6,8 @@ from rest_framework.views import APIView
 
 from apps.accounts.permissions import BelongsToActiveOrg, IsEmployee, IsOrgAdmin, OrgAdminMutationAllowed
 from apps.accounts.workspaces import get_active_admin_organisation, get_active_employee
+from apps.departments.models import Department
+from apps.locations.models import OfficeLocation
 
 from .models import EducationRecord, Employee, EmployeeBankAccount, EmployeeEmergencyContact, EmployeeFamilyMember
 from .repositories import list_employees
@@ -91,7 +93,7 @@ class EmployeeListInviteView(APIView):
                 invited_by=request.user,
                 **serializer.validated_data,
             )
-        except Exception as exc:  # noqa: BLE001
+        except (ValueError, Department.DoesNotExist, OfficeLocation.DoesNotExist) as exc:
             return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(
             {
@@ -118,7 +120,7 @@ class EmployeeDetailView(APIView):
         serializer.is_valid(raise_exception=True)
         try:
             employee = update_employee(employee, actor=request.user, **serializer.validated_data)
-        except Exception as exc:  # noqa: BLE001
+        except (ValueError, Department.DoesNotExist, OfficeLocation.DoesNotExist) as exc:
             return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(EmployeeDetailSerializer(employee).data)
 

@@ -26,3 +26,22 @@ export function getErrorMessage(error: unknown, fallback = 'Something went wrong
 
   return fallback
 }
+
+export function getFieldErrors(error: unknown) {
+  if (!isAxiosError(error)) return {}
+
+  const data = error.response?.data
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return {}
+  }
+
+  const fieldErrors: Record<string, string> = {}
+  for (const [key, value] of Object.entries(data as Record<string, unknown>)) {
+    if (key === 'error' || key === 'detail') continue
+    const message = firstValue(value)
+    if (message) {
+      fieldErrors[key] = message
+    }
+  }
+  return fieldErrors
+}

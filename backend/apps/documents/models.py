@@ -122,6 +122,9 @@ class EmployeeDocumentRequest(models.Model):
                 name='unique_document_request_per_employee_type',
             ),
         ]
+        indexes = [
+            models.Index(fields=['employee', 'status']),
+        ]
 
     def __str__(self):
         return f'{self.employee} - {self.document_type_ref.name}'

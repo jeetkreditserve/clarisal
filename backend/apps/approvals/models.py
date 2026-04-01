@@ -219,6 +219,10 @@ class ApprovalRun(models.Model):
     class Meta:
         db_table = 'approval_runs'
         ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['organisation', 'status']),
+            models.Index(fields=['content_type', 'object_id']),
+        ]
 
     def __str__(self):
         return f'{self.request_kind} - {self.subject_label}'
@@ -267,7 +271,10 @@ class ApprovalAction(models.Model):
                 name='unique_approval_action_per_user_stage',
             ),
         ]
+        indexes = [
+            models.Index(fields=['approver_user', 'status']),
+            models.Index(fields=['approval_run', 'status']),
+        ]
 
     def __str__(self):
         return f'{self.approver_user.email} - {self.status}'
-

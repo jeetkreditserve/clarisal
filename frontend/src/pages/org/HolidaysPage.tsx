@@ -1,37 +1,37 @@
 import { useState } from 'react'
+import { MinusCircle, PlusCircle } from 'lucide-react'
 import { toast } from 'sonner'
 
+import { FieldErrorText } from '@/components/ui/FieldErrorText'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { SkeletonPageHeader, SkeletonTable } from '@/components/ui/Skeleton'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { useCreateHolidayCalendar, useHolidayCalendars, useLocations, usePublishHolidayCalendar } from '@/hooks/useOrgAdmin'
-import { getErrorMessage } from '@/lib/errors'
-
-const emptyCalendarForm = {
-  name: '',
-  year: new Date().getFullYear(),
-  description: '',
-  is_default: true,
-  holidays: [{ name: '', holiday_date: '', classification: 'PUBLIC', session: 'FULL_DAY', description: '' }],
-  location_ids: [] as string[],
-}
+import { createDefaultHolidayCalendarForm, HOLIDAY_CLASSIFICATION_OPTIONS, HOLIDAY_SESSION_OPTIONS } from '@/lib/constants'
+import { getErrorMessage, getFieldErrors } from '@/lib/errors'
 
 export function HolidaysPage() {
   const { data, isLoading } = useHolidayCalendars()
   const { data: locations } = useLocations()
   const createMutation = useCreateHolidayCalendar()
   const publishMutation = usePublishHolidayCalendar()
-  const [form, setForm] = useState(emptyCalendarForm)
+  const [form, setForm] = useState(createDefaultHolidayCalendarForm)
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
+    setFieldErrors({})
     try {
       await createMutation.mutateAsync(form)
       toast.success('Holiday calendar created.')
-      setForm(emptyCalendarForm)
+      setForm(createDefaultHolidayCalendarForm())
     } catch (error) {
-      toast.error(getErrorMessage(error, 'Unable to create holiday calendar.'))
+      const nextFieldErrors = getFieldErrors(error)
+      setFieldErrors(nextFieldErrors)
+      if (Object.keys(nextFieldErrors).length === 0) {
+        toast.error(getErrorMessage(error, 'Unable to create holiday calendar.'))
+      }
     }
   }
 
@@ -51,9 +51,18 @@ export function HolidaysPage() {
       <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
         <SectionCard title="Create holiday calendar" description="Holiday calendars are date-based and managed year by year, while leave cycles remain separately configurable.">
           <form onSubmit={handleSubmit} className="grid gap-4">
-            <input className="field-input" placeholder="Calendar name" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} required />
-            <input className="field-input" type="number" value={form.year} onChange={(event) => setForm((current) => ({ ...current, year: Number(event.target.value) }))} required />
-            <textarea className="field-textarea" placeholder="Description" value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} />
+            <div>
+              <input className="field-input" placeholder="Calendar name" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} required />
+              <FieldErrorText message={fieldErrors.name} />
+            </div>
+            <div>
+              <input className="field-input" type="number" value={form.year} onChange={(event) => setForm((current) => ({ ...current, year: Number(event.target.value) }))} required />
+              <FieldErrorText message={fieldErrors.year} />
+            </div>
+            <div>
+              <textarea className="field-textarea" placeholder="Description" value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} />
+              <FieldErrorText message={fieldErrors.description} />
+            </div>
             <label className="inline-flex items-center gap-2 text-sm text-[hsl(var(--muted-foreground))]">
               <input type="checkbox" checked={form.is_default} onChange={(event) => setForm((current) => ({ ...current, is_default: event.target.checked }))} />
               Default calendar for this year
@@ -80,18 +89,39 @@ export function HolidaysPage() {
             </div>
             {form.holidays.map((holiday, index) => (
               <div key={index} className="surface-muted grid gap-3 rounded-[22px] p-4">
-                <input className="field-input" placeholder="Holiday name" value={holiday.name} onChange={(event) => setForm((current) => ({ ...current, holidays: current.holidays.map((item, itemIndex) => itemIndex === index ? { ...item, name: event.target.value } : item) }))} required />
-                <input className="field-input" type="date" value={holiday.holiday_date} onChange={(event) => setForm((current) => ({ ...current, holidays: current.holidays.map((item, itemIndex) => itemIndex === index ? { ...item, holiday_date: event.target.value } : item) }))} required />
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-semibold text-[hsl(var(--foreground-strong))]">Holiday entry {index + 1}</p>
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-2 text-sm font-medium text-[hsl(var(--danger))] disabled:opacity-40"
+                    onClick={() =>
+                      setForm((current) => ({
+                        ...current,
+                        holidays: current.holidays.filter((_, itemIndex) => itemIndex !== index),
+                      }))
+                    }
+                    disabled={form.holidays.length === 1}
+                  >
+                    <MinusCircle className="h-4 w-4" />
+                    Remove row
+                  </button>
+                </div>
+                <div>
+                  <input className="field-input" placeholder="Holiday name" value={holiday.name} onChange={(event) => setForm((current) => ({ ...current, holidays: current.holidays.map((item, itemIndex) => itemIndex === index ? { ...item, name: event.target.value } : item) }))} required />
+                </div>
+                <div>
+                  <input className="field-input" type="date" value={holiday.holiday_date} onChange={(event) => setForm((current) => ({ ...current, holidays: current.holidays.map((item, itemIndex) => itemIndex === index ? { ...item, holiday_date: event.target.value } : item) }))} required />
+                </div>
                 <div className="grid gap-3 md:grid-cols-2">
                   <select className="field-select" value={holiday.classification} onChange={(event) => setForm((current) => ({ ...current, holidays: current.holidays.map((item, itemIndex) => itemIndex === index ? { ...item, classification: event.target.value } : item) }))}>
-                    {['PUBLIC', 'RESTRICTED', 'COMPANY'].map((classification) => (
+                    {HOLIDAY_CLASSIFICATION_OPTIONS.map((classification) => (
                       <option key={classification} value={classification}>
                         {classification}
                       </option>
                     ))}
                   </select>
                   <select className="field-select" value={holiday.session} onChange={(event) => setForm((current) => ({ ...current, holidays: current.holidays.map((item, itemIndex) => itemIndex === index ? { ...item, session: event.target.value } : item) }))}>
-                    {['FULL_DAY', 'FIRST_HALF', 'SECOND_HALF'].map((session) => (
+                    {HOLIDAY_SESSION_OPTIONS.map((session) => (
                       <option key={session} value={session}>
                         {session.replace(/_/g, ' ')}
                       </option>
@@ -101,6 +131,7 @@ export function HolidaysPage() {
               </div>
             ))}
             <button type="button" className="btn-secondary" onClick={() => setForm((current) => ({ ...current, holidays: [...current.holidays, { name: '', holiday_date: '', classification: 'PUBLIC', session: 'FULL_DAY', description: '' }] }))}>
+              <PlusCircle className="h-4 w-4" />
               Add holiday
             </button>
             <button type="submit" className="btn-primary" disabled={createMutation.isPending}>

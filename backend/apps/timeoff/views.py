@@ -281,6 +281,7 @@ class MyLeaveOverviewView(APIView):
 
 class MyLeaveRequestListCreateView(APIView):
     permission_classes = [IsEmployee, BelongsToActiveOrg]
+    throttle_scope = 'approval_action'
 
     def get(self, request):
         employee = _get_employee(request)
@@ -332,6 +333,7 @@ class MyOnDutyPolicyListView(APIView):
 
 class MyOnDutyRequestListCreateView(APIView):
     permission_classes = [IsEmployee, BelongsToActiveOrg]
+    throttle_scope = 'approval_action'
 
     def get(self, request):
         employee = _get_employee(request)

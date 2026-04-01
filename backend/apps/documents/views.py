@@ -116,6 +116,7 @@ class EmployeeDocumentRejectView(APIView):
 
 class MyDocumentListCreateView(APIView):
     permission_classes = [IsEmployee, BelongsToActiveOrg]
+    throttle_scope = 'document_upload'
 
     def get(self, request):
         employee = get_active_employee(request, request.user)
@@ -148,6 +149,7 @@ class MyDocumentRequestListView(APIView):
 
 class MyDocumentRequestUploadView(APIView):
     permission_classes = [IsEmployee, BelongsToActiveOrg]
+    throttle_scope = 'document_upload'
 
     def post(self, request, request_id):
         employee = get_active_employee(request, request.user)

@@ -4,6 +4,7 @@ import { Search, UserPlus } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { EmptyState } from '@/components/ui/EmptyState'
+import { FieldErrorText } from '@/components/ui/FieldErrorText'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { SkeletonPageHeader, SkeletonTable } from '@/components/ui/Skeleton'
@@ -15,12 +16,11 @@ import {
   useLocations,
   useOnboardingDocumentTypes,
 } from '@/hooks/useOrgAdmin'
-import { getErrorMessage } from '@/lib/errors'
+import { EMPLOYEE_STATUS_OPTIONS, EMPLOYMENT_TYPE_OPTIONS } from '@/lib/constants'
+import { getErrorMessage, getFieldErrors } from '@/lib/errors'
 import { formatDate, startCase } from '@/lib/format'
 import { getEmployeeStatusTone } from '@/lib/status'
 import type { EmployeeStatus, EmploymentType } from '@/types/hr'
-
-const employeeStatuses: Array<EmployeeStatus | ''> = ['', 'INVITED', 'PENDING', 'ACTIVE', 'RESIGNED', 'RETIRED', 'TERMINATED']
 
 const inviteDefaults = {
   company_email: '',
@@ -40,6 +40,7 @@ export function EmployeesPage() {
   const [showInviteForm, setShowInviteForm] = useState(false)
   const [inviteForm, setInviteForm] = useState(inviteDefaults)
   const [selectedDocumentTypeIds, setSelectedDocumentTypeIds] = useState<string[]>([])
+  const [inviteFieldErrors, setInviteFieldErrors] = useState<Record<string, string>>({})
 
   const { data, isLoading } = useEmployees({
     search: search || undefined,
@@ -53,6 +54,7 @@ export function EmployeesPage() {
 
   const handleInvite = async (event: React.FormEvent) => {
     event.preventDefault()
+    setInviteFieldErrors({})
     try {
       await inviteMutation.mutateAsync({
         ...inviteForm,
@@ -66,7 +68,11 @@ export function EmployeesPage() {
       setSelectedDocumentTypeIds([])
       setShowInviteForm(false)
     } catch (error) {
-      toast.error(getErrorMessage(error, 'Unable to invite employee.'))
+      const nextFieldErrors = getFieldErrors(error)
+      setInviteFieldErrors(nextFieldErrors)
+      if (Object.keys(nextFieldErrors).length === 0) {
+        toast.error(getErrorMessage(error, 'Unable to invite employee.'))
+      }
     }
   }
 
@@ -109,6 +115,7 @@ export function EmployeesPage() {
                   value={inviteForm[field as keyof typeof inviteForm]}
                   onChange={(event) => setInviteForm((current) => ({ ...current, [field]: event.target.value }))}
                 />
+                <FieldErrorText message={inviteFieldErrors[field]} />
               </div>
             ))}
             <div>
@@ -116,18 +123,20 @@ export function EmployeesPage() {
                 Employment type
               </label>
               <select id="employment-type" className="field-select" value={inviteForm.employment_type} onChange={(event) => setInviteForm((current) => ({ ...current, employment_type: event.target.value as EmploymentType }))}>
-                {['FULL_TIME', 'PART_TIME', 'CONTRACT', 'INTERN'].map((type) => (
+                {EMPLOYMENT_TYPE_OPTIONS.map((type) => (
                   <option key={type} value={type}>
                     {startCase(type)}
                   </option>
                 ))}
               </select>
+              <FieldErrorText message={inviteFieldErrors.employment_type} />
             </div>
             <div>
               <label className="field-label" htmlFor="date-of-joining">
                 Planned joining date
               </label>
               <input id="date-of-joining" type="date" className="field-input" value={inviteForm.date_of_joining} onChange={(event) => setInviteForm((current) => ({ ...current, date_of_joining: event.target.value }))} />
+              <FieldErrorText message={inviteFieldErrors.date_of_joining} />
             </div>
             <div>
               <label className="field-label" htmlFor="department">
@@ -141,6 +150,7 @@ export function EmployeesPage() {
                   </option>
                 ))}
               </select>
+              <FieldErrorText message={inviteFieldErrors.department_id} />
             </div>
             <div>
               <label className="field-label" htmlFor="location">
@@ -154,6 +164,7 @@ export function EmployeesPage() {
                   </option>
                 ))}
               </select>
+              <FieldErrorText message={inviteFieldErrors.office_location_id} />
             </div>
             <div className="flex items-end">
               <button type="submit" className="btn-primary w-full" disabled={inviteMutation.isPending}>
@@ -196,7 +207,7 @@ export function EmployeesPage() {
             <input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1) }} className="field-input pl-11" placeholder="Search employees by name or email" />
           </div>
           <select className="field-select max-w-xs" value={status} onChange={(event) => { setStatus(event.target.value as EmployeeStatus | ''); setPage(1) }}>
-            {employeeStatuses.map((employeeStatus) => (
+            {EMPLOYEE_STATUS_OPTIONS.map((employeeStatus) => (
               <option key={employeeStatus} value={employeeStatus}>
                 {employeeStatus ? startCase(employeeStatus) : 'All statuses'}
               </option>

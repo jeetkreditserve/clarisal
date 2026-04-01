@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { AuthShell } from '@/components/auth/AuthShell'
+import { FieldErrorText } from '@/components/ui/FieldErrorText'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { confirmPasswordReset, validatePasswordResetToken } from '@/lib/api/auth'
-import { getErrorMessage } from '@/lib/errors'
+import { getErrorMessage, getFieldErrors } from '@/lib/errors'
 import { getDefaultRoute } from '@/lib/rbac'
 import { useAuth } from '@/hooks/useAuth'
 
@@ -19,6 +20,7 @@ export function ResetPasswordPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
   useEffect(() => {
     if (!token) {
@@ -41,12 +43,14 @@ export function ResetPasswordPage() {
     if (!token) return
 
     if (password !== confirmPassword) {
+      setFieldErrors({ confirm_password: 'Passwords do not match.' })
       setError('Passwords do not match.')
       return
     }
 
     setIsSubmitting(true)
     setError('')
+    setFieldErrors({})
     try {
       const result = await confirmPasswordReset({
         token,
@@ -56,6 +60,7 @@ export function ResetPasswordPage() {
       await refreshUser()
       navigate(getDefaultRoute(result.user), { replace: true })
     } catch (submitError) {
+      setFieldErrors(getFieldErrors(submitError))
       setError(getErrorMessage(submitError, 'Unable to reset password.'))
     } finally {
       setIsSubmitting(false)
@@ -114,6 +119,7 @@ export function ResetPasswordPage() {
             className="field-input"
             placeholder="Minimum 8 characters"
           />
+          <FieldErrorText message={fieldErrors.password} />
         </div>
         <div>
           <label className="field-label" htmlFor="confirm-password">
@@ -128,6 +134,7 @@ export function ResetPasswordPage() {
             className="field-input"
             placeholder="Repeat your password"
           />
+          <FieldErrorText message={fieldErrors.confirm_password} />
         </div>
 
         {error ? (

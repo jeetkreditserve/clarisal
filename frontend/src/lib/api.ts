@@ -53,7 +53,7 @@ api.interceptors.response.use(
     ].some((path) => url.includes(path))
 
     if ((error.response?.status === 401 || error.response?.status === 403) && !isAuthMutation) {
-      window.dispatchEvent(new Event('calrisal:auth-lost'))
+      window.dispatchEvent(new Event('clarisal:auth-lost'))
     }
 
     return Promise.reject(error)

@@ -10,6 +10,8 @@ import { StatusBadge } from '@/components/ui/StatusBadge'
 import { useMyDashboard, useMyProfile } from '@/hooks/useEmployeeSelf'
 import { getApprovalActionTone, getOnboardingStatusTone } from '@/lib/status'
 
+const DASHBOARD_NOTICE_LIMIT = 3
+
 export function EmployeeDashboardPage() {
   const { data: dashboard, isLoading } = useMyDashboard()
   const { data: profile } = useMyProfile()
@@ -46,6 +48,23 @@ export function EmployeeDashboardPage() {
         </div>
       ) : (
         <>
+          <SectionCard title="Quick actions" description="Jump straight into the most common self-service actions without hunting through the sidebar.">
+            <div className="flex flex-wrap gap-3">
+              <Link to="/me/leave" className="btn-primary">
+                Request leave
+              </Link>
+              <Link to="/me/documents" className="btn-secondary">
+                Upload documents
+              </Link>
+              <Link to="/me/od" className="btn-secondary">
+                Submit on-duty
+              </Link>
+              <Link to="/me/approvals" className="btn-secondary">
+                Review approvals
+              </Link>
+            </div>
+          </SectionCard>
+
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <MetricCard title="Profile completion" value={`${dashboard.profile_completion.percent}%`} hint={`Employee code ${dashboard.employee_code || 'Pending assignment'}`} icon={UserRound} tone="primary" />
             <MetricCard title="Pending documents" value={dashboard.pending_documents} hint="Files waiting for admin review." icon={FileClock} tone="warning" />
@@ -93,7 +112,7 @@ export function EmployeeDashboardPage() {
                 ) : (
                   <p className="text-sm text-[hsl(var(--muted-foreground))]">No approvals are waiting on you right now.</p>
                 )}
-                {dashboard.notices.slice(0, 2).map((notice) => (
+                {dashboard.notices.slice(0, DASHBOARD_NOTICE_LIMIT).map((notice) => (
                   <div key={notice.id} className="surface-muted rounded-[20px] px-4 py-3">
                     <p className="font-medium text-[hsl(var(--foreground-strong))]">{notice.title}</p>
                     <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">{notice.body}</p>

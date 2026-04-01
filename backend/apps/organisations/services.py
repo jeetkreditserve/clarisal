@@ -763,6 +763,9 @@ def get_ct_dashboard_stats():
 
 
 def get_org_dashboard_stats(organisation):
+    from apps.approvals.models import ApprovalAction, ApprovalActionStatus
+    from apps.documents.models import Document, DocumentStatus
+
     employees = Employee.objects.filter(organisation=organisation)
     return {
         'total_employees': employees.count(),
@@ -794,6 +797,14 @@ def get_org_dashboard_stats(organisation):
         'licence_used': get_org_licence_summary(organisation)['allocated'],
         'licence_total': get_org_licence_summary(organisation)['active_paid_quantity'],
         'onboarding_stage': organisation.onboarding_stage,
+        'pending_approvals': ApprovalAction.objects.filter(
+            approval_run__organisation=organisation,
+            status=ApprovalActionStatus.PENDING,
+        ).count(),
+        'documents_awaiting_review': Document.objects.filter(
+            employee__organisation=organisation,
+            status=DocumentStatus.PENDING,
+        ).count(),
     }
 
 

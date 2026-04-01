@@ -16,10 +16,9 @@ import {
 } from '@/hooks/useEmployeeSelf'
 import { getErrorMessage } from '@/lib/errors'
 import { formatDateTime, startCase } from '@/lib/format'
+import { DOCUMENT_TYPE_OPTIONS } from '@/lib/constants'
 import { getDocumentRequestStatusTone, getDocumentStatusTone } from '@/lib/status'
 import type { DocumentType } from '@/types/hr'
-
-const documentTypes: DocumentType[] = ['PAN', 'AADHAAR', 'EDUCATION_CERT', 'EMPLOYMENT_LETTER', 'OTHER']
 
 export function DocumentsPage() {
   const { data, isLoading } = useMyDocuments()
@@ -32,6 +31,8 @@ export function DocumentsPage() {
   const [file, setFile] = useState<File | null>(null)
   const [note, setNote] = useState('')
   const [requestFiles, setRequestFiles] = useState<Record<string, File | null>>({})
+  const [uploadProgress, setUploadProgress] = useState(0)
+  const [requestedUploadProgress, setRequestedUploadProgress] = useState<Record<string, number>>({})
 
   const handleUpload = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -44,10 +45,12 @@ export function DocumentsPage() {
         document_type: documentType,
         file,
         metadata: note ? { note } : undefined,
+        onUploadProgress: setUploadProgress,
       })
       toast.success('Document uploaded.')
       setFile(null)
       setNote('')
+      setUploadProgress(0)
     } catch (error) {
       toast.error(getErrorMessage(error, 'Unable to upload document.'))
     }
@@ -60,9 +63,15 @@ export function DocumentsPage() {
       return
     }
     try {
-      await uploadRequestedMutation.mutateAsync({ request_id: requestId, file: requestedFile })
+      await uploadRequestedMutation.mutateAsync({
+        request_id: requestId,
+        file: requestedFile,
+        onUploadProgress: (progress) =>
+          setRequestedUploadProgress((current) => ({ ...current, [requestId]: progress })),
+      })
       toast.success('Requested document uploaded.')
       setRequestFiles((current) => ({ ...current, [requestId]: null }))
+      setRequestedUploadProgress((current) => ({ ...current, [requestId]: 0 }))
     } catch (error) {
       toast.error(getErrorMessage(error, 'Unable to upload requested document.'))
     }
@@ -108,8 +117,18 @@ export function DocumentsPage() {
                   <div className="mt-4 grid gap-3">
                     <input type="file" className="field-input" onChange={(event) => setRequestFiles((current) => ({ ...current, [request.id]: event.target.files?.[0] ?? null }))} />
                     <button type="button" className="btn-primary" onClick={() => void handleRequestedUpload(request.id)} disabled={uploadRequestedMutation.isPending}>
-                      Upload requested file
+                      {uploadRequestedMutation.isPending && requestedUploadProgress[request.id]
+                        ? `Uploading ${requestedUploadProgress[request.id]}%`
+                        : 'Upload requested file'}
                     </button>
+                    {requestedUploadProgress[request.id] ? (
+                      <div className="h-2 overflow-hidden rounded-full bg-[hsl(var(--border)_/_0.65)]">
+                        <div
+                          className="h-full rounded-full bg-[linear-gradient(90deg,hsl(var(--brand)),hsl(var(--brand-strong)))]"
+                          style={{ width: `${requestedUploadProgress[request.id]}%` }}
+                        />
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               ))}
@@ -126,7 +145,7 @@ export function DocumentsPage() {
                 Document type
               </label>
               <select id="document-type" className="field-select" value={documentType} onChange={(event) => setDocumentType(event.target.value as DocumentType)}>
-                {documentTypes.map((type) => (
+                {DOCUMENT_TYPE_OPTIONS.map((type) => (
                   <option key={type} value={type}>
                     {startCase(type)}
                   </option>
@@ -147,8 +166,16 @@ export function DocumentsPage() {
             </div>
             <button type="submit" className="btn-secondary" disabled={uploadMutation.isPending}>
               <FileUp className="h-4 w-4" />
-              Upload additional document
+              {uploadMutation.isPending && uploadProgress ? `Uploading ${uploadProgress}%` : 'Upload additional document'}
             </button>
+            {uploadProgress ? (
+              <div className="h-2 overflow-hidden rounded-full bg-[hsl(var(--border)_/_0.65)]">
+                <div
+                  className="h-full rounded-full bg-[linear-gradient(90deg,hsl(var(--brand)),hsl(var(--brand-strong)))]"
+                  style={{ width: `${uploadProgress}%` }}
+                />
+              </div>
+            ) : null}
           </form>
 
           <div className="mt-6">

@@ -72,7 +72,7 @@ def _get_reporting_employee(organisation, reporting_to_employee_id):
 
 def _next_employee_code(organisation):
     existing_codes = set(
-        Employee.objects.filter(organisation=organisation)
+        Employee.all_objects.filter(organisation=organisation)
         .exclude(employee_code__isnull=True)
         .exclude(employee_code='')
         .values_list('employee_code', flat=True)
@@ -318,7 +318,7 @@ def mark_employee_joined(employee, employee_code, date_of_joining, designation, 
     if not reporting_to_employee_id:
         raise ValueError('Reporting manager is required when marking an employee as joined.')
     reporting_to = _get_reporting_employee(employee.organisation, reporting_to_employee_id)
-    if Employee.objects.filter(
+    if Employee.all_objects.filter(
         organisation=employee.organisation,
         employee_code=normalized_code,
     ).exclude(id=employee.id).exists():
@@ -401,10 +401,17 @@ def delete_employee(employee, actor=None):
             role=InvitationRole.EMPLOYEE,
             status=InvitationStatus.PENDING,
         ).update(status=InvitationStatus.REVOKED, revoked_at=timezone.now())
-        employee.delete()
+        now = timezone.now()
+        employee.education_records.update(is_deleted=True, deleted_at=now)
+        employee.bank_accounts.update(is_deleted=True, deleted_at=now)
+        employee.emergency_contacts.update(is_deleted=True, deleted_at=now)
+        employee.family_members.update(is_deleted=True, deleted_at=now)
+        employee.is_deleted = True
+        employee.deleted_at = now
+        employee.save(update_fields=['is_deleted', 'deleted_at', 'updated_at'])
         sync_user_role(user)
 
-    log_audit_event(actor, 'employee.deleted', organisation=organisation, payload=payload)
+    log_audit_event(actor, 'employee.deleted', organisation=organisation, target=employee, payload=payload)
 
 
 def update_employee_profile(employee, actor=None, **fields):
@@ -451,9 +458,12 @@ def create_or_update_emergency_contact(employee, actor=None, contact_id=None, **
 
 def delete_emergency_contact(contact, actor=None):
     organisation = contact.employee.organisation
-    contact.delete()
+    payload = {'contact_id': str(contact.id), 'full_name': contact.full_name}
+    contact.is_deleted = True
+    contact.deleted_at = timezone.now()
+    contact.save(update_fields=['is_deleted', 'deleted_at', 'updated_at'])
     refresh_employee_onboarding_status(contact.employee, actor=actor)
-    log_audit_event(actor, 'employee.emergency_contact.deleted', organisation=organisation)
+    log_audit_event(actor, 'employee.emergency_contact.deleted', organisation=organisation, payload=payload)
 
 
 def create_or_update_family_member(employee, actor=None, member_id=None, **fields):
@@ -474,9 +484,12 @@ def create_or_update_family_member(employee, actor=None, member_id=None, **field
 def delete_family_member(member, actor=None):
     organisation = member.employee.organisation
     employee = member.employee
-    member.delete()
+    payload = {'member_id': str(member.id), 'full_name': member.full_name}
+    member.is_deleted = True
+    member.deleted_at = timezone.now()
+    member.save(update_fields=['is_deleted', 'deleted_at', 'updated_at'])
     refresh_employee_onboarding_status(employee, actor=actor)
-    log_audit_event(actor, 'employee.family_member.deleted', organisation=organisation)
+    log_audit_event(actor, 'employee.family_member.deleted', organisation=organisation, payload=payload)
 
 
 def create_education_record(employee, actor=None, **fields):
@@ -496,7 +509,9 @@ def update_education_record(record, actor=None, **fields):
 def delete_education_record(record, actor=None):
     organisation = record.employee.organisation
     payload = {'degree': record.degree, 'institution': record.institution}
-    record.delete()
+    record.is_deleted = True
+    record.deleted_at = timezone.now()
+    record.save(update_fields=['is_deleted', 'deleted_at', 'updated_at'])
     log_audit_event(actor, 'employee.education.deleted', organisation=organisation, payload=payload)
 
 
@@ -559,8 +574,11 @@ def update_bank_account(account, actor=None, **fields):
 
 def delete_bank_account(account, actor=None):
     organisation = account.employee.organisation
-    account.delete()
-    log_audit_event(actor, 'employee.bank_account.deleted', organisation=organisation)
+    payload = {'account_id': str(account.id), 'account_holder_name': account.account_holder_name}
+    account.is_deleted = True
+    account.deleted_at = timezone.now()
+    account.save(update_fields=['is_deleted', 'deleted_at', 'updated_at'])
+    log_audit_event(actor, 'employee.bank_account.deleted', organisation=organisation, payload=payload)
 
 
 def get_employee_dashboard(employee, calendar_month=None):

@@ -2,14 +2,16 @@ import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 
 import { AuthShell } from '@/components/auth/AuthShell'
+import { FieldErrorText } from '@/components/ui/FieldErrorText'
 import { useAuth } from '@/hooks/useAuth'
-import { getErrorMessage } from '@/lib/errors'
+import { getErrorMessage, getFieldErrors } from '@/lib/errors'
 import { getDefaultRoute } from '@/lib/rbac'
 
 export function ControlTowerLoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [isLoading, setIsLoading] = useState(false)
   const { loginControlTower } = useAuth()
   const navigate = useNavigate()
@@ -18,12 +20,14 @@ export function ControlTowerLoginPage() {
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
     setError('')
+    setFieldErrors({})
     setIsLoading(true)
     try {
       const user = await loginControlTower(email, password)
       const from = (location.state as { from?: { pathname: string } })?.from?.pathname
       navigate(from || getDefaultRoute(user), { replace: true })
     } catch (err: unknown) {
+      setFieldErrors(getFieldErrors(err))
       setError(getErrorMessage(err, 'Invalid Control Tower credentials.'))
     } finally {
       setIsLoading(false)
@@ -61,6 +65,7 @@ export function ControlTowerLoginPage() {
             className="field-input"
             placeholder="operator@calrisal.com"
           />
+          <FieldErrorText message={fieldErrors.email} />
         </div>
         <div>
           <label htmlFor="ct-password" className="field-label">
@@ -76,6 +81,7 @@ export function ControlTowerLoginPage() {
             className="field-input"
             placeholder="Enter your password"
           />
+          <FieldErrorText message={fieldErrors.password} />
         </div>
 
         {error ? (

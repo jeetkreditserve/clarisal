@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from rest_framework import serializers
 from .models import (
     LicenceBatchLifecycleState,
@@ -258,7 +260,7 @@ class LicenceUpdateSerializer(serializers.Serializer):
 
 class LicenceBatchWriteSerializer(serializers.Serializer):
     quantity = serializers.IntegerField(min_value=1)
-    price_per_licence_per_month = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=0)
+    price_per_licence_per_month = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=Decimal('0'))
     start_date = serializers.DateField()
     end_date = serializers.DateField()
     note = serializers.CharField(required=False, allow_blank=True, default='')
@@ -266,7 +268,7 @@ class LicenceBatchWriteSerializer(serializers.Serializer):
 
 class LicenceBatchUpdateSerializer(serializers.Serializer):
     quantity = serializers.IntegerField(min_value=1, required=False)
-    price_per_licence_per_month = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=0, required=False)
+    price_per_licence_per_month = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=Decimal('0'), required=False)
     start_date = serializers.DateField(required=False)
     end_date = serializers.DateField(required=False)
     note = serializers.CharField(required=False, allow_blank=True)
@@ -318,3 +320,5 @@ class OrgDashboardStatsSerializer(serializers.Serializer):
     licence_used = serializers.IntegerField()
     licence_total = serializers.IntegerField()
     onboarding_stage = serializers.CharField()
+    pending_approvals = serializers.IntegerField()
+    documents_awaiting_review = serializers.IntegerField()

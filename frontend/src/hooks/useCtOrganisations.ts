@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { fetchCtAuditLogs } from '@/lib/api/audit'
 import {
   createLicenceBatch,
   createOrganisation,
@@ -33,6 +34,13 @@ export function useOrganisation(id: string) {
     queryKey: ['ct', 'organisations', id],
     queryFn: () => fetchOrganisation(id),
     enabled: !!id,
+  })
+}
+
+export function useCtAuditLogs(organisationId?: string) {
+  return useQuery({
+    queryKey: ['ct', 'audit', organisationId],
+    queryFn: () => fetchCtAuditLogs(organisationId),
   })
 }
 

@@ -5,10 +5,12 @@ import { toast } from 'sonner'
 import {
   useCreateOrgAddress,
   useDeactivateOrgAddress,
+  useOrgAuditLogs,
   useOrgProfile,
   useUpdateOrgAddress,
   useUpdateOrgProfile,
 } from '@/hooks/useOrgAdmin'
+import { AuditTimeline } from '@/components/ui/AuditTimeline'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
@@ -38,6 +40,7 @@ export function OrgProfilePage() {
   const createAddressMutation = useCreateOrgAddress()
   const updateAddressMutation = useUpdateOrgAddress()
   const deactivateAddressMutation = useDeactivateOrgAddress()
+  const { data: auditLogs } = useOrgAuditLogs()
 
   const [profileDraft, setProfileDraft] = useState<Partial<{
     name: string
@@ -320,6 +323,14 @@ export function OrgProfilePage() {
             icon={Building2}
           />
         )}
+      </SectionCard>
+
+      <SectionCard title="Audit timeline" description="Recent organisation-profile, address, and admin-side changes for this tenant.">
+        <AuditTimeline
+          entries={auditLogs?.results.slice(0, 8)}
+          emptyTitle="No organisation audit activity yet"
+          emptyDescription="Profile updates, address changes, and onboarding operations will appear here as admins work inside this organisation."
+        />
       </SectionCard>
     </div>
   )

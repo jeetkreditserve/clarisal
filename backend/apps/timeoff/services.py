@@ -30,6 +30,7 @@ from .models import (
     LeaveRequestStatus,
     LeaveType,
     OnDutyPolicy,
+    OnDutyDurationType,
     OnDutyRequest,
     OnDutyRequestStatus,
 )
@@ -37,6 +38,34 @@ from .models import (
 
 def _decimal(value):
     return Decimal(str(value)).quantize(Decimal('0.01'))
+
+
+def _get_single_day_half_session(start_date, end_date, start_session, end_session):
+    if start_date != end_date:
+        return None
+    if start_session != end_session:
+        return None
+    if start_session not in [DaySession.FIRST_HALF, DaySession.SECOND_HALF]:
+        return None
+    return start_session
+
+
+def _leave_requests_overlap(existing_request, start_date, end_date, start_session, end_session):
+    requested_half_session = _get_single_day_half_session(start_date, end_date, start_session, end_session)
+    existing_half_session = _get_single_day_half_session(
+        existing_request.start_date,
+        existing_request.end_date,
+        existing_request.start_session,
+        existing_request.end_session,
+    )
+    if (
+        requested_half_session
+        and existing_half_session
+        and start_date == end_date == existing_request.start_date == existing_request.end_date
+        and requested_half_session != existing_half_session
+    ):
+        return False
+    return True
 
 
 def get_org_operations_guard(organisation):
@@ -322,6 +351,15 @@ def get_employee_leave_balances(employee):
 def create_leave_request(employee, leave_type, start_date, end_date, start_session, end_session, reason='', actor=None):
     if end_date < start_date:
         raise ValueError('End date cannot be before start date.')
+    overlapping_requests = LeaveRequest.objects.filter(
+        employee=employee,
+        status__in=[LeaveRequestStatus.PENDING, LeaveRequestStatus.APPROVED],
+        start_date__lte=end_date,
+        end_date__gte=start_date,
+    )
+    for existing_request in overlapping_requests:
+        if _leave_requests_overlap(existing_request, start_date, end_date, start_session, end_session):
+            raise ValueError('A leave request already exists for the selected dates.')
     total_units = _leave_request_units(start_date, end_date, start_session, end_session)
     balance = get_or_create_leave_balance(employee, leave_type)
     available = balance.opening_balance + balance.carried_forward_amount + balance.credited_amount - balance.used_amount - balance.pending_amount
@@ -388,6 +426,13 @@ def upsert_on_duty_policy(organisation, actor=None, policy=None, **fields):
 def create_on_duty_request(employee, policy, start_date, end_date, duration_type, purpose, destination='', start_time=None, end_time=None, actor=None):
     if end_date < start_date:
         raise ValueError('End date cannot be before start date.')
+    if duration_type == OnDutyDurationType.TIME_RANGE:
+        if start_time is None or end_time is None:
+            raise ValueError('Start and end time are required for time-range on-duty requests.')
+        if start_time >= end_time:
+            raise ValueError('Start time must be earlier than end time for time-range on-duty requests.')
+    elif start_time is not None or end_time is not None:
+        raise ValueError('Start and end time can only be provided for time-range on-duty requests.')
     total_units = Decimal('1.00')
     if duration_type in [DaySession.FIRST_HALF, DaySession.SECOND_HALF]:
         total_units = Decimal('0.50')

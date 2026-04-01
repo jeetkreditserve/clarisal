@@ -441,6 +441,12 @@
     color: hsl(var(--muted-foreground-strong));
   }
 
+  .field-error {
+    margin-top: 0.55rem;
+    font-size: 0.8rem;
+    color: hsl(var(--destructive));
+  }
+
   .table-shell {
     overflow-x: auto;
     border: 1px solid hsl(var(--border) / 0.86);

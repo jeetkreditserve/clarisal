@@ -1,12 +1,12 @@
 import { toast } from 'sonner'
 
+import { ApprovalDecisionDialog } from '@/components/ui/ApprovalDecisionDialog'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { SkeletonPageHeader, SkeletonTable } from '@/components/ui/Skeleton'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { useApproveMyApprovalAction, useMyApprovalInbox, useRejectMyApprovalAction } from '@/hooks/useEmployeeSelf'
-import { getErrorMessage } from '@/lib/errors'
 import { getApprovalActionTone } from '@/lib/status'
 
 export function ApprovalsPage() {
@@ -14,25 +14,14 @@ export function ApprovalsPage() {
   const approveMutation = useApproveMyApprovalAction()
   const rejectMutation = useRejectMyApprovalAction()
 
-  const handleApprove = async (actionId: string) => {
-    const comment = window.prompt('Add an approval note (optional):', '') ?? ''
-    try {
-      await approveMutation.mutateAsync({ actionId, comment })
-      toast.success('Approval recorded.')
-    } catch (error) {
-      toast.error(getErrorMessage(error, 'Unable to approve this request.'))
-    }
+  const handleApprove = async (actionId: string, comment: string) => {
+    await approveMutation.mutateAsync({ actionId, comment })
+    toast.success('Approval recorded.')
   }
 
-  const handleReject = async (actionId: string) => {
-    const comment = window.prompt('Add a rejection note:', '')
-    if (comment === null) return
-    try {
-      await rejectMutation.mutateAsync({ actionId, comment })
-      toast.success('Rejection recorded.')
-    } catch (error) {
-      toast.error(getErrorMessage(error, 'Unable to reject this request.'))
-    }
+  const handleReject = async (actionId: string, comment: string) => {
+    await rejectMutation.mutateAsync({ actionId, comment })
+    toast.success('Rejection recorded.')
   }
 
   if (isLoading) {
@@ -60,12 +49,30 @@ export function ApprovalsPage() {
                 </div>
                 <div className="flex items-center gap-3">
                   <StatusBadge tone={getApprovalActionTone(action.status)}>{action.status}</StatusBadge>
-                  <button className="btn-secondary" onClick={() => void handleApprove(action.id)}>
-                    Approve
-                  </button>
-                  <button className="btn-danger" onClick={() => void handleReject(action.id)}>
-                    Reject
-                  </button>
+                  <ApprovalDecisionDialog
+                    actionLabel={`Approve ${action.subject_label}`}
+                    triggerClassName="btn-secondary"
+                    triggerLabel="Approve"
+                    title="Approve request"
+                    description="Add an optional note for the requester or the audit trail before approving this request."
+                    confirmLabel="Approve request"
+                    submitErrorFallback="Unable to approve this request."
+                    isPending={approveMutation.isPending}
+                    onSubmit={(comment) => handleApprove(action.id, comment)}
+                  />
+                  <ApprovalDecisionDialog
+                    actionLabel={`Reject ${action.subject_label}`}
+                    triggerClassName="btn-danger"
+                    triggerLabel="Reject"
+                    title="Reject request"
+                    description="Rejection notes are required so the requester understands what must change."
+                    confirmLabel="Reject request"
+                    confirmTone="danger"
+                    isCommentRequired
+                    submitErrorFallback="Unable to reject this request."
+                    isPending={rejectMutation.isPending}
+                    onSubmit={(comment) => handleReject(action.id, comment)}
+                  />
                 </div>
               </div>
             ))}

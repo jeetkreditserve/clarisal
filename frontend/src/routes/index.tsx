@@ -28,7 +28,9 @@ import { LeavePage } from '@/pages/employee/LeavePage'
 import { OnDutyPage } from '@/pages/employee/OnDutyPage'
 import { ApprovalsPage } from '@/pages/employee/ApprovalsPage'
 import { HolidaysPage } from '@/pages/org/HolidaysPage'
+import { LeaveCyclesPage } from '@/pages/org/LeaveCyclesPage'
 import { LeavePlansPage } from '@/pages/org/LeavePlansPage'
+import { OnDutyPoliciesPage } from '@/pages/org/OnDutyPoliciesPage'
 import { ApprovalWorkflowsPage } from '@/pages/org/ApprovalWorkflowsPage'
 import { NoticesPage } from '@/pages/org/NoticesPage'
 
@@ -93,7 +95,9 @@ export const router = createBrowserRouter([
           { path: '/org/employees', element: <EmployeesPage /> },
           { path: '/org/employees/:id', element: <EmployeeDetailPage /> },
           { path: '/org/holidays', element: <HolidaysPage /> },
+          { path: '/org/leave-cycles', element: <LeaveCyclesPage /> },
           { path: '/org/leave-plans', element: <LeavePlansPage /> },
+          { path: '/org/on-duty-policies', element: <OnDutyPoliciesPage /> },
           { path: '/org/approval-workflows', element: <ApprovalWorkflowsPage /> },
           { path: '/org/notices', element: <NoticesPage /> },
         ],

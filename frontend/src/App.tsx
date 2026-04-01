@@ -1,3 +1,4 @@
+import { AppErrorBoundary } from '@/components/ui/AppErrorBoundary'
 import { RouterProvider } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Toaster } from 'sonner'
@@ -20,7 +21,9 @@ function AppContent() {
 
   return (
     <AuthProvider>
-      <RouterProvider router={router} />
+      <AppErrorBoundary>
+        <RouterProvider router={router} />
+      </AppErrorBoundary>
       <Toaster richColors position="top-right" theme={resolvedTheme} />
     </AuthProvider>
   )

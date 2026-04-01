@@ -1,3 +1,5 @@
+import logging
+
 from django.contrib.auth import authenticate, login, logout
 from django.middleware.csrf import get_token
 from rest_framework import status
@@ -5,6 +7,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.audit.services import log_audit_event
 from apps.organisations.models import OrganisationAccessState, OrganisationBillingStatus
 
 from .models import AccountType
@@ -29,6 +32,8 @@ from .workspaces import (
     set_active_employee_workspace,
 )
 
+logger = logging.getLogger('apps.auth')
+
 
 def _serialize_user(user, request):
     return UserSerializer(user, context={'request': request}).data
@@ -46,6 +51,7 @@ def _complete_login(request, user):
 class CsrfTokenView(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
+    throttle_scope = 'auth_csrf'
 
     def get(self, request):
         return Response({'csrfToken': get_token(request)})
@@ -54,21 +60,25 @@ class CsrfTokenView(APIView):
 class WorkforceLoginView(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
+    throttle_scope = 'workforce_login'
 
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        email = serializer.validated_data['email']
         user = authenticate(
             request,
-            username=serializer.validated_data['email'],
+            username=email,
             password=serializer.validated_data['password'],
             account_type=AccountType.WORKFORCE,
         )
         if not user or not user.is_active:
+            logger.warning('Workforce login failed for %s', email)
             return Response({'error': 'Invalid email or password'}, status=status.HTTP_401_UNAUTHORIZED)
 
         workspace_state = get_workspace_state(user, request)
         if not workspace_state.admin_memberships and not workspace_state.employee_records:
+            logger.warning('Workforce login blocked due to missing workspace access for %s', email)
             return Response({'error': 'No workforce access is configured for this account.'}, status=status.HTTP_403_FORBIDDEN)
 
         initialize_workforce_workspace(request, user)
@@ -82,6 +92,7 @@ class WorkforceLoginView(APIView):
             active_org.billing_status != OrganisationBillingStatus.PAID
             or active_org.access_state != OrganisationAccessState.ACTIVE
         ):
+            logger.warning('Workforce login blocked due to inactive organisation for %s', email)
             return Response(
                 {'error': 'Your organisation is not active yet. Please contact your administrator.'},
                 status=status.HTTP_403_FORBIDDEN,
@@ -93,20 +104,24 @@ class WorkforceLoginView(APIView):
 class ControlTowerLoginView(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
+    throttle_scope = 'control_tower_login'
 
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        email = serializer.validated_data['email']
         user = authenticate(
             request,
-            username=serializer.validated_data['email'],
+            username=email,
             password=serializer.validated_data['password'],
             account_type=AccountType.CONTROL_TOWER,
         )
         if not user or not user.is_active:
+            logger.warning('Control Tower login failed for %s', email)
             return Response({'error': 'Invalid email or password'}, status=status.HTTP_401_UNAUTHORIZED)
 
         if not user.is_staff:
+            logger.warning('Control Tower login blocked due to missing staff access for %s', email)
             return Response({'error': 'This account does not have Control Tower access.'}, status=status.HTTP_403_FORBIDDEN)
 
         return _complete_login(request, user)
@@ -116,6 +131,13 @@ class LogoutView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
+        log_audit_event(
+            request.user,
+            'auth.logout.requested',
+            target=request.user,
+            payload={'account_type': request.user.account_type},
+            request=request,
+        )
         logout(request)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -152,6 +174,7 @@ class PasswordResetRequestView(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
     account_type = AccountType.WORKFORCE
+    throttle_scope = 'password_reset_request'
 
     def post(self, request):
         serializer = PasswordResetRequestSerializer(data=request.data)
@@ -160,6 +183,7 @@ class PasswordResetRequestView(APIView):
             serializer.validated_data['email'],
             account_type=self.account_type,
             requested_by_ip=request.META.get('REMOTE_ADDR'),
+            request=request,
         )
         return Response(
             {'detail': 'If an account exists, a password reset link has been sent.'},
@@ -174,6 +198,7 @@ class ControlTowerPasswordResetRequestView(PasswordResetRequestView):
 class PasswordResetValidateView(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
+    throttle_scope = 'password_reset_confirm'
 
     def get(self, request, token):
         try:
@@ -192,6 +217,7 @@ class PasswordResetValidateView(APIView):
 class PasswordResetConfirmView(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
+    throttle_scope = 'password_reset_confirm'
 
     def post(self, request):
         serializer = PasswordResetConfirmSerializer(data=request.data)
@@ -200,6 +226,7 @@ class PasswordResetConfirmView(APIView):
             user = confirm_password_reset(
                 serializer.validated_data['token'],
                 serializer.validated_data['password'],
+                request=request,
             )
         except Exception as exc:  # noqa: BLE001 - keep response shape compact
             detail = getattr(exc, 'detail', {'token': 'Invalid password reset link.'})

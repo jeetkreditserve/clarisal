@@ -2,6 +2,7 @@ import uuid
 from django.conf import settings
 from django.db import models
 from django.db.models import Q
+from django.utils import timezone
 
 
 class EmploymentType(models.TextChoices):
@@ -70,7 +71,40 @@ class EmployeeOnboardingStatus(models.TextChoices):
     COMPLETE = 'COMPLETE', 'Complete'
 
 
-class Employee(models.Model):
+class SoftDeleteQuerySet(models.QuerySet):
+    def active(self):
+        return self.filter(is_deleted=False)
+
+    def deleted(self):
+        return self.filter(is_deleted=True)
+
+    def soft_delete(self):
+        return self.update(is_deleted=True, deleted_at=timezone.now())
+
+
+class SoftDeleteManager(models.Manager.from_queryset(SoftDeleteQuerySet)):
+    def get_queryset(self):
+        return super().get_queryset().active()
+
+
+class SoftDeleteModel(models.Model):
+    is_deleted = models.BooleanField(default=False)
+    deleted_at = models.DateTimeField(null=True, blank=True)
+
+    objects = SoftDeleteManager()
+    all_objects = SoftDeleteQuerySet.as_manager()
+
+    class Meta:
+        abstract = True
+
+    def soft_delete(self, save=True):
+        self.is_deleted = True
+        self.deleted_at = timezone.now()
+        if save:
+            self.save(update_fields=['is_deleted', 'deleted_at'])
+
+
+class Employee(SoftDeleteModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     organisation = models.ForeignKey(
         'organisations.Organisation',
@@ -132,9 +166,13 @@ class Employee(models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=['organisation', 'employee_code'],
-                condition=Q(employee_code__isnull=False) & ~Q(employee_code=''),
+                condition=Q(employee_code__isnull=False) & ~Q(employee_code='') & Q(is_deleted=False),
                 name='unique_employee_code_per_org_when_present',
             ),
+        ]
+        indexes = [
+            models.Index(fields=['organisation', 'status', 'is_deleted']),
+            models.Index(fields=['user', 'organisation', 'is_deleted']),
         ]
 
     def __str__(self):
@@ -173,7 +211,7 @@ class EmployeeProfile(models.Model):
         return f'Profile({self.employee.employee_code or self.employee.user.email})'
 
 
-class EducationRecord(models.Model):
+class EducationRecord(SoftDeleteModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     employee = models.ForeignKey(
         Employee,
@@ -193,6 +231,9 @@ class EducationRecord(models.Model):
     class Meta:
         db_table = 'education_records'
         ordering = ['-end_year', '-start_year']
+        indexes = [
+            models.Index(fields=['employee', 'is_deleted']),
+        ]
 
     def __str__(self):
         return f'{self.degree} at {self.institution}'
@@ -229,7 +270,7 @@ class EmployeeGovernmentId(models.Model):
         ]
 
 
-class EmployeeBankAccount(models.Model):
+class EmployeeBankAccount(SoftDeleteModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     employee = models.ForeignKey(
         Employee,
@@ -258,9 +299,12 @@ class EmployeeBankAccount(models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=['employee'],
-                condition=Q(is_primary=True),
+                condition=Q(is_primary=True) & Q(is_deleted=False),
                 name='unique_primary_bank_account_per_employee',
             ),
+        ]
+        indexes = [
+            models.Index(fields=['employee', 'is_deleted']),
         ]
 
 
@@ -275,7 +319,7 @@ class FamilyRelationChoice(models.TextChoices):
     OTHER = 'OTHER', 'Other'
 
 
-class EmployeeFamilyMember(models.Model):
+class EmployeeFamilyMember(SoftDeleteModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     employee = models.ForeignKey(
         Employee,
@@ -293,9 +337,12 @@ class EmployeeFamilyMember(models.Model):
     class Meta:
         db_table = 'employee_family_members'
         ordering = ['full_name']
+        indexes = [
+            models.Index(fields=['employee', 'is_deleted']),
+        ]
 
 
-class EmployeeEmergencyContact(models.Model):
+class EmployeeEmergencyContact(SoftDeleteModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     employee = models.ForeignKey(
         Employee,
@@ -317,7 +364,10 @@ class EmployeeEmergencyContact(models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=['employee'],
-                condition=Q(is_primary=True),
+                condition=Q(is_primary=True) & Q(is_deleted=False),
                 name='unique_primary_emergency_contact_per_employee',
             ),
+        ]
+        indexes = [
+            models.Index(fields=['employee', 'is_deleted']),
         ]

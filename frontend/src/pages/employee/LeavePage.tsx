@@ -1,13 +1,15 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
 
+import { FieldErrorText } from '@/components/ui/FieldErrorText'
 import { MonthCalendar } from '@/components/ui/MonthCalendar'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { SkeletonMetricCard, SkeletonPageHeader, SkeletonTable } from '@/components/ui/Skeleton'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { useCreateMyLeaveRequest, useMyCalendar, useMyLeaveOverview, useWithdrawMyLeaveRequest } from '@/hooks/useEmployeeSelf'
-import { getErrorMessage } from '@/lib/errors'
+import { DAY_SESSION_OPTIONS } from '@/lib/constants'
+import { getErrorMessage, getFieldErrors } from '@/lib/errors'
 import { getLeaveStatusTone } from '@/lib/status'
 
 const emptyLeaveForm = {
@@ -25,15 +27,21 @@ export function LeavePage() {
   const createMutation = useCreateMyLeaveRequest()
   const withdrawMutation = useWithdrawMyLeaveRequest()
   const [form, setForm] = useState(emptyLeaveForm)
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
+    setFieldErrors({})
     try {
       await createMutation.mutateAsync(form)
       toast.success('Leave request submitted.')
       setForm(emptyLeaveForm)
     } catch (error) {
-      toast.error(getErrorMessage(error, 'Unable to submit leave request.'))
+      const nextFieldErrors = getFieldErrors(error)
+      setFieldErrors(nextFieldErrors)
+      if (Object.keys(nextFieldErrors).length === 0) {
+        toast.error(getErrorMessage(error, 'Unable to submit leave request.'))
+      }
     }
   }
 
@@ -80,35 +88,47 @@ export function LeavePage() {
         <SectionCard title="Request leave" description="Your leave policy controls balances, half-day support, and future or past request rules.">
           {data.leave_plan ? (
             <form onSubmit={handleSubmit} className="grid gap-4">
-              <select className="field-select" value={form.leave_type_id} onChange={(event) => setForm((current) => ({ ...current, leave_type_id: event.target.value }))} required>
-                <option value="">Select leave type</option>
-                {data.leave_plan.leave_types.filter((type) => type.is_active).map((type) => (
-                  <option key={type.id} value={type.id}>
-                    {type.name}
-                  </option>
-                ))}
-              </select>
+              <div>
+                <select className="field-select" value={form.leave_type_id} onChange={(event) => setForm((current) => ({ ...current, leave_type_id: event.target.value }))} required>
+                  <option value="">Select leave type</option>
+                  {data.leave_plan.leave_types.filter((type) => type.is_active).map((type) => (
+                    <option key={type.id} value={type.id}>
+                      {type.name}
+                    </option>
+                  ))}
+                </select>
+                <FieldErrorText message={fieldErrors.leave_type_id} />
+              </div>
               <div className="grid gap-4 md:grid-cols-2">
-                <input className="field-input" type="date" value={form.start_date} onChange={(event) => setForm((current) => ({ ...current, start_date: event.target.value }))} required />
-                <input className="field-input" type="date" value={form.end_date} onChange={(event) => setForm((current) => ({ ...current, end_date: event.target.value }))} required />
+                <div>
+                  <input className="field-input" type="date" value={form.start_date} onChange={(event) => setForm((current) => ({ ...current, start_date: event.target.value }))} required />
+                  <FieldErrorText message={fieldErrors.start_date} />
+                </div>
+                <div>
+                  <input className="field-input" type="date" value={form.end_date} onChange={(event) => setForm((current) => ({ ...current, end_date: event.target.value }))} required />
+                  <FieldErrorText message={fieldErrors.end_date} />
+                </div>
               </div>
               <div className="grid gap-4 md:grid-cols-2">
                 <select className="field-select" value={form.start_session} onChange={(event) => setForm((current) => ({ ...current, start_session: event.target.value }))}>
-                  {['FULL_DAY', 'FIRST_HALF', 'SECOND_HALF'].map((session) => (
+                  {DAY_SESSION_OPTIONS.map((session) => (
                     <option key={session} value={session}>
                       {session.replace(/_/g, ' ')}
                     </option>
                   ))}
                 </select>
                 <select className="field-select" value={form.end_session} onChange={(event) => setForm((current) => ({ ...current, end_session: event.target.value }))}>
-                  {['FULL_DAY', 'FIRST_HALF', 'SECOND_HALF'].map((session) => (
+                  {DAY_SESSION_OPTIONS.map((session) => (
                     <option key={session} value={session}>
                       {session.replace(/_/g, ' ')}
                     </option>
                   ))}
                 </select>
               </div>
-              <textarea className="field-textarea" placeholder="Reason" value={form.reason} onChange={(event) => setForm((current) => ({ ...current, reason: event.target.value }))} />
+              <div>
+                <textarea className="field-textarea" placeholder="Reason" value={form.reason} onChange={(event) => setForm((current) => ({ ...current, reason: event.target.value }))} />
+                <FieldErrorText message={fieldErrors.reason} />
+              </div>
               <button type="submit" className="btn-primary" disabled={createMutation.isPending}>
                 Submit leave request
               </button>

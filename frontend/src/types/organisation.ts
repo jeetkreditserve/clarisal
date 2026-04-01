@@ -191,4 +191,6 @@ export interface OrgDashboardStats {
   licence_used: number
   licence_total: number
   onboarding_stage: OrganisationOnboardingStage
+  pending_approvals: number
+  documents_awaiting_review: number
 }

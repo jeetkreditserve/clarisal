@@ -13,11 +13,13 @@ import {
   useUploadRequestedDocument,
 } from '@/hooks/useEmployeeSelf'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { FieldErrorText } from '@/components/ui/FieldErrorText'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { SkeletonFormBlock, SkeletonPageHeader, SkeletonTable } from '@/components/ui/Skeleton'
 import { StatusBadge } from '@/components/ui/StatusBadge'
-import { getErrorMessage } from '@/lib/errors'
+import { getErrorMessage, getFieldErrors } from '@/lib/errors'
+import { FAMILY_RELATION_OPTIONS } from '@/lib/constants'
 import { getDocumentRequestStatusTone, getEmployeeStatusTone, getOnboardingStatusTone } from '@/lib/status'
 import type { FamilyRelation } from '@/types/hr'
 
@@ -52,6 +54,10 @@ export function OnboardingPage() {
   const [familyForm, setFamilyForm] = useState(emptyFamilyForm)
   const [emergencyForm, setEmergencyForm] = useState(emptyEmergencyForm)
   const [selectedFiles, setSelectedFiles] = useState<Record<string, File | null>>({})
+  const [uploadProgressByRequest, setUploadProgressByRequest] = useState<Record<string, number>>({})
+  const [basicFieldErrors, setBasicFieldErrors] = useState<Record<string, string>>({})
+  const [familyFieldErrors, setFamilyFieldErrors] = useState<Record<string, string>>({})
+  const [emergencyFieldErrors, setEmergencyFieldErrors] = useState<Record<string, string>>({})
 
   const governmentIds = useMemo(() => {
     const pan = data?.government_ids.find((item) => item.id_type === 'PAN')
@@ -91,17 +97,23 @@ export function OnboardingPage() {
 
   const handleSaveBasics = async (event: React.FormEvent) => {
     event.preventDefault()
+    setBasicFieldErrors({})
     try {
       await updateMutation.mutateAsync(profile)
       toast.success('Onboarding basics saved.')
       setDraft({})
     } catch (error) {
-      toast.error(getErrorMessage(error, 'Unable to save onboarding details.'))
+      const fieldErrors = getFieldErrors(error)
+      setBasicFieldErrors(fieldErrors)
+      if (Object.keys(fieldErrors).length === 0) {
+        toast.error(getErrorMessage(error, 'Unable to save onboarding details.'))
+      }
     }
   }
 
   const handleAddFamily = async (event: React.FormEvent) => {
     event.preventDefault()
+    setFamilyFieldErrors({})
     try {
       await createFamilyMutation.mutateAsync({
         ...familyForm,
@@ -110,18 +122,27 @@ export function OnboardingPage() {
       toast.success('Family member added.')
       setFamilyForm(emptyFamilyForm)
     } catch (error) {
-      toast.error(getErrorMessage(error, 'Unable to add family member.'))
+      const fieldErrors = getFieldErrors(error)
+      setFamilyFieldErrors(fieldErrors)
+      if (Object.keys(fieldErrors).length === 0) {
+        toast.error(getErrorMessage(error, 'Unable to add family member.'))
+      }
     }
   }
 
   const handleAddEmergency = async (event: React.FormEvent) => {
     event.preventDefault()
+    setEmergencyFieldErrors({})
     try {
       await createEmergencyMutation.mutateAsync(emergencyForm)
       toast.success('Emergency contact added.')
       setEmergencyForm(emptyEmergencyForm)
     } catch (error) {
-      toast.error(getErrorMessage(error, 'Unable to add emergency contact.'))
+      const fieldErrors = getFieldErrors(error)
+      setEmergencyFieldErrors(fieldErrors)
+      if (Object.keys(fieldErrors).length === 0) {
+        toast.error(getErrorMessage(error, 'Unable to add emergency contact.'))
+      }
     }
   }
 
@@ -132,9 +153,18 @@ export function OnboardingPage() {
       return
     }
     try {
-      await uploadRequestedDocumentMutation.mutateAsync({ request_id: requestId, file })
+      await uploadRequestedDocumentMutation.mutateAsync({
+        request_id: requestId,
+        file,
+        onUploadProgress: (progress) =>
+          setUploadProgressByRequest((current) => ({
+            ...current,
+            [requestId]: progress,
+          })),
+      })
       toast.success('Document uploaded.')
       setSelectedFiles((current) => ({ ...current, [requestId]: null }))
+      setUploadProgressByRequest((current) => ({ ...current, [requestId]: 0 }))
     } catch (error) {
       toast.error(getErrorMessage(error, 'Unable to upload requested document.'))
     }
@@ -187,6 +217,7 @@ export function OnboardingPage() {
                   value={profile[field as keyof typeof profile]}
                   onChange={(event) => setDraft((current) => ({ ...current, [field]: event.target.value }))}
                 />
+                <FieldErrorText message={basicFieldErrors[field]} />
               </div>
             ))}
             <div className="lg:col-span-2">
@@ -199,6 +230,7 @@ export function OnboardingPage() {
                 value={profile.address_line1}
                 onChange={(event) => setDraft((current) => ({ ...current, address_line1: event.target.value }))}
               />
+              <FieldErrorText message={basicFieldErrors.address_line1} />
             </div>
             <div className="lg:col-span-2">
               <label className="field-label" htmlFor="address_line2">
@@ -210,6 +242,7 @@ export function OnboardingPage() {
                 value={profile.address_line2}
                 onChange={(event) => setDraft((current) => ({ ...current, address_line2: event.target.value }))}
               />
+              <FieldErrorText message={basicFieldErrors.address_line2} />
             </div>
             <div className="lg:col-span-2">
               <button type="submit" className="btn-primary" disabled={updateMutation.isPending}>
@@ -251,17 +284,29 @@ export function OnboardingPage() {
 
           <SectionCard title="Family details" description="Add at least one family or dependent record.">
             <form onSubmit={handleAddFamily} className="grid gap-4">
-              <input className="field-input" placeholder="Full name" value={familyForm.full_name} onChange={(event) => setFamilyForm((current) => ({ ...current, full_name: event.target.value }))} />
-              <select className="field-select" value={familyForm.relation} onChange={(event) => setFamilyForm((current) => ({ ...current, relation: event.target.value as FamilyRelation }))}>
-                {['SPOUSE', 'FATHER', 'MOTHER', 'SON', 'DAUGHTER', 'BROTHER', 'SISTER', 'OTHER'].map((relation) => (
+              <div>
+                <input className="field-input" placeholder="Full name" value={familyForm.full_name} onChange={(event) => setFamilyForm((current) => ({ ...current, full_name: event.target.value }))} />
+                <FieldErrorText message={familyFieldErrors.full_name} />
+              </div>
+              <div>
+                <select className="field-select" value={familyForm.relation} onChange={(event) => setFamilyForm((current) => ({ ...current, relation: event.target.value as FamilyRelation }))}>
+                {FAMILY_RELATION_OPTIONS.map((relation) => (
                   <option key={relation} value={relation}>
                     {relation.replace(/_/g, ' ')}
                   </option>
                 ))}
               </select>
+                <FieldErrorText message={familyFieldErrors.relation} />
+              </div>
               <div className="grid gap-4 md:grid-cols-2">
-                <input className="field-input" type="date" value={familyForm.date_of_birth} onChange={(event) => setFamilyForm((current) => ({ ...current, date_of_birth: event.target.value }))} />
-                <input className="field-input" placeholder="Contact number" value={familyForm.contact_number} onChange={(event) => setFamilyForm((current) => ({ ...current, contact_number: event.target.value }))} />
+                <div>
+                  <input className="field-input" type="date" value={familyForm.date_of_birth} onChange={(event) => setFamilyForm((current) => ({ ...current, date_of_birth: event.target.value }))} />
+                  <FieldErrorText message={familyFieldErrors.date_of_birth} />
+                </div>
+                <div>
+                  <input className="field-input" placeholder="Contact number" value={familyForm.contact_number} onChange={(event) => setFamilyForm((current) => ({ ...current, contact_number: event.target.value }))} />
+                  <FieldErrorText message={familyFieldErrors.contact_number} />
+                </div>
               </div>
               <label className="inline-flex items-center gap-2 text-sm text-[hsl(var(--muted-foreground))]">
                 <input type="checkbox" checked={familyForm.is_dependent} onChange={(event) => setFamilyForm((current) => ({ ...current, is_dependent: event.target.checked }))} />
@@ -277,7 +322,7 @@ export function OnboardingPage() {
                   <div key={member.id} className="surface-muted flex items-center justify-between rounded-[20px] px-4 py-3">
                     <div>
                       <p className="font-medium text-[hsl(var(--foreground-strong))]">{member.full_name}</p>
-                    <p className="text-sm text-[hsl(var(--muted-foreground))]">{member.relation.replace(/_/g, ' ')}</p>
+                      <p className="text-sm text-[hsl(var(--muted-foreground))]">{member.relation.replace(/_/g, ' ')}</p>
                     </div>
                     <button className="btn-secondary" onClick={() => void deleteFamilyMutation.mutateAsync(member.id)}>
                       Remove
@@ -292,13 +337,28 @@ export function OnboardingPage() {
 
           <SectionCard title="Emergency contacts" description="Add at least one primary contact for emergency and medical situations.">
             <form onSubmit={handleAddEmergency} className="grid gap-4">
-              <input className="field-input" placeholder="Full name" value={emergencyForm.full_name} onChange={(event) => setEmergencyForm((current) => ({ ...current, full_name: event.target.value }))} />
-              <input className="field-input" placeholder="Relation" value={emergencyForm.relation} onChange={(event) => setEmergencyForm((current) => ({ ...current, relation: event.target.value }))} />
-              <div className="grid gap-4 md:grid-cols-2">
-                <input className="field-input" placeholder="Phone number" value={emergencyForm.phone_number} onChange={(event) => setEmergencyForm((current) => ({ ...current, phone_number: event.target.value }))} />
-                <input className="field-input" placeholder="Alternate phone" value={emergencyForm.alternate_phone_number} onChange={(event) => setEmergencyForm((current) => ({ ...current, alternate_phone_number: event.target.value }))} />
+              <div>
+                <input className="field-input" placeholder="Full name" value={emergencyForm.full_name} onChange={(event) => setEmergencyForm((current) => ({ ...current, full_name: event.target.value }))} />
+                <FieldErrorText message={emergencyFieldErrors.full_name} />
               </div>
-              <textarea className="field-textarea" placeholder="Address" value={emergencyForm.address} onChange={(event) => setEmergencyForm((current) => ({ ...current, address: event.target.value }))} />
+              <div>
+                <input className="field-input" placeholder="Relation" value={emergencyForm.relation} onChange={(event) => setEmergencyForm((current) => ({ ...current, relation: event.target.value }))} />
+                <FieldErrorText message={emergencyFieldErrors.relation} />
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <input className="field-input" placeholder="Phone number" value={emergencyForm.phone_number} onChange={(event) => setEmergencyForm((current) => ({ ...current, phone_number: event.target.value }))} />
+                  <FieldErrorText message={emergencyFieldErrors.phone_number} />
+                </div>
+                <div>
+                  <input className="field-input" placeholder="Alternate phone" value={emergencyForm.alternate_phone_number} onChange={(event) => setEmergencyForm((current) => ({ ...current, alternate_phone_number: event.target.value }))} />
+                  <FieldErrorText message={emergencyFieldErrors.alternate_phone_number} />
+                </div>
+              </div>
+              <div>
+                <textarea className="field-textarea" placeholder="Address" value={emergencyForm.address} onChange={(event) => setEmergencyForm((current) => ({ ...current, address: event.target.value }))} />
+                <FieldErrorText message={emergencyFieldErrors.address} />
+              </div>
               <label className="inline-flex items-center gap-2 text-sm text-[hsl(var(--muted-foreground))]">
                 <input type="checkbox" checked={emergencyForm.is_primary} onChange={(event) => setEmergencyForm((current) => ({ ...current, is_primary: event.target.checked }))} />
                 Primary contact
@@ -362,10 +422,20 @@ export function OnboardingPage() {
                     type="button"
                     className="btn-primary"
                     onClick={() => void handleUploadRequestedDocument(request.id)}
-                    disabled={uploadRequestedDocumentMutation.isPending}
+                    disabled={uploadRequestedDocumentMutation.isPending || !selectedFiles[request.id]}
                   >
-                    Upload document
+                    {uploadRequestedDocumentMutation.isPending && uploadProgressByRequest[request.id]
+                      ? `Uploading ${uploadProgressByRequest[request.id]}%`
+                      : 'Upload document'}
                   </button>
+                  {uploadProgressByRequest[request.id] ? (
+                    <div className="h-2 overflow-hidden rounded-full bg-[hsl(var(--border)_/_0.65)]">
+                      <div
+                        className="h-full rounded-full bg-[linear-gradient(90deg,hsl(var(--brand)),hsl(var(--brand-strong)))]"
+                        style={{ width: `${uploadProgressByRequest[request.id]}%` }}
+                      />
+                    </div>
+                  ) : null}
                 </div>
               </div>
             ))}

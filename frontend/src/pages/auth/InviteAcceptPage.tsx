@@ -2,10 +2,11 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { acceptInvite, validateInviteToken } from '@/lib/api/invitations'
 import { getDefaultRoute } from '@/lib/rbac'
-import { getErrorMessage } from '@/lib/errors'
 import { AuthShell } from '@/components/auth/AuthShell'
+import { FieldErrorText } from '@/components/ui/FieldErrorText'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { useAuth } from '@/hooks/useAuth'
+import { getErrorMessage, getFieldErrors } from '@/lib/errors'
 
 export function InviteAcceptPage() {
   const { token } = useParams<{ token: string }>()
@@ -21,6 +22,7 @@ export function InviteAcceptPage() {
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState('')
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [isLoading, setIsLoading] = useState(false)
 
   useEffect(() => {
@@ -36,13 +38,16 @@ export function InviteAcceptPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (inviteInfo?.requires_password_setup && password !== confirmPassword) {
+      setFieldErrors({ confirm_password: 'Passwords do not match.' })
       setError('Passwords do not match')
       return
     }
     if (inviteInfo?.requires_password_setup && password.length < 8) {
+      setFieldErrors({ password: 'Password must be at least 8 characters.' })
       setError('Password must be at least 8 characters')
       return
     }
+    setFieldErrors({})
     setError('')
     setIsLoading(true)
     try {
@@ -54,6 +59,7 @@ export function InviteAcceptPage() {
       await refreshUser()
       navigate(getDefaultRoute(result.user), { replace: true })
     } catch (err: unknown) {
+      setFieldErrors(getFieldErrors(err))
       setError(getErrorMessage(err, 'Failed to accept the invitation. The link may have expired.'))
     } finally {
       setIsLoading(false)
@@ -114,6 +120,7 @@ export function InviteAcceptPage() {
                 className="field-input"
                 placeholder="Minimum 8 characters"
               />
+              <FieldErrorText message={fieldErrors.password} />
             </div>
             <div>
               <label className="field-label" htmlFor="confirmPassword">
@@ -128,6 +135,7 @@ export function InviteAcceptPage() {
                 className="field-input"
                 placeholder="Repeat your password"
               />
+              <FieldErrorText message={fieldErrors.confirm_password} />
             </div>
           </>
         ) : (

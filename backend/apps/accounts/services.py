@@ -5,6 +5,7 @@ from django.utils import timezone
 from rest_framework import serializers as drf_serializers
 from rest_framework.exceptions import NotFound
 
+from apps.audit.services import log_audit_event
 from apps.common.security import generate_secure_token, hash_token
 
 from .models import AccountType, PasswordResetToken
@@ -16,15 +17,29 @@ def create_password_reset_request(
     email: str,
     account_type: str = AccountType.WORKFORCE,
     requested_by_ip: str | None = None,
+    request=None,
 ):
     from .tasks import send_password_reset_email
 
     try:
         user = User.objects.get(email__iexact=email, account_type=account_type)
     except User.DoesNotExist:
+        log_audit_event(
+            None,
+            'auth.password_reset.requested',
+            payload={'email': email, 'account_type': account_type, 'user_found': False},
+            request=request,
+        )
         return None
 
     if not user.is_active:
+        log_audit_event(
+            None,
+            'auth.password_reset.requested',
+            target=user,
+            payload={'email': email, 'account_type': account_type, 'user_found': True, 'user_active': False},
+            request=request,
+        )
         return None
 
     expiry_minutes = getattr(settings, 'PASSWORD_RESET_TOKEN_EXPIRY_MINUTES', 30)
@@ -42,6 +57,13 @@ def create_password_reset_request(
             lambda: send_password_reset_email.delay(str(reset_token.id), raw_token)
         )
 
+    log_audit_event(
+        None,
+        'auth.password_reset.requested',
+        target=user,
+        payload={'email': email, 'account_type': account_type, 'user_found': True, 'user_active': True},
+        request=request,
+    )
     return reset_token
 
 
@@ -60,7 +82,7 @@ def validate_password_reset_token(raw_token: str):
     return reset_token
 
 
-def confirm_password_reset(raw_token: str, password: str):
+def confirm_password_reset(raw_token: str, password: str, request=None):
     reset_token = validate_password_reset_token(raw_token)
     user = reset_token.user
 
@@ -70,4 +92,11 @@ def confirm_password_reset(raw_token: str, password: str):
         reset_token.used_at = timezone.now()
         reset_token.save(update_fields=['used_at'])
 
+    log_audit_event(
+        user,
+        'auth.password_reset.confirmed',
+        target=user,
+        payload={'account_type': user.account_type},
+        request=request,
+    )
     return user

@@ -54,7 +54,9 @@ class Notice(models.Model):
     class Meta:
         db_table = 'notices'
         ordering = ['-published_at', '-created_at']
+        indexes = [
+            models.Index(fields=['organisation', 'status', 'published_at']),
+        ]
 
     def __str__(self):
         return f'{self.organisation.name} - {self.title}'
-

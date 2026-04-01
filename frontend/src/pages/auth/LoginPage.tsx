@@ -1,14 +1,16 @@
 import { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { FieldErrorText } from '@/components/ui/FieldErrorText'
 import { useAuth } from '@/hooks/useAuth'
-import { getDefaultRoute } from '@/lib/rbac'
-import { getErrorMessage } from '@/lib/errors'
 import { AuthShell } from '@/components/auth/AuthShell'
+import { getErrorMessage, getFieldErrors } from '@/lib/errors'
+import { getDefaultRoute } from '@/lib/rbac'
 
 export function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [isLoading, setIsLoading] = useState(false)
   const { login } = useAuth()
   const navigate = useNavigate()
@@ -17,12 +19,15 @@ export function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+    setFieldErrors({})
     setIsLoading(true)
     try {
       const user = await login(email, password)
       const from = (location.state as { from?: { pathname: string } })?.from?.pathname
       navigate(from || getDefaultRoute(user), { replace: true })
     } catch (err: unknown) {
+      const nextFieldErrors = getFieldErrors(err)
+      setFieldErrors(nextFieldErrors)
       setError(getErrorMessage(err, 'Invalid email or password.'))
     } finally {
       setIsLoading(false)
@@ -60,6 +65,7 @@ export function LoginPage() {
             className="field-input"
             placeholder="you@company.com"
           />
+          <FieldErrorText message={fieldErrors.email} />
         </div>
         <div>
           <label htmlFor="password" className="field-label">
@@ -75,6 +81,7 @@ export function LoginPage() {
             className="field-input"
             placeholder="Enter your password"
           />
+          <FieldErrorText message={fieldErrors.password} />
         </div>
 
         {error ? (

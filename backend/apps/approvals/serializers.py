@@ -159,3 +159,8 @@ class ApprovalActionSerializer(serializers.ModelSerializer):
 
 class ApprovalActionDecisionSerializer(serializers.Serializer):
     comment = serializers.CharField(required=False, allow_blank=True, default='')
+
+    def validate_comment(self, value):
+        if self.context.get('require_comment') and not value.strip():
+            raise serializers.ValidationError('A rejection note is required.')
+        return value

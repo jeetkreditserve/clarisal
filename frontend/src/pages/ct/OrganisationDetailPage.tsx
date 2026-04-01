@@ -4,6 +4,7 @@ import { ArrowLeft, CreditCard, History, Mail, ShieldAlert, UserPlus } from 'luc
 import { toast } from 'sonner'
 import {
   useCreateLicenceBatch,
+  useCtAuditLogs,
   useInviteOrgAdmin,
   useMarkLicenceBatchPaid,
   useMarkOrganisationPaid,
@@ -15,6 +16,7 @@ import {
   useUpdateLicenceBatch,
 } from '@/hooks/useCtOrganisations'
 import type { LicenceBatch } from '@/types/organisation'
+import { AuditTimeline } from '@/components/ui/AuditTimeline'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
@@ -71,6 +73,7 @@ export function OrganisationDetailPage() {
   const organisationId = id ?? ''
   const { data: organisation, isLoading } = useOrganisation(organisationId)
   const { data: admins } = useOrgAdmins(organisationId)
+  const { data: auditLogs } = useCtAuditLogs(organisationId)
   const markPaidMutation = useMarkOrganisationPaid()
   const suspendMutation = useSuspendOrganisation()
   const restoreMutation = useRestoreOrganisation()
@@ -319,6 +322,14 @@ export function OrganisationDetailPage() {
             />
           </div>
         </div>
+      </SectionCard>
+
+      <SectionCard title="Audit timeline" description="Recent organisation actions across lifecycle, licensing, and onboarding.">
+        <AuditTimeline
+          entries={auditLogs?.results.slice(0, 8)}
+          emptyTitle="No organisation audit events yet"
+          emptyDescription="Lifecycle, licensing, and invite actions will appear here once this tenant starts moving through onboarding."
+        />
       </SectionCard>
 
       <SectionCard title="Onboarding progress" description="The tenant readiness timeline mirrors backend lifecycle events and access rules.">

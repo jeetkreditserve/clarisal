@@ -119,6 +119,24 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
     ),
+    'DEFAULT_THROTTLE_CLASSES': (
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+        'rest_framework.throttling.ScopedRateThrottle',
+    ),
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '300/hour',
+        'user': '3000/hour',
+        'auth_csrf': '60/minute',
+        'workforce_login': '5/minute',
+        'control_tower_login': '5/minute',
+        'password_reset_request': '5/hour',
+        'password_reset_confirm': '10/hour',
+        'invite_validate': '30/hour',
+        'invite_accept': '10/hour',
+        'approval_action': '60/hour',
+        'document_upload': '30/hour',
+    },
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
     'DEFAULT_RENDERER_CLASSES': (

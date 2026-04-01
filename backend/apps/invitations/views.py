@@ -70,6 +70,7 @@ class ResendOrgAdminInviteView(APIView):
 class ValidateInviteTokenView(APIView):
     permission_classes = []
     authentication_classes = []
+    throttle_scope = 'invite_validate'
 
     def get(self, request, token):
         from rest_framework import serializers as drf_serializers
@@ -92,6 +93,7 @@ class ValidateInviteTokenView(APIView):
 class AcceptInviteView(APIView):
     permission_classes = []
     authentication_classes = []
+    throttle_scope = 'invite_accept'
 
     def post(self, request):
         from rest_framework import serializers as drf_serializers
@@ -102,6 +104,7 @@ class AcceptInviteView(APIView):
             user = accept_invitation(
                 token=serializer.validated_data['token'],
                 password=serializer.validated_data.get('password', ''),
+                request=request,
             )
         except drf_serializers.ValidationError as exc:
             return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)

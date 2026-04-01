@@ -1,12 +1,14 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
 
+import { FieldErrorText } from '@/components/ui/FieldErrorText'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { SkeletonPageHeader, SkeletonTable } from '@/components/ui/Skeleton'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { useCreateMyOnDutyRequest, useMyOnDutyPolicies, useMyOnDutyRequests, useWithdrawMyOnDutyRequest } from '@/hooks/useEmployeeSelf'
-import { getErrorMessage } from '@/lib/errors'
+import { OD_DURATION_OPTIONS } from '@/lib/constants'
+import { getErrorMessage, getFieldErrors } from '@/lib/errors'
 import { getLeaveStatusTone } from '@/lib/status'
 
 const emptyForm = {
@@ -26,9 +28,11 @@ export function OnDutyPage() {
   const createMutation = useCreateMyOnDutyRequest()
   const withdrawMutation = useWithdrawMyOnDutyRequest()
   const [form, setForm] = useState(emptyForm)
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
+    setFieldErrors({})
     try {
       await createMutation.mutateAsync({
         ...form,
@@ -39,7 +43,11 @@ export function OnDutyPage() {
       toast.success('On-duty request submitted.')
       setForm(emptyForm)
     } catch (error) {
-      toast.error(getErrorMessage(error, 'Unable to submit on-duty request.'))
+      const nextFieldErrors = getFieldErrors(error)
+      setFieldErrors(nextFieldErrors)
+      if (Object.keys(nextFieldErrors).length === 0) {
+        toast.error(getErrorMessage(error, 'Unable to submit on-duty request.'))
+      }
     }
   }
 
@@ -59,33 +67,57 @@ export function OnDutyPage() {
       <div className="grid gap-6 xl:grid-cols-[0.85fr_1.15fr]">
         <SectionCard title="Request on duty" description="Use on-duty for work travel, field visits, client meetings, or other approved business duty.">
           <form onSubmit={handleSubmit} className="grid gap-4">
-            <select className="field-select" value={form.policy_id} onChange={(event) => setForm((current) => ({ ...current, policy_id: event.target.value }))}>
-              <option value="">Default policy</option>
-              {policies?.map((policy) => (
-                <option key={policy.id} value={policy.id}>
-                  {policy.name}
-                </option>
-              ))}
-            </select>
-            <div className="grid gap-4 md:grid-cols-2">
-              <input className="field-input" type="date" value={form.start_date} onChange={(event) => setForm((current) => ({ ...current, start_date: event.target.value }))} required />
-              <input className="field-input" type="date" value={form.end_date} onChange={(event) => setForm((current) => ({ ...current, end_date: event.target.value }))} required />
+            <div>
+              <select className="field-select" value={form.policy_id} onChange={(event) => setForm((current) => ({ ...current, policy_id: event.target.value }))}>
+                <option value="">Default policy</option>
+                {policies?.map((policy) => (
+                  <option key={policy.id} value={policy.id}>
+                    {policy.name}
+                  </option>
+                ))}
+              </select>
+              <FieldErrorText message={fieldErrors.policy_id} />
             </div>
-            <select className="field-select" value={form.duration_type} onChange={(event) => setForm((current) => ({ ...current, duration_type: event.target.value }))}>
-              {['FULL_DAY', 'FIRST_HALF', 'SECOND_HALF', 'TIME_RANGE'].map((type) => (
-                <option key={type} value={type}>
-                  {type.replace(/_/g, ' ')}
-                </option>
-              ))}
-            </select>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <input className="field-input" type="date" value={form.start_date} onChange={(event) => setForm((current) => ({ ...current, start_date: event.target.value }))} required />
+                <FieldErrorText message={fieldErrors.start_date} />
+              </div>
+              <div>
+                <input className="field-input" type="date" value={form.end_date} onChange={(event) => setForm((current) => ({ ...current, end_date: event.target.value }))} required />
+                <FieldErrorText message={fieldErrors.end_date} />
+              </div>
+            </div>
+            <div>
+              <select className="field-select" value={form.duration_type} onChange={(event) => setForm((current) => ({ ...current, duration_type: event.target.value }))}>
+                {OD_DURATION_OPTIONS.map((type) => (
+                  <option key={type} value={type}>
+                    {type.replace(/_/g, ' ')}
+                  </option>
+                ))}
+              </select>
+              <FieldErrorText message={fieldErrors.duration_type} />
+            </div>
             {form.duration_type === 'TIME_RANGE' ? (
               <div className="grid gap-4 md:grid-cols-2">
-                <input className="field-input" type="time" value={form.start_time} onChange={(event) => setForm((current) => ({ ...current, start_time: event.target.value }))} />
-                <input className="field-input" type="time" value={form.end_time} onChange={(event) => setForm((current) => ({ ...current, end_time: event.target.value }))} />
+                <div>
+                  <input className="field-input" type="time" value={form.start_time} onChange={(event) => setForm((current) => ({ ...current, start_time: event.target.value }))} />
+                  <FieldErrorText message={fieldErrors.start_time} />
+                </div>
+                <div>
+                  <input className="field-input" type="time" value={form.end_time} onChange={(event) => setForm((current) => ({ ...current, end_time: event.target.value }))} />
+                  <FieldErrorText message={fieldErrors.end_time} />
+                </div>
               </div>
             ) : null}
-            <textarea className="field-textarea" placeholder="Purpose" value={form.purpose} onChange={(event) => setForm((current) => ({ ...current, purpose: event.target.value }))} required />
-            <input className="field-input" placeholder="Destination or context" value={form.destination} onChange={(event) => setForm((current) => ({ ...current, destination: event.target.value }))} />
+            <div>
+              <textarea className="field-textarea" placeholder="Purpose" value={form.purpose} onChange={(event) => setForm((current) => ({ ...current, purpose: event.target.value }))} required />
+              <FieldErrorText message={fieldErrors.purpose} />
+            </div>
+            <div>
+              <input className="field-input" placeholder="Destination or context" value={form.destination} onChange={(event) => setForm((current) => ({ ...current, destination: event.target.value }))} />
+              <FieldErrorText message={fieldErrors.destination} />
+            </div>
             <button type="submit" className="btn-primary" disabled={createMutation.isPending}>
               Submit OD request
             </button>

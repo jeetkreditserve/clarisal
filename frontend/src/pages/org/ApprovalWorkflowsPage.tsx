@@ -1,30 +1,15 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
 
+import { ApprovalDecisionDialog } from '@/components/ui/ApprovalDecisionDialog'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { SkeletonPageHeader, SkeletonTable } from '@/components/ui/Skeleton'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { useApprovalInbox, useApprovalWorkflows, useApproveApprovalAction, useCreateApprovalWorkflow, useRejectApprovalAction } from '@/hooks/useOrgAdmin'
+import { createDefaultApprovalWorkflow } from '@/lib/constants'
 import { getErrorMessage } from '@/lib/errors'
 import { getApprovalActionTone } from '@/lib/status'
-
-const emptyWorkflow = {
-  name: 'Default Workforce Workflow',
-  description: '',
-  is_default: true,
-  is_active: true,
-  rules: [{ name: 'Default leave rule', request_kind: 'LEAVE', priority: 100, is_active: true }],
-  stages: [
-    {
-      name: 'Primary admin approval',
-      sequence: 1,
-      mode: 'ALL',
-      fallback_type: 'PRIMARY_ORG_ADMIN',
-      approvers: [{ approver_type: 'PRIMARY_ORG_ADMIN' }],
-    },
-  ],
-}
 
 export function ApprovalWorkflowsPage() {
   const { data: workflows, isLoading } = useApprovalWorkflows()
@@ -32,7 +17,7 @@ export function ApprovalWorkflowsPage() {
   const createMutation = useCreateApprovalWorkflow()
   const approveMutation = useApproveApprovalAction()
   const rejectMutation = useRejectApprovalAction()
-  const [form, setForm] = useState(emptyWorkflow)
+  const [form, setForm] = useState(createDefaultApprovalWorkflow)
 
   const handleCreate = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -124,12 +109,30 @@ export function ApprovalWorkflowsPage() {
               </div>
               <div className="flex items-center gap-3">
                 <StatusBadge tone={getApprovalActionTone(action.status)}>{action.status}</StatusBadge>
-                <button className="btn-secondary" onClick={() => void approveMutation.mutateAsync({ actionId: action.id })}>
-                  Approve
-                </button>
-                <button className="btn-danger" onClick={() => void rejectMutation.mutateAsync({ actionId: action.id, comment: 'Rejected by organisation admin' })}>
-                  Reject
-                </button>
+                <ApprovalDecisionDialog
+                  actionLabel={`Approve ${action.subject_label}`}
+                  triggerClassName="btn-secondary"
+                  triggerLabel="Approve"
+                  title="Approve request"
+                  description="Add an optional note for the requester or the audit trail before approving this request."
+                  confirmLabel="Approve request"
+                  submitErrorFallback="Unable to approve this request."
+                  isPending={approveMutation.isPending}
+                  onSubmit={(comment) => approveMutation.mutateAsync({ actionId: action.id, comment })}
+                />
+                <ApprovalDecisionDialog
+                  actionLabel={`Reject ${action.subject_label}`}
+                  triggerClassName="btn-danger"
+                  triggerLabel="Reject"
+                  title="Reject request"
+                  description="Rejection notes are required so requesters understand what must change."
+                  confirmLabel="Reject request"
+                  confirmTone="danger"
+                  isCommentRequired
+                  submitErrorFallback="Unable to reject this request."
+                  isPending={rejectMutation.isPending}
+                  onSubmit={(comment) => rejectMutation.mutateAsync({ actionId: action.id, comment })}
+                />
               </div>
             </div>
           ))}

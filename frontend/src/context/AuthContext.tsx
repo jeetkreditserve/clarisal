@@ -37,10 +37,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(null)
     }
 
-    window.addEventListener('calrisal:auth-lost', handleAuthLoss)
+    window.addEventListener('clarisal:auth-lost', handleAuthLoss)
     return () => {
       active = false
-      window.removeEventListener('calrisal:auth-lost', handleAuthLoss)
+      window.removeEventListener('clarisal:auth-lost', handleAuthLoss)
     }
   }, [])
 

@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
-import { CreditCard, MapPin, UserPlus, Users } from 'lucide-react'
-import { useOrgDashboard } from '@/hooks/useOrgAdmin'
+import { ClipboardCheck, CreditCard, FileClock, MapPin, PlaneTakeoff, UserPlus, Users } from 'lucide-react'
+import { useApprovalInbox, useOrgDashboard, useOrgLeaveRequests, useOrgOnDutyRequests } from '@/hooks/useOrgAdmin'
 import { MetricCard } from '@/components/ui/MetricCard'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
@@ -12,6 +12,9 @@ import { ORG_ONBOARDING_STEPS } from '@/lib/status'
 
 export function OrgDashboardPage() {
   const { data, isLoading } = useOrgDashboard()
+  const { data: approvalInbox } = useApprovalInbox()
+  const { data: leaveRequests } = useOrgLeaveRequests()
+  const { data: odRequests } = useOrgOnDutyRequests()
 
   const currentStage = ORG_ONBOARDING_STEPS.find((step) => step.id === data?.onboarding_stage)
 
@@ -42,8 +45,8 @@ export function OrgDashboardPage() {
 
       {isLoading || !data ? (
         <div className="space-y-5">
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            {Array.from({ length: 4 }).map((_, index) => (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+            {Array.from({ length: 7 }).map((_, index) => (
               <SkeletonMetricCard key={index} />
             ))}
           </div>
@@ -54,12 +57,14 @@ export function OrgDashboardPage() {
         </div>
       ) : (
         <>
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
             <MetricCard title="Total employees" value={data.total_employees} hint="All employee records in this organisation." icon={Users} tone="primary" />
             <MetricCard title="Active employees" value={data.active_employees} hint="Currently active and engaged employees." icon={UserPlus} tone="success" />
             <MetricCard title="Invited employees" value={data.invited_employees} hint="Invited employees consume licences before password setup." icon={Users} tone="info" />
             <MetricCard title="Pending employees" value={data.pending_employees} hint="Pending employees accepted access but are not joined yet." icon={Users} tone="warning" />
             <MetricCard title="Licence usage" value={`${data.licence_used}/${data.licence_total}`} hint="Invited, pending, and active employees consume purchased seats." icon={CreditCard} tone="warning" />
+            <MetricCard title="Pending approvals" value={data.pending_approvals} hint="Requests waiting on org admins or managers." icon={ClipboardCheck} tone="info" />
+            <MetricCard title="Docs awaiting review" value={data.documents_awaiting_review} hint="Employee uploads still waiting for verification." icon={FileClock} tone="warning" />
           </div>
 
           <SectionCard title="Onboarding stage" description="Organisation readiness state derived from backend lifecycle transitions.">
@@ -83,6 +88,37 @@ export function OrgDashboardPage() {
           </SectionCard>
 
           <div className="grid gap-6 xl:grid-cols-2">
+            <SectionCard title="Approvals and document review" description="Operational items that require action from admins or managers.">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="surface-muted rounded-[20px] px-4 py-4">
+                  <p className="text-sm text-[hsl(var(--muted-foreground))]">Pending approvals</p>
+                  <p className="mt-2 text-3xl font-semibold text-[hsl(var(--foreground-strong))]">{data.pending_approvals}</p>
+                  <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">Approval actions are blocked automatically when licence expiry pauses admin approvals.</p>
+                </div>
+                <div className="surface-muted rounded-[20px] px-4 py-4">
+                  <p className="text-sm text-[hsl(var(--muted-foreground))]">Documents awaiting review</p>
+                  <p className="mt-2 text-3xl font-semibold text-[hsl(var(--foreground-strong))]">{data.documents_awaiting_review}</p>
+                  <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">Use employee detail pages to verify or reject submitted onboarding documents.</p>
+                </div>
+              </div>
+              <div className="mt-5 space-y-3">
+                {approvalInbox && approvalInbox.length > 0 ? (
+                  approvalInbox.slice(0, 4).map((item) => (
+                    <div key={item.id} className="surface-shell rounded-[18px] px-4 py-3">
+                      <p className="font-medium text-[hsl(var(--foreground-strong))]">{item.subject_label}</p>
+                      <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">{item.requester_name} • {item.stage_name}</p>
+                    </div>
+                  ))
+                ) : (
+                  <EmptyState
+                    title="No approvals waiting"
+                    description="New leave and on-duty approvals will appear here as soon as requests route to this workspace."
+                    icon={ClipboardCheck}
+                  />
+                )}
+              </div>
+            </SectionCard>
+
             <SectionCard title="Active employees by department" description="Department distribution for currently active staff.">
               <div className="space-y-4">
                 {data.by_department.length === 0 ? (
@@ -128,6 +164,50 @@ export function OrgDashboardPage() {
                       <span className="text-sm text-[hsl(var(--muted-foreground))]">{location.count}</span>
                     </div>
                   ))
+                )}
+              </div>
+            </SectionCard>
+          </div>
+
+          <div className="grid gap-6 xl:grid-cols-2">
+            <SectionCard title="Recent leave requests" description="Review current leave traffic across the organisation from the dashboard.">
+              <div className="space-y-3">
+                {leaveRequests && leaveRequests.length > 0 ? (
+                  leaveRequests.slice(0, 6).map((request) => (
+                    <div key={request.id} className="surface-muted flex items-center justify-between rounded-[20px] px-4 py-3">
+                      <div>
+                        <p className="font-medium text-[hsl(var(--foreground-strong))]">{request.employee_name}</p>
+                        <p className="text-sm text-[hsl(var(--muted-foreground))]">{request.leave_type_name} • {request.start_date}</p>
+                      </div>
+                      <Link to="/org/leave-plans" className="inline-flex items-center gap-2 text-sm font-semibold text-[hsl(var(--brand))] hover:underline">
+                        <ClipboardCheck className="h-4 w-4" />
+                        Review
+                      </Link>
+                    </div>
+                  ))
+                ) : (
+                  <EmptyState title="No leave activity yet" description="Leave requests will surface here when employees start using the self-service workspace." icon={ClipboardCheck} />
+                )}
+              </div>
+            </SectionCard>
+
+            <SectionCard title="Recent on-duty requests" description="Track field visits, travel, and on-duty traffic from the main dashboard.">
+              <div className="space-y-3">
+                {odRequests && odRequests.length > 0 ? (
+                  odRequests.slice(0, 6).map((request) => (
+                    <div key={request.id} className="surface-muted flex items-center justify-between rounded-[20px] px-4 py-3">
+                      <div>
+                        <p className="font-medium text-[hsl(var(--foreground-strong))]">{request.employee_name}</p>
+                        <p className="text-sm text-[hsl(var(--muted-foreground))]">{request.policy_name} • {request.start_date}</p>
+                      </div>
+                      <Link to="/org/on-duty-policies" className="inline-flex items-center gap-2 text-sm font-semibold text-[hsl(var(--brand))] hover:underline">
+                        <PlaneTakeoff className="h-4 w-4" />
+                        Review
+                      </Link>
+                    </div>
+                  ))
+                ) : (
+                  <EmptyState title="No on-duty activity yet" description="Field travel and other OD requests will appear here as they are submitted." icon={PlaneTakeoff} />
                 )}
               </div>
             </SectionCard>

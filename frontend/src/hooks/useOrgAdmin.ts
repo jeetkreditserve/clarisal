@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
+import { fetchOrgAuditLogs } from '@/lib/api/audit'
 import { useAuth } from '@/hooks/useAuth'
 import {
   approveApprovalAction,
@@ -65,6 +66,14 @@ function useOrgScope() {
 export function useOrgDashboard() {
   const organisationId = useOrgScope()
   return useQuery({ queryKey: ['org', organisationId, 'dashboard'], queryFn: fetchOrgDashboard })
+}
+
+export function useOrgAuditLogs() {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'audit'],
+    queryFn: fetchOrgAuditLogs,
+  })
 }
 
 export function useOrgProfile() {

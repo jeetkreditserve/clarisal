@@ -121,7 +121,7 @@ def validate_invite_token(token):
     return invite
 
 
-def accept_invitation(token, password=''):
+def accept_invitation(token, password='', request=None):
     invite = validate_invite_token(token)
     user = invite.user
     if user is None:
@@ -170,5 +170,6 @@ def accept_invitation(token, password=''):
         organisation=invite.organisation,
         target=user,
         payload={'role': invite.role},
+        request=request,
     )
     return user

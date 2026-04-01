@@ -232,6 +232,7 @@ class MyApprovalInboxView(APIView):
 
 class OrgApprovalActionApproveView(APIView):
     permission_classes = [IsOrgAdmin, BelongsToActiveOrg, ApprovalActionsAllowed]
+    throttle_scope = 'approval_action'
 
     def post(self, request, action_id):
         organisation = _get_admin_organisation(request)
@@ -247,11 +248,12 @@ class OrgApprovalActionApproveView(APIView):
 
 class OrgApprovalActionRejectView(APIView):
     permission_classes = [IsOrgAdmin, BelongsToActiveOrg, ApprovalActionsAllowed]
+    throttle_scope = 'approval_action'
 
     def post(self, request, action_id):
         organisation = _get_admin_organisation(request)
         action = get_object_or_404(ApprovalAction, id=action_id, approval_run__organisation=organisation)
-        serializer = ApprovalActionDecisionSerializer(data=request.data)
+        serializer = ApprovalActionDecisionSerializer(data=request.data, context={'require_comment': True})
         serializer.is_valid(raise_exception=True)
         try:
             action = reject_action(action, request.user, serializer.validated_data['comment'])
@@ -262,6 +264,7 @@ class OrgApprovalActionRejectView(APIView):
 
 class MyApprovalActionApproveView(APIView):
     permission_classes = [IsEmployee, BelongsToActiveOrg, ApprovalActionsAllowed]
+    throttle_scope = 'approval_action'
 
     def post(self, request, action_id):
         employee = _get_employee(request)
@@ -277,11 +280,12 @@ class MyApprovalActionApproveView(APIView):
 
 class MyApprovalActionRejectView(APIView):
     permission_classes = [IsEmployee, BelongsToActiveOrg, ApprovalActionsAllowed]
+    throttle_scope = 'approval_action'
 
     def post(self, request, action_id):
         employee = _get_employee(request)
         action = get_object_or_404(ApprovalAction, id=action_id, approval_run__organisation=employee.organisation)
-        serializer = ApprovalActionDecisionSerializer(data=request.data)
+        serializer = ApprovalActionDecisionSerializer(data=request.data, context={'require_comment': True})
         serializer.is_valid(raise_exception=True)
         try:
             action = reject_action(action, request.user, serializer.validated_data['comment'])

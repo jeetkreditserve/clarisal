@@ -437,6 +437,10 @@ class LeaveRequest(models.Model):
     class Meta:
         db_table = 'leave_requests'
         ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['employee', 'status']),
+            models.Index(fields=['employee', 'start_date', 'end_date']),
+        ]
 
 
 class OnDutyPolicy(models.Model):
@@ -510,3 +514,7 @@ class OnDutyRequest(models.Model):
     class Meta:
         db_table = 'on_duty_requests'
         ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['employee', 'status']),
+            models.Index(fields=['employee', 'start_date', 'end_date']),
+        ]

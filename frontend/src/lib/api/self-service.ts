@@ -165,6 +165,7 @@ export async function uploadRequestedDocument(payload: {
   request_id: string
   file: File
   metadata?: Record<string, unknown>
+  onUploadProgress?: (progress: number) => void
 }) {
   const formData = new FormData()
   formData.append('file', payload.file)
@@ -173,6 +174,10 @@ export async function uploadRequestedDocument(payload: {
   }
   const { data } = await api.post<DocumentRecord>(`/me/document-requests/${payload.request_id}/upload/`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
+    onUploadProgress: (event) => {
+      if (!payload.onUploadProgress || !event.total) return
+      payload.onUploadProgress(Math.round((event.loaded / event.total) * 100))
+    },
   })
   return data
 }
@@ -181,6 +186,7 @@ export async function uploadMyDocument(payload: {
   document_type: string
   file: File
   metadata?: Record<string, unknown>
+  onUploadProgress?: (progress: number) => void
 }) {
   const formData = new FormData()
   formData.append('document_type', payload.document_type)
@@ -190,6 +196,10 @@ export async function uploadMyDocument(payload: {
   }
   const { data } = await api.post<DocumentRecord>('/me/documents/', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
+    onUploadProgress: (event) => {
+      if (!payload.onUploadProgress || !event.total) return
+      payload.onUploadProgress(Math.round((event.loaded / event.total) * 100))
+    },
   })
   return data
 }
