@@ -8,7 +8,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 env = environ.Env(
     DEBUG=(bool, False),
-    ALLOWED_HOSTS=(list, ['localhost', '127.0.0.1', 'backend', 'edge-proxy']),
+    ALLOWED_HOSTS=(list, ['localhost', '127.0.0.1', 'backend', 'edge-proxy', '.clarisal.com', 'www.clarisal.com']),
 )
 
 environ.Env.read_env(os.path.join(BASE_DIR.parent, '.env'))
@@ -153,6 +153,7 @@ CORS_ALLOWED_ORIGINS = env.list(
         'http://127.0.0.1:8080',
         'http://localhost:5173',
         'http://127.0.0.1:5173',
+        'https://www.clarisal.com',
     ],
 )
 CORS_ALLOW_CREDENTIALS = True
@@ -163,6 +164,8 @@ CSRF_TRUSTED_ORIGINS = env.list(
         'http://127.0.0.1:8080',
         'http://localhost:5173',
         'http://127.0.0.1:5173',
+        'https://www.clarisal.com',
+        'https://*.clarisal.com',
     ],
 )
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
@@ -170,9 +173,11 @@ USE_X_FORWARDED_HOST = True
 SESSION_COOKIE_NAME = 'calrisal_sessionid'
 SESSION_COOKIE_AGE = env.int('SESSION_COOKIE_AGE', default=60 * 60 * 12)
 SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_DOMAIN = env('SESSION_COOKIE_DOMAIN', default=None) or None
 SESSION_COOKIE_SAMESITE = 'Lax'
 CSRF_COOKIE_SAMESITE = 'Lax'
 CSRF_COOKIE_HTTPONLY = False
+CSRF_COOKIE_DOMAIN = env('CSRF_COOKIE_DOMAIN', default=None) or None
 FIELD_ENCRYPTION_KEY = env('FIELD_ENCRYPTION_KEY', default='')
 
 # Celery
