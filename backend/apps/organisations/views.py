@@ -64,7 +64,7 @@ class OrganisationDetailView(APIView):
 
     def patch(self, request, pk):
         org = get_object_or_404(Organisation, id=pk)
-        serializer = UpdateOrganisationSerializer(data=request.data, partial=True)
+        serializer = UpdateOrganisationSerializer(data=request.data, partial=True, context={'organisation': org})
         serializer.is_valid(raise_exception=True)
         try:
             org = update_organisation_profile(org, actor=request.user, **serializer.validated_data)
@@ -154,7 +154,7 @@ class OrganisationAddressDetailView(APIView):
     def patch(self, request, pk, address_id):
         organisation = get_object_or_404(Organisation, id=pk)
         address = get_object_or_404(OrganisationAddress, organisation=organisation, id=address_id)
-        serializer = OrganisationAddressWriteSerializer(data=request.data, partial=True)
+        serializer = OrganisationAddressWriteSerializer(data=request.data, partial=True, context={'address': address})
         serializer.is_valid(raise_exception=True)
         try:
             address = update_organisation_address(address, actor=request.user, **serializer.validated_data)
@@ -212,7 +212,7 @@ class OrgProfileView(APIView):
         organisation = get_active_admin_organisation(request, request.user)
         if organisation is None:
             return Response({'error': 'Select an administrator organisation workspace to continue.'}, status=status.HTTP_400_BAD_REQUEST)
-        serializer = UpdateOrganisationSerializer(data=request.data, partial=True)
+        serializer = UpdateOrganisationSerializer(data=request.data, partial=True, context={'organisation': organisation})
         serializer.is_valid(raise_exception=True)
         try:
             organisation = update_organisation_profile(organisation, actor=request.user, **serializer.validated_data)
@@ -250,7 +250,7 @@ class OrgProfileAddressDetailView(APIView):
         if organisation is None:
             return Response({'error': 'Select an administrator organisation workspace to continue.'}, status=status.HTTP_400_BAD_REQUEST)
         address = get_object_or_404(OrganisationAddress, organisation=organisation, id=address_id)
-        serializer = OrganisationAddressWriteSerializer(data=request.data, partial=True)
+        serializer = OrganisationAddressWriteSerializer(data=request.data, partial=True, context={'address': address})
         serializer.is_valid(raise_exception=True)
         try:
             address = update_organisation_address(address, actor=request.user, **serializer.validated_data)

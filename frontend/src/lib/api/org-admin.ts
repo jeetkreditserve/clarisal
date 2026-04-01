@@ -1,6 +1,7 @@
 import api from '@/lib/api'
 import type {
   OrgDashboardStats,
+  OrganisationEntityType,
   OrganisationAddress,
   OrganisationDetail,
   PaginatedResponse,
@@ -41,6 +42,7 @@ export async function updateOrgProfile(payload: Partial<{
   email: string
   country_code: string
   currency: string
+  entity_type: OrganisationEntityType
   logo_url: string
 }>) {
   const { data } = await api.patch<OrganisationDetail>('/org/profile/', payload)
@@ -54,7 +56,9 @@ export async function createOrgAddress(payload: {
   line2?: string
   city: string
   state: string
+  state_code?: string
   country?: string
+  country_code?: string
   pincode: string
   gstin?: string | null
 }) {
@@ -69,7 +73,9 @@ export async function updateOrgAddress(addressId: string, payload: Partial<{
   line2: string
   city: string
   state: string
+  state_code: string
   country: string
+  country_code: string
   pincode: string
   gstin: string | null
 }>) {

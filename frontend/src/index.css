@@ -452,6 +452,31 @@
     border: 1px solid hsl(var(--border) / 0.86);
     border-radius: 1.6rem;
     background: hsl(var(--surface) / 0.78);
+    padding-block: 0.45rem;
+    scrollbar-gutter: stable both-edges;
+  }
+
+  .table-shell > table {
+    min-width: 100%;
+  }
+
+  .table-shell thead th {
+    padding-top: 0.55rem;
+    vertical-align: bottom;
+  }
+
+  .table-shell tbody td {
+    vertical-align: top;
+  }
+
+  .table-shell thead th:first-child,
+  .table-shell tbody td:first-child {
+    padding-left: 1.5rem;
+  }
+
+  .table-shell thead th:last-child,
+  .table-shell tbody td:last-child {
+    padding-right: 1.5rem;
   }
 
   .table-head-row {

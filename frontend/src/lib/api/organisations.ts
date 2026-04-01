@@ -3,6 +3,7 @@ import type {
   CtDashboardStats,
   LicenceBatch,
   OrgAdmin,
+  OrganisationEntityType,
   OrganisationAddress,
   OrganisationDetail,
   OrganisationListItem,
@@ -16,7 +17,9 @@ export interface OrganisationAddressInput {
   line2?: string
   city: string
   state: string
+  state_code?: string
   country?: string
+  country_code?: string
   pincode: string
   gstin?: string | null
 }
@@ -47,6 +50,7 @@ export async function createOrganisation(payload: {
   email?: string
   country_code?: string
   currency?: string
+  entity_type: OrganisationEntityType
   addresses: OrganisationAddressInput[]
 }): Promise<OrganisationDetail> {
   const { data } = await api.post('/ct/organisations/', payload)
@@ -60,6 +64,7 @@ export async function updateOrganisation(id: string, payload: {
   email?: string
   country_code?: string
   currency?: string
+  entity_type?: OrganisationEntityType
   logo_url?: string
 }): Promise<OrganisationDetail> {
   const { data } = await api.patch(`/ct/organisations/${id}/`, payload)

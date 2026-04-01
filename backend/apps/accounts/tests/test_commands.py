@@ -4,9 +4,12 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 
 from apps.accounts.models import AccountType, User, UserRole
+from apps.approvals.models import ApprovalWorkflow
+from apps.communications.models import Notice
 from apps.departments.models import Department
-from apps.employees.models import Employee, GovernmentIdType
-from apps.invitations.models import Invitation
+from apps.documents.models import EmployeeDocumentRequest, OnboardingDocumentType
+from apps.employees.models import Employee, EmployeeStatus, GovernmentIdType
+from apps.invitations.models import Invitation, InvitationStatus
 from apps.locations.models import OfficeLocation
 from apps.organisations.models import (
     Organisation,
@@ -17,6 +20,8 @@ from apps.organisations.models import (
     OrganisationOnboardingStage,
     OrganisationStatus,
 )
+from apps.organisations.services import get_org_licence_summary
+from apps.timeoff.models import HolidayCalendar, LeaveRequest, OnDutyRequest
 
 
 @pytest.fixture
@@ -49,7 +54,7 @@ class TestSeedControlTowerCommand:
 
         assert 'CONTROL_TOWER_PASSWORD environment variable is not set' in str(exc_info.value)
 
-    def test_command_creates_groups_control_tower_and_demo_organisation(self, seed_env):
+    def test_command_creates_exhaustive_seed_data(self, seed_env):
         call_command('seed_control_tower')
 
         assert Group.objects.filter(name='control_tower').exists()
@@ -67,43 +72,79 @@ class TestSeedControlTowerCommand:
         assert control_tower.check_password('ControlTower@123')
         assert control_tower.groups.filter(name='control_tower').exists()
 
-        organisation = Organisation.objects.get(name='Northstar People Pvt Ltd')
-        assert organisation.licence_count == 10
-        assert organisation.pan_number == 'AACCN1234F'
-        assert organisation.status == OrganisationStatus.ACTIVE
-        assert organisation.billing_status == OrganisationBillingStatus.PAID
-        assert organisation.access_state == OrganisationAccessState.ACTIVE
-        assert organisation.onboarding_stage == OrganisationOnboardingStage.EMPLOYEES_INVITED
+        primary_org = Organisation.objects.get(name='Northstar People Pvt Ltd')
+        assert primary_org.licence_count == 10
+        assert primary_org.pan_number == 'AACCN1234F'
+        assert primary_org.status == OrganisationStatus.ACTIVE
+        assert primary_org.billing_status == OrganisationBillingStatus.PAID
+        assert primary_org.access_state == OrganisationAccessState.ACTIVE
+        assert primary_org.onboarding_stage == OrganisationOnboardingStage.EMPLOYEES_INVITED
 
-        org_admin = User.objects.get(
+        primary_admin = User.objects.get(
             email='admin@northstarpeople.com',
             account_type=AccountType.WORKFORCE,
         )
-        assert organisation.primary_admin_user_id == org_admin.id
-        assert org_admin.account_type == AccountType.WORKFORCE
-        assert org_admin.role == UserRole.ORG_ADMIN
-        assert org_admin.organisation_id is None
-        assert org_admin.is_active is True
-        assert org_admin.check_password('OrgAdmin@123')
-        assert org_admin.groups.filter(name='org_admin').exists()
-        membership = OrganisationMembership.objects.get(user=org_admin, organisation=organisation)
-        assert membership.is_org_admin is True
-        assert membership.status == OrganisationMembershipStatus.ACTIVE
+        assert primary_org.primary_admin_user_id == primary_admin.id
+        assert primary_admin.check_password('OrgAdmin@123')
+        assert primary_admin.groups.filter(name='org_admin').exists()
+        assert OrganisationMembership.objects.get(user=primary_admin, organisation=primary_org).status == OrganisationMembershipStatus.ACTIVE
 
-        assert OfficeLocation.objects.filter(organisation=organisation).count() == 2
-        assert Department.objects.filter(organisation=organisation).count() == 3
-        assert Employee.objects.filter(organisation=organisation).count() == 3
-        assert Employee.objects.filter(organisation=organisation, status='ACTIVE').count() == 3
-        assert OrganisationMembership.objects.filter(organisation=organisation).count() == 1
-        assert Invitation.objects.count() == 0
+        shared_admin = User.objects.get(
+            email='control.tower@calrisal.com',
+            account_type=AccountType.WORKFORCE,
+        )
+        assert shared_admin.check_password('ControlTower@123')
+        assert shared_admin.groups.filter(name='org_admin').exists()
+        assert shared_admin.employee_records.filter(organisation=primary_org, status=EmployeeStatus.ACTIVE).exists()
+        assert shared_admin.organisation_memberships.filter(is_org_admin=True).count() == 3
 
-        seeded_employee = Employee.objects.select_related('user', 'profile').get(employee_code='EMP001')
+        unpaid_org = Organisation.objects.get(name='Orbit Freight Pvt Ltd')
+        suspended_org = Organisation.objects.get(name='Redwood Retail Pvt Ltd')
+        expired_org = Organisation.objects.get(name='Zenith Field Services Pvt Ltd')
+        assert unpaid_org.status == OrganisationStatus.PENDING
+        assert suspended_org.status == OrganisationStatus.SUSPENDED
+        assert expired_org.status == OrganisationStatus.ACTIVE
+        assert get_org_licence_summary(expired_org)['active_paid_quantity'] == 0
+
+        assert Organisation.objects.count() == 4
+        assert OfficeLocation.objects.count() == 12
+        assert Department.objects.count() == 7
+        assert OrganisationMembership.objects.count() == 4
+        assert Employee.objects.count() == 11
+        assert Invitation.objects.count() == 5
+        assert OnboardingDocumentType.objects.count() >= 30
+        assert ApprovalWorkflow.objects.filter(organisation=primary_org).count() == 2
+        assert LeaveRequest.objects.filter(employee__organisation=primary_org).count() == 5
+        assert OnDutyRequest.objects.filter(employee__organisation=primary_org).count() == 4
+        assert Notice.objects.filter(organisation=primary_org).count() == 3
+        assert HolidayCalendar.objects.filter(organisation=primary_org).count() == 2
+
+        seeded_employee = Employee.objects.select_related('user', 'profile').get(employee_code='EMP002')
         assert seeded_employee.user.account_type == AccountType.WORKFORCE
         assert seeded_employee.user.check_password('Employee@123')
         assert seeded_employee.profile.phone_personal == '+91 9988776655'
         assert seeded_employee.education_records.count() == 1
         assert seeded_employee.bank_accounts.filter(is_primary=True).count() == 1
         assert seeded_employee.government_ids.count() == 2
+        assert seeded_employee.document_requests.filter(status='REJECTED').exists()
+        assert seeded_employee.document_requests.filter(status='SUBMITTED').exists()
+
+        onboarding_employee = Employee.objects.get(user__email='meera.singh@northstarpeople.com', organisation=primary_org)
+        pending_employee = Employee.objects.get(user__email='karthik.verma@northstarpeople.com', organisation=primary_org)
+        pending_invite_employee = Employee.objects.get(user__email='isha.kapoor@northstarpeople.com', organisation=primary_org)
+        assert onboarding_employee.status == EmployeeStatus.INVITED
+        assert pending_employee.status == EmployeeStatus.PENDING
+        assert pending_invite_employee.status == EmployeeStatus.INVITED
+        assert Invitation.objects.get(email='meera.singh@northstarpeople.com', organisation=primary_org).status == InvitationStatus.ACCEPTED
+        assert Invitation.objects.get(email='isha.kapoor@northstarpeople.com', organisation=primary_org).status == InvitationStatus.PENDING
+        assert Invitation.objects.get(email='former.candidate@northstarpeople.com', organisation=primary_org).status == InvitationStatus.REVOKED
+        assert Invitation.objects.get(email='expired.candidate@northstarpeople.com', organisation=primary_org).status == InvitationStatus.EXPIRED
+
+        assert Employee.objects.filter(organisation=primary_org, status=EmployeeStatus.ACTIVE).count() == 4
+        assert Employee.objects.filter(organisation=primary_org, status=EmployeeStatus.PENDING).count() == 1
+        assert Employee.objects.filter(organisation=primary_org, status=EmployeeStatus.RESIGNED).count() == 1
+        assert Employee.objects.filter(organisation=primary_org, status=EmployeeStatus.RETIRED).count() == 1
+        assert Employee.objects.filter(organisation=primary_org, status=EmployeeStatus.TERMINATED).count() == 1
 
         pan = seeded_employee.government_ids.get(id_type=GovernmentIdType.PAN)
         aadhaar = seeded_employee.government_ids.get(id_type=GovernmentIdType.AADHAAR)
@@ -113,9 +154,18 @@ class TestSeedControlTowerCommand:
         assert bank_account.masked_account_number
         assert bank_account.account_number_encrypted != '123456789012'
 
-    def test_command_is_idempotent_for_demo_seed(self, seed_env, capsys):
+        request_statuses = set(EmployeeDocumentRequest.objects.values_list('status', flat=True))
+        assert {
+            'REQUESTED',
+            'SUBMITTED',
+            'VERIFIED',
+            'REJECTED',
+            'WAIVED',
+        }.issubset(request_statuses)
+
+    def test_command_is_idempotent_for_exhaustive_seed(self, seed_env, capsys):
         call_command('seed_control_tower')
-        first_org = Organisation.objects.get(name='Northstar People Pvt Ltd')
+        first_primary_org = Organisation.objects.get(name='Northstar People Pvt Ltd')
         first_control_tower = User.objects.get(
             email='control.tower@calrisal.com',
             account_type=AccountType.CONTROL_TOWER,
@@ -127,7 +177,7 @@ class TestSeedControlTowerCommand:
 
         call_command('seed_control_tower')
 
-        second_org = Organisation.objects.get(name='Northstar People Pvt Ltd')
+        second_primary_org = Organisation.objects.get(name='Northstar People Pvt Ltd')
         second_control_tower = User.objects.get(
             email='control.tower@calrisal.com',
             account_type=AccountType.CONTROL_TOWER,
@@ -137,26 +187,32 @@ class TestSeedControlTowerCommand:
             account_type=AccountType.WORKFORCE,
         )
 
-        assert second_org.id == first_org.id
+        assert second_primary_org.id == first_primary_org.id
         assert second_control_tower.id == first_control_tower.id
         assert second_org_admin.id == first_org_admin.id
-        assert Organisation.objects.count() == 1
-        assert OfficeLocation.objects.count() == 2
-        assert Department.objects.count() == 3
-        assert OrganisationMembership.objects.count() == 1
-        assert Employee.objects.count() == 3
-        assert Invitation.objects.count() == 0
+        assert Organisation.objects.count() == 4
+        assert OfficeLocation.objects.count() == 12
+        assert Department.objects.count() == 7
+        assert OrganisationMembership.objects.count() == 4
+        assert Employee.objects.count() == 11
+        assert Invitation.objects.count() == 5
+        assert LeaveRequest.objects.count() == 5
+        assert OnDutyRequest.objects.count() == 4
+        assert ApprovalWorkflow.objects.count() == 2
+        assert Notice.objects.count() == 3
+        assert HolidayCalendar.objects.count() == 2
 
         output = capsys.readouterr().out
+        assert 'Seed Credentials' in output
         assert 'already exists' in output
 
-    def test_command_fails_when_seed_licences_are_below_demo_employee_count(self, seed_env):
-        seed_env.setenv('SEED_ORGANISATION_LICENCE_COUNT', '2')
+    def test_command_fails_when_seed_licences_are_below_exhaustive_employee_count(self, seed_env):
+        seed_env.setenv('SEED_ORGANISATION_LICENCE_COUNT', '6')
 
         with pytest.raises(CommandError) as exc_info:
             call_command('seed_control_tower')
 
-        assert 'must be at least 3' in str(exc_info.value)
+        assert 'must be at least 7' in str(exc_info.value)
         assert Group.objects.filter(name__in=['control_tower', 'org_admin', 'employee']).count() == 0
         assert User.objects.count() == 0
         assert Organisation.objects.count() == 0
@@ -166,9 +222,15 @@ class TestSeedControlTowerCommand:
 
         call_command('seed_control_tower')
 
-        user = User.objects.get(
+        control_tower_user = User.objects.get(
             email='platform-admin@calrisal.com',
             account_type=AccountType.CONTROL_TOWER,
         )
-        assert user.account_type == AccountType.CONTROL_TOWER
-        assert user.role == UserRole.CONTROL_TOWER
+        workforce_twin = User.objects.get(
+            email='platform-admin@calrisal.com',
+            account_type=AccountType.WORKFORCE,
+        )
+        assert control_tower_user.account_type == AccountType.CONTROL_TOWER
+        assert control_tower_user.role == UserRole.CONTROL_TOWER
+        assert workforce_twin.account_type == AccountType.WORKFORCE
+        assert workforce_twin.organisation_memberships.filter(is_org_admin=True).count() == 3

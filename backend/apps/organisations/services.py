@@ -10,6 +10,20 @@ from django.utils import timezone
 
 from apps.audit.services import log_audit_event
 from apps.employees.models import Employee, EmployeeStatus
+from .country_metadata import (
+    DEFAULT_COUNTRY_CODE,
+    DEFAULT_CURRENCY_CODE,
+    normalize_country_code,
+    normalize_currency_code,
+    resolve_country_code,
+    validate_phone_for_country,
+)
+from .address_metadata import (
+    get_country_name,
+    normalize_subdivision,
+    validate_billing_tax_identifier,
+    validate_postal_code,
+)
 from .models import (
     LicenceBatchLifecycleState,
     LicenceBatchPaymentStatus,
@@ -20,6 +34,7 @@ from .models import (
     OrganisationAddressType,
     OrganisationAccessState,
     OrganisationBillingStatus,
+    OrganisationEntityType,
     OrganisationLifecycleEvent,
     OrganisationLicenceBatch,
     OrganisationLicenceLedger,
@@ -82,12 +97,17 @@ def _normalize_address_payload(payload, pan_number):
 
     line1 = (payload.get('line1') or '').strip()
     city = (payload.get('city') or '').strip()
-    state = (payload.get('state') or '').strip()
-    country = (payload.get('country') or '').strip() or 'India'
-    pincode = (payload.get('pincode') or '').strip()
+    country_code = resolve_country_code(payload.get('country_code') or payload.get('country') or DEFAULT_COUNTRY_CODE)
+    country = get_country_name(country_code)
+    state_code, state = normalize_subdivision(
+        country_code,
+        state_code=payload.get('state_code', ''),
+        state_name=payload.get('state', ''),
+    )
+    pincode = validate_postal_code(payload.get('pincode'), country_code)
     line2 = (payload.get('line2') or '').strip()
-    if not all([line1, city, state, pincode]):
-        raise ValueError('Address line 1, city, state, and pincode are required.')
+    if not all([line1, city, pincode]) or not (state or state_code):
+        raise ValueError('Address line 1, city, state, and postal code are required.')
 
     label = (payload.get('label') or '').strip()
     if address_type in MANDATORY_ADDRESS_TYPES:
@@ -102,9 +122,17 @@ def _normalize_address_payload(payload, pan_number):
         'line2': line2,
         'city': city,
         'state': state,
+        'state_code': state_code,
         'country': country,
+        'country_code': country_code,
         'pincode': pincode,
-        'gstin': normalize_gstin(payload.get('gstin'), pan_number),
+        'gstin': validate_billing_tax_identifier(
+            country_code=country_code,
+            address_type=address_type,
+            identifier=payload.get('gstin'),
+            pan_number=pan_number,
+            state_code=state_code,
+        ),
         'is_active': payload.get('is_active', True),
     }
 
@@ -171,7 +199,9 @@ def create_organisation_address(
     actor=None,
     line2='',
     country='India',
+    country_code=DEFAULT_COUNTRY_CODE,
     label='',
+    state_code='',
     gstin=None,
     is_active=True,
     auto_create_location=False,
@@ -187,7 +217,9 @@ def create_organisation_address(
             'line2': line2,
             'city': city,
             'state': state,
+            'state_code': state_code,
             'country': country,
+            'country_code': country_code,
             'pincode': pincode,
             'gstin': gstin,
             'is_active': is_active,
@@ -227,7 +259,9 @@ def update_organisation_address(address, actor=None, **fields):
             'line2': fields.get('line2', address.line2),
             'city': fields.get('city', address.city),
             'state': fields.get('state', address.state),
+            'state_code': fields.get('state_code', address.state_code),
             'country': fields.get('country', address.country),
+            'country_code': fields.get('country_code', address.country_code),
             'pincode': fields.get('pincode', address.pincode),
             'gstin': fields.get('gstin', address.gstin),
             'is_active': fields.get('is_active', address.is_active),
@@ -455,24 +489,29 @@ def create_organisation(
     addresses,
     phone='',
     email='',
-    country_code='IN',
-    currency='INR',
+    country_code=DEFAULT_COUNTRY_CODE,
+    currency=DEFAULT_CURRENCY_CODE,
+    entity_type=OrganisationEntityType.PRIVATE_LIMITED,
     licence_count=0,
 ):
     normalized_pan = normalize_pan_number(pan_number)
     normalized_addresses = validate_address_collection(addresses, normalized_pan)
+    normalized_country_code = normalize_country_code(country_code)
+    normalized_currency = normalize_currency_code(currency)
+    normalized_phone = validate_phone_for_country(phone, normalized_country_code)
 
     with transaction.atomic():
         organisation = Organisation.objects.create(
             name=name,
             pan_number=normalized_pan,
             address=normalized_addresses[0]['line1'],
-            phone=phone,
+            phone=normalized_phone,
             email=email,
             licence_count=licence_count,
             created_by=created_by,
-            country_code=country_code,
-            currency=currency,
+            country_code=normalized_country_code,
+            currency=normalized_currency,
+            entity_type=entity_type,
             billing_status=OrganisationBillingStatus.PENDING_PAYMENT,
             access_state=OrganisationAccessState.PROVISIONING,
             onboarding_stage=(
@@ -518,6 +557,16 @@ def update_organisation_profile(organisation, actor=None, **fields):
             organisation,
             fields.pop('pan_number'),
         )
+
+    if 'country_code' in fields:
+        fields['country_code'] = normalize_country_code(fields['country_code'])
+    if 'currency' in fields:
+        fields['currency'] = normalize_currency_code(fields['currency'])
+    if 'phone' in fields:
+        country_code = fields.get('country_code', organisation.country_code)
+        fields['phone'] = validate_phone_for_country(fields['phone'], country_code)
+    elif 'country_code' in fields and organisation.phone:
+        validate_phone_for_country(organisation.phone, fields['country_code'])
 
     legacy_address = fields.pop('address', None)
     for attr, value in fields.items():

@@ -1,6 +1,18 @@
 export type OrganisationStatus = 'PENDING' | 'PAID' | 'ACTIVE' | 'SUSPENDED'
 export type OrganisationBillingStatus = 'PENDING_PAYMENT' | 'PAID'
 export type OrganisationAccessState = 'PROVISIONING' | 'ACTIVE' | 'SUSPENDED'
+export type OrganisationEntityType =
+  | 'PRIVATE_LIMITED'
+  | 'PUBLIC_LIMITED'
+  | 'LIMITED_LIABILITY_PARTNERSHIP'
+  | 'PARTNERSHIP_FIRM'
+  | 'SOLE_PROPRIETORSHIP'
+  | 'ONE_PERSON_COMPANY'
+  | 'SECTION_8_COMPANY'
+  | 'TRUST'
+  | 'SOCIETY'
+  | 'GOVERNMENT_BODY'
+  | 'OTHER'
 export type OrganisationAddressType =
   | 'REGISTERED'
   | 'BILLING'
@@ -35,6 +47,7 @@ export interface OrganisationListItem {
   access_state: OrganisationAccessState
   onboarding_stage: OrganisationOnboardingStage
   licence_count: number
+  entity_type?: OrganisationEntityType
   created_at: string
 }
 
@@ -47,7 +60,9 @@ export interface OrganisationAddress {
   line2: string
   city: string
   state: string
+  state_code: string
   country: string
+  country_code: string
   pincode: string
   gstin: string | null
   is_active: boolean
@@ -128,6 +143,8 @@ export interface OrganisationDetail {
   licence_count: number
   country_code: string
   currency: string
+  entity_type: OrganisationEntityType
+  entity_type_label: string
   pan_number: string | null
   address: string
   phone: string

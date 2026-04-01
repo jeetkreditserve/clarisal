@@ -6,13 +6,28 @@ from .models import (
     LicenceBatchPaymentStatus,
     Organisation,
     OrganisationAddress,
+    OrganisationEntityType,
     OrganisationLicenceBatch,
     OrganisationLifecycleEvent,
     OrganisationLicenceLedger,
     OrganisationMembership,
     OrganisationStateTransition,
 )
-from .services import normalize_gstin, normalize_pan_number
+from .country_metadata import (
+    DEFAULT_COUNTRY_CODE,
+    DEFAULT_CURRENCY_CODE,
+    normalize_country_code,
+    normalize_currency_code,
+    resolve_country_code,
+    validate_phone_for_country,
+)
+from .address_metadata import (
+    get_country_name,
+    normalize_subdivision,
+    validate_billing_tax_identifier,
+    validate_postal_code,
+)
+from .services import normalize_pan_number
 
 
 class OrganisationAddressSerializer(serializers.ModelSerializer):
@@ -29,7 +44,9 @@ class OrganisationAddressSerializer(serializers.ModelSerializer):
             'line2',
             'city',
             'state',
+            'state_code',
             'country',
+            'country_code',
             'pincode',
             'gstin',
             'is_active',
@@ -44,21 +61,50 @@ class OrganisationAddressWriteSerializer(serializers.Serializer):
     line1 = serializers.CharField()
     line2 = serializers.CharField(required=False, allow_blank=True, default='')
     city = serializers.CharField(max_length=100)
-    state = serializers.CharField(max_length=100)
-    country = serializers.CharField(max_length=100, required=False, allow_blank=True, default='India')
+    state = serializers.CharField(max_length=100, required=False, allow_blank=True, default='')
+    state_code = serializers.CharField(max_length=16, required=False, allow_blank=True, default='')
+    country = serializers.CharField(max_length=100, required=False, allow_blank=True, default='')
+    country_code = serializers.CharField(max_length=2, required=False, allow_blank=True, default=DEFAULT_COUNTRY_CODE)
     pincode = serializers.CharField(max_length=20)
     gstin = serializers.CharField(max_length=15, required=False, allow_blank=True, allow_null=True)
     is_active = serializers.BooleanField(required=False, default=True)
 
-    def validate_gstin(self, value):
-        if not value:
-            return None
+    def validate_country_code(self, value):
         try:
-            return normalize_gstin(value)
+            return resolve_country_code(value)
         except ValueError as exc:
             raise serializers.ValidationError(str(exc)) from exc
 
     def validate(self, attrs):
+        address = self.context.get('address')
+        address_type = attrs.get('address_type') or getattr(address, 'address_type', None)
+        country_code = attrs.get('country_code') or getattr(address, 'country_code', '') or ''
+        if not country_code:
+            country_code = resolve_country_code(attrs.get('country') or getattr(address, 'country', ''))
+        try:
+            state_code, state = normalize_subdivision(
+                country_code,
+                state_code=attrs.get('state_code', getattr(address, 'state_code', '')),
+                state_name=attrs.get('state', getattr(address, 'state', '')),
+            )
+            attrs['pincode'] = validate_postal_code(
+                attrs.get('pincode', getattr(address, 'pincode', '')),
+                country_code,
+            )
+            attrs['gstin'] = validate_billing_tax_identifier(
+                country_code=country_code,
+                address_type=address_type,
+                identifier=attrs.get('gstin', getattr(address, 'gstin', None)),
+                state_code=state_code,
+            )
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc)) from exc
+
+        attrs['address_type'] = address_type
+        attrs['country_code'] = country_code
+        attrs['country'] = get_country_name(country_code)
+        attrs['state_code'] = state_code
+        attrs['state'] = state
         if attrs.get('address_type') in {'REGISTERED', 'BILLING'}:
             attrs['label'] = {
                 'REGISTERED': 'Registered Office',
@@ -167,6 +213,7 @@ class LicenceBatchDefaultsSerializer(serializers.Serializer):
 class OrganisationDetailSerializer(serializers.ModelSerializer):
     created_by_email = serializers.EmailField(source='created_by.email', read_only=True)
     primary_admin_email = serializers.EmailField(source='primary_admin_user.email', read_only=True)
+    entity_type_label = serializers.CharField(source='get_entity_type_display', read_only=True)
     licence_count = serializers.SerializerMethodField()
     addresses = OrganisationAddressSerializer(many=True, read_only=True)
     state_transitions = StateTransitionSerializer(many=True, read_only=True)
@@ -180,7 +227,7 @@ class OrganisationDetailSerializer(serializers.ModelSerializer):
         model = Organisation
         fields = [
             'id', 'name', 'slug', 'status', 'billing_status', 'access_state', 'onboarding_stage',
-            'licence_count', 'country_code', 'currency', 'pan_number',
+            'licence_count', 'country_code', 'currency', 'entity_type', 'entity_type_label', 'pan_number',
             'address', 'phone', 'email', 'logo_url',
             'primary_admin_email', 'paid_marked_at', 'activated_at', 'suspended_at',
             'created_by_email', 'created_at', 'updated_at',
@@ -210,8 +257,9 @@ class CreateOrganisationSerializer(serializers.Serializer):
     pan_number = serializers.CharField(max_length=10)
     phone = serializers.CharField(max_length=20, required=False, allow_blank=True, default='')
     email = serializers.EmailField(required=False, allow_blank=True, default='')
-    country_code = serializers.CharField(max_length=2, required=False, default='IN')
-    currency = serializers.CharField(max_length=3, required=False, default='INR')
+    country_code = serializers.CharField(max_length=2, required=False, default=DEFAULT_COUNTRY_CODE)
+    currency = serializers.CharField(max_length=3, required=False, default=DEFAULT_CURRENCY_CODE)
+    entity_type = serializers.ChoiceField(choices=OrganisationEntityType.choices)
     licence_count = serializers.IntegerField(min_value=0, required=False, default=0)
     addresses = OrganisationAddressWriteSerializer(many=True)
 
@@ -221,7 +269,23 @@ class CreateOrganisationSerializer(serializers.Serializer):
         except ValueError as exc:
             raise serializers.ValidationError(str(exc)) from exc
 
+    def validate_country_code(self, value):
+        try:
+            return normalize_country_code(value)
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc)) from exc
+
+    def validate_currency(self, value):
+        try:
+            return normalize_currency_code(value)
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc)) from exc
+
     def validate(self, attrs):
+        try:
+            attrs['phone'] = validate_phone_for_country(attrs.get('phone', ''), attrs['country_code'])
+        except ValueError as exc:
+            raise serializers.ValidationError({'phone': str(exc)}) from exc
         address_types = [address['address_type'] for address in attrs.get('addresses', []) if address.get('is_active', True)]
         if address_types.count('REGISTERED') != 1 or address_types.count('BILLING') != 1:
             raise serializers.ValidationError(
@@ -229,11 +293,16 @@ class CreateOrganisationSerializer(serializers.Serializer):
             )
         pan_number = attrs['pan_number']
         for index, address in enumerate(attrs.get('addresses', [])):
-            if address.get('gstin'):
-                try:
-                    attrs['addresses'][index]['gstin'] = normalize_gstin(address['gstin'], pan_number)
-                except ValueError as exc:
-                    raise serializers.ValidationError({'addresses': str(exc)}) from exc
+            try:
+                attrs['addresses'][index]['gstin'] = validate_billing_tax_identifier(
+                    country_code=address.get('country_code'),
+                    address_type=address.get('address_type'),
+                    identifier=address.get('gstin'),
+                    pan_number=pan_number,
+                    state_code=address.get('state_code'),
+                )
+            except ValueError as exc:
+                raise serializers.ValidationError({'addresses': str(exc)}) from exc
         return attrs
 
 
@@ -244,6 +313,7 @@ class UpdateOrganisationSerializer(serializers.Serializer):
     email = serializers.EmailField(required=False, allow_blank=True)
     country_code = serializers.CharField(max_length=2, required=False)
     currency = serializers.CharField(max_length=3, required=False)
+    entity_type = serializers.ChoiceField(choices=OrganisationEntityType.choices, required=False)
     logo_url = serializers.URLField(required=False, allow_blank=True)
 
     def validate_pan_number(self, value):
@@ -251,6 +321,35 @@ class UpdateOrganisationSerializer(serializers.Serializer):
             return normalize_pan_number(value)
         except ValueError as exc:
             raise serializers.ValidationError(str(exc)) from exc
+
+    def validate_country_code(self, value):
+        try:
+            return normalize_country_code(value)
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc)) from exc
+
+    def validate_currency(self, value):
+        try:
+            return normalize_currency_code(value)
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc)) from exc
+
+    def validate(self, attrs):
+        organisation = self.context.get('organisation')
+        if organisation is None:
+            return attrs
+        country_code = attrs.get('country_code', organisation.country_code)
+        if 'country_code' in attrs:
+            attrs['country_code'] = country_code
+        phone_value = attrs.get('phone', organisation.phone)
+        if 'phone' in attrs or 'country_code' in attrs:
+            try:
+                normalized_phone = validate_phone_for_country(phone_value, country_code)
+            except ValueError as exc:
+                raise serializers.ValidationError({'phone': str(exc)}) from exc
+            if 'phone' in attrs:
+                attrs['phone'] = normalized_phone
+        return attrs
 
 
 class LicenceUpdateSerializer(serializers.Serializer):

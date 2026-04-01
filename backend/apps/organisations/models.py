@@ -80,6 +80,20 @@ class OrganisationAddressType(models.TextChoices):
     CUSTOM = 'CUSTOM', 'Custom'
 
 
+class OrganisationEntityType(models.TextChoices):
+    PRIVATE_LIMITED = 'PRIVATE_LIMITED', 'Private Limited Company'
+    PUBLIC_LIMITED = 'PUBLIC_LIMITED', 'Public Limited Company'
+    LIMITED_LIABILITY_PARTNERSHIP = 'LIMITED_LIABILITY_PARTNERSHIP', 'Limited Liability Partnership'
+    PARTNERSHIP_FIRM = 'PARTNERSHIP_FIRM', 'Partnership Firm'
+    SOLE_PROPRIETORSHIP = 'SOLE_PROPRIETORSHIP', 'Sole Proprietorship'
+    ONE_PERSON_COMPANY = 'ONE_PERSON_COMPANY', 'One Person Company'
+    SECTION_8_COMPANY = 'SECTION_8_COMPANY', 'Section 8 Company'
+    TRUST = 'TRUST', 'Trust'
+    SOCIETY = 'SOCIETY', 'Society'
+    GOVERNMENT_BODY = 'GOVERNMENT_BODY', 'Government Body'
+    OTHER = 'OTHER', 'Other'
+
+
 class Organisation(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=255)
@@ -107,6 +121,11 @@ class Organisation(models.Model):
     licence_count = models.PositiveIntegerField(default=0)
     country_code = models.CharField(max_length=2, default='IN')
     currency = models.CharField(max_length=3, default='INR')
+    entity_type = models.CharField(
+        max_length=40,
+        choices=OrganisationEntityType.choices,
+        default=OrganisationEntityType.PRIVATE_LIMITED,
+    )
     pan_number = models.CharField(max_length=10, null=True, blank=True)
     address = models.TextField(blank=True)
     phone = models.CharField(max_length=20, blank=True)
@@ -174,7 +193,9 @@ class OrganisationAddress(models.Model):
     line2 = models.TextField(blank=True)
     city = models.CharField(max_length=100)
     state = models.CharField(max_length=100)
+    state_code = models.CharField(max_length=16, blank=True, default='')
     country = models.CharField(max_length=100, default='India')
+    country_code = models.CharField(max_length=2, default='IN')
     pincode = models.CharField(max_length=20)
     gstin = models.CharField(max_length=15, null=True, blank=True, unique=True)
     is_active = models.BooleanField(default=True)

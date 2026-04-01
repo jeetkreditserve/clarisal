@@ -78,10 +78,13 @@ class TestCreateOrganisation:
             name='Test', licence_count=1, created_by=ct_user,
             pan_number='ABCDE1234F',
             addresses=organisation_addresses(),
-            phone='+91999', email='org@test.com',
+            phone='+919999999999', email='org@test.com',
+            country_code='IN', currency='INR', entity_type='PRIVATE_LIMITED',
         )
         assert org.address == '123 Main St'
         assert org.email == 'org@test.com'
+        assert org.phone == '+919999999999'
+        assert org.entity_type == 'PRIVATE_LIMITED'
 
 
 @pytest.mark.django_db

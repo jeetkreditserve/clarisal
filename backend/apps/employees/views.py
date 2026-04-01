@@ -240,7 +240,10 @@ class MyProfileView(APIView):
         employee = _get_self_employee(request)
         serializer = EmployeeProfileSerializer(data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        profile = update_employee_profile(employee, actor=request.user, **serializer.validated_data)
+        try:
+            profile = update_employee_profile(employee, actor=request.user, **serializer.validated_data)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         refresh_employee_onboarding_status(employee, actor=request.user)
         return Response(
             {

@@ -10,29 +10,69 @@ import {
   useUpdateOrgAddress,
   useUpdateOrgProfile,
 } from '@/hooks/useOrgAdmin'
+import { AppSelect } from '@/components/ui/AppSelect'
 import { AuditTimeline } from '@/components/ui/AuditTimeline'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { FieldErrorText } from '@/components/ui/FieldErrorText'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { SkeletonFormBlock, SkeletonPageHeader, SkeletonTable } from '@/components/ui/Skeleton'
 import { StatusBadge } from '@/components/ui/StatusBadge'
+import {
+  getAddressCountryName,
+  getAddressCountryOption,
+  getAddressCountryRule,
+  getBillingTaxLabel,
+  getSubdivisionName,
+  getSubdivisionOptions,
+  resolveCountryCode,
+  resolveSubdivisionCode,
+} from '@/lib/addressMetadata'
 import { getErrorMessage } from '@/lib/errors'
 import { formatDate, startCase } from '@/lib/format'
-import type { OrganisationAddress, OrganisationAddressType } from '@/types/organisation'
+import {
+  COUNTRY_OPTIONS,
+  CURRENCY_OPTIONS,
+  DEFAULT_COUNTRY_OPTION,
+  ORGANISATION_ENTITY_TYPE_OPTIONS,
+  getCountryOption,
+  validatePhoneForCountry,
+} from '@/lib/organisationMetadata'
+import type { OrganisationAddress, OrganisationAddressType, OrganisationEntityType } from '@/types/organisation'
 
 const mandatoryAddressTypes: OrganisationAddressType[] = ['REGISTERED', 'BILLING']
+const COUNTRY_SELECT_OPTIONS = COUNTRY_OPTIONS.map((country) => ({
+  value: country.code,
+  label: country.name,
+  hint: `${country.dialCode} • ${country.defaultCurrency}`,
+  keywords: [country.dialCode, country.defaultCurrency],
+}))
+const CURRENCY_SELECT_OPTIONS = CURRENCY_OPTIONS.map((currency) => ({
+  value: currency.code,
+  label: currency.label,
+}))
+const ENTITY_TYPE_OPTIONS = ORGANISATION_ENTITY_TYPE_OPTIONS.map((option) => ({
+  value: option.value,
+  label: option.label,
+}))
+const ADDRESS_TYPE_OPTIONS = ['REGISTERED', 'BILLING', 'HEADQUARTERS', 'WAREHOUSE', 'CUSTOM'].map((type) => ({
+  value: type,
+  label: startCase(type),
+}))
 
-const emptyAddressForm = {
+const createEmptyAddressForm = (countryCode = DEFAULT_COUNTRY_OPTION.code) => ({
   address_type: 'CUSTOM' as OrganisationAddressType,
   label: '',
   line1: '',
   line2: '',
   city: '',
   state: '',
-  country: 'India',
+  state_code: '',
+  country: getAddressCountryName(countryCode),
+  country_code: countryCode,
   pincode: '',
   gstin: '',
-}
+})
 
 export function OrgProfilePage() {
   const { data, isLoading } = useOrgProfile()
@@ -49,9 +89,12 @@ export function OrgProfilePage() {
     phone: string
     country_code: string
     currency: string
+    entity_type: OrganisationEntityType
   }>>({})
   const [editingAddressId, setEditingAddressId] = useState<string | null>(null)
-  const [addressForm, setAddressForm] = useState(emptyAddressForm)
+  const [addressForm, setAddressForm] = useState(() => createEmptyAddressForm())
+  const [hasCurrencyManualOverride, setHasCurrencyManualOverride] = useState(false)
+  const [profileErrors, setProfileErrors] = useState<{ phone?: string }>({})
 
   if (isLoading || !data) {
     return (
@@ -70,10 +113,61 @@ export function OrgProfilePage() {
     phone: profileDraft.phone ?? data.phone,
     country_code: profileDraft.country_code ?? data.country_code,
     currency: profileDraft.currency ?? data.currency,
+    entity_type: profileDraft.entity_type ?? data.entity_type,
+  }
+  const selectedCountry = getCountryOption(profileForm.country_code) ?? DEFAULT_COUNTRY_OPTION
+  const addressCountry = getAddressCountryOption(addressForm.country_code || addressForm.country) ?? selectedCountry
+  const addressRule = getAddressCountryRule(addressCountry.code)
+  const addressSubdivisions = getSubdivisionOptions(addressCountry.code)
+
+  const setAddressCountry = (countryCode: string) => {
+    setAddressForm((current) => ({
+      ...current,
+      country_code: countryCode,
+      country: getAddressCountryName(countryCode),
+      state: '',
+      state_code: '',
+      pincode: '',
+    }))
+  }
+
+  const setAddressState = (stateCode: string) => {
+    setAddressForm((current) => ({
+      ...current,
+      state_code: stateCode,
+      state: getSubdivisionName(addressCountry.code, stateCode, ''),
+    }))
+  }
+
+  const handleCountryChange = (nextCountryCode: string) => {
+    setProfileDraft((current) => {
+      const previousCountry = getCountryOption(current.country_code ?? data.country_code) ?? DEFAULT_COUNTRY_OPTION
+      const currentCurrency = current.currency ?? data.currency
+      const nextCountry = getCountryOption(nextCountryCode) ?? DEFAULT_COUNTRY_OPTION
+      const shouldAutoUpdateCurrency = !hasCurrencyManualOverride || currentCurrency === previousCountry.defaultCurrency
+
+      return {
+        ...current,
+        country_code: nextCountryCode,
+        currency: shouldAutoUpdateCurrency ? nextCountry.defaultCurrency : currentCurrency,
+      }
+    })
+    if (!hasCurrencyManualOverride || profileForm.currency === selectedCountry.defaultCurrency) {
+      setHasCurrencyManualOverride(false)
+    }
+  }
+
+  const validateProfileForm = () => {
+    const phoneError = validatePhoneForCountry(profileForm.phone, profileForm.country_code) ?? undefined
+    setProfileErrors({ phone: phoneError })
+    return !phoneError
   }
 
   const handleProfileSave = async (event: React.FormEvent) => {
     event.preventDefault()
+    if (!validateProfileForm()) {
+      return
+    }
     try {
       await updateProfileMutation.mutateAsync(profileForm)
       toast.success('Organisation profile updated.')
@@ -91,7 +185,9 @@ export function OrgProfilePage() {
       line2: address.line2,
       city: address.city,
       state: address.state,
+      state_code: address.state_code,
       country: address.country,
+      country_code: address.country_code,
       pincode: address.pincode,
       gstin: address.gstin ?? '',
     })
@@ -99,7 +195,7 @@ export function OrgProfilePage() {
 
   const resetAddressForm = () => {
     setEditingAddressId(null)
-    setAddressForm(emptyAddressForm)
+    setAddressForm(createEmptyAddressForm(selectedCountry.code))
   }
 
   const handleAddressSubmit = async (event: React.FormEvent) => {
@@ -161,33 +257,61 @@ export function OrgProfilePage() {
                   onChange={(event) => setProfileDraft((current) => ({ ...current, [field]: event.target.value }))}
                   required={field === 'name' || field === 'pan_number'}
                 />
+                {field === 'phone' ? (
+                  <>
+                    <p className="mt-2 text-xs text-[hsl(var(--muted-foreground))]">
+                      Must start with {selectedCountry.dialCode} for {selectedCountry.name}.
+                    </p>
+                    <FieldErrorText message={profileErrors.phone} />
+                  </>
+                ) : null}
               </div>
             ))}
             <div className="grid gap-4 md:grid-cols-2">
               <div>
                 <label className="field-label" htmlFor="country_code">
-                  Country code
+                  Country
                 </label>
-                <input
+                <AppSelect
                   id="country_code"
-                  className="field-input"
                   value={profileForm.country_code}
-                  onChange={(event) => setProfileDraft((current) => ({ ...current, country_code: event.target.value }))}
-                  required
+                  onValueChange={handleCountryChange}
+                  options={COUNTRY_SELECT_OPTIONS}
+                  placeholder="Select country"
                 />
               </div>
               <div>
                 <label className="field-label" htmlFor="currency">
                   Currency
                 </label>
-                <input
+                <AppSelect
                   id="currency"
-                  className="field-input"
                   value={profileForm.currency}
-                  onChange={(event) => setProfileDraft((current) => ({ ...current, currency: event.target.value }))}
-                  required
+                  onValueChange={(value) => {
+                    setProfileDraft((current) => ({ ...current, currency: value }))
+                    setHasCurrencyManualOverride(true)
+                  }}
+                  options={CURRENCY_SELECT_OPTIONS}
+                  placeholder="Select currency"
                 />
               </div>
+            </div>
+            <div>
+              <label className="field-label" htmlFor="entity_type">
+                Organisation entity type
+              </label>
+              <AppSelect
+                id="entity_type"
+                value={profileForm.entity_type}
+                onValueChange={(value) =>
+                  setProfileDraft((current) => ({
+                    ...current,
+                    entity_type: value as OrganisationEntityType,
+                  }))
+                }
+                options={ENTITY_TYPE_OPTIONS}
+                placeholder="Select entity type"
+              />
             </div>
             <button type="submit" className="btn-primary" disabled={updateProfileMutation.isPending}>
               Save organisation profile
@@ -205,23 +329,18 @@ export function OrgProfilePage() {
                 <label className="field-label" htmlFor="address_type">
                   Address type
                 </label>
-                <select
+                <AppSelect
                   id="address_type"
-                  className="field-select"
                   value={addressForm.address_type}
-                  onChange={(event) =>
+                  onValueChange={(value) =>
                     setAddressForm((current) => ({
                       ...current,
-                      address_type: event.target.value as OrganisationAddressType,
+                      address_type: value as OrganisationAddressType,
                     }))
                   }
-                >
-                  {['REGISTERED', 'BILLING', 'HEADQUARTERS', 'WAREHOUSE', 'CUSTOM'].map((type) => (
-                    <option key={type} value={type}>
-                      {startCase(type)}
-                    </option>
-                  ))}
-                </select>
+                  options={ADDRESS_TYPE_OPTIONS}
+                  placeholder="Select address type"
+                />
               </div>
               {!mandatoryAddressTypes.includes(addressForm.address_type) ? (
                 <div>
@@ -238,28 +357,111 @@ export function OrgProfilePage() {
                 </div>
               ) : null}
             </div>
-            {[
-              ['line1', 'Address line 1'],
-              ['line2', 'Address line 2'],
-              ['city', 'City'],
-              ['state', 'State'],
-              ['country', 'Country'],
-              ['pincode', 'Pincode'],
-              ['gstin', 'GSTIN'],
-            ].map(([field, label]) => (
-              <div key={field}>
-                <label className="field-label" htmlFor={field}>
-                  {label}
+            <div>
+              <label className="field-label" htmlFor="line1">
+                Address line 1
+              </label>
+              <input
+                id="line1"
+                className="field-input"
+                value={addressForm.line1}
+                onChange={(event) => setAddressForm((current) => ({ ...current, line1: event.target.value }))}
+                required
+              />
+            </div>
+            <div>
+              <label className="field-label" htmlFor="line2">
+                Address line 2
+              </label>
+              <input
+                id="line2"
+                className="field-input"
+                value={addressForm.line2}
+                onChange={(event) => setAddressForm((current) => ({ ...current, line2: event.target.value }))}
+              />
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <label className="field-label" htmlFor="address-country">
+                  Country
                 </label>
-                <input
-                  id={field}
-                  className="field-input"
-                  value={addressForm[field as keyof typeof addressForm]}
-                  onChange={(event) => setAddressForm((current) => ({ ...current, [field]: event.target.value }))}
-                  required={['line1', 'city', 'state', 'pincode'].includes(field)}
+                <AppSelect
+                  id="address-country"
+                  value={addressCountry.code}
+                  onValueChange={setAddressCountry}
+                  options={COUNTRY_SELECT_OPTIONS}
+                  placeholder="Select country"
                 />
               </div>
-            ))}
+              <div>
+                <label className="field-label" htmlFor="city">
+                  City
+                </label>
+                <input
+                  id="city"
+                  className="field-input"
+                  value={addressForm.city}
+                  onChange={(event) => setAddressForm((current) => ({ ...current, city: event.target.value }))}
+                  required
+                />
+              </div>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <label className="field-label" htmlFor="address-state">
+                  {addressRule.subdivisionLabel}
+                </label>
+                {addressSubdivisions.length > 0 ? (
+                  <AppSelect
+                    id="address-state"
+                    value={resolveSubdivisionCode(addressCountry.code, addressForm.state, addressForm.state_code)}
+                    onValueChange={setAddressState}
+                    options={addressSubdivisions.map((option) => ({
+                      value: option.code,
+                      label: option.label,
+                      hint: option.taxRegionCode ? `Tax region ${option.taxRegionCode}` : undefined,
+                    }))}
+                    placeholder={`Select ${addressRule.subdivisionLabel.toLowerCase()}`}
+                  />
+                ) : (
+                  <input
+                    id="address-state"
+                    className="field-input"
+                    value={addressForm.state}
+                    onChange={(event) => setAddressForm((current) => ({ ...current, state: event.target.value }))}
+                    required
+                  />
+                )}
+              </div>
+              <div>
+                <label className="field-label" htmlFor="pincode">
+                  {addressRule.postalLabel}
+                </label>
+                <input
+                  id="pincode"
+                  className="field-input"
+                  value={addressForm.pincode}
+                  placeholder={addressRule.postalPlaceholder}
+                  onChange={(event) => setAddressForm((current) => ({ ...current, pincode: event.target.value }))}
+                  required={addressRule.postalRequired !== false}
+                />
+              </div>
+            </div>
+            <div>
+              <label className="field-label" htmlFor="gstin">
+                {getBillingTaxLabel(addressCountry.code)}
+              </label>
+              <input
+                id="gstin"
+                className="field-input"
+                value={addressForm.gstin}
+                onChange={(event) => setAddressForm((current) => ({ ...current, gstin: event.target.value }))}
+                required={addressForm.address_type === 'BILLING' && addressCountry.code === 'IN'}
+              />
+              <p className="mt-2 text-xs text-[hsl(var(--muted-foreground))]">
+                {addressRule.taxHelperText || 'Capture a billing tax registration when this address is used for invoicing.'}
+              </p>
+            </div>
             <div className="flex flex-wrap gap-3">
               {editingAddressId ? (
                 <button type="button" onClick={resetAddressForm} className="btn-secondary">
@@ -300,7 +502,7 @@ export function OrgProfilePage() {
                       .join(', ')}
                   </p>
                   <p className="mt-2 text-xs uppercase tracking-[0.16em] text-[hsl(var(--muted-foreground))]">
-                    GSTIN {address.gstin || 'Not configured'} • Updated {formatDate(address.updated_at)}
+                    {getBillingTaxLabel(address.country_code)} {address.gstin || 'Not configured'} • Updated {formatDate(address.updated_at)}
                   </p>
                 </div>
                 <div className="flex gap-3">

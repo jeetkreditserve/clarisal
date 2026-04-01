@@ -18,6 +18,10 @@ def organisation_create_payload(name='New Org'):
         'name': name,
         'pan_number': 'ABCDE1234F',
         'email': 'org@test.com',
+        'phone': '+919876543210',
+        'country_code': 'IN',
+        'currency': 'INR',
+        'entity_type': 'PRIVATE_LIMITED',
         'addresses': [
             {
                 'address_type': 'REGISTERED',
@@ -75,11 +79,24 @@ class TestOrganisationListCreate:
         assert response.data['name'] == 'New Org'
         assert response.data['status'] == OrganisationStatus.PENDING
         assert response.data['pan_number'] == 'ABCDE1234F'
+        assert response.data['phone'] == '+919876543210'
+        assert response.data['country_code'] == 'IN'
+        assert response.data['currency'] == 'INR'
+        assert response.data['entity_type'] == 'PRIVATE_LIMITED'
 
     def test_create_requires_name(self, ct_client):
         client, _ = ct_client
         response = client.post('/api/ct/organisations/', {}, format='json')
         assert response.status_code == 400
+
+    def test_create_rejects_phone_with_wrong_country_dial_code(self, ct_client):
+        client, _ = ct_client
+        payload = organisation_create_payload()
+        payload['phone'] = '+447700900123'
+        payload['country_code'] = 'IN'
+        response = client.post('/api/ct/organisations/', payload, format='json')
+        assert response.status_code == 400
+        assert 'phone' in response.data
 
     def test_unauthenticated_returns_401(self):
         client = APIClient()
@@ -122,6 +139,25 @@ class TestOrganisationActivate:
         # PENDING cannot go to SUSPENDED
         response = client.post(f'/api/ct/organisations/{org.id}/suspend/')
         assert response.status_code == 400
+
+
+@pytest.mark.django_db
+class TestOrganisationProfileUpdate:
+    def test_control_tower_update_rejects_phone_with_wrong_country_dial_code(self, ct_client):
+        client, user = ct_client
+        organisation = Organisation.objects.create(
+            name='Acme Corp',
+            created_by=user,
+            country_code='IN',
+            currency='INR',
+        )
+        response = client.patch(
+            f'/api/ct/organisations/{organisation.id}/',
+            {'phone': '+447700900123'},
+            format='json',
+        )
+        assert response.status_code == 400
+        assert 'phone' in response.data
 
 
 @pytest.mark.django_db

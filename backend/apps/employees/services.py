@@ -16,6 +16,12 @@ from apps.invitations.models import InvitationRole, InvitationStatus
 from apps.invitations.services import create_employee_invitation
 from apps.locations.models import OfficeLocation
 from apps.organisations.services import get_org_licence_summary, mark_employee_invited
+from apps.organisations.address_metadata import (
+    get_country_name,
+    normalize_subdivision,
+    validate_postal_code,
+)
+from apps.organisations.country_metadata import resolve_country_code
 
 from .models import (
     BloodTypeChoice,
@@ -416,6 +422,20 @@ def delete_employee(employee, actor=None):
 
 def update_employee_profile(employee, actor=None, **fields):
     profile, _ = EmployeeProfile.objects.get_or_create(employee=employee)
+    address_updates = {'country_code', 'country', 'state_code', 'state', 'pincode'}
+    if address_updates.intersection(fields.keys()):
+        country_code = resolve_country_code(fields.get('country_code') or fields.get('country') or profile.country_code or profile.country or 'IN')
+        state_code, state = normalize_subdivision(
+            country_code,
+            state_code=fields.get('state_code', profile.state_code),
+            state_name=fields.get('state', profile.state),
+        )
+        fields['country_code'] = country_code
+        fields['country'] = get_country_name(country_code)
+        fields['state_code'] = state_code
+        fields['state'] = state
+        if 'pincode' in fields or profile.pincode:
+            fields['pincode'] = validate_postal_code(fields.get('pincode', profile.pincode), country_code)
     for attr, value in fields.items():
         setattr(profile, attr, value)
     profile.save()

@@ -60,7 +60,9 @@ export interface LinkedOrganisationAddress {
   line2: string
   city: string
   state: string
+  state_code: string
   country: string
+  country_code: string
   pincode: string
   gstin: string | null
   is_active: boolean
@@ -120,7 +122,9 @@ export interface EmployeeProfile {
   address_line2?: string
   city?: string
   state?: string
+  state_code?: string
   country?: string
+  country_code?: string
   pincode?: string
 }
 
