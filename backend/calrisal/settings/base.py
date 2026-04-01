@@ -8,7 +8,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 env = environ.Env(
     DEBUG=(bool, False),
-    ALLOWED_HOSTS=(list, ['localhost', '127.0.0.1']),
+    ALLOWED_HOSTS=(list, ['localhost', '127.0.0.1', 'backend', 'edge-proxy']),
 )
 
 environ.Env.read_env(os.path.join(BASE_DIR.parent, '.env'))
@@ -146,12 +146,27 @@ REST_FRAMEWORK = {
 }
 
 # CORS
-CORS_ALLOWED_ORIGINS = env.list('CORS_ALLOWED_ORIGINS', default=['http://localhost:5173'])
+CORS_ALLOWED_ORIGINS = env.list(
+    'CORS_ALLOWED_ORIGINS',
+    default=[
+        'http://localhost:8080',
+        'http://127.0.0.1:8080',
+        'http://localhost:5173',
+        'http://127.0.0.1:5173',
+    ],
+)
 CORS_ALLOW_CREDENTIALS = True
 CSRF_TRUSTED_ORIGINS = env.list(
     'CSRF_TRUSTED_ORIGINS',
-    default=['http://localhost:5173', 'http://127.0.0.1:5173'],
+    default=[
+        'http://localhost:8080',
+        'http://127.0.0.1:8080',
+        'http://localhost:5173',
+        'http://127.0.0.1:5173',
+    ],
 )
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+USE_X_FORWARDED_HOST = True
 SESSION_COOKIE_NAME = 'calrisal_sessionid'
 SESSION_COOKIE_AGE = env.int('SESSION_COOKIE_AGE', default=60 * 60 * 12)
 SESSION_COOKIE_HTTPONLY = True
@@ -203,7 +218,7 @@ AWS_DEFAULT_ACL = 'private'
 AWS_S3_FILE_OVERWRITE = False
 
 # App config
-FRONTEND_URL = env('FRONTEND_URL', default='http://localhost:5173')
+FRONTEND_URL = env('FRONTEND_URL', default='http://localhost:8080')
 INVITE_TOKEN_EXPIRY_HOURS = env.int('INVITE_TOKEN_EXPIRY_HOURS', default=48)
 PASSWORD_RESET_TOKEN_EXPIRY_MINUTES = env.int('PASSWORD_RESET_TOKEN_EXPIRY_MINUTES', default=30)
-DEFAULT_LICENCE_PRICE_PER_MONTH = env.int('DEFAULT_LICENCE_PRICE_PER_MONTH', default=Decimal('50'))
+DEFAULT_LICENCE_PRICE_PER_MONTH = Decimal(str(env('DEFAULT_LICENCE_PRICE_PER_MONTH', default='50.00')))

@@ -1,6 +1,6 @@
 import { chromium } from 'playwright'
 
-const baseUrl = 'http://127.0.0.1:5173'
+const baseUrl = process.env.APP_BASE_URL ?? 'http://127.0.0.1:8080'
 const controlTowerEmail = process.env.CONTROL_TOWER_EMAIL ?? 'admin@calrisal.com'
 const controlTowerPassword = process.env.CONTROL_TOWER_PASSWORD ?? 'change-me-in-production'
 const orgAdminEmail = process.env.SEED_ORG_ADMIN_EMAIL ?? 'admin@acmeworkforce.com'

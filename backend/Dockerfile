@@ -14,9 +14,10 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 RUN addgroup --system app && adduser --system --group app
+RUN mkdir -p /app/staticfiles /app/media && chown -R app:app /app
 USER app
 
-COPY . .
+COPY --chown=app:app . .
 
 EXPOSE 8000
 
