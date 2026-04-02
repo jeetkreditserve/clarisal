@@ -6,6 +6,8 @@ import {
   approveApprovalAction,
   assignEmployeeDocumentRequests,
   calculatePayrollRun,
+  downloadAttendanceTemplate,
+  downloadNormalizedAttendanceFile,
   createApprovalWorkflow,
   createCompensationAssignment,
   createCompensationTemplate,
@@ -43,6 +45,7 @@ import {
   fetchOrgProfile,
   fetchPayrollSummary,
   fetchApprovalInbox,
+  fetchAttendanceImports,
   fetchApprovalWorkflow,
   fetchApprovalWorkflows,
   fetchLeavePlan,
@@ -57,6 +60,8 @@ import {
   fetchNotice,
   fetchOnDutyPolicy,
   rerunPayrollRun,
+  uploadAttendanceSheet,
+  uploadPunchSheet,
   submitCompensationAssignment,
   submitCompensationTemplate,
   submitPayrollRun,
@@ -404,6 +409,46 @@ export function useApprovalInbox() {
   return useQuery({
     queryKey: ['org', organisationId, 'approval-inbox'],
     queryFn: fetchApprovalInbox,
+  })
+}
+
+export function useAttendanceImports() {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'attendance-imports'],
+    queryFn: fetchAttendanceImports,
+  })
+}
+
+export function useUploadAttendanceSheet() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: uploadAttendanceSheet,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useUploadPunchSheet() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: uploadPunchSheet,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useDownloadAttendanceTemplate() {
+  return useMutation({
+    mutationFn: downloadAttendanceTemplate,
+  })
+}
+
+export function useDownloadNormalizedAttendanceFile() {
+  return useMutation({
+    mutationFn: downloadNormalizedAttendanceFile,
   })
 }
 

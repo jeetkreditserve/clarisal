@@ -403,6 +403,8 @@ class LeaveRequest(AuditedBaseModel):
         indexes = [
             models.Index(fields=['employee', 'status']),
             models.Index(fields=['employee', 'start_date', 'end_date']),
+            # Composite index for leave balance aggregate queries
+            models.Index(fields=['employee', 'leave_type', 'status', 'start_date'], name='leave_req_balance_idx'),
         ]
 
 

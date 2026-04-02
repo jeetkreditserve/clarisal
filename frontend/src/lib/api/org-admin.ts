@@ -9,6 +9,7 @@ import type {
 import type { OrgAdminSetupState } from '@/types/organisation'
 import type {
   ApprovalActionItem,
+  AttendanceImportJob,
   ApprovalWorkflowConfig,
   CompensationAssignment,
   CompensationTemplate,
@@ -396,6 +397,49 @@ export async function fetchOrgLeaveRequests() {
 export async function fetchOrgOnDutyRequests() {
   const { data } = await api.get<OnDutyRequestRecord[]>('/org/on-duty-requests/')
   return data
+}
+
+export async function fetchAttendanceImports() {
+  const { data } = await api.get<AttendanceImportJob[]>('/org/attendance/imports/')
+  return data
+}
+
+export async function uploadAttendanceSheet(file: File) {
+  const formData = new FormData()
+  formData.append('file', file)
+  const { data } = await api.post<AttendanceImportJob>('/org/attendance/imports/attendance-sheet/', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+  return data
+}
+
+export async function uploadPunchSheet(file: File) {
+  const formData = new FormData()
+  formData.append('file', file)
+  const { data } = await api.post<AttendanceImportJob>('/org/attendance/imports/punch-sheet/', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+  return data
+}
+
+export async function downloadAttendanceTemplate(mode: 'attendance-sheet' | 'punch-sheet') {
+  const { data, headers } = await api.get<Blob>(`/org/attendance/imports/templates/${mode}/`, {
+    responseType: 'blob',
+  })
+  return {
+    blob: data,
+    filename: headers['content-disposition']?.match(/filename=\"?([^"]+)\"?/)?.[1] || `${mode}.xlsx`,
+  }
+}
+
+export async function downloadNormalizedAttendanceFile(jobId: string) {
+  const { data, headers } = await api.get<Blob>(`/org/attendance/imports/${jobId}/normalized-file/`, {
+    responseType: 'blob',
+  })
+  return {
+    blob: data,
+    filename: headers['content-disposition']?.match(/filename=\"?([^"]+)\"?/)?.[1] || `normalized-attendance-${jobId}.xlsx`,
+  }
 }
 
 export async function fetchPayrollSummary() {

@@ -22,6 +22,7 @@ urlpatterns = [
     path('api/org/', include('apps.documents.urls')),
     path('api/org/', include('apps.approvals.urls')),
     path('api/org/', include('apps.timeoff.org_urls')),
+    path('api/org/', include('apps.attendance.urls')),
     path('api/org/', include('apps.communications.urls')),
     path('api/org/', include('apps.audit.urls')),
     path('api/org/', include('apps.payroll.org_urls')),

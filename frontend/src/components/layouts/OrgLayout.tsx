@@ -1,5 +1,5 @@
 import { Outlet, useNavigate } from 'react-router-dom'
-import { Bell, Building, Building2, CalendarDays, ClipboardCheck, Landmark, LayoutDashboard, LogOut, MapPin, PlaneTakeoff, Repeat, ScrollText, Users } from 'lucide-react'
+import { Bell, Building, Building2, CalendarDays, ClipboardCheck, Clock3, Landmark, LayoutDashboard, LogOut, MapPin, PlaneTakeoff, Repeat, ScrollText, Users } from 'lucide-react'
 import { SidebarNav, type NavItem } from './SidebarNav'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
 import { useAuth } from '@/hooks/useAuth'
@@ -11,6 +11,7 @@ import { OrgSetupBanner } from '@/components/org/OrgSetupBanner'
 const navItems: NavItem[] = [
   { label: 'Dashboard', href: '/org/dashboard', icon: LayoutDashboard },
   { label: 'Organisation', href: '/org/profile', icon: Building2 },
+  { label: 'Attendance Imports', href: '/org/attendance', icon: Clock3 },
   { label: 'Payroll Preview', href: '/org/payroll', icon: Landmark },
   { label: 'Locations', href: '/org/locations', icon: MapPin },
   { label: 'Departments', href: '/org/departments', icon: Building },
@@ -45,7 +46,7 @@ export function OrgLayout() {
               <StatusBadge tone={getAccessStateTone(user?.organisation_access_state)}>
                 {user?.organisation_access_state || 'Provisioning'}
               </StatusBadge>
-              <StatusBadge tone="warning">Attendance not live</StatusBadge>
+              <StatusBadge tone="warning">Attendance import only</StatusBadge>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-3">

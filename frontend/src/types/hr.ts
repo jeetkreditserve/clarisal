@@ -60,6 +60,8 @@ export type EffectiveApprovalWorkflowSource = 'ASSIGNMENT' | 'RULE' | 'DEFAULT' 
 export type NoticeStatus = 'DRAFT' | 'SCHEDULED' | 'PUBLISHED' | 'EXPIRED' | 'ARCHIVED'
 export type NoticeCategory = 'GENERAL' | 'HR_POLICY' | 'OPERATIONS' | 'CELEBRATION' | 'COMPLIANCE' | 'URGENT'
 export type NoticeAudienceType = 'ALL_EMPLOYEES' | 'DEPARTMENTS' | 'OFFICE_LOCATIONS' | 'SPECIFIC_EMPLOYEES'
+export type AttendanceImportMode = 'ATTENDANCE_SHEET' | 'PUNCH_SHEET'
+export type AttendanceImportStatus = 'FAILED' | 'READY_FOR_REVIEW' | 'POSTED'
 
 export interface LinkedOrganisationAddress {
   id: string
@@ -441,6 +443,28 @@ export interface NoticeItem {
   department_ids: string[]
   office_location_ids: string[]
   employee_ids: string[]
+  created_at: string
+  modified_at: string
+}
+
+export interface AttendanceImportErrorPreview {
+  row_number: number
+  employee_code: string
+  message: string
+}
+
+export interface AttendanceImportJob {
+  id: string
+  mode: AttendanceImportMode
+  status: AttendanceImportStatus
+  original_filename: string
+  uploaded_by_email: string | null
+  total_rows: number
+  valid_rows: number
+  error_rows: number
+  posted_rows: number
+  normalized_file_available: boolean
+  error_preview: AttendanceImportErrorPreview[]
   created_at: string
   modified_at: string
 }

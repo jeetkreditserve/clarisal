@@ -6,6 +6,7 @@ from decimal import Decimal
 
 from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
+from django.db.models import Sum
 from django.utils import timezone
 
 from apps.approvals.models import ApprovalRequestKind, ApprovalRun, ApprovalRunStatus
@@ -33,17 +34,58 @@ from .models import (
 )
 
 ZERO = Decimal('0.00')
-DEFAULT_FISCAL_YEAR = '2026-2027'
+
+# India statutory constants
+INDIA_STANDARD_DEDUCTION = Decimal('75000.00')   # FY2024-25+ new regime
+INDIA_CESS_RATE = Decimal('0.04')                 # 4% health & education cess
+PF_RATE = Decimal('0.12')                         # 12% of basic
+ESI_EMPLOYEE_RATE = Decimal('0.0075')             # 0.75% of gross
+ESI_EMPLOYER_RATE = Decimal('0.0325')             # 3.25% of gross
+ESI_WAGE_CEILING = Decimal('21000.00')            # ESI applies when gross ≤ ₹21,000
+
+# Professional Tax — Maharashtra slab (most common; extend per state as needed)
+_PT_MAHARASHTRA_SLABS = [
+    (Decimal('10000.00'), Decimal('0.00')),    # < 10000: nil
+    (Decimal('15000.00'), Decimal('150.00')), # 10000–14999: ₹150/month
+    (None, Decimal('200.00')),                # ≥ 15000: ₹200/month
+]
+
+
+def _professional_tax_monthly(gross_monthly, state_code='MH'):
+    """Return monthly Professional Tax for the given gross and state."""
+    if state_code != 'MH':
+        return ZERO
+    for ceiling, amount in _PT_MAHARASHTRA_SLABS:
+        if ceiling is None or gross_monthly < ceiling:
+            return amount
+    return ZERO
+
+
+def _current_fiscal_year():
+    today = date.today()
+    if today.month >= 4:
+        return f'{today.year}-{today.year + 1}'
+    return f'{today.year - 1}-{today.year}'
+
+
 DEFAULT_COMPONENTS = [
     {'code': 'BASIC', 'name': 'Basic Pay', 'component_type': PayrollComponentType.EARNING, 'is_taxable': True},
     {'code': 'HRA', 'name': 'House Rent Allowance', 'component_type': PayrollComponentType.EARNING, 'is_taxable': True},
+    {'code': 'SPECIAL_ALLOWANCE', 'name': 'Special Allowance', 'component_type': PayrollComponentType.EARNING, 'is_taxable': True},
     {'code': 'PF_EMPLOYEE', 'name': 'Employee PF', 'component_type': PayrollComponentType.EMPLOYEE_DEDUCTION, 'is_taxable': False},
     {'code': 'PF_EMPLOYER', 'name': 'Employer PF', 'component_type': PayrollComponentType.EMPLOYER_CONTRIBUTION, 'is_taxable': False},
+    {'code': 'ESI_EMPLOYEE', 'name': 'ESI (Employee)', 'component_type': PayrollComponentType.EMPLOYEE_DEDUCTION, 'is_taxable': False},
+    {'code': 'ESI_EMPLOYER', 'name': 'ESI (Employer)', 'component_type': PayrollComponentType.EMPLOYER_CONTRIBUTION, 'is_taxable': False},
+    {'code': 'PROFESSIONAL_TAX', 'name': 'Professional Tax', 'component_type': PayrollComponentType.EMPLOYEE_DEDUCTION, 'is_taxable': False},
 ]
 DEFAULT_TAX_SLABS = [
+    # India new regime FY2024-25 (7-slab structure)
     {'min_income': Decimal('0.00'), 'max_income': Decimal('300000.00'), 'rate_percent': Decimal('0.00')},
-    {'min_income': Decimal('300000.00'), 'max_income': Decimal('700000.00'), 'rate_percent': Decimal('10.00')},
-    {'min_income': Decimal('700000.00'), 'max_income': None, 'rate_percent': Decimal('20.00')},
+    {'min_income': Decimal('300000.00'), 'max_income': Decimal('700000.00'), 'rate_percent': Decimal('5.00')},
+    {'min_income': Decimal('700000.00'), 'max_income': Decimal('1000000.00'), 'rate_percent': Decimal('10.00')},
+    {'min_income': Decimal('1000000.00'), 'max_income': Decimal('1200000.00'), 'rate_percent': Decimal('15.00')},
+    {'min_income': Decimal('1200000.00'), 'max_income': Decimal('1500000.00'), 'rate_percent': Decimal('20.00')},
+    {'min_income': Decimal('1500000.00'), 'max_income': None, 'rate_percent': Decimal('30.00')},
 ]
 
 
@@ -87,16 +129,131 @@ def _get_or_create_component(organisation, payload):
     return component
 
 
+def _fmt_inr(val):
+    """Format a numeric string or Decimal as ₹XX,XX,XXX.XX (Indian notation)."""
+    try:
+        amount = Decimal(str(val)).quantize(Decimal('0.01'))
+    except Exception:
+        return str(val)
+    negative = amount < 0
+    amount = abs(amount)
+    int_part, dec_part = f'{amount:.2f}'.split('.')
+    # Indian grouping: last 3 digits, then groups of 2
+    if len(int_part) > 3:
+        last3 = int_part[-3:]
+        rest = int_part[:-3]
+        groups = []
+        while rest:
+            groups.append(rest[-2:])
+            rest = rest[:-2]
+        int_formatted = ','.join(reversed(groups)) + ',' + last3
+    else:
+        int_formatted = int_part
+    sign = '-' if negative else ''
+    return f'{sign}₹{int_formatted}.{dec_part}'
+
+
 def _build_rendered_payslip(snapshot):
-    lines = [
-        f"Payslip: {snapshot['period_label']}",
-        f"Employee: {snapshot['employee_name']}",
-        f"Gross Pay: {snapshot['gross_pay']}",
-        f"Income Tax: {snapshot['income_tax']}",
-        f"Total Deductions: {snapshot['total_deductions']}",
-        f"Net Pay: {snapshot['net_pay']}",
+    """
+    Generate a structured, readable payslip text from the finalized snapshot.
+    Mimics the layout of Zoho Payroll / Keka payslips for easy reading.
+    """
+    SEP = '─' * 60
+    THIN = '·' * 60
+
+    def row(label, amount, indent=2):
+        label_str = (' ' * indent) + label
+        amount_str = _fmt_inr(amount)
+        return f'{label_str:<44}{amount_str:>16}'
+
+    period = snapshot.get('period_label', '')
+    emp_name = snapshot.get('employee_name', '')
+    paid_days = snapshot.get('paid_days', '')
+    total_days = snapshot.get('total_days_in_period', '')
+
+    out = [
+        SEP,
+        f'{"PAYSLIP":^60}',
+        f'{"Period: " + period:^60}',
+        SEP,
+        f'  Employee : {emp_name}',
     ]
-    return '\n'.join(lines)
+    if paid_days and total_days and str(paid_days) != str(total_days):
+        out.append(f'  Paid Days: {paid_days} of {total_days} days')
+    out.append(THIN)
+
+    # Earnings section
+    lines = snapshot.get('lines', [])
+    earnings = [l for l in lines if l.get('component_type') == 'EARNING']
+    if earnings:
+        out.append('  EARNINGS')
+        for e in earnings:
+            out.append(row(e.get('component_name', ''), e.get('monthly_amount', '0')))
+    out.append(row('Gross Salary', snapshot.get('gross_pay', '0')))
+    out.append(THIN)
+
+    # Deductions section
+    emp_deductions = [
+        l for l in lines
+        if l.get('component_type') == 'EMPLOYEE_DEDUCTION'
+        and l.get('component_code') not in ('', None)
+    ]
+    out.append('  DEDUCTIONS')
+    for d in emp_deductions:
+        label = d.get('component_name', '')
+        if d.get('auto_calculated'):
+            label += ' *'
+        out.append(row(label, d.get('monthly_amount', '0')))
+
+    # LOP
+    lop_days = snapshot.get('lop_days', '0')
+    lop_deduction = snapshot.get('lop_deduction', '0')
+    try:
+        if Decimal(str(lop_deduction)) > ZERO:
+            out.append(row(f'Loss of Pay ({lop_days} day(s))', lop_deduction))
+    except Exception:
+        pass
+
+    # TDS line
+    out.append(row('TDS (Income Tax)', snapshot.get('income_tax', '0')))
+    out.append(row('Total Deductions', snapshot.get('total_deductions', '0')))
+    out.append(THIN)
+
+    # Employer contributions
+    emp_contributions = [
+        l for l in lines
+        if l.get('component_type') == 'EMPLOYER_CONTRIBUTION'
+        and l.get('component_code') not in ('', None)
+    ]
+    if emp_contributions:
+        out.append('  EMPLOYER CONTRIBUTIONS  (not deducted from your pay)')
+        for c in emp_contributions:
+            label = c.get('component_name', '')
+            if c.get('auto_calculated'):
+                label += ' *'
+            out.append(row(label, c.get('monthly_amount', '0')))
+        out.append(THIN)
+
+    # Tax computation detail
+    ann_gross = snapshot.get('annual_taxable_gross')
+    if ann_gross:
+        out.append('  TAX COMPUTATION (Annual)')
+        out.append(row('  Gross Taxable Income', ann_gross))
+        out.append(row('  Less: Standard Deduction', snapshot.get('annual_standard_deduction', '0')))
+        out.append(row('  Net Taxable Income', snapshot.get('annual_taxable_after_sd', '0')))
+        out.append(row('  Income Tax (as per slabs)', snapshot.get('annual_tax_before_cess', '0')))
+        out.append(row('  Health & Education Cess (4%)', snapshot.get('annual_cess', '0')))
+        out.append(row('  Total Annual Tax (TDS)', snapshot.get('annual_tax_total', '0')))
+        out.append(THIN)
+
+    # Net pay — prominent
+    out.append(SEP)
+    net_str = _fmt_inr(snapshot.get('net_pay', '0'))
+    out.append(f'  NET PAY (Take-Home){net_str:>40}')
+    out.append(SEP)
+    out.append('  * auto-calculated statutory component')
+
+    return '\n'.join(out)
 
 
 def _summarize_pay_run_exceptions(pay_run):
@@ -157,7 +314,7 @@ def _ensure_global_default_tax_master(actor=None):
     if tax_slab_set:
         return tax_slab_set
     return create_tax_slab_set(
-        fiscal_year=DEFAULT_FISCAL_YEAR,
+        fiscal_year=_current_fiscal_year(),
         name='Default India Payroll Master',
         country_code='IN',
         slabs=DEFAULT_TAX_SLABS,
@@ -450,15 +607,24 @@ def calculate_pay_run(pay_run, *, actor=None):
         cancel_approval_run(pay_run.approval_run, actor=actor)
         pay_run.approval_run = None
 
+    period_start = date(pay_run.period_year, pay_run.period_month, 1)
     period_end = date(pay_run.period_year, pay_run.period_month, monthrange(pay_run.period_year, pay_run.period_month)[1])
+    total_days_in_period = period_end.day
     fiscal_year = _fiscal_year_for_period(pay_run.period_year, pay_run.period_month)
     tax_slab_set = _get_active_tax_slab_set(pay_run.organisation, fiscal_year)
     if tax_slab_set is None:
         raise ValueError('No active tax slab set is configured for this payroll period.')
 
+    # Determine org state code for Professional Tax (default Maharashtra)
+    from apps.timeoff.models import LeaveRequest, LeaveRequestStatus
+    org_state_code = getattr(pay_run.organisation, 'state_code', 'MH') or 'MH'
+
     with transaction.atomic():
         pay_run.items.all().delete()
-        employees = Employee.objects.filter(organisation=pay_run.organisation, status=EmployeeStatus.ACTIVE).select_related('user')
+        employees = Employee.objects.filter(
+            organisation=pay_run.organisation,
+            status=EmployeeStatus.ACTIVE,
+        ).select_related('user', 'office_location')
         for employee in employees:
             assignment = get_effective_compensation_assignment(employee, period_end)
             if assignment is None:
@@ -471,33 +637,196 @@ def calculate_pay_run(pay_run, *, actor=None):
                 )
                 continue
 
-            gross_pay = ZERO
-            employee_deductions = ZERO
-            employer_contributions = ZERO
+            # ── Step 1: collect raw component amounts ────────────────────────
+            raw_gross = ZERO
+            raw_employee_deductions = ZERO
+            raw_employer_contributions = ZERO
             taxable_monthly = ZERO
+            basic_pay = ZERO
+            has_pf_employee_line = False
+            has_pf_employer_line = False
             lines_snapshot = []
-            for line in assignment.lines.all():
+
+            for line in assignment.lines.select_related('component').order_by('sequence', 'created_at'):
                 amount = _normalize_decimal(line.monthly_amount)
-                lines_snapshot.append(
-                    {
+                comp_code = line.component.code if line.component_id else ''
+
+                if comp_code == 'BASIC' and line.component_type == PayrollComponentType.EARNING:
+                    basic_pay = amount
+                if comp_code == 'PF_EMPLOYEE':
+                    has_pf_employee_line = True
+                    # Skip the template amount — we'll replace with formula below
+                    lines_snapshot.append({
+                        'component_code': comp_code,
+                        'component_name': line.component_name,
+                        'component_type': line.component_type,
+                        'monthly_amount': str(amount),  # template value (for reference)
+                        'is_taxable': line.is_taxable,
+                        'auto_calculated': False,
+                        'template_amount': str(amount),
+                    })
+                    continue
+                if comp_code == 'PF_EMPLOYER':
+                    has_pf_employer_line = True
+                    lines_snapshot.append({
+                        'component_code': comp_code,
                         'component_name': line.component_name,
                         'component_type': line.component_type,
                         'monthly_amount': str(amount),
                         'is_taxable': line.is_taxable,
-                    }
-                )
+                        'auto_calculated': False,
+                        'template_amount': str(amount),
+                    })
+                    continue
+
+                lines_snapshot.append({
+                    'component_code': comp_code,
+                    'component_name': line.component_name,
+                    'component_type': line.component_type,
+                    'monthly_amount': str(amount),
+                    'is_taxable': line.is_taxable,
+                    'auto_calculated': False,
+                })
+
                 if line.component_type in [PayrollComponentType.EARNING, PayrollComponentType.REIMBURSEMENT]:
-                    gross_pay += amount
+                    raw_gross += amount
                     if line.is_taxable:
                         taxable_monthly += amount
                 elif line.component_type == PayrollComponentType.EMPLOYEE_DEDUCTION:
-                    employee_deductions += amount
+                    raw_employee_deductions += amount
                 elif line.component_type == PayrollComponentType.EMPLOYER_CONTRIBUTION:
-                    employer_contributions += amount
+                    raw_employer_contributions += amount
 
-            annual_tax = _calculate_annual_tax(tax_slab_set, taxable_monthly * Decimal('12.00'))
-            income_tax = (annual_tax / Decimal('12.00')).quantize(Decimal('0.01'))
-            total_deductions = (employee_deductions + income_tax).quantize(Decimal('0.01'))
+            gross_pay = raw_gross
+
+            # ── Step 2: PF auto-calculation (12% of basic) ──────────────────
+            auto_pf = ZERO
+            if basic_pay > ZERO:
+                auto_pf = (basic_pay * PF_RATE).quantize(Decimal('0.01'))
+                raw_employee_deductions += auto_pf
+                raw_employer_contributions += auto_pf
+                # Update PF lines in snapshot with auto-calculated amounts
+                for snap_line in lines_snapshot:
+                    if snap_line.get('component_code') == 'PF_EMPLOYEE':
+                        snap_line['monthly_amount'] = str(auto_pf)
+                        snap_line['auto_calculated'] = True
+                    elif snap_line.get('component_code') == 'PF_EMPLOYER':
+                        snap_line['monthly_amount'] = str(auto_pf)
+                        snap_line['auto_calculated'] = True
+                if not has_pf_employee_line:
+                    lines_snapshot.append({
+                        'component_code': 'PF_EMPLOYEE',
+                        'component_name': 'Employee PF (12% of Basic)',
+                        'component_type': PayrollComponentType.EMPLOYEE_DEDUCTION,
+                        'monthly_amount': str(auto_pf),
+                        'is_taxable': False,
+                        'auto_calculated': True,
+                    })
+                if not has_pf_employer_line:
+                    lines_snapshot.append({
+                        'component_code': 'PF_EMPLOYER',
+                        'component_name': 'Employer PF (12% of Basic)',
+                        'component_type': PayrollComponentType.EMPLOYER_CONTRIBUTION,
+                        'monthly_amount': str(auto_pf),
+                        'is_taxable': False,
+                        'auto_calculated': True,
+                    })
+
+            # ── Step 3: ESI auto-calculation ─────────────────────────────────
+            esi_employee = ZERO
+            esi_employer = ZERO
+            if gross_pay <= ESI_WAGE_CEILING:
+                esi_employee = (gross_pay * ESI_EMPLOYEE_RATE).quantize(Decimal('0.01'))
+                esi_employer = (gross_pay * ESI_EMPLOYER_RATE).quantize(Decimal('0.01'))
+                raw_employee_deductions += esi_employee
+                raw_employer_contributions += esi_employer
+                lines_snapshot.append({
+                    'component_code': 'ESI_EMPLOYEE',
+                    'component_name': 'ESI - Employee (0.75%)',
+                    'component_type': PayrollComponentType.EMPLOYEE_DEDUCTION,
+                    'monthly_amount': str(esi_employee),
+                    'is_taxable': False,
+                    'auto_calculated': True,
+                })
+                lines_snapshot.append({
+                    'component_code': 'ESI_EMPLOYER',
+                    'component_name': 'ESI - Employer (3.25%)',
+                    'component_type': PayrollComponentType.EMPLOYER_CONTRIBUTION,
+                    'monthly_amount': str(esi_employer),
+                    'is_taxable': False,
+                    'auto_calculated': True,
+                })
+
+            # ── Step 4: Professional Tax ─────────────────────────────────────
+            employee_state = 'MH'
+            if employee.office_location_id and hasattr(employee.office_location, 'state_code'):
+                employee_state = employee.office_location.state_code or org_state_code
+            pt_monthly = _professional_tax_monthly(gross_pay, employee_state)
+            if pt_monthly > ZERO:
+                raw_employee_deductions += pt_monthly
+                lines_snapshot.append({
+                    'component_code': 'PROFESSIONAL_TAX',
+                    'component_name': 'Professional Tax',
+                    'component_type': PayrollComponentType.EMPLOYEE_DEDUCTION,
+                    'monthly_amount': str(pt_monthly),
+                    'is_taxable': False,
+                    'auto_calculated': True,
+                })
+
+            employee_deductions = raw_employee_deductions
+            employer_contributions = raw_employer_contributions
+
+            # ── Step 5: Pro-ration for joining or exit month ─────────────────
+            joining = employee.date_of_joining
+            exit_date = employee.date_of_exit
+            paid_days = total_days_in_period
+
+            if joining and period_start <= joining <= period_end:
+                # New joiner — pay from joining date to end of month
+                paid_days = (period_end - joining).days + 1
+            elif exit_date and period_start <= exit_date < period_end:
+                # Exiting employee — pay from start of month to exit date
+                paid_days = (exit_date - period_start).days + 1
+
+            if paid_days < total_days_in_period:
+                prorate_factor = Decimal(paid_days) / Decimal(total_days_in_period)
+                gross_pay = (gross_pay * prorate_factor).quantize(Decimal('0.01'))
+                taxable_monthly = (taxable_monthly * prorate_factor).quantize(Decimal('0.01'))
+                employee_deductions = (employee_deductions * prorate_factor).quantize(Decimal('0.01'))
+                employer_contributions = (employer_contributions * prorate_factor).quantize(Decimal('0.01'))
+                auto_pf = (auto_pf * prorate_factor).quantize(Decimal('0.01'))
+                esi_employee = (esi_employee * prorate_factor).quantize(Decimal('0.01'))
+                esi_employer = (esi_employer * prorate_factor).quantize(Decimal('0.01'))
+                pt_monthly = (pt_monthly * prorate_factor).quantize(Decimal('0.01'))
+            else:
+                prorate_factor = Decimal('1.00')
+
+            # ── Step 6: LOP deduction (approved unpaid leave) ────────────────
+            lop_result = LeaveRequest.objects.filter(
+                employee=employee,
+                leave_type__is_loss_of_pay=True,
+                status=LeaveRequestStatus.APPROVED,
+                start_date__gte=period_start,
+                start_date__lte=period_end,
+            ).aggregate(total=Sum('total_units'))
+            lop_days = _normalize_decimal(lop_result['total']) or ZERO
+            lop_deduction = ZERO
+            if lop_days > ZERO and gross_pay > ZERO and total_days_in_period > 0:
+                daily_gross = (gross_pay / Decimal(total_days_in_period)).quantize(Decimal('0.01'))
+                lop_deduction = (daily_gross * lop_days).quantize(Decimal('0.01'))
+                lop_deduction = min(lop_deduction, gross_pay)
+
+            # ── Step 7: Income tax with standard deduction + cess ────────────
+            annual_taxable_gross = taxable_monthly * Decimal('12.00')
+            annual_standard_deduction = INDIA_STANDARD_DEDUCTION
+            annual_taxable_after_sd = max(ZERO, annual_taxable_gross - annual_standard_deduction)
+            annual_tax_before_cess = _calculate_annual_tax(tax_slab_set, annual_taxable_after_sd)
+            annual_cess = (annual_tax_before_cess * INDIA_CESS_RATE).quantize(Decimal('0.01'))
+            annual_tax_total = (annual_tax_before_cess + annual_cess).quantize(Decimal('0.01'))
+            income_tax = (annual_tax_total / Decimal('12.00')).quantize(Decimal('0.01'))
+
+            # ── Step 8: Final totals ─────────────────────────────────────────
+            total_deductions = (employee_deductions + income_tax + lop_deduction).quantize(Decimal('0.01'))
             net_pay = (gross_pay - total_deductions).quantize(Decimal('0.01'))
 
             PayrollRunItem.objects.create(
@@ -514,6 +843,27 @@ def calculate_pay_run(pay_run, *, actor=None):
                     'assignment_id': str(assignment.id),
                     'readiness': _employee_payroll_snapshot(employee),
                     'lines': lines_snapshot,
+                    # Period detail
+                    'period_start': str(period_start),
+                    'period_end': str(period_end),
+                    'paid_days': paid_days,
+                    'total_days_in_period': total_days_in_period,
+                    'pro_rate_factor': str(prorate_factor),
+                    # Auto-calculated statutory
+                    'auto_pf': str(auto_pf),
+                    'esi_employee': str(esi_employee),
+                    'esi_employer': str(esi_employer),
+                    'pt_monthly': str(pt_monthly),
+                    # LOP
+                    'lop_days': str(lop_days),
+                    'lop_deduction': str(lop_deduction),
+                    # Tax working
+                    'annual_taxable_gross': str(annual_taxable_gross),
+                    'annual_standard_deduction': str(annual_standard_deduction),
+                    'annual_taxable_after_sd': str(annual_taxable_after_sd),
+                    'annual_tax_before_cess': str(annual_tax_before_cess),
+                    'annual_cess': str(annual_cess),
+                    'annual_tax_total': str(annual_tax_total),
                 },
             )
 
@@ -567,9 +917,11 @@ def finalize_pay_run(pay_run, *, actor=None, skip_approval=False):
 
     with transaction.atomic():
         for item in pay_run.items.select_related('employee__user').filter(status=PayrollRunItemStatus.READY):
+            calc = item.snapshot  # carries all calculation detail from calculate_pay_run
             snapshot = {
                 'employee_id': str(item.employee_id),
                 'employee_name': item.employee.user.full_name,
+                'employee_code': item.employee.employee_code or '',
                 'period_year': pay_run.period_year,
                 'period_month': pay_run.period_month,
                 'period_label': date(pay_run.period_year, pay_run.period_month, 1).strftime('%B %Y'),
@@ -579,7 +931,21 @@ def finalize_pay_run(pay_run, *, actor=None, skip_approval=False):
                 'income_tax': str(item.income_tax),
                 'total_deductions': str(item.total_deductions),
                 'net_pay': str(item.net_pay),
-                'lines': item.snapshot.get('lines', []),
+                'lines': calc.get('lines', []),
+                # Period / pro-ration detail
+                'paid_days': calc.get('paid_days', ''),
+                'total_days_in_period': calc.get('total_days_in_period', ''),
+                'pro_rate_factor': calc.get('pro_rate_factor', '1.00'),
+                # LOP
+                'lop_days': calc.get('lop_days', '0'),
+                'lop_deduction': calc.get('lop_deduction', '0'),
+                # Tax working
+                'annual_taxable_gross': calc.get('annual_taxable_gross', ''),
+                'annual_standard_deduction': calc.get('annual_standard_deduction', ''),
+                'annual_taxable_after_sd': calc.get('annual_taxable_after_sd', ''),
+                'annual_tax_before_cess': calc.get('annual_tax_before_cess', ''),
+                'annual_cess': calc.get('annual_cess', ''),
+                'annual_tax_total': calc.get('annual_tax_total', ''),
             }
             Payslip.objects.update_or_create(
                 pay_run_item=item,

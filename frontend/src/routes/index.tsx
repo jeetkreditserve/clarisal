@@ -21,6 +21,7 @@ import { PayrollPage } from '@/pages/org/PayrollPage'
 import { OrgAuditPage } from '@/pages/org/AuditPage'
 import { LocationsPage } from '@/pages/org/LocationsPage'
 import { DepartmentsPage } from '@/pages/org/DepartmentsPage'
+import { AttendanceImportsPage } from '@/pages/org/AttendanceImportsPage'
 import { EmployeesPage } from '@/pages/org/EmployeesPage'
 import { EmployeeDetailPage } from '@/pages/org/EmployeeDetailPage'
 import { EmployeeDashboardPage } from '@/pages/employee/DashboardPage'
@@ -117,6 +118,7 @@ export const router = createBrowserRouter([
           { path: '/org/setup', element: <OrgSetupPage /> },
           { path: '/org/dashboard', element: <OrgDashboardPage /> },
           { path: '/org/profile', element: <OrgProfilePage /> },
+          { path: '/org/attendance', element: <AttendanceImportsPage /> },
           { path: '/org/payroll', element: <PayrollPage /> },
           { path: '/org/locations', element: <LocationsPage /> },
           { path: '/org/departments', element: <DepartmentsPage /> },
