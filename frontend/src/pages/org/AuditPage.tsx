@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 
 import { AppDialog } from '@/components/ui/AppDialog'
 import { AuditTimeline } from '@/components/ui/AuditTimeline'
@@ -7,6 +8,7 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { SkeletonPageHeader, SkeletonTable } from '@/components/ui/Skeleton'
 import { useOrgAuditLogs } from '@/hooks/useOrgAdmin'
+import { useCtAuditLogs } from '@/hooks/useCtOrganisations'
 import { formatDateTime, startCase } from '@/lib/format'
 import type { AuditLogEntry } from '@/types/audit'
 
@@ -29,6 +31,10 @@ function buildAuditCsv(entries: AuditLogEntry[]) {
 }
 
 export function OrgAuditPage() {
+  const navigate = useNavigate()
+  const { organisationId } = useParams()
+  const isCtMode = Boolean(organisationId)
+  const basePath = isCtMode ? `/ct/organisations/${organisationId}` : '/org'
   const [search, setSearch] = useState('')
   const [moduleFilter, setModuleFilter] = useState('')
   const [targetTypeFilter, setTargetTypeFilter] = useState('')
@@ -37,7 +43,8 @@ export function OrgAuditPage() {
   const [dateTo, setDateTo] = useState('')
   const [page, setPage] = useState(1)
   const [selectedEntry, setSelectedEntry] = useState<AuditLogEntry | null>(null)
-  const { data, isLoading } = useOrgAuditLogs({
+  const queryParams = {
+    ...(isCtMode ? { organisation_id: organisationId } : {}),
     search: search || undefined,
     module: moduleFilter || undefined,
     target_type: targetTypeFilter || undefined,
@@ -45,31 +52,35 @@ export function OrgAuditPage() {
     date_from: dateFrom || undefined,
     date_to: dateTo || undefined,
     page,
-  })
+  }
+  const { data, isLoading } = useCtAuditLogs(queryParams, isCtMode)
+  const orgAudit = useOrgAuditLogs(isCtMode ? undefined : queryParams)
+  const resolvedData = isCtMode ? data : orgAudit.data
+  const resolvedLoading = isCtMode ? isLoading : orgAudit.isLoading
 
-  const entries = useMemo(() => data?.results ?? [], [data])
+  const resolvedEntries = useMemo(() => resolvedData?.results ?? [], [resolvedData])
   const moduleOptions = useMemo(
     () => [
       { value: '', label: 'All modules' },
-      ...Array.from(new Set(entries.map((entry) => entry.module))).map((module) => ({
+      ...Array.from(new Set(resolvedEntries.map((entry) => entry.module))).map((module) => ({
         value: module,
         label: startCase(module),
       })),
     ],
-    [entries],
+    [resolvedEntries],
   )
   const targetTypeOptions = useMemo(
     () => [
       { value: '', label: 'All targets' },
-      ...Array.from(new Set(entries.map((entry) => entry.target_type).filter(Boolean) as string[])).map((targetType) => ({
+      ...Array.from(new Set(resolvedEntries.map((entry) => entry.target_type).filter(Boolean) as string[])).map((targetType) => ({
         value: targetType,
         label: startCase(targetType),
       })),
     ],
-    [entries],
+    [resolvedEntries],
   )
 
-  if (isLoading) {
+  if (resolvedLoading) {
     return (
       <div className="space-y-5">
         <SkeletonPageHeader />
@@ -81,25 +92,32 @@ export function OrgAuditPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Audit"
+        eyebrow={isCtMode ? 'Control Tower • Audit' : 'Audit'}
         title="Audit explorer"
         description="Search, filter, inspect, and export organisation-level activity across configuration, invitations, profile updates, and operational events."
         actions={
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={() => {
-              const blob = new Blob([buildAuditCsv(entries)], { type: 'text/csv;charset=utf-8;' })
-              const url = URL.createObjectURL(blob)
-              const link = document.createElement('a')
-              link.href = url
-              link.download = `clarisal-audit-${new Date().toISOString().slice(0, 10)}.csv`
-              link.click()
-              URL.revokeObjectURL(url)
-            }}
-          >
-            Export current page
-          </button>
+          <>
+            {isCtMode ? (
+              <button type="button" className="btn-secondary" onClick={() => navigate(basePath)}>
+                Back to organisation
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => {
+                const blob = new Blob([buildAuditCsv(resolvedEntries)], { type: 'text/csv;charset=utf-8;' })
+                const url = URL.createObjectURL(blob)
+                const link = document.createElement('a')
+                link.href = url
+                link.download = `clarisal-audit-${new Date().toISOString().slice(0, 10)}.csv`
+                link.click()
+                URL.revokeObjectURL(url)
+              }}
+            >
+              Export current page
+            </button>
+          </>
         }
       />
 
@@ -195,18 +213,18 @@ export function OrgAuditPage() {
         description="Select an event to inspect the full payload and trace what changed."
         action={
           <div className="flex items-center gap-2 text-sm text-[hsl(var(--muted-foreground))]">
-            <span>{data?.count ?? 0} event(s)</span>
-            <button type="button" className="btn-secondary" onClick={() => setPage((current) => Math.max(current - 1, 1))} disabled={!data?.previous}>
+            <span>{resolvedData?.count ?? 0} event(s)</span>
+            <button type="button" className="btn-secondary" onClick={() => setPage((current) => Math.max(current - 1, 1))} disabled={!resolvedData?.previous}>
               Previous
             </button>
-            <button type="button" className="btn-secondary" onClick={() => setPage((current) => current + 1)} disabled={!data?.next}>
+            <button type="button" className="btn-secondary" onClick={() => setPage((current) => current + 1)} disabled={!resolvedData?.next}>
               Next
             </button>
           </div>
         }
       >
         <AuditTimeline
-          entries={entries}
+          entries={resolvedEntries}
           activeEntryId={selectedEntry?.id ?? null}
           onEntryClick={setSelectedEntry}
           emptyTitle="No audit events match the current filters."

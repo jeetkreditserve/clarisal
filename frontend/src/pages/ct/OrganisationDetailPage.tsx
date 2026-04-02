@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   Activity,
   ArrowLeft,
@@ -609,6 +609,7 @@ function createHolidayFormState(calendar?: HolidayCalendar) {
 }
 
 export function OrganisationDetailPage() {
+  const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
   const organisationId = id ?? ''
   const [searchParams, setSearchParams] = useSearchParams()
@@ -2033,14 +2034,14 @@ export function OrganisationDetailPage() {
         description="Leave cycles, plans, and on-duty policies visible to Control Tower."
         action={
           <div className="flex flex-wrap gap-2">
-            <button type="button" className="btn-secondary" onClick={() => openLeaveCycleDialog()}>
-              Add cycle
+            <button type="button" className="btn-secondary" onClick={() => navigate(`/ct/organisations/${id}/leave-cycles`)}>
+              Manage cycles
             </button>
-            <button type="button" className="btn-secondary" onClick={() => openLeavePlanDialog()}>
-              Add plan
+            <button type="button" className="btn-secondary" onClick={() => navigate(`/ct/organisations/${id}/leave-plans`)}>
+              Manage plans
             </button>
-            <button type="button" className="btn-primary" onClick={() => openOnDutyPolicyDialog()}>
-              Add OD policy
+            <button type="button" className="btn-primary" onClick={() => navigate(`/ct/organisations/${id}/on-duty-policies`)}>
+              Manage OD policies
             </button>
           </div>
         }
@@ -2058,9 +2059,14 @@ export function OrganisationDetailPage() {
                       {cycle.is_default ? ' • Default' : ''}
                       {cycle.is_active ? ' • Active' : ' • Inactive'}
                     </p>
-                    <button type="button" className="btn-secondary" onClick={() => openLeaveCycleDialog(cycle)}>
-                      Edit
-                    </button>
+                    <div className="flex flex-wrap gap-2">
+                      <button type="button" className="btn-secondary" onClick={() => openLeaveCycleDialog(cycle)}>
+                        Quick edit
+                      </button>
+                      <button type="button" className="btn-secondary" onClick={() => navigate(`/ct/organisations/${id}/leave-cycles`)}>
+                        Open module
+                      </button>
+                    </div>
                   </div>
                 ))
               ) : (
@@ -2074,9 +2080,14 @@ export function OrganisationDetailPage() {
                     <p>
                       {plan.name} • {plan.leave_cycle?.name || 'No cycle'} • {plan.leave_types.length} leave types
                     </p>
-                    <button type="button" className="btn-secondary" onClick={() => openLeavePlanDialog(plan)}>
-                      Edit
-                    </button>
+                    <div className="flex flex-wrap gap-2">
+                      <button type="button" className="btn-secondary" onClick={() => openLeavePlanDialog(plan)}>
+                        Quick edit
+                      </button>
+                      <button type="button" className="btn-secondary" onClick={() => navigate(`/ct/organisations/${id}/leave-plans/${plan.id}`)}>
+                        Open builder
+                      </button>
+                    </div>
                   </div>
                 ))
               ) : (
@@ -2092,9 +2103,14 @@ export function OrganisationDetailPage() {
                       {policy.is_default ? ' • Default' : ''}
                       {policy.is_active ? ' • Active' : ' • Inactive'}
                     </p>
-                    <button type="button" className="btn-secondary" onClick={() => openOnDutyPolicyDialog(policy)}>
-                      Edit
-                    </button>
+                    <div className="flex flex-wrap gap-2">
+                      <button type="button" className="btn-secondary" onClick={() => openOnDutyPolicyDialog(policy)}>
+                        Quick edit
+                      </button>
+                      <button type="button" className="btn-secondary" onClick={() => navigate(`/ct/organisations/${id}/on-duty-policies/${policy.id}`)}>
+                        Open builder
+                      </button>
+                    </div>
                   </div>
                 ))
               ) : (
@@ -2110,11 +2126,11 @@ export function OrganisationDetailPage() {
         description="Approval workflow routing and employee noticeboard visibility from Control Tower."
         action={
           <div className="flex flex-wrap gap-2">
-            <button type="button" className="btn-secondary" onClick={() => openWorkflowDialog()}>
-              Add workflow
+            <button type="button" className="btn-secondary" onClick={() => navigate(`/ct/organisations/${id}/approval-workflows`)}>
+              Manage workflows
             </button>
-            <button type="button" className="btn-primary" onClick={() => openNoticeDialog()}>
-              Add notice
+            <button type="button" className="btn-primary" onClick={() => navigate(`/ct/organisations/${id}/notices`)}>
+              Manage notices
             </button>
           </div>
         }
@@ -2132,9 +2148,14 @@ export function OrganisationDetailPage() {
                       {workflow.is_default ? ' • Default' : ''}
                       {workflow.is_active ? ' • Active' : ' • Inactive'}
                     </p>
-                    <button type="button" className="btn-secondary" onClick={() => openWorkflowDialog(workflow)}>
-                      Edit
-                    </button>
+                    <div className="flex flex-wrap gap-2">
+                      <button type="button" className="btn-secondary" onClick={() => openWorkflowDialog(workflow)}>
+                        Quick edit
+                      </button>
+                      <button type="button" className="btn-secondary" onClick={() => navigate(`/ct/organisations/${id}/approval-workflows/${workflow.id}`)}>
+                        Open builder
+                      </button>
+                    </div>
                   </div>
                 ))
               ) : (
@@ -2151,7 +2172,10 @@ export function OrganisationDetailPage() {
                     </p>
                     <div className="flex flex-wrap gap-2">
                       <button type="button" className="btn-secondary" onClick={() => openNoticeDialog(notice)}>
-                        Edit
+                        Quick edit
+                      </button>
+                      <button type="button" className="btn-secondary" onClick={() => navigate(`/ct/organisations/${id}/notices/${notice.id}`)}>
+                        Open builder
                       </button>
                       {notice.status !== 'PUBLISHED' ? (
                         <button type="button" className="btn-primary" onClick={() => void handlePublishNotice(notice.id)}>
@@ -2172,7 +2196,15 @@ export function OrganisationDetailPage() {
   )
 
   const renderAuditTab = () => (
-    <SectionCard title="Audit timeline" description="Complete organisation-level audit activity visible to Control Tower.">
+    <SectionCard
+      title="Audit timeline"
+      description="Complete organisation-level audit activity visible to Control Tower."
+      action={
+        <button type="button" className="btn-secondary" onClick={() => navigate(`/ct/organisations/${id}/audit`)}>
+          Open full explorer
+        </button>
+      }
+    >
       <AuditTimeline
         entries={auditLogs?.results}
         emptyTitle="No audit activity yet"

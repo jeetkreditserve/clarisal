@@ -18,6 +18,12 @@ import {
   useUpdateApprovalWorkflow,
 } from '@/hooks/useOrgAdmin'
 import {
+  useCreateCtApprovalWorkflow,
+  useCtOrgConfiguration,
+  useCtOrgEmployees,
+  useUpdateCtApprovalWorkflow,
+} from '@/hooks/useCtOrganisations'
+import {
   APPROVAL_APPROVER_TYPE_OPTIONS,
   APPROVAL_FALLBACK_TYPE_OPTIONS,
   APPROVAL_REQUEST_KIND_OPTIONS,
@@ -156,17 +162,28 @@ function buildPayload(form: WorkflowForm) {
 
 export function ApprovalWorkflowBuilderPage() {
   const navigate = useNavigate()
-  const { id } = useParams()
+  const { id, organisationId } = useParams()
   const isEditing = Boolean(id)
-  const { data: workflow, isLoading } = useApprovalWorkflow(id ?? '')
+  const isCtMode = Boolean(organisationId)
+  const basePath = isCtMode ? `/ct/organisations/${organisationId}` : '/org'
+  const { data: orgWorkflow, isLoading } = useApprovalWorkflow(id ?? '')
   const { data: departments } = useDepartments(true)
   const { data: locations } = useLocations(true)
   const { data: employees } = useEmployees({ page: 1 })
   const { data: leavePlans } = useLeavePlans()
+  const { data: configuration, isLoading: isCtLoading } = useCtOrgConfiguration(organisationId ?? '', isCtMode)
+  const { data: ctEmployees } = useCtOrgEmployees(organisationId ?? '', { page: 1 }, isCtMode)
   const createMutation = useCreateApprovalWorkflow()
   const updateMutation = useUpdateApprovalWorkflow(id ?? '')
+  const createCtMutation = useCreateCtApprovalWorkflow(organisationId ?? '')
+  const updateCtMutation = useUpdateCtApprovalWorkflow(organisationId ?? '')
   const [form, setForm] = useState<WorkflowForm>(createDefaultApprovalWorkflow() as unknown as WorkflowForm)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+  const workflow = isCtMode ? configuration?.approval_workflows.find((item) => item.id === id) : orgWorkflow
+  const resolvedDepartments = isCtMode ? configuration?.departments : departments
+  const resolvedLocations = isCtMode ? configuration?.locations : locations
+  const resolvedEmployees = isCtMode ? ctEmployees?.results : employees?.results
+  const resolvedLeavePlans = isCtMode ? configuration?.leave_plans : leavePlans
 
   useEffect(() => {
     if (workflow) {
@@ -178,16 +195,16 @@ export function ApprovalWorkflowBuilderPage() {
   }, [workflow, isEditing])
 
   const departmentOptions = useMemo(
-    () => [{ value: '', label: 'Any department' }, ...(departments ?? []).map((department) => ({ value: department.id, label: department.name }))],
-    [departments],
+    () => [{ value: '', label: 'Any department' }, ...(resolvedDepartments ?? []).map((department) => ({ value: department.id, label: department.name }))],
+    [resolvedDepartments],
   )
   const locationOptions = useMemo(
-    () => [{ value: '', label: 'Any location' }, ...(locations ?? []).map((location) => ({ value: location.id, label: location.name }))],
-    [locations],
+    () => [{ value: '', label: 'Any location' }, ...(resolvedLocations ?? []).map((location) => ({ value: location.id, label: location.name }))],
+    [resolvedLocations],
   )
   const employeeOptions = useMemo(
-    () => [{ value: '', label: 'Select employee' }, ...(employees?.results ?? []).map((employee) => ({ value: employee.id, label: employee.full_name, hint: employee.designation }))],
-    [employees],
+    () => [{ value: '', label: 'Select employee' }, ...(resolvedEmployees ?? []).map((employee) => ({ value: employee.id, label: employee.full_name, hint: employee.designation }))],
+    [resolvedEmployees],
   )
   const employmentTypeOptions = useMemo(
     () => [{ value: '', label: 'Any employment type' }, ...EMPLOYMENT_TYPE_OPTIONS.map((value) => ({ value, label: startCase(value) }))],
@@ -212,7 +229,7 @@ export function ApprovalWorkflowBuilderPage() {
   const leaveTypeOptions = useMemo(
     () => [
       { value: '', label: 'Any leave type' },
-      ...(leavePlans ?? []).flatMap((plan) =>
+      ...(resolvedLeavePlans ?? []).flatMap((plan) =>
         plan.leave_types.map((leaveType) => ({
           value: leaveType.id,
           label: leaveType.name,
@@ -220,7 +237,7 @@ export function ApprovalWorkflowBuilderPage() {
         })),
       ),
     ],
-    [leavePlans],
+    [resolvedLeavePlans],
   )
 
   const saveWorkflow = async (event: React.FormEvent) => {
@@ -229,13 +246,21 @@ export function ApprovalWorkflowBuilderPage() {
     try {
       const payload = buildPayload(form)
       if (isEditing && id) {
-        await updateMutation.mutateAsync(payload)
+        if (isCtMode && organisationId) {
+          await updateCtMutation.mutateAsync({ workflowId: id, payload })
+        } else {
+          await updateMutation.mutateAsync(payload)
+        }
         toast.success('Workflow updated.')
       } else {
-        await createMutation.mutateAsync(payload)
+        if (isCtMode && organisationId) {
+          await createCtMutation.mutateAsync(payload)
+        } else {
+          await createMutation.mutateAsync(payload)
+        }
         toast.success('Workflow created.')
       }
-      navigate('/org/approval-workflows?tab=workflows')
+      navigate(`${basePath}/approval-workflows?tab=workflows`)
     } catch (error) {
       const nextFieldErrors = getFieldErrors(error)
       setFieldErrors(nextFieldErrors)
@@ -245,7 +270,7 @@ export function ApprovalWorkflowBuilderPage() {
     }
   }
 
-  if (isEditing && isLoading) {
+  if (isEditing && (isCtMode ? isCtLoading : isLoading)) {
     return (
       <div className="space-y-5">
         <SkeletonPageHeader />
@@ -257,15 +282,24 @@ export function ApprovalWorkflowBuilderPage() {
   return (
     <form className="space-y-6" onSubmit={saveWorkflow}>
       <PageHeader
-        eyebrow="Approvals"
+        eyebrow={isCtMode ? 'Control Tower • Approvals' : 'Approvals'}
         title={isEditing ? 'Edit workflow' : 'Create workflow'}
         description="Build multi-stage approval routing with request rules, fallback behavior, and approver definitions that are actually visible to admins."
         actions={
           <>
-            <button type="button" className="btn-secondary" onClick={() => navigate('/org/approval-workflows?tab=workflows')}>
+            <button type="button" className="btn-secondary" onClick={() => navigate(`${basePath}/approval-workflows?tab=workflows`)}>
               Back to approvals
             </button>
-            <button type="submit" className="btn-primary" disabled={createMutation.isPending || updateMutation.isPending}>
+            <button
+              type="submit"
+              className="btn-primary"
+              disabled={
+                createMutation.isPending ||
+                updateMutation.isPending ||
+                createCtMutation.isPending ||
+                updateCtMutation.isPending
+              }
+            >
               {isEditing ? 'Save changes' : 'Create workflow'}
             </button>
           </>

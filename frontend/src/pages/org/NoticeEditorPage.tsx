@@ -19,6 +19,13 @@ import {
   useUpdateNotice,
 } from '@/hooks/useOrgAdmin'
 import {
+  useCreateCtNotice,
+  useCtOrgConfiguration,
+  useCtOrgEmployees,
+  usePublishCtNotice,
+  useUpdateCtNotice,
+} from '@/hooks/useCtOrganisations'
+import {
   createDefaultNoticeForm,
   NOTICE_AUDIENCE_TYPE_OPTIONS,
   NOTICE_CATEGORY_OPTIONS,
@@ -31,17 +38,28 @@ type NoticeForm = ReturnType<typeof createDefaultNoticeForm>
 
 export function NoticeEditorPage() {
   const navigate = useNavigate()
-  const { id } = useParams()
+  const { id, organisationId } = useParams()
   const isEditing = Boolean(id)
-  const { data: notice, isLoading } = useNotice(id ?? '')
+  const isCtMode = Boolean(organisationId)
+  const basePath = isCtMode ? `/ct/organisations/${organisationId}` : '/org'
+  const { data: orgNotice, isLoading } = useNotice(id ?? '')
   const { data: departments } = useDepartments(true)
   const { data: locations } = useLocations(true)
   const { data: employees } = useEmployees({ page: 1 })
+  const { data: configuration, isLoading: isCtLoading } = useCtOrgConfiguration(organisationId ?? '', isCtMode)
+  const { data: ctEmployees } = useCtOrgEmployees(organisationId ?? '', { page: 1 }, isCtMode)
   const createMutation = useCreateNotice()
   const updateMutation = useUpdateNotice(id ?? '')
   const publishMutation = usePublishNotice()
+  const createCtMutation = useCreateCtNotice(organisationId ?? '')
+  const updateCtMutation = useUpdateCtNotice(organisationId ?? '')
+  const publishCtMutation = usePublishCtNotice(organisationId ?? '')
   const [form, setForm] = useState<NoticeForm>(createDefaultNoticeForm())
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+  const notice = isCtMode ? configuration?.notices.find((item) => item.id === id) : orgNotice
+  const resolvedDepartments = isCtMode ? configuration?.departments : departments
+  const resolvedLocations = isCtMode ? configuration?.locations : locations
+  const resolvedEmployees = isCtMode ? ctEmployees?.results : employees?.results
 
   useEffect(() => {
     if (notice) {
@@ -82,13 +100,21 @@ export function NoticeEditorPage() {
     setFieldErrors({})
     try {
       if (isEditing && id) {
-        await updateMutation.mutateAsync(form)
+        if (isCtMode && organisationId) {
+          await updateCtMutation.mutateAsync({ noticeId: id, payload: form })
+        } else {
+          await updateMutation.mutateAsync(form)
+        }
         toast.success('Notice updated.')
       } else {
-        await createMutation.mutateAsync(form)
+        if (isCtMode && organisationId) {
+          await createCtMutation.mutateAsync(form)
+        } else {
+          await createMutation.mutateAsync(form)
+        }
         toast.success('Notice created.')
       }
-      navigate('/org/notices')
+      navigate(`${basePath}/notices`)
     } catch (error) {
       const nextFieldErrors = getFieldErrors(error)
       setFieldErrors(nextFieldErrors)
@@ -98,7 +124,7 @@ export function NoticeEditorPage() {
     }
   }
 
-  if (isEditing && isLoading) {
+  if (isEditing && (isCtMode ? isCtLoading : isLoading)) {
     return (
       <div className="space-y-5">
         <SkeletonPageHeader />
@@ -110,30 +136,43 @@ export function NoticeEditorPage() {
   return (
     <form className="space-y-6" onSubmit={saveNotice}>
       <PageHeader
-        eyebrow="Notices"
+        eyebrow={isCtMode ? 'Control Tower • Notices' : 'Notices'}
         title={isEditing ? 'Edit notice' : 'Compose notice'}
         description="Build notices as a real announcement center with category, sticky treatment, scheduling, expiry, and targeted audiences."
         actions={
           <>
-            <button type="button" className="btn-secondary" onClick={() => navigate('/org/notices')}>
+            <button type="button" className="btn-secondary" onClick={() => navigate(`${basePath}/notices`)}>
               Back to notices
             </button>
             {isEditing && notice?.status !== 'PUBLISHED' ? (
               <button
                 type="button"
                 className="btn-secondary"
-                disabled={publishMutation.isPending}
+                disabled={publishMutation.isPending || publishCtMutation.isPending}
                 onClick={async () => {
                   if (!id) return
-                  await publishMutation.mutateAsync(id)
+                  if (isCtMode && organisationId) {
+                    await publishCtMutation.mutateAsync(id)
+                  } else {
+                    await publishMutation.mutateAsync(id)
+                  }
                   toast.success('Notice published.')
-                  navigate('/org/notices')
+                  navigate(`${basePath}/notices`)
                 }}
               >
                 Publish now
               </button>
             ) : null}
-            <button type="submit" className="btn-primary" disabled={createMutation.isPending || updateMutation.isPending}>
+            <button
+              type="submit"
+              className="btn-primary"
+              disabled={
+                createMutation.isPending ||
+                updateMutation.isPending ||
+                createCtMutation.isPending ||
+                updateCtMutation.isPending
+              }
+            >
               {isEditing ? 'Save changes' : 'Create notice'}
             </button>
           </>
@@ -217,7 +256,7 @@ export function NoticeEditorPage() {
 
         {form.audience_type === 'DEPARTMENTS' ? (
           <div className="mt-5 grid gap-3 lg:grid-cols-2">
-            {(departments ?? []).map((department) => (
+            {(resolvedDepartments ?? []).map((department) => (
               <AppCheckbox
                 key={department.id}
                 checked={form.department_ids.includes(department.id)}
@@ -239,7 +278,7 @@ export function NoticeEditorPage() {
 
         {form.audience_type === 'OFFICE_LOCATIONS' ? (
           <div className="mt-5 grid gap-3 lg:grid-cols-2">
-            {(locations ?? []).map((location) => (
+            {(resolvedLocations ?? []).map((location) => (
               <AppCheckbox
                 key={location.id}
                 checked={form.office_location_ids.includes(location.id)}
@@ -261,7 +300,7 @@ export function NoticeEditorPage() {
 
         {form.audience_type === 'SPECIFIC_EMPLOYEES' ? (
           <div className="mt-5 grid gap-3 lg:grid-cols-2">
-            {(employees?.results ?? []).map((employee) => (
+            {(resolvedEmployees ?? []).map((employee) => (
               <AppCheckbox
                 key={employee.id}
                 checked={form.employee_ids.includes(employee.id)}

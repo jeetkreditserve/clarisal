@@ -8,6 +8,11 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { SkeletonPageHeader, SkeletonTable } from '@/components/ui/Skeleton'
 import { useCreateOnDutyPolicy, useOnDutyPolicy, useOrgOnDutyRequests, useUpdateOnDutyPolicy } from '@/hooks/useOrgAdmin'
+import {
+  useCreateCtOnDutyPolicy,
+  useCtOrgConfiguration,
+  useUpdateCtOnDutyPolicy,
+} from '@/hooks/useCtOrganisations'
 import { createDefaultOnDutyPolicyForm } from '@/lib/constants'
 import { getErrorMessage, getFieldErrors } from '@/lib/errors'
 import { formatDateTime } from '@/lib/format'
@@ -16,14 +21,20 @@ type OnDutyPolicyForm = ReturnType<typeof createDefaultOnDutyPolicyForm>
 
 export function OnDutyPolicyBuilderPage() {
   const navigate = useNavigate()
-  const { id } = useParams()
+  const { id, organisationId } = useParams()
   const isEditing = Boolean(id)
-  const { data: policy, isLoading } = useOnDutyPolicy(id ?? '')
+  const isCtMode = Boolean(organisationId)
+  const basePath = isCtMode ? `/ct/organisations/${organisationId}` : '/org'
+  const { data: orgPolicy, isLoading } = useOnDutyPolicy(id ?? '')
+  const { data: configuration, isLoading: isCtLoading } = useCtOrgConfiguration(organisationId ?? '', isCtMode)
   const { data: requests } = useOrgOnDutyRequests()
   const createMutation = useCreateOnDutyPolicy()
   const updateMutation = useUpdateOnDutyPolicy(id ?? '')
+  const createCtMutation = useCreateCtOnDutyPolicy(organisationId ?? '')
+  const updateCtMutation = useUpdateCtOnDutyPolicy(organisationId ?? '')
   const [form, setForm] = useState<OnDutyPolicyForm>(createDefaultOnDutyPolicyForm())
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+  const policy = isCtMode ? configuration?.on_duty_policies.find((item) => item.id === id) : orgPolicy
 
   useEffect(() => {
     if (policy) {
@@ -46,8 +57,8 @@ export function OnDutyPolicyBuilderPage() {
   }, [policy, isEditing])
 
   const relatedRequests = useMemo(
-    () => (requests ?? []).filter((request) => request.policy === id),
-    [requests, id],
+    () => (isCtMode ? [] : (requests ?? []).filter((request) => request.policy === id)),
+    [isCtMode, requests, id],
   )
 
   const savePolicy = async (event: React.FormEvent) => {
@@ -55,13 +66,21 @@ export function OnDutyPolicyBuilderPage() {
     setFieldErrors({})
     try {
       if (isEditing && id) {
-        await updateMutation.mutateAsync(form)
+        if (isCtMode && organisationId) {
+          await updateCtMutation.mutateAsync({ policyId: id, payload: form })
+        } else {
+          await updateMutation.mutateAsync(form)
+        }
         toast.success('OD policy updated.')
       } else {
-        await createMutation.mutateAsync(form)
+        if (isCtMode && organisationId) {
+          await createCtMutation.mutateAsync(form)
+        } else {
+          await createMutation.mutateAsync(form)
+        }
         toast.success('OD policy created.')
       }
-      navigate('/org/on-duty-policies')
+      navigate(`${basePath}/on-duty-policies`)
     } catch (error) {
       const nextFieldErrors = getFieldErrors(error)
       setFieldErrors(nextFieldErrors)
@@ -71,7 +90,7 @@ export function OnDutyPolicyBuilderPage() {
     }
   }
 
-  if (isEditing && isLoading) {
+  if (isEditing && (isCtMode ? isCtLoading : isLoading)) {
     return (
       <div className="space-y-5">
         <SkeletonPageHeader />
@@ -83,15 +102,24 @@ export function OnDutyPolicyBuilderPage() {
   return (
     <form className="space-y-6" onSubmit={savePolicy}>
       <PageHeader
-        eyebrow="OD configuration"
+        eyebrow={isCtMode ? 'Control Tower • OD configuration' : 'OD configuration'}
         title={isEditing ? 'Edit on-duty policy' : 'Create on-duty policy'}
         description="Set the request modes, evidence rules, and time windows that govern travel, field work, and other OD submissions."
         actions={
           <>
-            <button type="button" className="btn-secondary" onClick={() => navigate('/org/on-duty-policies')}>
+            <button type="button" className="btn-secondary" onClick={() => navigate(`${basePath}/on-duty-policies`)}>
               Back to policies
             </button>
-            <button type="submit" className="btn-primary" disabled={createMutation.isPending || updateMutation.isPending}>
+            <button
+              type="submit"
+              className="btn-primary"
+              disabled={
+                createMutation.isPending ||
+                updateMutation.isPending ||
+                createCtMutation.isPending ||
+                updateCtMutation.isPending
+              }
+            >
               {isEditing ? 'Save changes' : 'Create policy'}
             </button>
           </>
@@ -204,7 +232,7 @@ export function OnDutyPolicyBuilderPage() {
           </div>
           <div className="surface-muted rounded-[20px] px-4 py-4">
             <p className="text-xs uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">OD requests using this policy</p>
-            <p className="mt-2 text-3xl font-semibold text-[hsl(var(--foreground-strong))]">{relatedRequests.length}</p>
+            <p className="mt-2 text-3xl font-semibold text-[hsl(var(--foreground-strong))]">{isCtMode ? '--' : relatedRequests.length}</p>
           </div>
           <div className="surface-muted rounded-[20px] px-4 py-4">
             <p className="text-xs uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">Last modified</p>

@@ -18,6 +18,12 @@ import {
   useUpdateLeavePlan,
 } from '@/hooks/useOrgAdmin'
 import {
+  useCreateCtLeavePlan,
+  useCtOrgConfiguration,
+  useCtOrgEmployees,
+  useUpdateCtLeavePlan,
+} from '@/hooks/useCtOrganisations'
+import {
   createDefaultLeavePlanForm,
   EMPLOYMENT_TYPE_OPTIONS,
   LEAVE_CREDIT_FREQUENCY_OPTIONS,
@@ -186,17 +192,28 @@ function buildPayload(form: LeavePlanForm) {
 
 export function LeavePlanBuilderPage() {
   const navigate = useNavigate()
-  const { id } = useParams()
+  const { id, organisationId } = useParams()
   const isEditing = Boolean(id)
+  const isCtMode = Boolean(organisationId)
+  const basePath = isCtMode ? `/ct/organisations/${organisationId}` : '/org'
   const { data: leaveCycles, isLoading: isCyclesLoading } = useLeaveCycles()
   const { data: departments } = useDepartments(true)
   const { data: locations } = useLocations(true)
   const { data: employees } = useEmployees({ page: 1 })
-  const { data: plan, isLoading: isPlanLoading } = useLeavePlan(id ?? '')
+  const { data: orgPlan, isLoading: isOrgPlanLoading } = useLeavePlan(id ?? '')
+  const { data: configuration, isLoading: isCtLoading } = useCtOrgConfiguration(organisationId ?? '', isCtMode)
+  const { data: ctEmployees } = useCtOrgEmployees(organisationId ?? '', { page: 1 }, isCtMode)
   const createMutation = useCreateLeavePlan()
   const updateMutation = useUpdateLeavePlan(id ?? '')
+  const createCtMutation = useCreateCtLeavePlan(organisationId ?? '')
+  const updateCtMutation = useUpdateCtLeavePlan(organisationId ?? '')
   const [form, setForm] = useState<LeavePlanForm>(createDefaultLeavePlanForm())
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+  const plan = isCtMode ? configuration?.leave_plans.find((item) => item.id === id) : orgPlan
+  const resolvedLeaveCycles = isCtMode ? configuration?.leave_cycles : leaveCycles
+  const resolvedDepartments = isCtMode ? configuration?.departments : departments
+  const resolvedLocations = isCtMode ? configuration?.locations : locations
+  const resolvedEmployees = isCtMode ? ctEmployees?.results : employees?.results
 
   useEffect(() => {
     if (plan) {
@@ -210,26 +227,26 @@ export function LeavePlanBuilderPage() {
   const cycleOptions = useMemo(
     () => [
       { value: '', label: 'Select leave cycle' },
-      ...(leaveCycles ?? []).map((cycle) => ({
+      ...(resolvedLeaveCycles ?? []).map((cycle) => ({
         value: cycle.id,
         label: cycle.name,
         hint: `${startCase(cycle.cycle_type)} • ${cycle.active_leave_plan_count} active plan(s)`,
       })),
     ],
-    [leaveCycles],
+    [resolvedLeaveCycles],
   )
 
   const departmentOptions = useMemo(
-    () => [{ value: '', label: 'Any department' }, ...((departments ?? []).map((department) => ({ value: department.id, label: department.name })))],
-    [departments],
+    () => [{ value: '', label: 'Any department' }, ...((resolvedDepartments ?? []).map((department) => ({ value: department.id, label: department.name })))],
+    [resolvedDepartments],
   )
   const locationOptions = useMemo(
-    () => [{ value: '', label: 'Any location' }, ...((locations ?? []).map((location) => ({ value: location.id, label: location.name })))],
-    [locations],
+    () => [{ value: '', label: 'Any location' }, ...((resolvedLocations ?? []).map((location) => ({ value: location.id, label: location.name })))],
+    [resolvedLocations],
   )
   const employeeOptions = useMemo(
-    () => [{ value: '', label: 'Any employee' }, ...((employees?.results ?? []).map((employee) => ({ value: employee.id, label: employee.full_name, hint: employee.designation })))],
-    [employees],
+    () => [{ value: '', label: 'Any employee' }, ...((resolvedEmployees ?? []).map((employee) => ({ value: employee.id, label: employee.full_name, hint: employee.designation })))],
+    [resolvedEmployees],
   )
   const employmentTypeOptions = useMemo(
     () => [{ value: '', label: 'Any employment type' }, ...EMPLOYMENT_TYPE_OPTIONS.map((value) => ({ value, label: startCase(value) }))],
@@ -248,7 +265,9 @@ export function LeavePlanBuilderPage() {
     [],
   )
 
-  const isLoading = isCyclesLoading || (isEditing && isPlanLoading)
+  const isLoading = isCtMode
+    ? isCtLoading
+    : isCyclesLoading || (isEditing && isOrgPlanLoading)
 
   const savePlan = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -262,13 +281,21 @@ export function LeavePlanBuilderPage() {
     try {
       const payload = buildPayload(form)
       if (isEditing && id) {
-        await updateMutation.mutateAsync(payload)
+        if (isCtMode && organisationId) {
+          await updateCtMutation.mutateAsync({ planId: id, payload })
+        } else {
+          await updateMutation.mutateAsync(payload)
+        }
         toast.success('Leave plan updated.')
       } else {
-        await createMutation.mutateAsync(payload)
+        if (isCtMode && organisationId) {
+          await createCtMutation.mutateAsync(payload)
+        } else {
+          await createMutation.mutateAsync(payload)
+        }
         toast.success('Leave plan created.')
       }
-      navigate('/org/leave-plans')
+      navigate(`${basePath}/leave-plans`)
     } catch (error) {
       const nextFieldErrors = getFieldErrors(error)
       setFieldErrors(nextFieldErrors)
@@ -290,15 +317,24 @@ export function LeavePlanBuilderPage() {
   return (
     <form className="space-y-6" onSubmit={savePlan}>
       <PageHeader
-        eyebrow="Leave configuration"
+        eyebrow={isCtMode ? 'Control Tower • Leave configuration' : 'Leave configuration'}
         title={isEditing ? 'Edit leave plan' : 'Create leave plan'}
         description="Build a real leave policy with multiple leave types, accrual behavior, carry-forward rules, and applicability filters."
         actions={
           <>
-            <button type="button" className="btn-secondary" onClick={() => navigate('/org/leave-plans')}>
+            <button type="button" className="btn-secondary" onClick={() => navigate(`${basePath}/leave-plans`)}>
               Back to plans
             </button>
-            <button type="submit" className="btn-primary" disabled={createMutation.isPending || updateMutation.isPending}>
+            <button
+              type="submit"
+              className="btn-primary"
+              disabled={
+                createMutation.isPending ||
+                updateMutation.isPending ||
+                createCtMutation.isPending ||
+                updateCtMutation.isPending
+              }
+            >
               {isEditing ? 'Save changes' : 'Create leave plan'}
             </button>
           </>

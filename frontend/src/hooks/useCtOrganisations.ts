@@ -70,10 +70,10 @@ export function useOrganisation(id: string) {
   })
 }
 
-export function useCtAuditLogs(organisationId?: string, enabled = true) {
+export function useCtAuditLogs(params?: Parameters<typeof fetchCtAuditLogs>[0], enabled = true) {
   return useQuery({
-    queryKey: ['ct', 'audit', organisationId],
-    queryFn: () => fetchCtAuditLogs(organisationId),
+    queryKey: ['ct', 'audit', params],
+    queryFn: () => fetchCtAuditLogs(params),
     enabled,
   })
 }

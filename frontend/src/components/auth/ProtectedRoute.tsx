@@ -2,6 +2,7 @@ import { Navigate, Outlet, useLocation } from 'react-router-dom'
 
 import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import { useAuth } from '@/hooks/useAuth'
+import { getOrgSetupRoute, isOrgSetupPathAllowed, normalizeOrgSetupStep } from '@/lib/orgSetup'
 import { getDefaultRoute } from '@/lib/rbac'
 
 interface ProtectedRouteProps {
@@ -29,11 +30,24 @@ export function ProtectedRoute({ requiredAccess }: ProtectedRouteProps) {
     return <Navigate to={getDefaultRoute(user)} replace />
   }
 
-  if (requiredAccess === 'ORG_ADMIN' && user.org_setup_required && location.pathname === '/org/dashboard') {
-    return <Navigate to="/org/setup" replace />
+  if (requiredAccess === 'ORG_ADMIN' && user.org_setup_required) {
+    const setupStep = normalizeOrgSetupStep(user.org_setup_current_step)
+    const setupRoute = getOrgSetupRoute(setupStep)
+
+    if (location.pathname === '/org/setup') {
+      return <Navigate to={setupRoute} replace />
+    }
+
+    if (!isOrgSetupPathAllowed(setupStep, location.pathname)) {
+      return <Navigate to={setupRoute} replace />
+    }
   }
 
-  if (requiredAccess === 'ORG_ADMIN' && !user.org_setup_required && location.pathname === '/org/setup') {
+  if (
+    requiredAccess === 'ORG_ADMIN' &&
+    !user.org_setup_required &&
+    location.pathname.startsWith('/org/setup')
+  ) {
     return <Navigate to="/org/dashboard" replace />
   }
 

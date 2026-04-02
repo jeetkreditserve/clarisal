@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 import { ApprovalDecisionDialog } from '@/components/ui/ApprovalDecisionDialog'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -12,35 +12,48 @@ import {
   useApproveApprovalAction,
   useRejectApprovalAction,
 } from '@/hooks/useOrgAdmin'
+import { useCtOrgConfiguration } from '@/hooks/useCtOrganisations'
 import { formatDateTime } from '@/lib/format'
 import { getApprovalActionTone } from '@/lib/status'
 
-const TABS = [
+const ORG_TABS = [
   { id: 'workflows', label: 'Workflows' },
   { id: 'inbox', label: 'Inbox' },
   { id: 'settings', label: 'Settings' },
 ] as const
 
+const CT_TABS = [
+  { id: 'workflows', label: 'Workflows' },
+  { id: 'settings', label: 'Settings' },
+] as const
+
 export function ApprovalWorkflowsPage() {
   const navigate = useNavigate()
+  const { organisationId } = useParams()
+  const isCtMode = Boolean(organisationId)
+  const basePath = isCtMode ? `/ct/organisations/${organisationId}` : '/org'
+  const tabs = isCtMode ? CT_TABS : ORG_TABS
   const [searchParams, setSearchParams] = useSearchParams()
-  const activeTab = TABS.some((tab) => tab.id === searchParams.get('tab')) ? searchParams.get('tab') : 'workflows'
+  const activeTab = tabs.some((tab) => tab.id === searchParams.get('tab')) ? searchParams.get('tab') : 'workflows'
   const { data: workflows, isLoading } = useApprovalWorkflows()
+  const { data: configuration, isLoading: isCtLoading } = useCtOrgConfiguration(organisationId ?? '', isCtMode)
   const { data: inbox } = useApprovalInbox()
   const approveMutation = useApproveApprovalAction()
   const rejectMutation = useRejectApprovalAction()
+  const resolvedWorkflows = isCtMode ? configuration?.approval_workflows : workflows
+  const pageLoading = isCtMode ? isCtLoading : isLoading
 
   const health = useMemo(() => {
-    const workflowList = workflows ?? []
+    const workflowList = resolvedWorkflows ?? []
     return {
       active: workflowList.filter((workflow) => workflow.is_active).length,
       defaults: workflowList.filter((workflow) => workflow.is_default).length,
       rules: workflowList.reduce((sum, workflow) => sum + workflow.rules.length, 0),
       stages: workflowList.reduce((sum, workflow) => sum + workflow.stages.length, 0),
     }
-  }, [workflows])
+  }, [resolvedWorkflows])
 
-  if (isLoading) {
+  if (pageLoading) {
     return (
       <div className="space-y-5">
         <SkeletonPageHeader />
@@ -52,20 +65,27 @@ export function ApprovalWorkflowsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Approvals"
+        eyebrow={isCtMode ? 'Control Tower • Approvals' : 'Approvals'}
         title="Approvals"
         description="Separate workflow design from day-to-day approval work so admins can maintain routing without losing operational visibility."
         actions={
-          activeTab === 'workflows' ? (
-            <button type="button" className="btn-primary" onClick={() => navigate('/org/approval-workflows/new')}>
-              Build workflow
-            </button>
-          ) : null
+          <>
+            {isCtMode ? (
+              <button type="button" className="btn-secondary" onClick={() => navigate(basePath)}>
+                Back to organisation
+              </button>
+            ) : null}
+            {activeTab === 'workflows' ? (
+              <button type="button" className="btn-primary" onClick={() => navigate(`${basePath}/approval-workflows/new`)}>
+                Build workflow
+              </button>
+            ) : null}
+          </>
         }
       />
 
       <div className="flex flex-wrap gap-2 rounded-[24px] border border-[hsl(var(--border)_/_0.72)] bg-[hsl(var(--surface))] p-2">
-        {TABS.map((tab) => {
+        {tabs.map((tab) => {
           const isActive = tab.id === activeTab
           return (
             <button
@@ -87,7 +107,7 @@ export function ApprovalWorkflowsPage() {
       {activeTab === 'workflows' ? (
         <SectionCard title="Workflow catalogue" description="Open dedicated builders to manage rules, stages, fallback behavior, and approver structure.">
           <div className="space-y-4">
-            {(workflows ?? []).map((workflow) => (
+            {(resolvedWorkflows ?? []).map((workflow) => (
               <div key={workflow.id} className="surface-muted rounded-[24px] p-5">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div className="space-y-2">
@@ -98,7 +118,7 @@ export function ApprovalWorkflowsPage() {
                     </div>
                     <p className="max-w-3xl text-sm text-[hsl(var(--muted-foreground))]">{workflow.description || 'No description provided.'}</p>
                   </div>
-                  <button type="button" className="btn-secondary" onClick={() => navigate(`/org/approval-workflows/${workflow.id}`)}>
+                  <button type="button" className="btn-secondary" onClick={() => navigate(`${basePath}/approval-workflows/${workflow.id}`)}>
                     Open builder
                   </button>
                 </div>
@@ -129,7 +149,7 @@ export function ApprovalWorkflowsPage() {
         </SectionCard>
       ) : null}
 
-      {activeTab === 'inbox' ? (
+      {!isCtMode && activeTab === 'inbox' ? (
         <SectionCard title="Approval inbox" description="Action pending requests here without mixing them into the workflow design surface.">
           <div className="space-y-3">
             {(inbox ?? []).map((action) => (
@@ -189,8 +209,12 @@ export function ApprovalWorkflowsPage() {
               <p className="mt-2 text-3xl font-semibold text-[hsl(var(--foreground-strong))]">{health.rules}</p>
             </div>
             <div className="surface-muted rounded-[20px] px-4 py-4">
-              <p className="text-xs uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">Pending approvals</p>
-              <p className="mt-2 text-3xl font-semibold text-[hsl(var(--foreground-strong))]">{inbox?.length ?? 0}</p>
+              <p className="text-xs uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">
+                {isCtMode ? 'Workflow stages' : 'Pending approvals'}
+              </p>
+              <p className="mt-2 text-3xl font-semibold text-[hsl(var(--foreground-strong))]">
+                {isCtMode ? health.stages : inbox?.length ?? 0}
+              </p>
             </div>
           </div>
           <div className="mt-5 grid gap-4 lg:grid-cols-2">

@@ -1,5 +1,5 @@
 import { Outlet, useNavigate } from 'react-router-dom'
-import { Bell, Building, Building2, CalendarDays, ClipboardCheck, LayoutDashboard, LogOut, MapPin, PlaneTakeoff, Repeat, ScrollText, Settings2, Users } from 'lucide-react'
+import { Bell, Building, Building2, CalendarDays, ClipboardCheck, LayoutDashboard, LogOut, MapPin, PlaneTakeoff, Repeat, ScrollText, Users } from 'lucide-react'
 import { SidebarNav, type NavItem } from './SidebarNav'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
 import { useAuth } from '@/hooks/useAuth'
@@ -9,7 +9,6 @@ import { getAccessStateTone } from '@/lib/status'
 import { OrgSetupBanner } from '@/components/org/OrgSetupBanner'
 
 const navItems: NavItem[] = [
-  { label: 'Setup', href: '/org/setup', icon: Settings2 },
   { label: 'Dashboard', href: '/org/dashboard', icon: LayoutDashboard },
   { label: 'Organisation', href: '/org/profile', icon: Building2 },
   { label: 'Locations', href: '/org/locations', icon: MapPin },

@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 
 import { AppCheckbox } from '@/components/ui/AppCheckbox'
@@ -9,26 +10,45 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { SkeletonPageHeader, SkeletonTable } from '@/components/ui/Skeleton'
 import { StatusBadge } from '@/components/ui/StatusBadge'
-import { useCreateLeaveCycle, useLeaveCycles, useUpdateLeaveCycle } from '@/hooks/useOrgAdmin'
+import {
+  useCreateLeaveCycle,
+  useLeaveCycles,
+  useUpdateLeaveCycle,
+} from '@/hooks/useOrgAdmin'
+import {
+  useCreateCtLeaveCycle,
+  useCtOrgConfiguration,
+  useUpdateCtLeaveCycle,
+} from '@/hooks/useCtOrganisations'
 import { createDefaultLeaveCycleForm, LEAVE_CYCLE_TYPE_OPTIONS } from '@/lib/constants'
 import { getErrorMessage, getFieldErrors } from '@/lib/errors'
 import { formatDateTime, startCase } from '@/lib/format'
 
 function getCycleWindowLabel(cycleType: string, startMonth: number, startDay: number) {
-  if (cycleType === 'CALENDAR_YEAR') return '01 Jan → 31 Dec'
-  if (cycleType === 'FINANCIAL_YEAR') return '01 Apr → 31 Mar'
+  if (cycleType === 'CALENDAR_YEAR') return '01 Jan -> 31 Dec'
+  if (cycleType === 'FINANCIAL_YEAR') return '01 Apr -> 31 Mar'
   if (cycleType === 'EMPLOYEE_JOINING_DATE') return 'Based on employee joining date'
   return `Starts every year on ${String(startDay).padStart(2, '0')}/${String(startMonth).padStart(2, '0')}`
 }
 
 export function LeaveCyclesPage() {
+  const navigate = useNavigate()
+  const { organisationId } = useParams()
+  const isCtMode = Boolean(organisationId)
+  const basePath = isCtMode ? `/ct/organisations/${organisationId}` : '/org'
   const { data: cycles, isLoading } = useLeaveCycles()
+  const { data: configuration, isLoading: isCtLoading } = useCtOrgConfiguration(organisationId ?? '', isCtMode)
   const createMutation = useCreateLeaveCycle()
+  const createCtMutation = useCreateCtLeaveCycle(organisationId ?? '')
   const [editingId, setEditingId] = useState<string | null>(null)
   const updateMutation = useUpdateLeaveCycle(editingId ?? '')
+  const updateCtMutation = useUpdateCtLeaveCycle(organisationId ?? '')
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [form, setForm] = useState(createDefaultLeaveCycleForm)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+
+  const resolvedCycles = isCtMode ? configuration?.leave_cycles : cycles
+  const pageLoading = isCtMode ? isCtLoading : isLoading
 
   const cycleTypeOptions = useMemo(
     () => LEAVE_CYCLE_TYPE_OPTIONS.map((value) => ({ value, label: startCase(value) })),
@@ -47,10 +67,18 @@ export function LeaveCyclesPage() {
     setFieldErrors({})
     try {
       if (editingId) {
-        await updateMutation.mutateAsync(form)
+        if (isCtMode && organisationId) {
+          await updateCtMutation.mutateAsync({ cycleId: editingId, payload: form })
+        } else {
+          await updateMutation.mutateAsync(form)
+        }
         toast.success('Leave cycle updated.')
       } else {
-        await createMutation.mutateAsync(form)
+        if (isCtMode && organisationId) {
+          await createCtMutation.mutateAsync(form)
+        } else {
+          await createMutation.mutateAsync(form)
+        }
         toast.success('Leave cycle created.')
       }
       resetForm()
@@ -63,7 +91,7 @@ export function LeaveCyclesPage() {
     }
   }
 
-  if (isLoading) {
+  if (pageLoading) {
     return (
       <div className="space-y-5">
         <SkeletonPageHeader />
@@ -72,25 +100,32 @@ export function LeaveCyclesPage() {
     )
   }
 
-  const activeCycles = cycles?.filter((cycle) => cycle.is_active) ?? []
+  const activeCycles = resolvedCycles?.filter((cycle) => cycle.is_active) ?? []
 
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Leave configuration"
+        eyebrow={isCtMode ? 'Control Tower • Leave configuration' : 'Leave configuration'}
         title="Leave cycles"
         description="Maintain the leave-year structures that plans attach to, with clearer operational visibility than the old thin CRUD form."
         actions={
-          <button type="button" className="btn-primary" onClick={() => setIsModalOpen(true)}>
-            Add leave cycle
-          </button>
+          <>
+            {isCtMode ? (
+              <button type="button" className="btn-secondary" onClick={() => navigate(basePath)}>
+                Back to organisation
+              </button>
+            ) : null}
+            <button type="button" className="btn-primary" onClick={() => setIsModalOpen(true)}>
+              Add leave cycle
+            </button>
+          </>
         }
       />
 
       <div className="grid gap-4 xl:grid-cols-4">
         <div className="surface-card rounded-[28px] p-5">
           <p className="text-xs uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">Configured cycles</p>
-          <p className="mt-3 text-3xl font-semibold text-[hsl(var(--foreground-strong))]">{cycles?.length ?? 0}</p>
+          <p className="mt-3 text-3xl font-semibold text-[hsl(var(--foreground-strong))]">{resolvedCycles?.length ?? 0}</p>
         </div>
         <div className="surface-card rounded-[28px] p-5">
           <p className="text-xs uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">Active cycles</p>
@@ -98,19 +133,21 @@ export function LeaveCyclesPage() {
         </div>
         <div className="surface-card rounded-[28px] p-5">
           <p className="text-xs uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">Default cycle</p>
-          <p className="mt-3 text-lg font-semibold text-[hsl(var(--foreground-strong))]">{cycles?.find((cycle) => cycle.is_default)?.name ?? 'Not configured'}</p>
+          <p className="mt-3 text-lg font-semibold text-[hsl(var(--foreground-strong))]">
+            {resolvedCycles?.find((cycle) => cycle.is_default)?.name ?? 'Not configured'}
+          </p>
         </div>
         <div className="surface-card rounded-[28px] p-5">
           <p className="text-xs uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">Attached plans</p>
           <p className="mt-3 text-3xl font-semibold text-[hsl(var(--foreground-strong))]">
-            {(cycles ?? []).reduce((sum, cycle) => sum + cycle.leave_plan_count, 0)}
+            {(resolvedCycles ?? []).reduce((sum, cycle) => sum + cycle.leave_plan_count, 0)}
           </p>
         </div>
       </div>
 
       <SectionCard title="Cycle catalogue" description="Leave cycles stay lightweight objects, but the page now shows what each one is carrying operationally.">
         <div className="space-y-4">
-          {(cycles ?? []).map((cycle) => (
+          {(resolvedCycles ?? []).map((cycle) => (
             <div key={cycle.id} className="surface-muted rounded-[24px] p-5">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="space-y-2">
@@ -179,7 +216,17 @@ export function LeaveCyclesPage() {
             <button type="button" className="btn-secondary" onClick={resetForm}>
               Cancel
             </button>
-            <button type="submit" form="leave-cycle-form" className="btn-primary" disabled={createMutation.isPending || updateMutation.isPending}>
+            <button
+              type="submit"
+              form="leave-cycle-form"
+              className="btn-primary"
+              disabled={
+                createMutation.isPending ||
+                updateMutation.isPending ||
+                createCtMutation.isPending ||
+                updateCtMutation.isPending
+              }
+            >
               {editingId ? 'Save changes' : 'Save cycle'}
             </button>
           </div>

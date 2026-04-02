@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 
 import { AppSelect } from '@/components/ui/AppSelect'
@@ -8,11 +8,15 @@ import { SectionCard } from '@/components/ui/SectionCard'
 import { SkeletonPageHeader, SkeletonTable } from '@/components/ui/Skeleton'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { useNotices, usePublishNotice } from '@/hooks/useOrgAdmin'
+import { useCtOrgConfiguration, usePublishCtNotice } from '@/hooks/useCtOrganisations'
 import { NOTICE_AUDIENCE_TYPE_OPTIONS, NOTICE_STATUS_OPTIONS } from '@/lib/constants'
 import { formatDateTime, startCase } from '@/lib/format'
 
 export function NoticesPage() {
   const navigate = useNavigate()
+  const { organisationId } = useParams()
+  const isCtMode = Boolean(organisationId)
+  const basePath = isCtMode ? `/ct/organisations/${organisationId}` : '/org'
   const [statusFilter, setStatusFilter] = useState('')
   const [audienceFilter, setAudienceFilter] = useState('')
   const [search, setSearch] = useState('')
@@ -21,9 +25,25 @@ export function NoticesPage() {
     audience_type: audienceFilter || undefined,
     search: search || undefined,
   })
+  const { data: configuration, isLoading: isCtLoading } = useCtOrgConfiguration(organisationId ?? '', isCtMode)
   const publishMutation = usePublishNotice()
+  const publishCtMutation = usePublishCtNotice(organisationId ?? '')
+  const resolvedNotices = isCtMode
+    ? (configuration?.notices ?? []).filter((notice) => {
+        const matchesStatus = !statusFilter || notice.status === statusFilter
+        const matchesAudience = !audienceFilter || notice.audience_type === audienceFilter
+        const searchValue = search.trim().toLowerCase()
+        const matchesSearch =
+          !searchValue ||
+          notice.title.toLowerCase().includes(searchValue) ||
+          notice.body.toLowerCase().includes(searchValue) ||
+          notice.category.toLowerCase().includes(searchValue)
+        return matchesStatus && matchesAudience && matchesSearch
+      })
+    : notices
+  const pageLoading = isCtMode ? isCtLoading : isLoading
 
-  if (isLoading) {
+  if (pageLoading) {
     return (
       <div className="space-y-5">
         <SkeletonPageHeader />
@@ -32,27 +52,34 @@ export function NoticesPage() {
     )
   }
 
-  const stickyCount = (notices ?? []).filter((notice) => notice.is_sticky).length
-  const publishedCount = (notices ?? []).filter((notice) => notice.status === 'PUBLISHED').length
-  const scheduledCount = (notices ?? []).filter((notice) => notice.status === 'SCHEDULED').length
+  const stickyCount = (resolvedNotices ?? []).filter((notice) => notice.is_sticky).length
+  const publishedCount = (resolvedNotices ?? []).filter((notice) => notice.status === 'PUBLISHED').length
+  const scheduledCount = (resolvedNotices ?? []).filter((notice) => notice.status === 'SCHEDULED').length
 
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Notices"
+        eyebrow={isCtMode ? 'Control Tower • Notices' : 'Notices'}
         title="Announcement center"
         description="Publish richer internal notices with targeting, scheduling, sticky placement, and lifecycle status tracking."
         actions={
-          <button type="button" className="btn-primary" onClick={() => navigate('/org/notices/new')}>
-            Compose notice
-          </button>
+          <>
+            {isCtMode ? (
+              <button type="button" className="btn-secondary" onClick={() => navigate(basePath)}>
+                Back to organisation
+              </button>
+            ) : null}
+            <button type="button" className="btn-primary" onClick={() => navigate(`${basePath}/notices/new`)}>
+              Compose notice
+            </button>
+          </>
         }
       />
 
       <div className="grid gap-4 xl:grid-cols-4">
         <div className="surface-card rounded-[28px] p-5">
           <p className="text-xs uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">Visible in list</p>
-          <p className="mt-3 text-3xl font-semibold text-[hsl(var(--foreground-strong))]">{notices?.length ?? 0}</p>
+          <p className="mt-3 text-3xl font-semibold text-[hsl(var(--foreground-strong))]">{resolvedNotices?.length ?? 0}</p>
         </div>
         <div className="surface-card rounded-[28px] p-5">
           <p className="text-xs uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">Published</p>
@@ -103,7 +130,7 @@ export function NoticesPage() {
 
       <SectionCard title="Notices" description="Drafts, scheduled announcements, live posts, and expired notices stay visible here in one operational view.">
         <div className="space-y-4">
-          {(notices ?? []).map((notice) => (
+          {(resolvedNotices ?? []).map((notice) => (
             <div key={notice.id} className="surface-muted rounded-[24px] p-5">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="space-y-2">
@@ -117,16 +144,20 @@ export function NoticesPage() {
                   <p className="max-w-3xl text-sm text-[hsl(var(--muted-foreground))]">{notice.body}</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
-                  <button type="button" className="btn-secondary" onClick={() => navigate(`/org/notices/${notice.id}`)}>
+                  <button type="button" className="btn-secondary" onClick={() => navigate(`${basePath}/notices/${notice.id}`)}>
                     Edit
                   </button>
                   {notice.status !== 'PUBLISHED' ? (
                     <button
                       type="button"
                       className="btn-secondary"
-                      disabled={publishMutation.isPending}
+                      disabled={publishMutation.isPending || publishCtMutation.isPending}
                       onClick={async () => {
-                        await publishMutation.mutateAsync(notice.id)
+                        if (isCtMode && organisationId) {
+                          await publishCtMutation.mutateAsync(notice.id)
+                        } else {
+                          await publishMutation.mutateAsync(notice.id)
+                        }
                         toast.success('Notice published.')
                       }}
                     >
