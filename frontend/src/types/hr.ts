@@ -118,6 +118,16 @@ export interface EmployeeListItem {
   office_location_name: string | null
 }
 
+export interface CtEmployeeListItem {
+  id: string
+  employee_code: string | null
+  full_name: string
+  designation: string
+  status: EmployeeStatus
+  department_name: string | null
+  office_location_name: string | null
+}
+
 export interface EmployeeProfile {
   date_of_birth?: string | null
   gender?: string
@@ -230,6 +240,21 @@ export interface EmployeeDetail {
     on_duty: EffectiveApprovalWorkflowSummary
     attendance_regularization: EffectiveApprovalWorkflowSummary
   }
+}
+
+export interface CtEmployeeDetail {
+  id: string
+  employee_code: string | null
+  full_name: string
+  designation: string
+  employment_type: EmploymentType
+  date_of_joining: string | null
+  date_of_exit: string | null
+  status: EmployeeStatus
+  onboarding_status: EmployeeOnboardingStatus
+  department_name: string | null
+  office_location_name: string | null
+  reporting_to_name: string | null
 }
 
 export interface ProfileCompletion {

@@ -2735,16 +2735,15 @@ class Command(BaseCommand):
         return departments
 
     def _print_seed_summary(self, control_tower, primary_admin, shared_admin, primary_context, secondary_context):
-        employee_password = os.environ.get('SEED_EMPLOYEE_PASSWORD', DEFAULT_EMPLOYEE_PASSWORD)
         primary_org = primary_admin.organisation_memberships.filter(is_org_admin=True).first().organisation
         self.stdout.write('')
         self.stdout.write(self.style.SUCCESS('Seed Credentials'))
-        self.stdout.write(f'  Control Tower login   : {control_tower.email} / {os.environ.get("CONTROL_TOWER_PASSWORD")}  -> /ct/login')
-        self.stdout.write(f'  Org admin login       : {primary_admin.email} / {os.environ.get("SEED_ORG_ADMIN_PASSWORD", DEFAULT_ORG_ADMIN["password"])}  -> /auth/login')
-        self.stdout.write(f'  Shared CT workforce   : {shared_admin.email} / {os.environ.get("CONTROL_TOWER_PASSWORD")}  -> /auth/login')
-        self.stdout.write(f'  Employee login        : {primary_context["employees"]["rohan"].user.email} / {employee_password}  -> /auth/login')
-        self.stdout.write(f'  Onboarding login      : {primary_context["employees"]["onboarding"].user.email} / {employee_password}  -> /auth/login')
-        self.stdout.write(f'  Pending join login    : {primary_context["employees"]["pending"].user.email} / {employee_password}  -> /auth/login')
+        self.stdout.write(f'  Control Tower login   : {control_tower.email}  -> /ct/login (password not shown)')
+        self.stdout.write(f'  Org admin login       : {primary_admin.email}  -> /auth/login (password not shown)')
+        self.stdout.write(f'  Shared CT workforce   : {shared_admin.email}  -> /auth/login (password not shown)')
+        self.stdout.write(f'  Employee login        : {primary_context["employees"]["rohan"].user.email}  -> /auth/login (password not shown)')
+        self.stdout.write(f'  Onboarding login      : {primary_context["employees"]["onboarding"].user.email}  -> /auth/login (password not shown)')
+        self.stdout.write(f'  Pending join login    : {primary_context["employees"]["pending"].user.email}  -> /auth/login (password not shown)')
         self.stdout.write('')
         self.stdout.write(self.style.SUCCESS('Seed Scenarios'))
         self.stdout.write(f'  Primary organisation  : {primary_org.name} (active, fully configured)')

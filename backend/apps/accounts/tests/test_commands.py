@@ -208,6 +208,10 @@ class TestSeedControlTowerCommand:
 
         output = capsys.readouterr().out
         assert 'Seed Credentials' in output
+        assert 'password not shown' in output
+        assert 'ControlTower@123' not in output
+        assert 'OrgAdmin@123' not in output
+        assert 'Employee@123' not in output
         assert 'already exists' in output
 
     def test_command_fails_when_seed_licences_are_below_exhaustive_employee_count(self, seed_env):

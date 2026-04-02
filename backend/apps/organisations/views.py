@@ -16,9 +16,8 @@ from apps.departments.repositories import list_departments
 from apps.departments.serializers import DepartmentCreateUpdateSerializer, DepartmentSerializer
 from apps.departments.services import create_department, deactivate_department, update_department
 from apps.employees.repositories import get_employee, list_employees
-from apps.employees.serializers import EmployeeDetailSerializer, EmployeeListSerializer, EmployeeUpdateSerializer
+from apps.employees.serializers import CtEmployeeDetailSerializer, CtEmployeeListSerializer
 from apps.employees.models import Employee
-from apps.employees.services import update_employee
 from apps.locations.models import OfficeLocation
 from apps.locations.repositories import list_locations
 from apps.locations.serializers import LocationCreateUpdateSerializer, LocationSerializer
@@ -306,7 +305,7 @@ class CtOrganisationEmployeesView(APIView):
         )
         paginator = PageNumberPagination()
         page = paginator.paginate_queryset(queryset, request)
-        serializer = EmployeeListSerializer(page, many=True)
+        serializer = CtEmployeeListSerializer(page, many=True)
         return paginator.get_paginated_response(serializer.data)
 
 
@@ -316,18 +315,7 @@ class CtOrganisationEmployeeDetailView(APIView):
     def get(self, request, pk, employee_id):
         organisation = get_object_or_404(Organisation, id=pk)
         employee = get_employee(organisation, employee_id)
-        return Response(EmployeeDetailSerializer(employee).data)
-
-    def patch(self, request, pk, employee_id):
-        organisation = get_object_or_404(Organisation, id=pk)
-        employee = get_employee(organisation, employee_id)
-        serializer = EmployeeUpdateSerializer(data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        try:
-            employee = update_employee(employee, actor=request.user, **serializer.validated_data)
-        except (ValueError, Department.DoesNotExist, OfficeLocation.DoesNotExist) as exc:
-            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-        return Response(EmployeeDetailSerializer(employee).data)
+        return Response(CtEmployeeDetailSerializer(employee).data)
 
 
 class CtOrganisationHolidayCalendarListCreateView(APIView):

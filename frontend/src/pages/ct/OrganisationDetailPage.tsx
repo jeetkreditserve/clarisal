@@ -1786,7 +1786,7 @@ export function OrganisationDetailPage() {
         <div className="grid gap-4 md:grid-cols-[1.3fr_0.9fr_auto]">
           <input
             className="field-input"
-            placeholder="Search employee code, email, or name"
+            placeholder="Search employee code or name"
             value={employeeSearch}
             onChange={(event) => {
               setEmployeeSearch(event.target.value)
@@ -1830,9 +1830,10 @@ export function OrganisationDetailPage() {
                           {employee.status}
                         </StatusBadge>
                       </div>
-                      <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">{employee.email}</p>
                       <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
-                        {employee.designation || 'No designation'} • {employee.department_name || 'No department'} • {employee.office_location_name || 'No location'}
+                        {[employee.employee_code || 'No employee code', employee.designation || 'No designation', employee.department_name || 'No department', employee.office_location_name || 'No location']
+                          .filter(Boolean)
+                          .join(' • ')}
                       </p>
                     </div>
                     <div className="flex flex-wrap gap-3">
@@ -3740,7 +3741,7 @@ export function OrganisationDetailPage() {
           if (!open) setSelectedEmployeeId('')
         }}
         title={selectedEmployee?.full_name || 'Employee details'}
-        description="Read-only employee visibility from Control Tower."
+        description="Read-only, sanitised employment visibility from Control Tower."
       >
         {employeeDetailLoading || !selectedEmployee ? (
           <SkeletonFormBlock rows={5} />
@@ -3748,40 +3749,18 @@ export function OrganisationDetailPage() {
           <div className="space-y-5">
             <InfoStack
               items={[
-                { label: 'Email', value: selectedEmployee.email },
+                { label: 'Employee code', value: selectedEmployee.employee_code },
                 { label: 'Status', value: startCase(selectedEmployee.status) },
                 { label: 'Onboarding', value: startCase(selectedEmployee.onboarding_status) },
                 { label: 'Designation', value: selectedEmployee.designation },
-                { label: 'Department', value: selectedEmployee.department },
-                { label: 'Office location', value: selectedEmployee.office_location },
-                { label: 'Reporting to', value: selectedEmployee.reporting_to },
+                { label: 'Employment type', value: startCase(selectedEmployee.employment_type) },
+                { label: 'Department', value: selectedEmployee.department_name },
+                { label: 'Office location', value: selectedEmployee.office_location_name },
+                { label: 'Reporting to', value: selectedEmployee.reporting_to_name },
                 { label: 'Date of joining', value: formatDate(selectedEmployee.date_of_joining) },
+                { label: 'Date of exit', value: formatDate(selectedEmployee.date_of_exit) },
               ]}
             />
-            {selectedEmployee.profile ? (
-              <SectionCard title="Profile summary" description="Basic contact and address data captured by the employee.">
-                <InfoStack
-                  items={[
-                    { label: 'Phone', value: selectedEmployee.profile.phone_personal },
-                    { label: 'Nationality', value: selectedEmployee.profile.nationality },
-                    { label: 'Blood type', value: startCase(selectedEmployee.profile.blood_type || '') },
-                    {
-                      label: 'Address',
-                      value: [
-                        selectedEmployee.profile.address_line1,
-                        selectedEmployee.profile.address_line2,
-                        selectedEmployee.profile.city,
-                        selectedEmployee.profile.state,
-                        selectedEmployee.profile.country,
-                        selectedEmployee.profile.pincode,
-                      ]
-                        .filter(Boolean)
-                        .join(', '),
-                    },
-                  ]}
-                />
-              </SectionCard>
-            ) : null}
           </div>
         )}
       </AppDialog>

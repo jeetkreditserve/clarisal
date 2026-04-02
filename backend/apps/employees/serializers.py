@@ -39,6 +39,24 @@ class EmployeeListSerializer(serializers.ModelSerializer):
         ]
 
 
+class CtEmployeeListSerializer(serializers.ModelSerializer):
+    full_name = serializers.CharField(source='user.full_name', read_only=True)
+    department_name = serializers.CharField(source='department.name', read_only=True)
+    office_location_name = serializers.CharField(source='office_location.name', read_only=True)
+
+    class Meta:
+        model = Employee
+        fields = [
+            'id',
+            'employee_code',
+            'full_name',
+            'designation',
+            'status',
+            'department_name',
+            'office_location_name',
+        ]
+
+
 class EmployeeInviteSerializer(serializers.Serializer):
     first_name = serializers.CharField(max_length=100)
     last_name = serializers.CharField(max_length=100)
@@ -293,3 +311,27 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
             'on_duty': serialize_effective(ApprovalRequestKind.ON_DUTY),
             'attendance_regularization': serialize_effective(ApprovalRequestKind.ATTENDANCE_REGULARIZATION),
         }
+
+
+class CtEmployeeDetailSerializer(serializers.ModelSerializer):
+    full_name = serializers.CharField(source='user.full_name', read_only=True)
+    department_name = serializers.CharField(source='department.name', read_only=True)
+    office_location_name = serializers.CharField(source='office_location.name', read_only=True)
+    reporting_to_name = serializers.CharField(source='reporting_to.user.full_name', read_only=True)
+
+    class Meta:
+        model = Employee
+        fields = [
+            'id',
+            'employee_code',
+            'full_name',
+            'designation',
+            'employment_type',
+            'date_of_joining',
+            'date_of_exit',
+            'status',
+            'onboarding_status',
+            'department_name',
+            'office_location_name',
+            'reporting_to_name',
+        ]

@@ -3,6 +3,14 @@ from decimal import Decimal
 from django.urls import reverse
 from rest_framework.test import APIClient
 from apps.accounts.models import AccountType, User, UserRole
+from apps.employees.models import (
+    Employee,
+    EmployeeBankAccount,
+    EmployeeEmergencyContact,
+    EmployeeFamilyMember,
+    EmployeeGovernmentId,
+    EmployeeProfile,
+)
 from apps.organisations.models import (
     Organisation,
     OrganisationAddress,
@@ -326,7 +334,6 @@ class TestCtOrganisationDetailTabsSupport:
             first_name='Riya',
             last_name='Sen',
         )
-        from apps.employees.models import Employee
 
         employee = Employee.objects.create(
             organisation=org,
@@ -340,11 +347,145 @@ class TestCtOrganisationDetailTabsSupport:
 
         assert response.status_code == 200
         assert response.data['count'] == 1
-        assert response.data['results'][0]['email'] == 'employee@test.com'
+        assert response.data['results'][0]['full_name'] == 'Riya Sen'
+        assert response.data['results'][0]['designation'] == 'Analyst'
+        assert 'email' not in response.data['results'][0]
+        assert 'employment_type' not in response.data['results'][0]
+        assert 'date_of_joining' not in response.data['results'][0]
 
         detail_response = client.get(f'/api/ct/organisations/{org.id}/employees/{employee.id}/')
         assert detail_response.status_code == 200
         assert detail_response.data['full_name'] == 'Riya Sen'
+        assert 'email' not in detail_response.data
+        assert 'profile' not in detail_response.data
+        assert 'government_ids' not in detail_response.data
+        assert 'bank_accounts' not in detail_response.data
+        assert 'family_members' not in detail_response.data
+        assert 'emergency_contacts' not in detail_response.data
+
+    def test_ct_employee_detail_hides_sensitive_employee_data(self, ct_client, org):
+        client, _ = ct_client
+        manager_user = User.objects.create_user(
+            email='manager@test.com',
+            password='pass123!',
+            account_type=AccountType.WORKFORCE,
+            role=UserRole.EMPLOYEE,
+            is_active=True,
+            first_name='Meera',
+            last_name='Kapoor',
+        )
+        manager = Employee.objects.create(
+            organisation=org,
+            user=manager_user,
+            employee_code='EMP001',
+            designation='Manager',
+            employment_type='FULL_TIME',
+            status='ACTIVE',
+        )
+        workforce_user = User.objects.create_user(
+            email='private.employee@test.com',
+            password='pass123!',
+            account_type=AccountType.WORKFORCE,
+            role=UserRole.EMPLOYEE,
+            is_active=True,
+            first_name='Asha',
+            last_name='Iyer',
+        )
+        employee = Employee.objects.create(
+            organisation=org,
+            user=workforce_user,
+            employee_code='EMP002',
+            designation='Engineer',
+            employment_type='FULL_TIME',
+            status='ACTIVE',
+            onboarding_status='BASIC_DETAILS_PENDING',
+            reporting_to=manager,
+        )
+        EmployeeProfile.objects.create(
+            employee=employee,
+            phone_personal='+919999999999',
+            nationality='Indian',
+            address_line1='Secret address',
+            city='Bengaluru',
+            state='Karnataka',
+            country='India',
+            pincode='560001',
+        )
+        EmployeeGovernmentId.objects.create(
+            employee=employee,
+            id_type='PAN',
+            masked_identifier='ABCDE1234F',
+            name_on_id='Asha Iyer',
+        )
+        EmployeeBankAccount.objects.create(
+            employee=employee,
+            account_holder_name='Asha Iyer',
+            bank_name='Test Bank',
+            masked_account_number='XXXX1234',
+            masked_ifsc='XXXX0001234',
+            is_primary=True,
+        )
+        EmployeeFamilyMember.objects.create(
+            employee=employee,
+            full_name='Raman Iyer',
+            relation='FATHER',
+            contact_number='+919888888888',
+        )
+        EmployeeEmergencyContact.objects.create(
+            employee=employee,
+            full_name='Neha Iyer',
+            relation='Spouse',
+            phone_number='+919777777777',
+            address='Another secret address',
+            is_primary=True,
+        )
+
+        response = client.get(f'/api/ct/organisations/{org.id}/employees/{employee.id}/')
+
+        assert response.status_code == 200
+        assert response.data == {
+            'id': str(employee.id),
+            'employee_code': 'EMP002',
+            'full_name': 'Asha Iyer',
+            'designation': 'Engineer',
+            'employment_type': 'FULL_TIME',
+            'date_of_joining': None,
+            'date_of_exit': None,
+            'status': 'ACTIVE',
+            'onboarding_status': 'BASIC_DETAILS_PENDING',
+            'department_name': None,
+            'office_location_name': None,
+            'reporting_to_name': 'Meera Kapoor',
+        }
+
+    def test_ct_cannot_edit_employee_records(self, ct_client, org):
+        client, _ = ct_client
+        workforce_user = User.objects.create_user(
+            email='locked.employee@test.com',
+            password='pass123!',
+            account_type=AccountType.WORKFORCE,
+            role=UserRole.EMPLOYEE,
+            is_active=True,
+            first_name='Locked',
+            last_name='User',
+        )
+        employee = Employee.objects.create(
+            organisation=org,
+            user=workforce_user,
+            designation='Analyst',
+            employment_type='FULL_TIME',
+            status='ACTIVE',
+        )
+
+        response = client.patch(
+            f'/api/ct/organisations/{org.id}/employees/{employee.id}/',
+            {'designation': 'Senior Analyst'},
+            format='json',
+        )
+
+        employee.refresh_from_db()
+        assert response.status_code == 405
+        assert employee.designation == 'Analyst'
 
     def test_ct_can_manage_holiday_calendars(self, ct_client, org):
         client, _ = ct_client

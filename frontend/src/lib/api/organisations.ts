@@ -12,10 +12,10 @@ import type {
 } from '@/types/organisation'
 import type {
   ApprovalWorkflowConfig,
+  CtEmployeeDetail,
+  CtEmployeeListItem,
   PayrollTaxSlabSet,
   Department,
-  EmployeeDetail,
-  EmployeeListItem,
   HolidayCalendar,
   LeaveCycle,
   LeavePlan,
@@ -209,31 +209,13 @@ export async function createCtPayrollTaxSlabSet(payload: Record<string, unknown>
 export async function fetchCtOrgEmployees(
   id: string,
   params?: { status?: string; search?: string; page?: number }
-): Promise<PaginatedResponse<EmployeeListItem>> {
+): Promise<PaginatedResponse<CtEmployeeListItem>> {
   const { data } = await api.get(`/ct/organisations/${id}/employees/`, { params })
   return data
 }
 
-export async function fetchCtOrgEmployeeDetail(id: string, employeeId: string): Promise<EmployeeDetail> {
+export async function fetchCtOrgEmployeeDetail(id: string, employeeId: string): Promise<CtEmployeeDetail> {
   const { data } = await api.get(`/ct/organisations/${id}/employees/${employeeId}/`)
-  return data
-}
-
-export async function updateCtOrgEmployeeDetail(
-  id: string,
-  employeeId: string,
-  payload: Partial<{
-    designation: string
-    employment_type: string
-    date_of_joining: string | null
-    department_id: string | null
-    office_location_id: string | null
-    leave_approval_workflow_id: string | null
-    on_duty_approval_workflow_id: string | null
-    attendance_regularization_approval_workflow_id: string | null
-  }>
-): Promise<EmployeeDetail> {
-  const { data } = await api.patch(`/ct/organisations/${id}/employees/${employeeId}/`, payload)
   return data
 }
 
