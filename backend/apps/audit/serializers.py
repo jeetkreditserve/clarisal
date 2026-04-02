@@ -1,5 +1,6 @@
 from rest_framework import serializers
 
+from .services import sanitize_audit_payload
 from .models import AuditLog
 
 
@@ -7,6 +8,7 @@ class AuditLogSerializer(serializers.ModelSerializer):
     actor_email = serializers.EmailField(source='actor.email', read_only=True)
     actor_name = serializers.CharField(source='actor.full_name', read_only=True)
     organisation_name = serializers.CharField(source='organisation.name', read_only=True)
+    payload = serializers.SerializerMethodField()
     module = serializers.SerializerMethodField()
     target_label = serializers.SerializerMethodField()
     payload_summary = serializers.SerializerMethodField()
@@ -35,8 +37,11 @@ class AuditLogSerializer(serializers.ModelSerializer):
             return obj.action.split('.', 1)[0]
         return obj.action
 
+    def get_payload(self, obj):
+        return sanitize_audit_payload(obj.payload or {})
+
     def get_target_label(self, obj):
-        payload = obj.payload or {}
+        payload = self.get_payload(obj)
         candidate_keys = ['name', 'title', 'label', 'full_name', 'email', 'status']
         for key in candidate_keys:
             value = payload.get(key)
@@ -49,7 +54,7 @@ class AuditLogSerializer(serializers.ModelSerializer):
         return ''
 
     def get_payload_summary(self, obj):
-        payload = obj.payload or {}
+        payload = self.get_payload(obj)
         summary_parts = []
         for key, value in payload.items():
             if value in ('', None, [], {}):

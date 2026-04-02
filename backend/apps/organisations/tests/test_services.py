@@ -1,5 +1,6 @@
 import pytest
 from apps.accounts.models import User, UserRole
+from apps.audit.models import AuditLog
 from apps.organisations.models import Organisation, OrganisationStateTransition, OrganisationStatus
 from apps.organisations.services import (
     create_organisation, transition_organisation_state,
@@ -103,6 +104,25 @@ class TestCreateOrganisation:
         assert org.phone == ''
         assert org.entity_type == 'PRIVATE_LIMITED'
         assert org.bootstrap_admin.email == 'admin@test.com'
+
+    def test_audit_log_redacts_pan_number_in_creation_payload(self, ct_user):
+        create_organisation(
+            name='Audit Safe Corp',
+            licence_count=1,
+            created_by=ct_user,
+            pan_number='ABCDE1234F',
+            primary_admin={
+                'first_name': 'Alice',
+                'last_name': 'Smith',
+                'email': 'admin@auditsafe.com',
+                'phone': '+919999999999',
+            },
+            addresses=organisation_addresses(),
+        )
+
+        audit_log = AuditLog.objects.get(action='organisation.created')
+        assert audit_log.payload['pan_number'] == '[REDACTED]'
+        assert audit_log.payload['primary_admin_email'] == 'admin@auditsafe.com'
 
 
 @pytest.mark.django_db

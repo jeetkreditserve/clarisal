@@ -3,7 +3,7 @@ import { expect } from '@playwright/test'
 
 /** Waits for a sonner toast containing the given text (success or error). */
 export async function waitForToast(page: Page, text: string, timeout = 8000) {
-  await expect(page.locator('[data-sonner-toast]')).toContainText(text, { timeout })
+  await expect(page.locator('[data-sonner-toast]').first()).toContainText(text, { timeout })
 }
 
 /** Asserts that a table row containing the given text is visible. */
