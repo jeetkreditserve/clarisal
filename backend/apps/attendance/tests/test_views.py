@@ -7,7 +7,24 @@ from openpyxl import Workbook, load_workbook
 from rest_framework.test import APIClient
 
 from apps.accounts.models import AccountType, User, UserRole
-from apps.attendance.models import AttendanceImportStatus, AttendanceRecord
+from apps.approvals.models import (
+    ApprovalApproverType,
+    ApprovalRequestKind,
+    ApprovalStage,
+    ApprovalStageApprover,
+    ApprovalWorkflow,
+    ApprovalWorkflowRule,
+)
+from apps.approvals.services import approve_action
+from apps.attendance.models import (
+    AttendanceDay,
+    AttendanceImportStatus,
+    AttendancePunch,
+    AttendanceRecord,
+    AttendanceRegularizationRequest,
+    AttendanceRegularizationStatus,
+    AttendanceSourceConfig,
+)
 from apps.employees.models import Employee, EmployeeStatus
 from apps.organisations.models import (
     Organisation,
@@ -52,6 +69,8 @@ def attendance_setup(db):
         is_org_admin=True,
         status=OrganisationMembershipStatus.ACTIVE,
     )
+    organisation.primary_admin_user = org_admin_user
+    organisation.save(update_fields=['primary_admin_user', 'modified_at'])
     employee_user = User.objects.create_user(
         email='attendance-employee@test.com',
         password='pass123!',
@@ -76,11 +95,20 @@ def attendance_setup(db):
     session['active_admin_org_id'] = str(organisation.id)
     session.save()
 
+    employee_client = APIClient()
+    employee_client.force_authenticate(user=employee_user)
+    employee_session = employee_client.session
+    employee_session['active_workspace_kind'] = 'EMPLOYEE'
+    employee_session['active_employee_org_id'] = str(organisation.id)
+    employee_session.save()
+
     return {
         'organisation': organisation,
         'org_admin_user': org_admin_user,
+        'employee_user': employee_user,
         'employee': employee,
         'client': client,
+        'employee_client': employee_client,
     }
 
 
@@ -194,3 +222,137 @@ class TestAttendanceImportViews:
         assert review_sheet['A2'].value == 'EMP100'
         assert review_sheet['D2'].value == 'Only one punch was found for this employee on this date. Add a checkout time before re-uploading.'
 
+    def test_employee_can_punch_in_and_out_and_summary_updates(self, attendance_setup):
+        client = attendance_setup['employee_client']
+
+        punch_in_response = client.post('/api/me/attendance/punch-in/', {})
+        punch_out_response = client.post('/api/me/attendance/punch-out/', {})
+        summary_response = client.get('/api/me/attendance/summary/')
+
+        assert punch_in_response.status_code == 201
+        assert punch_out_response.status_code == 201
+        assert summary_response.status_code == 200
+        assert summary_response.data['today']['check_in_at'] is not None
+        assert summary_response.data['today']['check_out_at'] is not None
+        assert summary_response.data['today']['raw_punch_count'] >= 2
+
+    def test_org_attendance_dashboard_and_days_endpoint_return_data(self, attendance_setup):
+        employee_client = attendance_setup['employee_client']
+        admin_client = attendance_setup['client']
+
+        employee_client.post('/api/me/attendance/punch-in/', {})
+        employee_client.post('/api/me/attendance/punch-out/', {})
+
+        dashboard_response = admin_client.get('/api/org/attendance/dashboard/')
+        days_response = admin_client.get('/api/org/attendance/days/')
+
+        assert dashboard_response.status_code == 200
+        assert days_response.status_code == 200
+        assert dashboard_response.data['total_employees'] == 1
+        assert len(days_response.data) == 1
+        assert days_response.data[0]['employee_code'] == 'EMP100'
+
+    def test_org_can_create_api_source_and_ingest_punches(self, attendance_setup):
+        admin_client = attendance_setup['client']
+        anonymous_client = APIClient()
+
+        create_response = admin_client.post(
+            '/api/org/attendance/sources/',
+            {
+                'name': 'Biometric gateway',
+                'kind': 'API',
+                'configuration': {'site': 'HQ'},
+            },
+            format='json',
+        )
+
+        assert create_response.status_code == 201
+        assert create_response.data['raw_api_key']
+        source_id = create_response.data['id']
+
+        ingest_response = anonymous_client.post(
+            f'/api/org/attendance/public-sources/{source_id}/punches/',
+            {
+                'punches': [
+                    {'employee_code': 'EMP100', 'punch_at': '2026-04-07T09:02:00', 'action_type': 'CHECK_IN'},
+                    {'employee_code': 'EMP100', 'punch_at': '2026-04-07T18:01:00', 'action_type': 'CHECK_OUT'},
+                ]
+            },
+            format='json',
+            HTTP_X_ATTENDANCE_SOURCE_KEY=create_response.data['raw_api_key'],
+        )
+
+        assert ingest_response.status_code == 202
+        assert ingest_response.data['ingested_count'] == 2
+        assert AttendanceSourceConfig.objects.filter(id=source_id, kind='API').exists()
+        assert AttendancePunch.objects.filter(employee=attendance_setup['employee']).count() == 2
+        assert AttendanceDay.objects.get(employee=attendance_setup['employee'], attendance_date=date(2026, 4, 7)).raw_punch_count == 2
+
+    def test_org_attendance_report_returns_monthly_summary(self, attendance_setup):
+        employee_client = attendance_setup['employee_client']
+        admin_client = attendance_setup['client']
+
+        employee_client.post('/api/me/attendance/punch-in/', {})
+        employee_client.post('/api/me/attendance/punch-out/', {})
+
+        response = admin_client.get('/api/org/attendance/reports/summary/', {'month': '2026-04'})
+
+        assert response.status_code == 200
+        assert response.data['month'] == '2026-04'
+        assert response.data['employee_count'] == 1
+        assert 'rows' in response.data
+
+    def test_attendance_regularization_approval_updates_attendance_day(self, attendance_setup):
+        organisation = attendance_setup['organisation']
+        org_admin_user = attendance_setup['org_admin_user']
+        employee = attendance_setup['employee']
+        employee_client = attendance_setup['employee_client']
+
+        workflow = ApprovalWorkflow.objects.create(
+            organisation=organisation,
+            name='Default Attendance Regularization Workflow',
+            is_default=True,
+            default_request_kind=ApprovalRequestKind.ATTENDANCE_REGULARIZATION,
+            is_active=True,
+        )
+        ApprovalWorkflowRule.objects.create(
+            workflow=workflow,
+            name='Default regularization rule',
+            request_kind=ApprovalRequestKind.ATTENDANCE_REGULARIZATION,
+            priority=100,
+            is_active=True,
+        )
+        stage = ApprovalStage.objects.create(
+            workflow=workflow,
+            name='Org admin review',
+            sequence=1,
+            mode='ALL',
+        )
+        ApprovalStageApprover.objects.create(
+            stage=stage,
+            approver_type=ApprovalApproverType.PRIMARY_ORG_ADMIN,
+        )
+
+        response = employee_client.post(
+            '/api/me/attendance/regularizations/',
+            {
+                'attendance_date': '2026-04-06',
+                'requested_check_in': '09:10',
+                'requested_check_out': '18:05',
+                'reason': 'Biometric sync missed both punches.',
+            },
+            format='json',
+        )
+
+        assert response.status_code == 201
+        regularization = AttendanceRegularizationRequest.objects.get(id=response.data['id'])
+        action = regularization.approval_run.actions.get()
+        approve_action(action, org_admin_user)
+
+        regularization.refresh_from_db()
+        day = AttendanceDay.objects.get(employee=employee, attendance_date=date(2026, 4, 6))
+
+        assert regularization.status == AttendanceRegularizationStatus.APPROVED
+        assert day.check_in_at is not None
+        assert day.check_out_at is not None
+        assert day.status in {'PRESENT', 'HALF_DAY'}

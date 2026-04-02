@@ -30,6 +30,7 @@ urlpatterns = [
     path('api/me/', include('apps.documents.self_urls')),
     path('api/me/', include('apps.approvals.self_urls')),
     path('api/me/', include('apps.timeoff.self_urls')),
+    path('api/me/', include('apps.attendance.self_urls')),
     path('api/me/', include('apps.communications.self_urls')),
     path('api/me/', include('apps.payroll.self_urls')),
 ]

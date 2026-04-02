@@ -4,6 +4,7 @@ import { useAuth } from '@/hooks/useAuth'
 import {
   approveMyApprovalAction,
   createBankAccount,
+  createMyAttendanceRegularization,
   createEmergencyContact,
   createEducation,
   createFamilyMember,
@@ -16,6 +17,11 @@ import {
   fetchBankAccounts,
   fetchEducation,
   fetchGovernmentIds,
+  fetchMyAttendanceCalendar,
+  fetchMyAttendanceHistory,
+  fetchMyAttendancePolicy,
+  fetchMyAttendanceRegularizations,
+  fetchMyAttendanceSummary,
   fetchMyApprovalInbox,
   fetchMyCalendar,
   fetchMyDashboard,
@@ -31,8 +37,11 @@ import {
   fetchMyPayslips,
   fetchMyProfile,
   getMyDocumentDownloadUrl,
+  punchIn,
+  punchOut,
   rejectMyApprovalAction,
   updateEmergencyContact,
+  updateMyAttendanceRegularization,
   updateBankAccount,
   updateEducation,
   updateFamilyMember,
@@ -41,6 +50,7 @@ import {
   uploadRequestedDocument,
   uploadMyDocument,
   upsertGovernmentId,
+  withdrawMyAttendanceRegularization,
   withdrawMyLeaveRequest,
   withdrawMyOnDutyRequest,
 } from '@/lib/api/self-service'
@@ -53,6 +63,91 @@ function useEmployeeScope() {
 export function useMyDashboard() {
   const organisationId = useEmployeeScope()
   return useQuery({ queryKey: ['me', organisationId, 'dashboard'], queryFn: fetchMyDashboard })
+}
+
+export function useMyAttendanceSummary() {
+  const organisationId = useEmployeeScope()
+  return useQuery({ queryKey: ['me', organisationId, 'attendance-summary'], queryFn: fetchMyAttendanceSummary })
+}
+
+export function useMyAttendanceHistory(month?: string) {
+  const organisationId = useEmployeeScope()
+  return useQuery({
+    queryKey: ['me', organisationId, 'attendance-history', month],
+    queryFn: () => fetchMyAttendanceHistory(month),
+  })
+}
+
+export function useMyAttendanceCalendar(month?: string) {
+  const organisationId = useEmployeeScope()
+  return useQuery({
+    queryKey: ['me', organisationId, 'attendance-calendar', month],
+    queryFn: () => fetchMyAttendanceCalendar(month),
+  })
+}
+
+export function useMyAttendancePolicy() {
+  const organisationId = useEmployeeScope()
+  return useQuery({ queryKey: ['me', organisationId, 'attendance-policy'], queryFn: fetchMyAttendancePolicy })
+}
+
+export function usePunchIn() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: punchIn,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['me'] })
+    },
+  })
+}
+
+export function usePunchOut() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: punchOut,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['me'] })
+    },
+  })
+}
+
+export function useMyAttendanceRegularizations() {
+  const organisationId = useEmployeeScope()
+  return useQuery({
+    queryKey: ['me', organisationId, 'attendance-regularizations'],
+    queryFn: fetchMyAttendanceRegularizations,
+  })
+}
+
+export function useCreateMyAttendanceRegularization() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: createMyAttendanceRegularization,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['me'] })
+    },
+  })
+}
+
+export function useUpdateMyAttendanceRegularization() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Parameters<typeof updateMyAttendanceRegularization>[1] }) =>
+      updateMyAttendanceRegularization(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['me'] })
+    },
+  })
+}
+
+export function useWithdrawMyAttendanceRegularization() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: withdrawMyAttendanceRegularization,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['me'] })
+    },
+  })
 }
 
 export function useMyProfile() {

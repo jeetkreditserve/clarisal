@@ -801,7 +801,27 @@ def calculate_pay_run(pay_run, *, actor=None):
             else:
                 prorate_factor = Decimal('1.00')
 
-            # ── Step 6: LOP deduction (approved unpaid leave) ────────────────
+            # ── Step 6: Attendance-backed payable days and LOP ───────────────
+            active_period_start = max(period_start, joining) if joining and joining > period_start else period_start
+            active_period_end = min(period_end, exit_date) if exit_date and exit_date < period_end else period_end
+            attendance_paid_days = Decimal(str(paid_days))
+            attendance_overtime_minutes = 0
+            if active_period_start <= active_period_end:
+                try:
+                    from apps.attendance.services import get_payroll_attendance_summary
+
+                    attendance_summary = get_payroll_attendance_summary(
+                        employee,
+                        period_start=active_period_start,
+                        period_end=active_period_end,
+                    )
+                    attendance_paid_days = attendance_summary['paid_fraction']
+                    attendance_overtime_minutes = attendance_summary['overtime_minutes']
+                except Exception:  # noqa: BLE001
+                    attendance_summary = None
+            else:
+                attendance_summary = None
+
             lop_result = LeaveRequest.objects.filter(
                 employee=employee,
                 leave_type__is_loss_of_pay=True,
@@ -809,7 +829,10 @@ def calculate_pay_run(pay_run, *, actor=None):
                 start_date__gte=period_start,
                 start_date__lte=period_end,
             ).aggregate(total=Sum('total_units'))
-            lop_days = _normalize_decimal(lop_result['total']) or ZERO
+            leave_only_lop_days = _normalize_decimal(lop_result['total']) or ZERO
+            expected_paid_days = Decimal(str(paid_days))
+            attendance_based_lop = max(ZERO, expected_paid_days - attendance_paid_days)
+            lop_days = max(leave_only_lop_days, attendance_based_lop)
             lop_deduction = ZERO
             if lop_days > ZERO and gross_pay > ZERO and total_days_in_period > 0:
                 daily_gross = (gross_pay / Decimal(total_days_in_period)).quantize(Decimal('0.01'))
@@ -847,6 +870,7 @@ def calculate_pay_run(pay_run, *, actor=None):
                     'period_start': str(period_start),
                     'period_end': str(period_end),
                     'paid_days': paid_days,
+                    'attendance_paid_days': str(attendance_paid_days),
                     'total_days_in_period': total_days_in_period,
                     'pro_rate_factor': str(prorate_factor),
                     # Auto-calculated statutory
@@ -857,6 +881,7 @@ def calculate_pay_run(pay_run, *, actor=None):
                     # LOP
                     'lop_days': str(lop_days),
                     'lop_deduction': str(lop_deduction),
+                    'attendance_overtime_minutes': attendance_overtime_minutes,
                     # Tax working
                     'annual_taxable_gross': str(annual_taxable_gross),
                     'annual_standard_deduction': str(annual_standard_deduction),

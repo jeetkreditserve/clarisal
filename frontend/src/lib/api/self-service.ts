@@ -1,6 +1,9 @@
 import api from '@/lib/api'
 import type {
   ApprovalActionItem,
+  AttendanceDayRecord,
+  AttendancePolicy,
+  AttendanceRegularization,
   BankAccount,
   CalendarMonthView,
   DocumentRecord,
@@ -9,6 +12,8 @@ import type {
   EmergencyContact,
   EducationRecord,
   EmployeeDashboard,
+  EmployeeAttendanceCalendar,
+  EmployeeAttendanceSummary,
   FamilyMember,
   GovernmentId,
   LeaveOverview,
@@ -284,5 +289,67 @@ export async function fetchMyCalendar(month?: string) {
   const { data } = await api.get<CalendarMonthView>('/me/calendar/', {
     params: month ? { month } : undefined,
   })
+  return data
+}
+
+export async function fetchMyAttendanceSummary() {
+  const { data } = await api.get<EmployeeAttendanceSummary>('/me/attendance/summary/')
+  return data
+}
+
+export async function fetchMyAttendanceHistory(month?: string) {
+  const { data } = await api.get<AttendanceDayRecord[]>('/me/attendance/history/', {
+    params: month ? { month } : undefined,
+  })
+  return data
+}
+
+export async function fetchMyAttendanceCalendar(month?: string) {
+  const { data } = await api.get<EmployeeAttendanceCalendar>('/me/attendance/calendar/', {
+    params: month ? { month } : undefined,
+  })
+  return data
+}
+
+export async function fetchMyAttendancePolicy() {
+  const { data } = await api.get<AttendancePolicy>('/me/attendance/policy/')
+  return data
+}
+
+export async function punchIn(payload?: { latitude?: number | null; longitude?: number | null }) {
+  const { data } = await api.post<AttendanceDayRecord>('/me/attendance/punch-in/', payload ?? {})
+  return data
+}
+
+export async function punchOut(payload?: { latitude?: number | null; longitude?: number | null }) {
+  const { data } = await api.post<AttendanceDayRecord>('/me/attendance/punch-out/', payload ?? {})
+  return data
+}
+
+export async function fetchMyAttendanceRegularizations() {
+  const { data } = await api.get<AttendanceRegularization[]>('/me/attendance/regularizations/')
+  return data
+}
+
+export async function createMyAttendanceRegularization(payload: {
+  attendance_date: string
+  requested_check_in?: string | null
+  requested_check_out?: string | null
+  reason: string
+}) {
+  const { data } = await api.post<AttendanceRegularization>('/me/attendance/regularizations/', payload)
+  return data
+}
+
+export async function updateMyAttendanceRegularization(
+  id: string,
+  payload: { requested_check_in?: string | null; requested_check_out?: string | null; reason?: string }
+) {
+  const { data } = await api.patch<AttendanceRegularization>(`/me/attendance/regularizations/${id}/`, payload)
+  return data
+}
+
+export async function withdrawMyAttendanceRegularization(id: string) {
+  const { data } = await api.post<AttendanceRegularization>(`/me/attendance/regularizations/${id}/withdraw/`)
   return data
 }

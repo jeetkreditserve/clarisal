@@ -9,7 +9,13 @@ import type {
 import type { OrgAdminSetupState } from '@/types/organisation'
 import type {
   ApprovalActionItem,
+  AttendanceDayRecord,
   AttendanceImportJob,
+  AttendancePolicy,
+  AttendanceRegularization,
+  AttendanceSourceConfig,
+  AttendanceShift,
+  AttendanceShiftAssignment,
   ApprovalWorkflowConfig,
   CompensationAssignment,
   CompensationTemplate,
@@ -25,6 +31,8 @@ import type {
   Location,
   NoticeItem,
   OnDutyPolicy,
+  OrgAttendanceDashboard,
+  OrgAttendanceReport,
   OnDutyRequestRecord,
   OnboardingDocumentType,
   OrgPayrollSummary,
@@ -401,6 +409,118 @@ export async function fetchOrgOnDutyRequests() {
 
 export async function fetchAttendanceImports() {
   const { data } = await api.get<AttendanceImportJob[]>('/org/attendance/imports/')
+  return data
+}
+
+export async function fetchAttendanceDashboard(date?: string) {
+  const { data } = await api.get<OrgAttendanceDashboard>('/org/attendance/dashboard/', {
+    params: date ? { date } : undefined,
+  })
+  return data
+}
+
+export async function fetchAttendancePolicies() {
+  const { data } = await api.get<AttendancePolicy[]>('/org/attendance/policies/')
+  return data
+}
+
+export async function createAttendancePolicy(payload: Partial<AttendancePolicy>) {
+  const { data } = await api.post<AttendancePolicy>('/org/attendance/policies/', payload)
+  return data
+}
+
+export async function updateAttendancePolicy(id: string, payload: Partial<AttendancePolicy>) {
+  const { data } = await api.patch<AttendancePolicy>(`/org/attendance/policies/${id}/`, payload)
+  return data
+}
+
+export async function fetchAttendanceShifts() {
+  const { data } = await api.get<AttendanceShift[]>('/org/attendance/shifts/')
+  return data
+}
+
+export async function createAttendanceShift(payload: Partial<AttendanceShift>) {
+  const { data } = await api.post<AttendanceShift>('/org/attendance/shifts/', payload)
+  return data
+}
+
+export async function updateAttendanceShift(id: string, payload: Partial<AttendanceShift>) {
+  const { data } = await api.patch<AttendanceShift>(`/org/attendance/shifts/${id}/`, payload)
+  return data
+}
+
+export async function fetchAttendanceShiftAssignments() {
+  const { data } = await api.get<AttendanceShiftAssignment[]>('/org/attendance/shift-assignments/')
+  return data
+}
+
+export async function createAttendanceShiftAssignment(payload: {
+  employee_id: string
+  shift_id: string
+  start_date: string
+  end_date?: string | null
+}) {
+  const { data } = await api.post<AttendanceShiftAssignment>('/org/attendance/shift-assignments/', payload)
+  return data
+}
+
+export async function fetchAttendanceDays(params?: {
+  date?: string
+  status?: string
+  employee_id?: string
+}) {
+  const { data } = await api.get<AttendanceDayRecord[]>('/org/attendance/days/', { params })
+  return data
+}
+
+export async function overrideAttendanceDay(id: string, payload: {
+  check_in?: string | null
+  check_out?: string | null
+  note?: string
+}) {
+  const { data } = await api.patch<AttendanceDayRecord>(`/org/attendance/days/${id}/`, payload)
+  return data
+}
+
+export async function fetchAttendanceRegularizations(statusValue?: string) {
+  const { data } = await api.get<AttendanceRegularization[]>('/org/attendance/regularizations/', {
+    params: statusValue ? { status: statusValue } : undefined,
+  })
+  return data
+}
+
+export async function fetchAttendanceSources() {
+  const { data } = await api.get<AttendanceSourceConfig[]>('/org/attendance/sources/')
+  return data
+}
+
+export async function createAttendanceSource(payload: {
+  name: string
+  kind: 'API' | 'EXCEL' | 'DEVICE'
+  configuration?: Record<string, unknown>
+  is_active?: boolean
+}) {
+  const { data } = await api.post<AttendanceSourceConfig>('/org/attendance/sources/', payload)
+  return data
+}
+
+export async function updateAttendanceSource(
+  id: string,
+  payload: {
+    name?: string
+    configuration?: Record<string, unknown>
+    is_active?: boolean
+    rotate_api_key?: boolean
+  }
+) {
+  const { data } = await api.patch<AttendanceSourceConfig>(`/org/attendance/sources/${id}/`, payload)
+  return data
+}
+
+export async function fetchAttendanceReport(month?: string) {
+  const { data } = await api.get<OrgAttendanceReport>('/org/attendance/reports/summary/', {
+    params: month ? { month } : undefined,
+  })
   return data
 }
 

@@ -188,6 +188,8 @@ def _apply_subject_status(approval_run, new_status, rejection_reason=''):
     if rejection_reason and hasattr(subject, 'rejection_reason'):
         update_fields.append('rejection_reason')
     subject.save(update_fields=update_fields)
+    if hasattr(subject, 'handle_approval_status_change'):
+        subject.handle_approval_status_change(new_status, rejection_reason=rejection_reason)
 
 
 def _create_stage_actions(approval_run, stage):

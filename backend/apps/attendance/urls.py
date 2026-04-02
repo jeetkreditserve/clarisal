@@ -1,20 +1,45 @@
 from django.urls import path
 
 from .views import (
+    AttendanceSourceIngestView,
+    OrgAttendanceDashboardView,
+    OrgAttendanceDayDetailView,
+    OrgAttendanceDayListView,
     OrgAttendanceImportListView,
     OrgAttendanceNormalizedWorkbookView,
+    OrgAttendancePolicyDetailView,
+    OrgAttendancePolicyListView,
     OrgAttendancePunchImportView,
     OrgAttendancePunchSampleView,
+    OrgAttendanceRegularizationListView,
+    OrgAttendanceReportView,
     OrgAttendanceSheetImportView,
     OrgAttendanceSheetSampleView,
+    OrgAttendanceSourceConfigDetailView,
+    OrgAttendanceSourceConfigListView,
+    OrgAttendanceShiftAssignmentListView,
+    OrgAttendanceShiftDetailView,
+    OrgAttendanceShiftListView,
 )
 
 urlpatterns = [
+    path('attendance/dashboard/', OrgAttendanceDashboardView.as_view(), name='org-attendance-dashboard'),
+    path('attendance/policies/', OrgAttendancePolicyListView.as_view(), name='org-attendance-policy-list'),
+    path('attendance/policies/<uuid:pk>/', OrgAttendancePolicyDetailView.as_view(), name='org-attendance-policy-detail'),
+    path('attendance/shifts/', OrgAttendanceShiftListView.as_view(), name='org-attendance-shift-list'),
+    path('attendance/shifts/<uuid:pk>/', OrgAttendanceShiftDetailView.as_view(), name='org-attendance-shift-detail'),
+    path('attendance/shift-assignments/', OrgAttendanceShiftAssignmentListView.as_view(), name='org-attendance-shift-assignment-list'),
+    path('attendance/days/', OrgAttendanceDayListView.as_view(), name='org-attendance-day-list'),
+    path('attendance/days/<uuid:pk>/', OrgAttendanceDayDetailView.as_view(), name='org-attendance-day-detail'),
+    path('attendance/regularizations/', OrgAttendanceRegularizationListView.as_view(), name='org-attendance-regularization-list'),
+    path('attendance/sources/', OrgAttendanceSourceConfigListView.as_view(), name='org-attendance-source-list'),
+    path('attendance/sources/<uuid:pk>/', OrgAttendanceSourceConfigDetailView.as_view(), name='org-attendance-source-detail'),
+    path('attendance/reports/summary/', OrgAttendanceReportView.as_view(), name='org-attendance-report-summary'),
     path('attendance/imports/', OrgAttendanceImportListView.as_view(), name='org-attendance-import-list'),
     path('attendance/imports/templates/attendance-sheet/', OrgAttendanceSheetSampleView.as_view(), name='org-attendance-template-attendance-sheet'),
     path('attendance/imports/templates/punch-sheet/', OrgAttendancePunchSampleView.as_view(), name='org-attendance-template-punch-sheet'),
     path('attendance/imports/attendance-sheet/', OrgAttendanceSheetImportView.as_view(), name='org-attendance-import-attendance-sheet'),
     path('attendance/imports/punch-sheet/', OrgAttendancePunchImportView.as_view(), name='org-attendance-import-punch-sheet'),
     path('attendance/imports/<uuid:pk>/normalized-file/', OrgAttendanceNormalizedWorkbookView.as_view(), name='org-attendance-import-normalized-file'),
+    path('attendance/public-sources/<uuid:source_id>/punches/', AttendanceSourceIngestView.as_view(), name='attendance-source-ingest'),
 ]
-

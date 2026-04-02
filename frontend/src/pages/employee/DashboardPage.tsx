@@ -50,12 +50,15 @@ export function EmployeeDashboardPage() {
         <>
           <SectionCard title="Quick actions" description="Jump straight into the most common self-service actions without hunting through the sidebar.">
             <div className="flex flex-wrap gap-3">
-              <Link to="/me/leave" className="btn-primary">
-                Request leave
-              </Link>
-              <Link to="/me/payslips" className="btn-secondary">
-                View payslips
-              </Link>
+            <Link to="/me/leave" className="btn-primary">
+              Request leave
+            </Link>
+            <Link to="/me/attendance" className="btn-secondary">
+              Mark attendance
+            </Link>
+            <Link to="/me/payslips" className="btn-secondary">
+              View payslips
+            </Link>
               <Link to="/me/profile" className="btn-secondary">
                 Update profile
               </Link>

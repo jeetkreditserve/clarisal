@@ -4,6 +4,10 @@ import { fetchOrgAuditLogs } from '@/lib/api/audit'
 import { useAuth } from '@/hooks/useAuth'
 import {
   approveApprovalAction,
+  createAttendancePolicy,
+  createAttendanceSource,
+  createAttendanceShift,
+  createAttendanceShiftAssignment,
   assignEmployeeDocumentRequests,
   calculatePayrollRun,
   downloadAttendanceTemplate,
@@ -45,7 +49,15 @@ import {
   fetchOrgProfile,
   fetchPayrollSummary,
   fetchApprovalInbox,
+  fetchAttendanceDashboard,
+  fetchAttendanceDays,
   fetchAttendanceImports,
+  fetchAttendancePolicies,
+  fetchAttendanceReport,
+  fetchAttendanceRegularizations,
+  fetchAttendanceSources,
+  fetchAttendanceShiftAssignments,
+  fetchAttendanceShifts,
   fetchApprovalWorkflow,
   fetchApprovalWorkflows,
   fetchLeavePlan,
@@ -53,6 +65,7 @@ import {
   getEmployeeDocumentDownloadUrl,
   inviteEmployee,
   markEmployeeJoined,
+  overrideAttendanceDay,
   publishHolidayCalendar,
   publishNotice,
   rejectApprovalAction,
@@ -79,6 +92,9 @@ import {
   updateLocation,
   updateNotice,
   updateOnDutyPolicy,
+  updateAttendancePolicy,
+  updateAttendanceSource,
+  updateAttendanceShift,
   verifyEmployeeDocument,
 } from '@/lib/api/org-admin'
 
@@ -409,6 +425,155 @@ export function useApprovalInbox() {
   return useQuery({
     queryKey: ['org', organisationId, 'approval-inbox'],
     queryFn: fetchApprovalInbox,
+  })
+}
+
+export function useAttendanceDashboard(date?: string) {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'attendance-dashboard', date],
+    queryFn: () => fetchAttendanceDashboard(date),
+  })
+}
+
+export function useAttendancePolicies() {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'attendance-policies'],
+    queryFn: fetchAttendancePolicies,
+  })
+}
+
+export function useCreateAttendancePolicy() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: createAttendancePolicy,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useUpdateAttendancePolicy() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Parameters<typeof updateAttendancePolicy>[1] }) =>
+      updateAttendancePolicy(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useAttendanceShifts() {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'attendance-shifts'],
+    queryFn: fetchAttendanceShifts,
+  })
+}
+
+export function useCreateAttendanceShift() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: createAttendanceShift,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useUpdateAttendanceShift() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Parameters<typeof updateAttendanceShift>[1] }) =>
+      updateAttendanceShift(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useAttendanceShiftAssignments() {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'attendance-shift-assignments'],
+    queryFn: fetchAttendanceShiftAssignments,
+  })
+}
+
+export function useCreateAttendanceShiftAssignment() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: createAttendanceShiftAssignment,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useAttendanceDays(params?: { date?: string; status?: string; employee_id?: string }) {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'attendance-days', params],
+    queryFn: () => fetchAttendanceDays(params),
+  })
+}
+
+export function useOverrideAttendanceDay() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Parameters<typeof overrideAttendanceDay>[1] }) =>
+      overrideAttendanceDay(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+      queryClient.invalidateQueries({ queryKey: ['me'] })
+    },
+  })
+}
+
+export function useAttendanceRegularizations(statusValue?: string) {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'attendance-regularizations', statusValue],
+    queryFn: () => fetchAttendanceRegularizations(statusValue),
+  })
+}
+
+export function useAttendanceSources() {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'attendance-sources'],
+    queryFn: fetchAttendanceSources,
+  })
+}
+
+export function useCreateAttendanceSource() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: createAttendanceSource,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useUpdateAttendanceSource() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Parameters<typeof updateAttendanceSource>[1] }) =>
+      updateAttendanceSource(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useAttendanceReport(month?: string) {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'attendance-report', month],
+    queryFn: () => fetchAttendanceReport(month),
   })
 }
 

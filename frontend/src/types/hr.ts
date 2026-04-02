@@ -62,6 +62,8 @@ export type NoticeCategory = 'GENERAL' | 'HR_POLICY' | 'OPERATIONS' | 'CELEBRATI
 export type NoticeAudienceType = 'ALL_EMPLOYEES' | 'DEPARTMENTS' | 'OFFICE_LOCATIONS' | 'SPECIFIC_EMPLOYEES'
 export type AttendanceImportMode = 'ATTENDANCE_SHEET' | 'PUNCH_SHEET'
 export type AttendanceImportStatus = 'FAILED' | 'READY_FOR_REVIEW' | 'POSTED'
+export type AttendanceDayStatus = 'PRESENT' | 'HALF_DAY' | 'ABSENT' | 'INCOMPLETE' | 'HOLIDAY' | 'WEEK_OFF' | 'ON_LEAVE' | 'ON_DUTY'
+export type AttendanceRegularizationStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED' | 'WITHDRAWN'
 
 export interface LinkedOrganisationAddress {
   id: string
@@ -308,6 +310,33 @@ export interface CtOrganisationApprovalSupportSummary {
   recent_runs: CtOrganisationApprovalRunSummary[]
 }
 
+export interface CtOrganisationAttendanceSupportSummary {
+  policy_count: number
+  source_count: number
+  active_source_count: number
+  pending_regularizations: number
+  today_summary: {
+    date: string
+    total_employees: number
+    present_count: number
+    half_day_count: number
+    absent_count: number
+    incomplete_count: number
+    on_leave_count: number
+    on_duty_count: number
+  }
+  recent_imports: Array<{
+    id: string
+    mode: AttendanceImportMode
+    status: AttendanceImportStatus
+    original_filename: string
+    valid_rows: number
+    error_rows: number
+    posted_rows: number
+    created_at: string
+  }>
+}
+
 export interface ProfileCompletion {
   percent: number
   completed_sections: string[]
@@ -467,6 +496,161 @@ export interface AttendanceImportJob {
   error_preview: AttendanceImportErrorPreview[]
   created_at: string
   modified_at: string
+}
+
+export interface AttendancePolicy {
+  id: string
+  name: string
+  timezone_name: string
+  default_start_time: string
+  default_end_time: string
+  grace_minutes: number
+  full_day_min_minutes: number
+  half_day_min_minutes: number
+  overtime_after_minutes: number
+  week_off_days: number[]
+  allow_web_punch: boolean
+  restrict_by_ip: boolean
+  allowed_ip_ranges: string[]
+  restrict_by_geo: boolean
+  allowed_geo_sites: Array<Record<string, unknown>>
+  is_default: boolean
+  is_active: boolean
+  created_at: string
+  modified_at: string
+}
+
+export interface AttendanceShift {
+  id: string
+  name: string
+  start_time: string
+  end_time: string
+  grace_minutes: number | null
+  full_day_min_minutes: number | null
+  half_day_min_minutes: number | null
+  overtime_after_minutes: number | null
+  is_overnight: boolean
+  is_active: boolean
+  created_at: string
+  modified_at: string
+}
+
+export interface AttendanceShiftAssignment {
+  id: string
+  employee_id: string
+  employee_name: string
+  employee_code: string | null
+  shift: string
+  shift_name: string
+  start_date: string
+  end_date: string | null
+  is_active: boolean
+  created_at: string
+  modified_at: string
+}
+
+export interface AttendanceDayRecord {
+  id: string
+  employee_id: string
+  employee_name: string
+  employee_code: string | null
+  attendance_date: string
+  status: AttendanceDayStatus
+  source: string
+  check_in_at: string | null
+  check_out_at: string | null
+  worked_minutes: number
+  overtime_minutes: number
+  late_minutes: number
+  paid_fraction: string
+  leave_fraction: string
+  on_duty_fraction: string
+  is_holiday: boolean
+  is_week_off: boolean
+  is_late: boolean
+  needs_regularization: boolean
+  raw_punch_count: number
+  note: string
+  metadata: Record<string, unknown>
+  shift_name: string | null
+  policy_name: string | null
+  created_at: string
+  modified_at: string
+}
+
+export interface AttendanceRegularization {
+  id: string
+  attendance_day: string | null
+  attendance_date: string
+  employee_name: string
+  employee_code: string | null
+  requested_check_in_at: string | null
+  requested_check_out_at: string | null
+  reason: string
+  status: AttendanceRegularizationStatus
+  rejection_reason: string
+  approval_run_id: string | null
+  created_at: string
+  modified_at: string
+}
+
+export interface AttendanceSourceConfig {
+  id: string
+  name: string
+  kind: 'API' | 'EXCEL' | 'DEVICE'
+  configuration: Record<string, unknown>
+  api_key_masked: string
+  raw_api_key?: string
+  is_active: boolean
+  last_error: string
+  created_at: string
+  modified_at: string
+}
+
+export interface OrgAttendanceDashboard {
+  date: string
+  total_employees: number
+  present_count: number
+  half_day_count: number
+  absent_count: number
+  incomplete_count: number
+  holiday_count: number
+  week_off_count: number
+  on_leave_count: number
+  on_duty_count: number
+  pending_regularizations: number
+  days: AttendanceDayRecord[]
+}
+
+export interface OrgAttendanceReport {
+  month: string
+  employee_count: number
+  present_days: number
+  half_days: number
+  absent_days: number
+  incomplete_days: number
+  late_marks: number
+  overtime_minutes: number
+  rows: AttendanceDayRecord[]
+}
+
+export interface EmployeeAttendanceSummary {
+  today: AttendanceDayRecord
+  policy: AttendancePolicy
+  shift: AttendanceShift | null
+  pending_regularizations: AttendanceRegularization[]
+}
+
+export interface EmployeeAttendanceCalendar {
+  month: string
+  days: Array<{
+    date: string
+    status: AttendanceDayStatus
+    is_late: boolean
+    needs_regularization: boolean
+    worked_minutes: number
+    overtime_minutes: number
+  }>
 }
 
 export interface EmployeeEvent {

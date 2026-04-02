@@ -25,6 +25,7 @@ import { AttendanceImportsPage } from '@/pages/org/AttendanceImportsPage'
 import { EmployeesPage } from '@/pages/org/EmployeesPage'
 import { EmployeeDetailPage } from '@/pages/org/EmployeeDetailPage'
 import { EmployeeDashboardPage } from '@/pages/employee/DashboardPage'
+import { AttendancePage } from '@/pages/employee/AttendancePage'
 import { OnboardingPage } from '@/pages/employee/OnboardingPage'
 import { ProfilePage } from '@/pages/employee/ProfilePage'
 import { EducationPage } from '@/pages/employee/EducationPage'
@@ -153,6 +154,7 @@ export const router = createBrowserRouter([
         children: [
           { path: '/me/onboarding', element: <OnboardingPage /> },
           { path: '/me/dashboard', element: <EmployeeDashboardPage /> },
+          { path: '/me/attendance', element: <AttendancePage /> },
           { path: '/me/profile', element: <ProfilePage /> },
           { path: '/me/education', element: <EducationPage /> },
           { path: '/me/documents', element: <DocumentsPage /> },

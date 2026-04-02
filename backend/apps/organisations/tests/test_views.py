@@ -24,6 +24,7 @@ from apps.organisations.models import (
     OrganisationStatus,
 )
 from apps.approvals.models import ApprovalRun, ApprovalWorkflow
+from apps.attendance.models import AttendanceImportJob, AttendanceImportStatus, AttendancePolicy, AttendanceRegularizationRequest, AttendanceRegularizationStatus, AttendanceSourceConfig
 from apps.payroll.models import PayrollRun, PayrollRunItem
 
 
@@ -635,6 +636,65 @@ class TestCtOrganisationDetailTabsSupport:
         assert response.data['recent_runs'][0]['workflow_name'] == 'Leave workflow'
         assert response.data['recent_runs'][0]['pending_actions_count'] == 0
         assert 'actions' not in response.data['recent_runs'][0]
+
+    def test_ct_attendance_support_summary_is_sanitized(self, ct_client, org):
+        client, _ = ct_client
+        workforce_user = User.objects.create_user(
+            email='attendance.employee@test.com',
+            password='pass123!',
+            account_type=AccountType.WORKFORCE,
+            role=UserRole.EMPLOYEE,
+            is_active=True,
+            first_name='Anaya',
+            last_name='Sen',
+        )
+        employee = Employee.objects.create(
+            organisation=org,
+            user=workforce_user,
+            employee_code='EMP901',
+            designation='Operator',
+            employment_type='FULL_TIME',
+            status='ACTIVE',
+        )
+        AttendancePolicy.objects.create(
+            organisation=org,
+            name='Default Attendance Policy',
+            is_default=True,
+            is_active=True,
+        )
+        AttendanceSourceConfig.objects.create(
+            organisation=org,
+            name='Gateway',
+            kind='API',
+            configuration={'api_key_hash': 'hash', 'api_key_encrypted': 'encrypted'},
+            is_active=True,
+        )
+        AttendanceRegularizationRequest.objects.create(
+            organisation=org,
+            employee=employee,
+            attendance_date='2026-04-07',
+            reason='Missed punch',
+            status=AttendanceRegularizationStatus.PENDING,
+        )
+        AttendanceImportJob.objects.create(
+            organisation=org,
+            mode='ATTENDANCE_SHEET',
+            status=AttendanceImportStatus.POSTED,
+            original_filename='attendance.xlsx',
+            valid_rows=1,
+            error_rows=0,
+            posted_rows=1,
+        )
+
+        response = client.get(f'/api/ct/organisations/{org.id}/attendance/')
+
+        assert response.status_code == 200
+        assert response.data['policy_count'] == 1
+        assert response.data['source_count'] == 1
+        assert response.data['active_source_count'] == 1
+        assert response.data['pending_regularizations'] == 1
+        assert response.data['recent_imports'][0]['original_filename'] == 'attendance.xlsx'
+        assert 'days' not in response.data
 
 
 @pytest.mark.django_db

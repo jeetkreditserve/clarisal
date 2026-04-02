@@ -6,6 +6,7 @@ import {
   BadgeDollarSign,
   Building2,
   CalendarDays,
+  Clock3,
   CreditCard,
   FileText,
   History,
@@ -45,6 +46,7 @@ import {
   useCreateOrganisationAddress,
   useCtAuditLogs,
   useCtHolidayCalendars,
+  useCtOrgAttendanceSummary,
   useCtOrgApprovalSummary,
   useCtOrgConfiguration,
   useCtOrgEmployeeDetail,
@@ -112,7 +114,7 @@ import {
   validatePhoneForCountry,
 } from '@/lib/organisationMetadata'
 import { ORG_ONBOARDING_STEPS } from '@/lib/status'
-import type { ApprovalWorkflowConfig, CtOrganisationApprovalSupportSummary, CtOrganisationPayrollSupportSummary, Department, HolidayCalendar, LeaveCycle, LeavePlan, Location, NoticeItem, OnDutyPolicy } from '@/types/hr'
+import type { ApprovalWorkflowConfig, CtOrganisationApprovalSupportSummary, CtOrganisationAttendanceSupportSummary, CtOrganisationPayrollSupportSummary, Department, HolidayCalendar, LeaveCycle, LeavePlan, Location, NoticeItem, OnDutyPolicy } from '@/types/hr'
 import type { LicenceBatch, OrganisationAddress, OrganisationAddressType, OrganisationDetail, OrganisationEntityType } from '@/types/organisation'
 
 type DetailTabKey =
@@ -121,6 +123,7 @@ type DetailTabKey =
   | 'licences'
   | 'admins'
   | 'employees'
+  | 'attendance'
   | 'approvals'
   | 'payroll'
   | 'holidays'
@@ -271,6 +274,7 @@ const TAB_OPTIONS: Array<{
   { key: 'licences', label: 'Org Licences', icon: CreditCard },
   { key: 'admins', label: 'Org Admins', icon: Users },
   { key: 'employees', label: 'Employees', icon: Users },
+  { key: 'attendance', label: 'Attendance Support', icon: Clock3 },
   { key: 'approvals', label: 'Approval Support', icon: FileText },
   { key: 'payroll', label: 'Payroll Support', icon: BadgeDollarSign },
   { key: 'holidays', label: 'Org Holidays', icon: CalendarDays },
@@ -693,6 +697,7 @@ export function OrganisationDetailPage() {
     organisationId,
     Boolean(organisationId),
   )
+  const { data: attendanceSummary, isLoading: attendanceSummaryLoading } = useCtOrgAttendanceSummary(organisationId, activeTab === 'attendance')
   const { data: approvalSummary, isLoading: approvalSummaryLoading } = useCtOrgApprovalSummary(organisationId, activeTab === 'approvals')
   const { data: auditLogs } = useCtAuditLogs(organisationId, activeTab === 'audit')
   const { data: notes, isLoading: notesLoading } = useCtOrgNotes(organisationId, activeTab === 'notes')
@@ -1996,6 +2001,80 @@ export function OrganisationDetailPage() {
     )
   }
 
+  const renderAttendanceTab = () => {
+    if (attendanceSummaryLoading) {
+      return <SkeletonTable rows={5} />
+    }
+
+    const summary = attendanceSummary as CtOrganisationAttendanceSupportSummary | undefined
+    if (!summary) {
+      return (
+        <EmptyState
+          title="Attendance support data unavailable"
+          description="This tab will show sanitized attendance operations health for Control Tower support."
+          icon={Clock3}
+        />
+      )
+    }
+
+    return (
+      <div className="space-y-6">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <DetailMetric label="Policies" value={String(summary.policy_count)} helper="Attendance policy coverage" />
+          <DetailMetric label="Sources" value={String(summary.source_count)} helper={`${summary.active_source_count} active adapters`} />
+          <DetailMetric label="Pending regularizations" value={String(summary.pending_regularizations)} helper="Corrections still awaiting approval" />
+          <DetailMetric label="Today's incomplete" value={String(summary.today_summary.incomplete_count)} helper={`${summary.today_summary.absent_count} absent today`} />
+        </div>
+
+        <SectionCard
+          title="Today attendance health"
+          description="Sanitized daily summary for Control Tower support. This shows org-level operational status without exposing detailed employee movement data."
+        >
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <DetailMetric label="Present" value={String(summary.today_summary.present_count)} helper={summary.today_summary.date} />
+            <DetailMetric label="Half day" value={String(summary.today_summary.half_day_count)} helper="Requires attendance or leave review" />
+            <DetailMetric label="On leave" value={String(summary.today_summary.on_leave_count)} helper="Approved leave impact" />
+            <DetailMetric label="On duty" value={String(summary.today_summary.on_duty_count)} helper="Approved duty travel / field work" />
+          </div>
+        </SectionCard>
+
+        <SectionCard
+          title="Recent attendance imports"
+          description="Import health helps CT guide org admins when attendance uploads or external source handoffs are failing."
+        >
+          {summary.recent_imports.length ? (
+            <div className="space-y-3">
+              {summary.recent_imports.map((item) => (
+                <div key={item.id} className="surface-muted rounded-[22px] p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold text-[hsl(var(--foreground-strong))]">{item.original_filename}</p>
+                        <StatusBadge tone={item.status === 'POSTED' ? 'success' : item.status === 'READY_FOR_REVIEW' ? 'info' : 'danger'}>
+                          {item.status}
+                        </StatusBadge>
+                      </div>
+                      <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
+                        {item.mode.replace(/_/g, ' ')} • Valid {item.valid_rows} • Errors {item.error_rows} • Posted {item.posted_rows}
+                      </p>
+                    </div>
+                    <p className="text-sm text-[hsl(var(--muted-foreground))]">{formatDateTime(item.created_at)}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              title="No attendance imports yet"
+              description="Once the organisation begins uploading attendance or punch workbooks, CT can inspect recent import health here."
+              icon={Clock3}
+            />
+          )}
+        </SectionCard>
+      </div>
+    )
+  }
+
   const renderApprovalsTab = () => {
     if (approvalSummaryLoading) {
       return <SkeletonTable rows={5} />
@@ -2528,6 +2607,7 @@ export function OrganisationDetailPage() {
       {activeTab === 'licences' ? renderLicencesTab() : null}
       {activeTab === 'admins' ? renderAdminsTab() : null}
       {activeTab === 'employees' ? renderEmployeesTab() : null}
+      {activeTab === 'attendance' ? renderAttendanceTab() : null}
       {activeTab === 'approvals' ? renderApprovalsTab() : null}
       {activeTab === 'payroll' ? renderPayrollTab() : null}
       {activeTab === 'holidays' ? renderHolidaysTab() : null}
@@ -3389,7 +3469,7 @@ export function OrganisationDetailPage() {
                       options={[
                         { value: 'LEAVE', label: 'Leave' },
                         { value: 'ON_DUTY', label: 'On duty' },
-                        { value: 'ATTENDANCE_REGULARIZATION', label: 'Attendance regularization (future attendance module)' },
+                        { value: 'ATTENDANCE_REGULARIZATION', label: 'Attendance regularization' },
                       ]}
                     />
                     <input

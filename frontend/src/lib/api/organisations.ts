@@ -11,6 +11,7 @@ import type {
   PaginatedResponse,
 } from '@/types/organisation'
 import type {
+  CtOrganisationAttendanceSupportSummary,
   ApprovalWorkflowConfig,
   CtOrganisationApprovalSupportSummary,
   CtOrganisationPayrollSupportSummary,
@@ -223,6 +224,11 @@ export async function fetchCtOrgEmployeeDetail(id: string, employeeId: string): 
 
 export async function fetchCtOrgPayrollSummary(id: string): Promise<CtOrganisationPayrollSupportSummary> {
   const { data } = await api.get(`/ct/organisations/${id}/payroll/`)
+  return data
+}
+
+export async function fetchCtOrgAttendanceSummary(id: string): Promise<CtOrganisationAttendanceSupportSummary> {
+  const { data } = await api.get(`/ct/organisations/${id}/attendance/`)
   return data
 }
 

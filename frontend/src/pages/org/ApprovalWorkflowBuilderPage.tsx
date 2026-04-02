@@ -213,9 +213,7 @@ export function ApprovalWorkflowBuilderPage() {
     () => [{ value: '', label: 'Any employment type' }, ...EMPLOYMENT_TYPE_OPTIONS.map((value) => ({ value, label: startCase(value) }))],
     [],
   )
-  const canShowAttendanceRegularizationOption =
-    form.default_request_kind === 'ATTENDANCE_REGULARIZATION' ||
-    form.rules.some((rule) => rule.request_kind === 'ATTENDANCE_REGULARIZATION')
+  const canShowAttendanceRegularizationOption = true
   const requestKindOptions = useMemo(
     () =>
       APPROVAL_REQUEST_KIND_OPTIONS.filter(
@@ -317,9 +315,9 @@ export function ApprovalWorkflowBuilderPage() {
 
       {!canShowAttendanceRegularizationOption ? (
         <div className="rounded-[24px] border border-[hsl(var(--warning)_/_0.32)] bg-[hsl(var(--warning)_/_0.12)] px-5 py-4 text-sm text-[hsl(var(--foreground-strong))]">
-          <p className="font-semibold">Attendance regularization workflows are hidden for now.</p>
+          <p className="font-semibold">Attendance regularization workflows are restricted for this screen state.</p>
           <p className="mt-1 text-[hsl(var(--muted-foreground))]">
-            Create leave, on-duty, and payroll-related workflows here. Attendance routing can be re-enabled when the attendance module is launched.
+            Create leave, on-duty, attendance, and payroll-related workflows here once the request kind is allowed for the current route and mode.
           </p>
         </div>
       ) : null}

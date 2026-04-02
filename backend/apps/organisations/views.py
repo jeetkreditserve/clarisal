@@ -8,6 +8,8 @@ from apps.accounts.workspaces import get_active_admin_organisation
 from apps.approvals.models import ApprovalAction, ApprovalActionStatus, ApprovalRun, ApprovalRunStatus, ApprovalWorkflow
 from apps.approvals.serializers import ApprovalWorkflowSerializer, ApprovalWorkflowWriteSerializer
 from apps.approvals.views import _upsert_workflow as upsert_approval_workflow
+from apps.attendance.models import AttendanceImportJob, AttendancePolicy, AttendanceRegularizationRequest, AttendanceRegularizationStatus, AttendanceSourceConfig
+from apps.attendance.services import get_org_attendance_dashboard
 from apps.communications.models import Notice
 from apps.communications.serializers import NoticeSerializer, NoticeWriteSerializer
 from apps.communications.services import create_notice, publish_notice, update_notice
@@ -378,6 +380,49 @@ class CtOrganisationPayrollSummaryView(APIView):
                 ).count(),
                 'payslip_count': Payslip.objects.filter(organisation=organisation).count(),
                 'payroll_runs': runs_payload,
+            }
+        )
+
+
+class CtOrganisationAttendanceSupportView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def get(self, request, pk):
+        organisation = get_object_or_404(Organisation, id=pk)
+        dashboard = get_org_attendance_dashboard(organisation)
+        recent_imports = AttendanceImportJob.objects.filter(organisation=organisation).order_by('-created_at')[:5]
+        return Response(
+            {
+                'policy_count': AttendancePolicy.objects.filter(organisation=organisation).count(),
+                'source_count': AttendanceSourceConfig.objects.filter(organisation=organisation).count(),
+                'active_source_count': AttendanceSourceConfig.objects.filter(organisation=organisation, is_active=True).count(),
+                'pending_regularizations': AttendanceRegularizationRequest.objects.filter(
+                    organisation=organisation,
+                    status=AttendanceRegularizationStatus.PENDING,
+                ).count(),
+                'today_summary': {
+                    'date': dashboard['date'],
+                    'total_employees': dashboard['total_employees'],
+                    'present_count': dashboard['present_count'],
+                    'half_day_count': dashboard['half_day_count'],
+                    'absent_count': dashboard['absent_count'],
+                    'incomplete_count': dashboard['incomplete_count'],
+                    'on_leave_count': dashboard['on_leave_count'],
+                    'on_duty_count': dashboard['on_duty_count'],
+                },
+                'recent_imports': [
+                    {
+                        'id': str(job.id),
+                        'mode': job.mode,
+                        'status': job.status,
+                        'original_filename': job.original_filename,
+                        'valid_rows': job.valid_rows,
+                        'error_rows': job.error_rows,
+                        'posted_rows': job.posted_rows,
+                        'created_at': job.created_at,
+                    }
+                    for job in recent_imports
+                ],
             }
         )
 

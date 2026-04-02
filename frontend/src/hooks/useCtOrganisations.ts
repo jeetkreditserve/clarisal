@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { fetchCtAuditLogs } from '@/lib/api/audit'
 import {
   createCtApprovalWorkflow,
+  fetchCtOrgAttendanceSummary,
   createCtPayrollTaxSlabSet,
   fetchCtOrgApprovalSummary,
   createCtHolidayCalendar,
@@ -227,6 +228,14 @@ export function useCtOrgPayrollSummary(orgId: string, enabled = true) {
   return useQuery({
     queryKey: ['ct', 'organisations', orgId, 'payroll'],
     queryFn: () => fetchCtOrgPayrollSummary(orgId),
+    enabled: Boolean(orgId && enabled),
+  })
+}
+
+export function useCtOrgAttendanceSummary(orgId: string, enabled = true) {
+  return useQuery({
+    queryKey: ['ct', 'organisations', orgId, 'attendance-support'],
+    queryFn: () => fetchCtOrgAttendanceSummary(orgId),
     enabled: Boolean(orgId && enabled),
   })
 }
