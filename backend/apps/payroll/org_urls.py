@@ -1,0 +1,36 @@
+from django.urls import path
+
+from .views import (
+    OrgCompensationAssignmentListCreateView,
+    OrgCompensationAssignmentSubmitView,
+    OrgCompensationTemplateDetailView,
+    OrgCompensationTemplateListCreateView,
+    OrgCompensationTemplateSubmitView,
+    OrgPayrollRunCalculateView,
+    OrgPayrollRunDetailView,
+    OrgPayrollRunFinalizeView,
+    OrgPayrollRunListCreateView,
+    OrgPayrollRunRerunView,
+    OrgPayrollRunSubmitView,
+    OrgPayrollSummaryView,
+    OrgPayrollTaxSlabSetDetailView,
+    OrgPayrollTaxSlabSetListCreateView,
+)
+
+urlpatterns = [
+    path('payroll/summary/', OrgPayrollSummaryView.as_view(), name='org-payroll-summary'),
+    path('payroll/tax-slab-sets/', OrgPayrollTaxSlabSetListCreateView.as_view(), name='org-payroll-tax-slab-set-list-create'),
+    path('payroll/tax-slab-sets/<uuid:pk>/', OrgPayrollTaxSlabSetDetailView.as_view(), name='org-payroll-tax-slab-set-detail'),
+    path('payroll/templates/', OrgCompensationTemplateListCreateView.as_view(), name='org-compensation-template-list-create'),
+    path('payroll/templates/<uuid:pk>/', OrgCompensationTemplateDetailView.as_view(), name='org-compensation-template-detail'),
+    path('payroll/templates/<uuid:pk>/submit/', OrgCompensationTemplateSubmitView.as_view(), name='org-compensation-template-submit'),
+    path('payroll/compensations/', OrgCompensationAssignmentListCreateView.as_view(), name='org-compensation-assignment-list-create'),
+    path('payroll/compensations/<uuid:pk>/submit/', OrgCompensationAssignmentSubmitView.as_view(), name='org-compensation-assignment-submit'),
+    path('payroll/runs/', OrgPayrollRunListCreateView.as_view(), name='org-payroll-run-list-create'),
+    path('payroll/runs/<uuid:pk>/', OrgPayrollRunDetailView.as_view(), name='org-payroll-run-detail'),
+    path('payroll/runs/<uuid:pk>/calculate/', OrgPayrollRunCalculateView.as_view(), name='org-payroll-run-calculate'),
+    path('payroll/runs/<uuid:pk>/submit/', OrgPayrollRunSubmitView.as_view(), name='org-payroll-run-submit'),
+    path('payroll/runs/<uuid:pk>/finalize/', OrgPayrollRunFinalizeView.as_view(), name='org-payroll-run-finalize'),
+    path('payroll/runs/<uuid:pk>/rerun/', OrgPayrollRunRerunView.as_view(), name='org-payroll-run-rerun'),
+]
+

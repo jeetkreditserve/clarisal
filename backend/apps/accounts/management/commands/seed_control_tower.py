@@ -1645,6 +1645,99 @@ class Command(BaseCommand):
             ],
         )
 
+        payroll_processing_default = self._upsert_workflow(
+            organisation=organisation,
+            actor=actor,
+            name='Default Payroll Processing Workflow',
+            description='Default primary-admin workflow for payroll processing approvals.',
+            is_default=True,
+            default_request_kind=ApprovalRequestKind.PAYROLL_PROCESSING,
+            rules=[
+                {
+                    'name': 'Default payroll processing workflow',
+                    'request_kind': ApprovalRequestKind.PAYROLL_PROCESSING,
+                    'priority': 100,
+                },
+            ],
+            stages=[
+                {
+                    'name': 'Primary org admin review',
+                    'sequence': 1,
+                    'mode': ApprovalStageMode.ALL,
+                    'fallback_type': ApprovalFallbackType.NONE,
+                    'fallback_employee': None,
+                    'approvers': [
+                        {
+                            'approver_type': ApprovalApproverType.PRIMARY_ORG_ADMIN,
+                            'approver_employee': None,
+                        }
+                    ],
+                },
+            ],
+        )
+
+        salary_revision_default = self._upsert_workflow(
+            organisation=organisation,
+            actor=actor,
+            name='Default Salary Revision Workflow',
+            description='Default primary-admin workflow for salary revision approvals.',
+            is_default=True,
+            default_request_kind=ApprovalRequestKind.SALARY_REVISION,
+            rules=[
+                {
+                    'name': 'Default salary revision workflow',
+                    'request_kind': ApprovalRequestKind.SALARY_REVISION,
+                    'priority': 100,
+                },
+            ],
+            stages=[
+                {
+                    'name': 'Primary org admin review',
+                    'sequence': 1,
+                    'mode': ApprovalStageMode.ALL,
+                    'fallback_type': ApprovalFallbackType.NONE,
+                    'fallback_employee': None,
+                    'approvers': [
+                        {
+                            'approver_type': ApprovalApproverType.PRIMARY_ORG_ADMIN,
+                            'approver_employee': None,
+                        }
+                    ],
+                },
+            ],
+        )
+
+        template_change_default = self._upsert_workflow(
+            organisation=organisation,
+            actor=actor,
+            name='Default Compensation Template Workflow',
+            description='Default primary-admin workflow for compensation template approvals.',
+            is_default=True,
+            default_request_kind=ApprovalRequestKind.COMPENSATION_TEMPLATE_CHANGE,
+            rules=[
+                {
+                    'name': 'Default compensation template workflow',
+                    'request_kind': ApprovalRequestKind.COMPENSATION_TEMPLATE_CHANGE,
+                    'priority': 100,
+                },
+            ],
+            stages=[
+                {
+                    'name': 'Primary org admin review',
+                    'sequence': 1,
+                    'mode': ApprovalStageMode.ALL,
+                    'fallback_type': ApprovalFallbackType.NONE,
+                    'fallback_employee': None,
+                    'approvers': [
+                        {
+                            'approver_type': ApprovalApproverType.PRIMARY_ORG_ADMIN,
+                            'approver_employee': None,
+                        }
+                    ],
+                },
+            ],
+        )
+
         finance = self._upsert_workflow(
             organisation=organisation,
             actor=actor,
@@ -1681,6 +1774,9 @@ class Command(BaseCommand):
             'leave_default': leave_default,
             'on_duty_default': on_duty_default,
             'regularization_default': regularization_default,
+            'payroll_processing_default': payroll_processing_default,
+            'salary_revision_default': salary_revision_default,
+            'template_change_default': template_change_default,
             'finance': finance,
         }
 

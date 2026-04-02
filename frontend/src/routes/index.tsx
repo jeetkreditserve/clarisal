@@ -17,6 +17,7 @@ import { OrganisationDetailPage } from '@/pages/ct/OrganisationDetailPage'
 import { OrgDashboardPage } from '@/pages/org/DashboardPage'
 import { OrgSetupPage } from '@/pages/org/SetupPage'
 import { OrgProfilePage } from '@/pages/org/ProfilePage'
+import { PayrollPage } from '@/pages/org/PayrollPage'
 import { OrgAuditPage } from '@/pages/org/AuditPage'
 import { LocationsPage } from '@/pages/org/LocationsPage'
 import { DepartmentsPage } from '@/pages/org/DepartmentsPage'
@@ -30,6 +31,7 @@ import { DocumentsPage } from '@/pages/employee/DocumentsPage'
 import { LeavePage } from '@/pages/employee/LeavePage'
 import { OnDutyPage } from '@/pages/employee/OnDutyPage'
 import { ApprovalsPage } from '@/pages/employee/ApprovalsPage'
+import { PayslipsPage } from '@/pages/employee/PayslipsPage'
 import { HolidaysPage } from '@/pages/org/HolidaysPage'
 import { LeaveCyclesPage } from '@/pages/org/LeaveCyclesPage'
 import { LeavePlansPage } from '@/pages/org/LeavePlansPage'
@@ -40,6 +42,7 @@ import { ApprovalWorkflowsPage } from '@/pages/org/ApprovalWorkflowsPage'
 import { ApprovalWorkflowBuilderPage } from '@/pages/org/ApprovalWorkflowBuilderPage'
 import { NoticesPage } from '@/pages/org/NoticesPage'
 import { NoticeEditorPage } from '@/pages/org/NoticeEditorPage'
+import { PayrollMastersPage } from '@/pages/ct/PayrollMastersPage'
 
 export const router = createBrowserRouter([
   // Public auth routes
@@ -80,6 +83,7 @@ export const router = createBrowserRouter([
         element: <CTLayout />,
         children: [
           { path: '/ct/dashboard', element: <CTDashboardPage /> },
+          { path: '/ct/payroll', element: <PayrollMastersPage /> },
           { path: '/ct/organisations', element: <OrganisationsPage /> },
           { path: '/ct/organisations/new', element: <NewOrganisationPage /> },
           { path: '/ct/organisations/:id/first-licence-batch', element: <FirstLicenceBatchPage /> },
@@ -113,6 +117,7 @@ export const router = createBrowserRouter([
           { path: '/org/setup', element: <OrgSetupPage /> },
           { path: '/org/dashboard', element: <OrgDashboardPage /> },
           { path: '/org/profile', element: <OrgProfilePage /> },
+          { path: '/org/payroll', element: <PayrollPage /> },
           { path: '/org/locations', element: <LocationsPage /> },
           { path: '/org/departments', element: <DepartmentsPage /> },
           { path: '/org/employees', element: <EmployeesPage /> },
@@ -151,6 +156,7 @@ export const router = createBrowserRouter([
           { path: '/me/documents', element: <DocumentsPage /> },
           { path: '/me/leave', element: <LeavePage /> },
           { path: '/me/od', element: <OnDutyPage /> },
+          { path: '/me/payslips', element: <PayslipsPage /> },
           { path: '/me/approvals', element: <ApprovalsPage /> },
         ],
       },

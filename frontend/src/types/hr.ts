@@ -40,7 +40,13 @@ export type FamilyRelation =
   | 'OTHER'
 export type LeaveRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED' | 'WITHDRAWN'
 export type OnDutyRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED' | 'WITHDRAWN'
-export type ApprovalRequestKind = 'LEAVE' | 'ON_DUTY' | 'ATTENDANCE_REGULARIZATION'
+export type ApprovalRequestKind =
+  | 'LEAVE'
+  | 'ON_DUTY'
+  | 'ATTENDANCE_REGULARIZATION'
+  | 'PAYROLL_PROCESSING'
+  | 'SALARY_REVISION'
+  | 'COMPENSATION_TEMPLATE_CHANGE'
 export type ApprovalActionStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'SKIPPED' | 'CANCELLED'
 export type HolidayCalendarStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED'
 export type HolidayClassification = 'PUBLIC' | 'RESTRICTED' | 'COMPANY'
@@ -50,7 +56,7 @@ export type CarryForwardMode = 'NONE' | 'CAPPED' | 'UNLIMITED'
 export type ApprovalApproverType = 'REPORTING_MANAGER' | 'SPECIFIC_EMPLOYEE' | 'PRIMARY_ORG_ADMIN'
 export type ApprovalFallbackType = 'NONE' | 'SPECIFIC_EMPLOYEE' | 'PRIMARY_ORG_ADMIN'
 export type ApprovalStageMode = 'ALL' | 'ANY'
-export type EffectiveApprovalWorkflowSource = 'ASSIGNMENT' | 'RULE' | 'DEFAULT'
+export type EffectiveApprovalWorkflowSource = 'ASSIGNMENT' | 'RULE' | 'DEFAULT' | 'UNCONFIGURED'
 export type NoticeStatus = 'DRAFT' | 'SCHEDULED' | 'PUBLISHED' | 'EXPIRED' | 'ARCHIVED'
 export type NoticeCategory = 'GENERAL' | 'HR_POLICY' | 'OPERATIONS' | 'CELEBRATION' | 'COMPLIANCE' | 'URGENT'
 export type NoticeAudienceType = 'ALL_EMPLOYEES' | 'DEPARTMENTS' | 'OFFICE_LOCATIONS' | 'SPECIFIC_EMPLOYEES'
@@ -592,7 +598,139 @@ export interface ApprovalWorkflowConfig {
 
 export interface EffectiveApprovalWorkflowSummary {
   request_kind: ApprovalRequestKind
-  workflow_id: string
-  workflow_name: string
+  workflow_id: string | null
+  workflow_name: string | null
   source: EffectiveApprovalWorkflowSource
+}
+
+export type PayrollComponentType = 'EARNING' | 'EMPLOYEE_DEDUCTION' | 'EMPLOYER_CONTRIBUTION' | 'REIMBURSEMENT'
+export type CompensationTemplateStatus = 'DRAFT' | 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED'
+export type CompensationAssignmentStatus = 'DRAFT' | 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED'
+export type PayrollRunStatus = 'DRAFT' | 'CALCULATED' | 'APPROVAL_PENDING' | 'APPROVED' | 'REJECTED' | 'FINALIZED' | 'CANCELLED'
+export type PayrollRunType = 'REGULAR' | 'RERUN'
+
+export interface PayrollTaxSlab {
+  id: string
+  min_income: string
+  max_income: string | null
+  rate_percent: string
+}
+
+export interface PayrollTaxSlabSet {
+  id: string
+  name: string
+  country_code: string
+  fiscal_year: string
+  is_active: boolean
+  is_system_master: boolean
+  source_set_id: string | null
+  slabs: PayrollTaxSlab[]
+  created_at: string
+  modified_at: string
+}
+
+export interface PayrollComponent {
+  id: string
+  code: string
+  name: string
+  component_type: PayrollComponentType
+  is_taxable: boolean
+  is_system_default: boolean
+}
+
+export interface CompensationTemplateLine {
+  id: string
+  component_id: string
+  component: PayrollComponent
+  monthly_amount: string
+  sequence: number
+}
+
+export interface CompensationTemplate {
+  id: string
+  name: string
+  description: string
+  status: CompensationTemplateStatus
+  approval_run_id: string | null
+  lines: CompensationTemplateLine[]
+  created_at: string
+  modified_at: string
+}
+
+export interface CompensationAssignmentLine {
+  id: string
+  component_id: string
+  component_name: string
+  component_type: PayrollComponentType
+  monthly_amount: string
+  is_taxable: boolean
+  sequence: number
+}
+
+export interface CompensationAssignment {
+  id: string
+  employee_id: string
+  employee_name: string
+  template: string
+  template_name: string
+  effective_from: string
+  version: number
+  status: CompensationAssignmentStatus
+  approval_run_id: string | null
+  lines: CompensationAssignmentLine[]
+  created_at: string
+  modified_at: string
+}
+
+export interface PayrollRunItem {
+  id: string
+  employee_id: string
+  employee_name: string
+  status: 'READY' | 'EXCEPTION'
+  gross_pay: string
+  employee_deductions: string
+  employer_contributions: string
+  income_tax: string
+  total_deductions: string
+  net_pay: string
+  snapshot: Record<string, unknown>
+  message: string
+}
+
+export interface PayrollRun {
+  id: string
+  name: string
+  period_year: number
+  period_month: number
+  run_type: PayrollRunType
+  status: PayrollRunStatus
+  approval_run_id: string | null
+  source_run_id: string | null
+  calculated_at: string | null
+  submitted_at: string | null
+  finalized_at: string | null
+  items: PayrollRunItem[]
+  created_at: string
+  modified_at: string
+}
+
+export interface Payslip {
+  id: string
+  employee_id: string
+  pay_run_id: string
+  slip_number: string
+  period_year: number
+  period_month: number
+  snapshot: Record<string, unknown>
+  rendered_text: string
+  created_at: string
+}
+
+export interface OrgPayrollSummary {
+  tax_slab_sets: PayrollTaxSlabSet[]
+  components: PayrollComponent[]
+  compensation_templates: CompensationTemplate[]
+  compensation_assignments: CompensationAssignment[]
+  pay_runs: PayrollRun[]
+  payslip_count: number
 }

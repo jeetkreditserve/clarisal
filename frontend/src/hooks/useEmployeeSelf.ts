@@ -27,6 +27,8 @@ import {
   fetchMyOnDutyPolicies,
   fetchMyOnDutyRequests,
   fetchMyOnboarding,
+  fetchMyPayslip,
+  fetchMyPayslips,
   fetchMyProfile,
   getMyDocumentDownloadUrl,
   rejectMyApprovalAction,
@@ -197,6 +199,20 @@ export function useUpsertGovernmentId() {
 export function useBankAccounts() {
   const organisationId = useEmployeeScope()
   return useQuery({ queryKey: ['me', organisationId, 'bank-accounts'], queryFn: fetchBankAccounts })
+}
+
+export function useMyPayslips() {
+  const organisationId = useEmployeeScope()
+  return useQuery({ queryKey: ['me', organisationId, 'payslips'], queryFn: fetchMyPayslips })
+}
+
+export function useMyPayslip(id: string) {
+  const organisationId = useEmployeeScope()
+  return useQuery({
+    queryKey: ['me', organisationId, 'payslips', id],
+    queryFn: () => fetchMyPayslip(id),
+    enabled: Boolean(id),
+  })
 }
 
 export function useCreateBankAccount() {

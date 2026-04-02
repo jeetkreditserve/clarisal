@@ -113,7 +113,7 @@ class TestSeedControlTowerCommand:
         assert Employee.objects.count() == 11
         assert Invitation.objects.count() == 6
         assert OnboardingDocumentType.objects.count() >= 30
-        assert ApprovalWorkflow.objects.filter(organisation=primary_org).count() == 4
+        assert ApprovalWorkflow.objects.filter(organisation=primary_org).count() == 7
         assert LeaveRequest.objects.filter(employee__organisation=primary_org).count() == 5
         assert OnDutyRequest.objects.filter(employee__organisation=primary_org).count() == 4
         assert Notice.objects.filter(organisation=primary_org).count() == 3
@@ -202,7 +202,7 @@ class TestSeedControlTowerCommand:
         assert Invitation.objects.count() == 6
         assert LeaveRequest.objects.count() == 5
         assert OnDutyRequest.objects.count() == 4
-        assert ApprovalWorkflow.objects.count() == 4
+        assert ApprovalWorkflow.objects.count() == 7
         assert Notice.objects.count() == 3
         assert HolidayCalendar.objects.count() == 2
 

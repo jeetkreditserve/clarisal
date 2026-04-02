@@ -11,6 +11,9 @@ class ApprovalRequestKind(models.TextChoices):
     LEAVE = 'LEAVE', 'Leave'
     ON_DUTY = 'ON_DUTY', 'On Duty'
     ATTENDANCE_REGULARIZATION = 'ATTENDANCE_REGULARIZATION', 'Attendance Regularization'
+    PAYROLL_PROCESSING = 'PAYROLL_PROCESSING', 'Payroll Processing'
+    SALARY_REVISION = 'SALARY_REVISION', 'Salary Revision'
+    COMPENSATION_TEMPLATE_CHANGE = 'COMPENSATION_TEMPLATE_CHANGE', 'Compensation Template Change'
 
 
 class ApprovalStageMode(models.TextChoices):
@@ -202,8 +205,17 @@ class ApprovalRun(AuditedBaseModel):
     request_kind = models.CharField(max_length=32, choices=ApprovalRequestKind.choices)
     requested_by = models.ForeignKey(
         'employees.Employee',
+        null=True,
+        blank=True,
         on_delete=models.PROTECT,
         related_name='approval_runs',
+    )
+    requested_by_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name='requested_approval_runs',
     )
     status = models.CharField(max_length=20, choices=ApprovalRunStatus.choices, default=ApprovalRunStatus.PENDING)
     current_stage_sequence = models.PositiveIntegerField(default=1)
@@ -221,6 +233,14 @@ class ApprovalRun(AuditedBaseModel):
 
     def __str__(self):
         return f'{self.request_kind} - {self.subject_label}'
+
+    @property
+    def requester_name(self):
+        if self.requested_by_user:
+            return self.requested_by_user.full_name
+        if self.requested_by:
+            return self.requested_by.user.full_name
+        return ''
 
 
 class ApprovalAction(AuditedBaseModel):

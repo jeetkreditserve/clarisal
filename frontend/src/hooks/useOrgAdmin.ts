@@ -5,10 +5,15 @@ import { useAuth } from '@/hooks/useAuth'
 import {
   approveApprovalAction,
   assignEmployeeDocumentRequests,
+  calculatePayrollRun,
   createApprovalWorkflow,
+  createCompensationAssignment,
+  createCompensationTemplate,
   createDepartment,
   createHolidayCalendar,
   createOrgAddress,
+  createPayrollRun,
+  createPayrollTaxSlabSet,
   createLeaveCycle,
   createLeavePlan,
   createLocation,
@@ -36,10 +41,12 @@ import {
   fetchOrgLeaveRequests,
   fetchOrgOnDutyRequests,
   fetchOrgProfile,
+  fetchPayrollSummary,
   fetchApprovalInbox,
   fetchApprovalWorkflow,
   fetchApprovalWorkflows,
   fetchLeavePlan,
+  finalizePayrollRun,
   getEmployeeDocumentDownloadUrl,
   inviteEmployee,
   markEmployeeJoined,
@@ -49,8 +56,14 @@ import {
   rejectEmployeeDocument,
   fetchNotice,
   fetchOnDutyPolicy,
+  rerunPayrollRun,
+  submitCompensationAssignment,
+  submitCompensationTemplate,
+  submitPayrollRun,
+  updateCompensationTemplate,
   updateOrgAddress,
   updateOrgProfile,
+  updatePayrollTaxSlabSet,
   updateOrgSetup,
   updateApprovalWorkflow,
   updateDepartment,
@@ -391,6 +404,138 @@ export function useApprovalInbox() {
   return useQuery({
     queryKey: ['org', organisationId, 'approval-inbox'],
     queryFn: fetchApprovalInbox,
+  })
+}
+
+export function usePayrollSummary() {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'payroll'],
+    queryFn: fetchPayrollSummary,
+  })
+}
+
+export function useCreatePayrollTaxSlabSet() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: createPayrollTaxSlabSet,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useUpdatePayrollTaxSlabSet() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Record<string, unknown> }) => updatePayrollTaxSlabSet(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useCreateCompensationTemplate() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: createCompensationTemplate,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useUpdateCompensationTemplate() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Record<string, unknown> }) => updateCompensationTemplate(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useSubmitCompensationTemplate() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: submitCompensationTemplate,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+      queryClient.invalidateQueries({ queryKey: ['me'] })
+    },
+  })
+}
+
+export function useCreateCompensationAssignment() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: createCompensationAssignment,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useSubmitCompensationAssignment() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: submitCompensationAssignment,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+      queryClient.invalidateQueries({ queryKey: ['me'] })
+    },
+  })
+}
+
+export function useCreatePayrollRun() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: createPayrollRun,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useCalculatePayrollRun() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: calculatePayrollRun,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useSubmitPayrollRun() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: submitPayrollRun,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+      queryClient.invalidateQueries({ queryKey: ['me'] })
+    },
+  })
+}
+
+export function useFinalizePayrollRun() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: finalizePayrollRun,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+      queryClient.invalidateQueries({ queryKey: ['me'] })
+    },
+  })
+}
+
+export function useRerunPayrollRun() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: rerunPayrollRun,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
   })
 }
 

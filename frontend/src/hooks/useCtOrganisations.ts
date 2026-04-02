@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { fetchCtAuditLogs } from '@/lib/api/audit'
 import {
   createCtApprovalWorkflow,
+  createCtPayrollTaxSlabSet,
   createCtHolidayCalendar,
   createCtLeaveCycle,
   createCtLeavePlan,
@@ -22,6 +23,7 @@ import {
   fetchCtOrgEmployeeDetail,
   fetchCtOrgEmployees,
   fetchCtOrgNotes,
+  fetchCtPayrollTaxSlabSets,
   fetchCtStats,
   fetchLicenceBatches,
   fetchOrganisation,
@@ -54,6 +56,18 @@ import {
 
 export function useCtStats() {
   return useQuery({ queryKey: ['ct', 'stats'], queryFn: fetchCtStats })
+}
+
+export function useCtPayrollTaxSlabSets() {
+  return useQuery({ queryKey: ['ct', 'payroll', 'tax-slab-sets'], queryFn: fetchCtPayrollTaxSlabSets })
+}
+
+export function useCreateCtPayrollTaxSlabSet() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: createCtPayrollTaxSlabSet,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['ct', 'payroll'] }),
+  })
 }
 
 export function useOrganisations(params?: { search?: string; status?: string; page?: number }) {

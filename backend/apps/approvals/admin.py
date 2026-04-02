@@ -39,9 +39,9 @@ class ApprovalStageApproverAdmin(admin.ModelAdmin):
 
 @admin.register(ApprovalRun)
 class ApprovalRunAdmin(admin.ModelAdmin):
-    list_display = ('request_kind', 'organisation', 'requested_by', 'status', 'current_stage_sequence', 'created_at')
+    list_display = ('request_kind', 'organisation', 'requested_by', 'requested_by_user', 'status', 'current_stage_sequence', 'created_at')
     list_filter = ('request_kind', 'status', 'organisation')
-    search_fields = ('subject_label', 'requested_by__user__email')
+    search_fields = ('subject_label', 'requested_by__user__email', 'requested_by_user__email')
 
 
 @admin.register(ApprovalAction)

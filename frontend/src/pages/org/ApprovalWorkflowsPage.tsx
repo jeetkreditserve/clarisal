@@ -221,15 +221,15 @@ export function ApprovalWorkflowsPage() {
             <div className="surface-shell rounded-[20px] px-5 py-4">
               <p className="font-semibold text-[hsl(var(--foreground-strong))]">Recommended baseline</p>
               <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
-                Keep one default each for leave, on-duty, and attendance regularization, and avoid stage definitions without fallback handling.
+                Keep active defaults for leave, on-duty, regularization, payroll processing, salary revision, and compensation template changes.
               </p>
             </div>
             <div className="surface-shell rounded-[20px] px-5 py-4">
               <p className="font-semibold text-[hsl(var(--foreground-strong))]">Current posture</p>
               <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
-                {health.defaults >= 3
+                {health.defaults >= 6
                   ? 'Default coverage looks healthy. Review targeted rules and stage count next.'
-                  : 'Review default workflow coverage. Leave, on-duty, and attendance regularization each need an active default.'}
+                  : 'Review default workflow coverage. Leave, on-duty, regularization, payroll processing, salary revision, and template change each need an active default.'}
               </p>
             </div>
           </div>

@@ -10,6 +10,8 @@ import type { OrgAdminSetupState } from '@/types/organisation'
 import type {
   ApprovalActionItem,
   ApprovalWorkflowConfig,
+  CompensationAssignment,
+  CompensationTemplate,
   Department,
   DocumentRecord,
   EmployeeDocumentRequest,
@@ -24,6 +26,9 @@ import type {
   OnDutyPolicy,
   OnDutyRequestRecord,
   OnboardingDocumentType,
+  OrgPayrollSummary,
+  PayrollRun,
+  PayrollTaxSlabSet,
 } from '@/types/hr'
 
 export async function fetchOrgDashboard() {
@@ -390,6 +395,71 @@ export async function fetchOrgLeaveRequests() {
 
 export async function fetchOrgOnDutyRequests() {
   const { data } = await api.get<OnDutyRequestRecord[]>('/org/on-duty-requests/')
+  return data
+}
+
+export async function fetchPayrollSummary() {
+  const { data } = await api.get<OrgPayrollSummary>('/org/payroll/summary/')
+  return data
+}
+
+export async function createPayrollTaxSlabSet(payload: Record<string, unknown>) {
+  const { data } = await api.post<PayrollTaxSlabSet>('/org/payroll/tax-slab-sets/', payload)
+  return data
+}
+
+export async function updatePayrollTaxSlabSet(id: string, payload: Record<string, unknown>) {
+  const { data } = await api.patch<PayrollTaxSlabSet>(`/org/payroll/tax-slab-sets/${id}/`, payload)
+  return data
+}
+
+export async function createCompensationTemplate(payload: Record<string, unknown>) {
+  const { data } = await api.post<CompensationTemplate>('/org/payroll/templates/', payload)
+  return data
+}
+
+export async function updateCompensationTemplate(id: string, payload: Record<string, unknown>) {
+  const { data } = await api.patch<CompensationTemplate>(`/org/payroll/templates/${id}/`, payload)
+  return data
+}
+
+export async function submitCompensationTemplate(id: string) {
+  const { data } = await api.post<CompensationTemplate>(`/org/payroll/templates/${id}/submit/`)
+  return data
+}
+
+export async function createCompensationAssignment(payload: Record<string, unknown>) {
+  const { data } = await api.post<CompensationAssignment>('/org/payroll/compensations/', payload)
+  return data
+}
+
+export async function submitCompensationAssignment(id: string) {
+  const { data } = await api.post<CompensationAssignment>(`/org/payroll/compensations/${id}/submit/`)
+  return data
+}
+
+export async function createPayrollRun(payload: Record<string, unknown>) {
+  const { data } = await api.post<PayrollRun>('/org/payroll/runs/', payload)
+  return data
+}
+
+export async function calculatePayrollRun(id: string) {
+  const { data } = await api.post<PayrollRun>(`/org/payroll/runs/${id}/calculate/`)
+  return data
+}
+
+export async function submitPayrollRun(id: string) {
+  const { data } = await api.post<PayrollRun>(`/org/payroll/runs/${id}/submit/`)
+  return data
+}
+
+export async function finalizePayrollRun(id: string) {
+  const { data } = await api.post<PayrollRun>(`/org/payroll/runs/${id}/finalize/`)
+  return data
+}
+
+export async function rerunPayrollRun(id: string) {
+  const { data } = await api.post<PayrollRun>(`/org/payroll/runs/${id}/rerun/`)
   return data
 }
 

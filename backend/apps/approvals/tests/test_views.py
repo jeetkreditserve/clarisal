@@ -71,3 +71,38 @@ class TestApprovalWorkflowApi:
 
         assert response.status_code == 201
         assert response.data['default_request_kind'] == ApprovalRequestKind.ATTENDANCE_REGULARIZATION
+
+    def test_create_accepts_payroll_processing_defaults(self, org_admin_client):
+        client, organisation = org_admin_client
+
+        response = client.post(
+            f'/api/org/approvals/workflows/',
+            {
+                'name': 'Payroll Workflow',
+                'description': '',
+                'is_default': True,
+                'default_request_kind': ApprovalRequestKind.PAYROLL_PROCESSING,
+                'is_active': True,
+                'rules': [
+                    {
+                        'name': 'Default payroll rule',
+                        'request_kind': ApprovalRequestKind.PAYROLL_PROCESSING,
+                        'priority': 100,
+                        'is_active': True,
+                    }
+                ],
+                'stages': [
+                    {
+                        'name': 'Primary admin review',
+                        'sequence': 1,
+                        'mode': 'ALL',
+                        'fallback_type': 'NONE',
+                        'approvers': [{'approver_type': 'PRIMARY_ORG_ADMIN'}],
+                    }
+                ],
+            },
+            format='json',
+        )
+
+        assert response.status_code == 201
+        assert response.data['default_request_kind'] == ApprovalRequestKind.PAYROLL_PROCESSING

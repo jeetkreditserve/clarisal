@@ -18,6 +18,7 @@ import type {
   NoticeItem,
   OnDutyPolicy,
   OnDutyRequestRecord,
+  Payslip,
 } from '@/types/hr'
 
 export async function fetchMyDashboard() {
@@ -256,6 +257,16 @@ export async function fetchMyOnDutyPolicies() {
 
 export async function fetchMyOnDutyRequests() {
   const { data } = await api.get<OnDutyRequestRecord[]>('/me/on-duty/requests/')
+  return data
+}
+
+export async function fetchMyPayslips() {
+  const { data } = await api.get<Payslip[]>('/me/payroll/payslips/')
+  return data
+}
+
+export async function fetchMyPayslip(id: string) {
+  const { data } = await api.get<Payslip>(`/me/payroll/payslips/${id}/`)
   return data
 }
 

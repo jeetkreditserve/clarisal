@@ -83,6 +83,10 @@ def get_employee_assigned_workflow(employee, request_kind):
     return None
 
 
+def _requester_user_for_context(requester):
+    return requester.user if requester is not None else None
+
+
 def resolve_workflow_with_source(employee, request_kind, leave_type=None):
     assigned_workflow = get_employee_assigned_workflow(employee, request_kind)
     if assigned_workflow is not None:
@@ -114,41 +118,46 @@ def resolve_workflow(employee, request_kind, leave_type=None):
     return workflow
 
 
-def _resolve_stage_fallback(stage, requester):
+def _resolve_stage_fallback(stage, organisation):
     if stage.fallback_type == ApprovalFallbackType.NONE:
         return None
     if stage.fallback_type == ApprovalFallbackType.SPECIFIC_EMPLOYEE and stage.fallback_employee:
         return stage.fallback_employee.user, stage.fallback_employee
-    if stage.fallback_type == ApprovalFallbackType.PRIMARY_ORG_ADMIN and requester.organisation.primary_admin_user:
-        return requester.organisation.primary_admin_user, None
+    if stage.fallback_type == ApprovalFallbackType.PRIMARY_ORG_ADMIN and organisation.primary_admin_user:
+        return organisation.primary_admin_user, None
     return None
 
 
-def _resolve_stage_approvers(stage, requester):
+def _resolve_stage_approvers(stage, requester, organisation, request_kind):
     resolved = []
+    requester_user = _requester_user_for_context(requester)
     for stage_approver in stage.approvers.select_related('approver_employee__user').all():
         approver_user = None
         approver_employee = None
 
         if stage_approver.approver_type == ApprovalApproverType.REPORTING_MANAGER:
-            manager = requester.reporting_to
+            manager = requester.reporting_to if requester is not None else None
             if manager and manager.id != requester.id:
                 approver_user = manager.user
                 approver_employee = manager
             else:
-                fallback = _resolve_stage_fallback(stage, requester)
+                fallback = _resolve_stage_fallback(stage, organisation)
                 if fallback:
                     approver_user, approver_employee = fallback
         elif stage_approver.approver_type == ApprovalApproverType.SPECIFIC_EMPLOYEE and stage_approver.approver_employee:
             approver_user = stage_approver.approver_employee.user
             approver_employee = stage_approver.approver_employee
         elif stage_approver.approver_type == ApprovalApproverType.PRIMARY_ORG_ADMIN:
-            approver_user = requester.organisation.primary_admin_user
+            approver_user = organisation.primary_admin_user
 
         if approver_user is None:
             continue
-        if approver_user.id == requester.user_id:
-            fallback = _resolve_stage_fallback(stage, requester)
+        if requester_user is not None and approver_user.id == requester_user.id and request_kind not in {
+            ApprovalRequestKind.PAYROLL_PROCESSING,
+            ApprovalRequestKind.SALARY_REVISION,
+            ApprovalRequestKind.COMPENSATION_TEMPLATE_CHANGE,
+        }:
+            fallback = _resolve_stage_fallback(stage, organisation)
             if fallback:
                 approver_user, approver_employee = fallback
             else:
@@ -183,7 +192,13 @@ def _apply_subject_status(approval_run, new_status, rejection_reason=''):
 
 def _create_stage_actions(approval_run, stage):
     actions = []
-    for approver_user, approver_employee in _resolve_stage_approvers(stage, approval_run.requested_by):
+    requester = approval_run.requested_by
+    for approver_user, approver_employee in _resolve_stage_approvers(
+        stage,
+        requester,
+        approval_run.organisation,
+        approval_run.request_kind,
+    ):
         actions.append(
             ApprovalAction.objects.create(
                 approval_run=approval_run,
@@ -207,6 +222,7 @@ def create_approval_run(subject, request_kind, requester, actor=None, leave_type
             workflow=workflow,
             request_kind=request_kind,
             requested_by=requester,
+            requested_by_user=requester.user,
             status=ApprovalRunStatus.PENDING,
             current_stage_sequence=first_stage.sequence,
             subject_label=subject_label or str(subject),
@@ -230,6 +246,7 @@ def get_pending_approval_actions_for_user(user, organisation=None):
         'approval_run',
         'stage',
         'approval_run__requested_by__user',
+        'approval_run__requested_by_user',
         'approval_run__organisation',
     ).filter(
         approver_user=user,

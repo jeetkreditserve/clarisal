@@ -16,6 +16,7 @@ const navItems: NavItem[] = [
   { label: 'Documents', href: '/me/documents', icon: FileText },
   { label: 'Leave', href: '/me/leave', icon: LayoutDashboard },
   { label: 'On Duty', href: '/me/od', icon: PlaneTakeoff },
+  { label: 'Payslips', href: '/me/payslips', icon: FileText },
   { label: 'Approvals', href: '/me/approvals', icon: CheckSquare },
 ]
 

@@ -12,6 +12,7 @@ import type {
 } from '@/types/organisation'
 import type {
   ApprovalWorkflowConfig,
+  PayrollTaxSlabSet,
   Department,
   EmployeeDetail,
   EmployeeListItem,
@@ -192,6 +193,16 @@ export async function markLicenceBatchPaid(
 
 export async function fetchOrgAdmins(id: string): Promise<OrgAdmin[]> {
   const { data } = await api.get(`/ct/organisations/${id}/admins/`)
+  return data
+}
+
+export async function fetchCtPayrollTaxSlabSets(): Promise<PayrollTaxSlabSet[]> {
+  const { data } = await api.get('/ct/payroll/tax-slab-sets/')
+  return data
+}
+
+export async function createCtPayrollTaxSlabSet(payload: Record<string, unknown>): Promise<PayrollTaxSlabSet> {
+  const { data } = await api.post('/ct/payroll/tax-slab-sets/', payload)
   return data
 }
 
