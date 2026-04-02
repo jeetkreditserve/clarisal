@@ -283,24 +283,22 @@ def get_or_create_leave_balance(employee, leave_type, as_of=None):
 
     from django.db.models import Sum as _Sum
     credited = _compute_credit_for_period(employee, leave_type, cycle_start, cycle_end)
-    used = _decimal(
-        LeaveRequest.objects.filter(
-            employee=employee,
-            leave_type=leave_type,
-            status=LeaveRequestStatus.APPROVED,
-            start_date__gte=cycle_start,
-            end_date__lte=cycle_end,
-        ).aggregate(total=_Sum('total_units'))['total']
-    ) or Decimal('0.00')
-    pending = _decimal(
-        LeaveRequest.objects.filter(
-            employee=employee,
-            leave_type=leave_type,
-            status=LeaveRequestStatus.PENDING,
-            start_date__gte=cycle_start,
-            end_date__lte=cycle_end,
-        ).aggregate(total=_Sum('total_units'))['total']
-    ) or Decimal('0.00')
+    used_total = LeaveRequest.objects.filter(
+        employee=employee,
+        leave_type=leave_type,
+        status=LeaveRequestStatus.APPROVED,
+        start_date__gte=cycle_start,
+        end_date__lte=cycle_end,
+    ).aggregate(total=_Sum('total_units'))['total']
+    pending_total = LeaveRequest.objects.filter(
+        employee=employee,
+        leave_type=leave_type,
+        status=LeaveRequestStatus.PENDING,
+        start_date__gte=cycle_start,
+        end_date__lte=cycle_end,
+    ).aggregate(total=_Sum('total_units'))['total']
+    used = _decimal(used_total or Decimal('0.00'))
+    pending = _decimal(pending_total or Decimal('0.00'))
     balance.credited_amount = _decimal(credited)
     balance.used_amount = _decimal(used)
     balance.pending_amount = _decimal(pending)

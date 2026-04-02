@@ -64,6 +64,9 @@ export type AttendanceImportMode = 'ATTENDANCE_SHEET' | 'PUNCH_SHEET'
 export type AttendanceImportStatus = 'FAILED' | 'READY_FOR_REVIEW' | 'POSTED'
 export type AttendanceDayStatus = 'PRESENT' | 'HALF_DAY' | 'ABSENT' | 'INCOMPLETE' | 'HOLIDAY' | 'WEEK_OFF' | 'ON_LEAVE' | 'ON_DUTY'
 export type AttendanceRegularizationStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED' | 'WITHDRAWN'
+export type OffboardingProcessStatus = 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED'
+export type OffboardingTaskStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'WAIVED'
+export type OffboardingTaskOwner = 'ORG_ADMIN' | 'MANAGER' | 'EMPLOYEE' | 'PAYROLL' | 'IT'
 
 export interface LinkedOrganisationAddress {
   id: string
@@ -244,6 +247,38 @@ export interface EmployeeDetail {
     on_duty: EffectiveApprovalWorkflowSummary
     attendance_regularization: EffectiveApprovalWorkflowSummary
   }
+  offboarding: OffboardingProcess | null
+}
+
+export interface OffboardingTask {
+  id: string
+  code: string
+  title: string
+  description: string
+  owner: OffboardingTaskOwner
+  status: OffboardingTaskStatus
+  note: string
+  due_date: string | null
+  is_required: boolean
+  completed_at: string | null
+  completed_by_name: string
+}
+
+export interface OffboardingProcess {
+  id: string
+  status: OffboardingProcessStatus
+  exit_status: EmployeeStatus
+  date_of_exit: string
+  exit_reason: string
+  exit_notes: string
+  started_at: string | null
+  completed_at: string | null
+  required_task_count: number
+  completed_required_task_count: number
+  pending_required_task_count: number
+  pending_document_requests: number
+  has_primary_bank_account: boolean
+  tasks: OffboardingTask[]
 }
 
 export interface CtEmployeeDetail {
@@ -275,6 +310,18 @@ export interface CtOrganisationPayrollRunSummary {
   ready_count: number
   exception_count: number
   exception_messages: string[]
+  attendance_snapshot_summary: {
+    attendance_source: string
+    period_start: string | null
+    period_end: string | null
+    use_attendance_inputs?: boolean
+    employee_count: number
+    ready_item_count: number
+    exception_item_count: number
+    total_attendance_paid_days: string
+    total_lop_days: string
+    total_overtime_minutes: number
+  }
 }
 
 export interface CtOrganisationPayrollSupportSummary {
@@ -364,6 +411,7 @@ export interface EmployeeDashboard {
   events: EmployeeEvent[]
   leave_balances: LeaveBalanceSnapshot[]
   calendar: CalendarMonthView
+  offboarding: OffboardingProcess | null
 }
 
 export interface MyProfileResponse {
@@ -979,6 +1027,32 @@ export interface PayrollRunItem {
   message: string
 }
 
+export interface PayrollRunAttendanceSnapshotEmployee {
+  employee_id: string
+  employee_code: string
+  status: 'READY' | 'EXCEPTION'
+  active_period_start?: string
+  active_period_end?: string
+  attendance_paid_days?: string
+  effective_lop_days?: string
+  attendance_overtime_minutes?: number
+  reason?: string
+}
+
+export interface PayrollRunAttendanceSnapshot {
+  attendance_source: string
+  period_start: string
+  period_end: string
+  use_attendance_inputs: boolean
+  employee_count: number
+  ready_item_count: number
+  exception_item_count: number
+  total_attendance_paid_days: string
+  total_lop_days: string
+  total_overtime_minutes: number
+  employees: PayrollRunAttendanceSnapshotEmployee[]
+}
+
 export interface PayrollRun {
   id: string
   name: string
@@ -986,8 +1060,10 @@ export interface PayrollRun {
   period_month: number
   run_type: PayrollRunType
   status: PayrollRunStatus
+  use_attendance_inputs: boolean
   approval_run_id: string | null
   source_run_id: string | null
+  attendance_snapshot: PayrollRunAttendanceSnapshot
   calculated_at: string | null
   submitted_at: string | null
   finalized_at: string | null

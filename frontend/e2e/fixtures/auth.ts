@@ -10,20 +10,20 @@ const ORG_ADMIN_AUTH = path.join(__dirname, '../../.auth/org-admin.json')
 const EMPLOYEE_AUTH = path.join(__dirname, '../../.auth/employee.json')
 
 export const ctTest = base.extend({
-  storageState: async (_context, applyStorageState) => {
-    await applyStorageState(CT_AUTH)
+  storageState: async ({}, use) => {
+    await use(CT_AUTH)
   },
 })
 
 export const orgAdminTest = base.extend({
-  storageState: async (_context, applyStorageState) => {
-    await applyStorageState(ORG_ADMIN_AUTH)
+  storageState: async ({}, use) => {
+    await use(ORG_ADMIN_AUTH)
   },
 })
 
 export const employeeTest = base.extend({
-  storageState: async (_context, applyStorageState) => {
-    await applyStorageState(EMPLOYEE_AUTH)
+  storageState: async ({}, use) => {
+    await use(EMPLOYEE_AUTH)
   },
 })
 

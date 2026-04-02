@@ -1,9 +1,11 @@
 from datetime import date
 from io import BytesIO
+from zoneinfo import ZoneInfo
 
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 from openpyxl import Workbook, load_workbook
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.accounts.models import AccountType, User, UserRole
@@ -34,6 +36,7 @@ from apps.organisations.models import (
     OrganisationMembershipStatus,
     OrganisationStatus,
 )
+from apps.organisations.services import create_licence_batch, mark_licence_batch_paid
 
 
 def build_xlsx(headers, rows):
@@ -71,6 +74,15 @@ def attendance_setup(db):
     )
     organisation.primary_admin_user = org_admin_user
     organisation.save(update_fields=['primary_admin_user', 'modified_at'])
+    batch = create_licence_batch(
+        organisation,
+        quantity=10,
+        price_per_licence_per_month='99.00',
+        start_date=date(2026, 4, 1),
+        end_date=date(2027, 3, 31),
+        created_by=org_admin_user,
+    )
+    mark_licence_batch_paid(batch, paid_by=org_admin_user, paid_at=date(2026, 4, 1))
     employee_user = User.objects.create_user(
         email='attendance-employee@test.com',
         password='pass123!',
@@ -150,8 +162,9 @@ class TestAttendanceImportViews:
 
         record = AttendanceRecord.objects.get(employee=employee, attendance_date=date(2026, 4, 2))
         assert record.source == 'EXCEL_IMPORT'
-        assert record.check_in_at.strftime('%H:%M') == '09:05'
-        assert record.check_out_at.strftime('%H:%M') == '18:12'
+        org_tz = ZoneInfo('Asia/Kolkata')
+        assert timezone.localtime(record.check_in_at, org_tz).strftime('%H:%M') == '09:05'
+        assert timezone.localtime(record.check_out_at, org_tz).strftime('%H:%M') == '18:12'
 
     def test_attendance_sheet_import_fails_without_partial_post(self, attendance_setup):
         client = attendance_setup['client']

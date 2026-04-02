@@ -33,6 +33,8 @@ import type {
   OnDutyPolicy,
   OrgAttendanceDashboard,
   OrgAttendanceReport,
+  OffboardingProcess,
+  OffboardingTaskStatus,
   OnDutyRequestRecord,
   OnboardingDocumentType,
   OrgPayrollSummary,
@@ -254,9 +256,31 @@ export async function assignEmployeeDocumentRequests(employeeId: string, documen
 
 export async function endEmployeeEmployment(
   id: string,
-  payload: { status: 'RESIGNED' | 'RETIRED' | 'TERMINATED'; date_of_exit: string }
+  payload: { status: 'RESIGNED' | 'RETIRED' | 'TERMINATED'; date_of_exit: string; exit_reason?: string; exit_notes?: string }
 ) {
   const { data } = await api.post<EmployeeDetail>(`/org/employees/${id}/end-employment/`, payload)
+  return data
+}
+
+export async function updateEmployeeOffboarding(
+  id: string,
+  payload: Partial<{ exit_reason: string; exit_notes: string }>
+) {
+  const { data } = await api.patch<OffboardingProcess>(`/org/employees/${id}/offboarding/`, payload)
+  return data
+}
+
+export async function updateEmployeeOffboardingTask(
+  employeeId: string,
+  taskId: string,
+  payload: { status: OffboardingTaskStatus; note?: string }
+) {
+  const { data } = await api.patch<OffboardingProcess>(`/org/employees/${employeeId}/offboarding/tasks/${taskId}/`, payload)
+  return data
+}
+
+export async function completeEmployeeOffboarding(id: string) {
+  const { data } = await api.post<OffboardingProcess>(`/org/employees/${id}/offboarding/complete/`)
   return data
 }
 

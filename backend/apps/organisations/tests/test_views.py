@@ -604,6 +604,18 @@ class TestCtOrganisationDetailTabsSupport:
             'ready_count': 0,
             'exception_count': 1,
             'exception_messages': ['No approved compensation assignment is effective for this period.'],
+            'attendance_snapshot_summary': {
+                'attendance_source': '',
+                'period_start': None,
+                'period_end': None,
+                'use_attendance_inputs': False,
+                'employee_count': 0,
+                'ready_item_count': 0,
+                'exception_item_count': 0,
+                'total_attendance_paid_days': '0.00',
+                'total_lop_days': '0.00',
+                'total_overtime_minutes': 0,
+            },
         }
         assert 'items' not in response.data['payroll_runs'][0]
         assert 'gross_pay' not in response.data['payroll_runs'][0]

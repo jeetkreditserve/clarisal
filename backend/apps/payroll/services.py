@@ -571,7 +571,7 @@ def get_effective_compensation_assignment(employee, as_of_date):
     ).order_by('-effective_from', '-version', '-created_at').first()
 
 
-def create_payroll_run(organisation, *, period_year, period_month, actor=None, requester_user=None, requester_employee=None, source_run=None, run_type=PayrollRunType.REGULAR, name=''):
+def create_payroll_run(organisation, *, period_year, period_month, actor=None, requester_user=None, requester_employee=None, source_run=None, run_type=PayrollRunType.REGULAR, name='', use_attendance_inputs=False):
     ensure_org_payroll_setup(organisation, actor=actor or requester_user)
     if not name:
         month_label = date(period_year, period_month, 1).strftime('%b %Y')
@@ -584,6 +584,7 @@ def create_payroll_run(organisation, *, period_year, period_month, actor=None, r
         period_year=period_year,
         period_month=period_month,
         run_type=run_type,
+        use_attendance_inputs=use_attendance_inputs,
         source_run=source_run,
     )
     log_audit_event(actor or requester_user, 'payroll.run.created', organisation=organisation, target=pay_run)
@@ -621,11 +622,28 @@ def calculate_pay_run(pay_run, *, actor=None):
 
     with transaction.atomic():
         pay_run.items.all().delete()
+        run_attendance_snapshot = {
+            'attendance_source': 'attendance_service' if pay_run.use_attendance_inputs else 'not_applied',
+            'period_start': str(period_start),
+            'period_end': str(period_end),
+            'use_attendance_inputs': pay_run.use_attendance_inputs,
+            'employee_count': 0,
+            'ready_item_count': 0,
+            'exception_item_count': 0,
+            'total_attendance_paid_days': '0.00',
+            'total_lop_days': '0.00',
+            'total_overtime_minutes': 0,
+            'employees': [],
+        }
+        total_attendance_paid_days = ZERO
+        total_lop_days = ZERO
+        total_overtime_minutes = 0
         employees = Employee.objects.filter(
             organisation=pay_run.organisation,
             status=EmployeeStatus.ACTIVE,
         ).select_related('user', 'office_location')
         for employee in employees:
+            run_attendance_snapshot['employee_count'] += 1
             assignment = get_effective_compensation_assignment(employee, period_end)
             if assignment is None:
                 PayrollRunItem.objects.create(
@@ -634,6 +652,15 @@ def calculate_pay_run(pay_run, *, actor=None):
                     status=PayrollRunItemStatus.EXCEPTION,
                     message='No approved compensation assignment is effective for this period.',
                     snapshot={'readiness': _employee_payroll_snapshot(employee)},
+                )
+                run_attendance_snapshot['exception_item_count'] += 1
+                run_attendance_snapshot['employees'].append(
+                    {
+                        'employee_id': str(employee.id),
+                        'employee_code': employee.employee_code or '',
+                        'status': 'EXCEPTION',
+                        'reason': 'No approved compensation assignment is effective for this period.',
+                    }
                 )
                 continue
 
@@ -806,7 +833,7 @@ def calculate_pay_run(pay_run, *, actor=None):
             active_period_end = min(period_end, exit_date) if exit_date and exit_date < period_end else period_end
             attendance_paid_days = Decimal(str(paid_days))
             attendance_overtime_minutes = 0
-            if active_period_start <= active_period_end:
+            if pay_run.use_attendance_inputs and active_period_start <= active_period_end:
                 try:
                     from apps.attendance.services import get_payroll_attendance_summary
 
@@ -831,13 +858,45 @@ def calculate_pay_run(pay_run, *, actor=None):
             ).aggregate(total=Sum('total_units'))
             leave_only_lop_days = _normalize_decimal(lop_result['total']) or ZERO
             expected_paid_days = Decimal(str(paid_days))
-            attendance_based_lop = max(ZERO, expected_paid_days - attendance_paid_days)
+            attendance_based_lop = max(ZERO, expected_paid_days - attendance_paid_days) if pay_run.use_attendance_inputs else ZERO
             lop_days = max(leave_only_lop_days, attendance_based_lop)
             lop_deduction = ZERO
             if lop_days > ZERO and gross_pay > ZERO and total_days_in_period > 0:
                 daily_gross = (gross_pay / Decimal(total_days_in_period)).quantize(Decimal('0.01'))
                 lop_deduction = (daily_gross * lop_days).quantize(Decimal('0.01'))
                 lop_deduction = min(lop_deduction, gross_pay)
+
+            attendance_context = {
+                'period_start': str(period_start),
+                'period_end': str(period_end),
+                'active_period_start': str(active_period_start),
+                'active_period_end': str(active_period_end),
+                'expected_paid_days': str(expected_paid_days),
+                'attendance_paid_days': str(attendance_paid_days),
+                'leave_only_lop_days': str(leave_only_lop_days),
+                'attendance_based_lop_days': str(attendance_based_lop),
+                'effective_lop_days': str(lop_days),
+                'attendance_overtime_minutes': attendance_overtime_minutes,
+                'attendance_source': 'attendance_service' if attendance_summary is not None else ('not_applied' if not pay_run.use_attendance_inputs else 'unavailable'),
+                'use_attendance_inputs': pay_run.use_attendance_inputs,
+            }
+
+            total_attendance_paid_days += attendance_paid_days
+            total_lop_days += lop_days
+            total_overtime_minutes += attendance_overtime_minutes
+            run_attendance_snapshot['ready_item_count'] += 1
+            run_attendance_snapshot['employees'].append(
+                {
+                    'employee_id': str(employee.id),
+                    'employee_code': employee.employee_code or '',
+                    'status': 'READY',
+                    'active_period_start': str(active_period_start),
+                    'active_period_end': str(active_period_end),
+                    'attendance_paid_days': str(attendance_paid_days),
+                    'effective_lop_days': str(lop_days),
+                    'attendance_overtime_minutes': attendance_overtime_minutes,
+                }
+            )
 
             # ── Step 7: Income tax with standard deduction + cess ────────────
             annual_taxable_gross = taxable_monthly * Decimal('12.00')
@@ -882,6 +941,7 @@ def calculate_pay_run(pay_run, *, actor=None):
                     'lop_days': str(lop_days),
                     'lop_deduction': str(lop_deduction),
                     'attendance_overtime_minutes': attendance_overtime_minutes,
+                    'attendance': attendance_context,
                     # Tax working
                     'annual_taxable_gross': str(annual_taxable_gross),
                     'annual_standard_deduction': str(annual_standard_deduction),
@@ -892,10 +952,14 @@ def calculate_pay_run(pay_run, *, actor=None):
                 },
             )
 
+        run_attendance_snapshot['total_attendance_paid_days'] = str(total_attendance_paid_days.quantize(Decimal('0.01')))
+        run_attendance_snapshot['total_lop_days'] = str(total_lop_days.quantize(Decimal('0.01')))
+        run_attendance_snapshot['total_overtime_minutes'] = total_overtime_minutes
+        pay_run.attendance_snapshot = run_attendance_snapshot
         pay_run.status = PayrollRunStatus.CALCULATED
         pay_run.calculated_at = timezone.now()
         pay_run.submitted_at = None
-        pay_run.save(update_fields=['status', 'calculated_at', 'submitted_at', 'approval_run', 'modified_at'])
+        pay_run.save(update_fields=['attendance_snapshot', 'status', 'calculated_at', 'submitted_at', 'approval_run', 'modified_at'])
 
     log_audit_event(actor, 'payroll.run.calculated', organisation=pay_run.organisation, target=pay_run)
     return pay_run
@@ -904,11 +968,11 @@ def calculate_pay_run(pay_run, *, actor=None):
 def submit_pay_run_for_approval(pay_run, *, requester_user, requester_employee=None):
     if pay_run.status != PayrollRunStatus.CALCULATED:
         raise ValueError('Only calculated payroll runs can be submitted for approval.')
-    if not pay_run.items.filter(status=PayrollRunItemStatus.READY).exists():
-        raise ValueError('Calculate payroll successfully for at least one employee before submitting the run for approval.')
     exception_summary = _summarize_pay_run_exceptions(pay_run)
     if exception_summary:
         raise ValueError(exception_summary)
+    if not pay_run.items.filter(status=PayrollRunItemStatus.READY).exists():
+        raise ValueError('Calculate payroll successfully for at least one employee before submitting the run for approval.')
     organisation, requester_user, requester_employee = _resolve_payroll_requester_context(
         requester_user=requester_user,
         requester_employee=requester_employee,
@@ -934,11 +998,11 @@ def finalize_pay_run(pay_run, *, actor=None, skip_approval=False):
         raise ValueError('Only approved or explicitly bypassed calculated payroll runs can be finalized.')
     if pay_run.status == PayrollRunStatus.CALCULATED and not skip_approval:
         raise ValueError('Approval is required before finalization.')
-    if not pay_run.items.filter(status=PayrollRunItemStatus.READY).exists():
-        raise ValueError('Calculate payroll successfully for at least one employee before finalization.')
     exception_summary = _summarize_pay_run_exceptions(pay_run)
     if exception_summary:
         raise ValueError(exception_summary)
+    if not pay_run.items.filter(status=PayrollRunItemStatus.READY).exists():
+        raise ValueError('Calculate payroll successfully for at least one employee before finalization.')
 
     with transaction.atomic():
         for item in pay_run.items.select_related('employee__user').filter(status=PayrollRunItemStatus.READY):

@@ -114,7 +114,7 @@ import {
   validatePhoneForCountry,
 } from '@/lib/organisationMetadata'
 import { ORG_ONBOARDING_STEPS } from '@/lib/status'
-import type { ApprovalWorkflowConfig, CtOrganisationApprovalSupportSummary, CtOrganisationAttendanceSupportSummary, CtOrganisationPayrollSupportSummary, Department, HolidayCalendar, LeaveCycle, LeavePlan, Location, NoticeItem, OnDutyPolicy } from '@/types/hr'
+import type { ApprovalRequestKind, ApprovalWorkflowConfig, CtOrganisationApprovalSupportSummary, CtOrganisationAttendanceSupportSummary, CtOrganisationPayrollSupportSummary, Department, HolidayCalendar, LeaveCycle, LeavePlan, Location, NoticeItem, OnDutyPolicy } from '@/types/hr'
 import type { LicenceBatch, OrganisationAddress, OrganisationAddressType, OrganisationDetail, OrganisationEntityType } from '@/types/organisation'
 
 type DetailTabKey =
@@ -498,7 +498,7 @@ function createWorkflowDialogForm(workflow?: ApprovalWorkflowConfig): WorkflowFo
     name: workflow.name,
     description: workflow.description ?? '',
     is_default: workflow.is_default,
-    default_request_kind: workflow.default_request_kind,
+    default_request_kind: workflow.default_request_kind ?? 'LEAVE',
     is_active: workflow.is_active,
     rules: workflow.rules.map((rule) => ({
       id: rule.id,
@@ -1970,6 +1970,14 @@ export function OrganisationDetailPage() {
                       <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
                         {run.period_month}/{run.period_year} • {run.run_type} • {run.ready_count} ready items
                       </p>
+                      <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
+                        Attendance-linked payable days: {run.attendance_snapshot_summary.use_attendance_inputs ? 'enabled' : 'not applied'}
+                      </p>
+                      {run.attendance_snapshot_summary.attendance_source && run.attendance_snapshot_summary.use_attendance_inputs ? (
+                        <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
+                          Attendance inputs: {run.attendance_snapshot_summary.total_attendance_paid_days} paid days • {run.attendance_snapshot_summary.total_lop_days} LOP days • {run.attendance_snapshot_summary.total_overtime_minutes} overtime minutes
+                        </p>
+                      ) : null}
                     </div>
                     <div className="text-right text-sm text-[hsl(var(--muted-foreground))]">
                       <p>Created {formatDateTime(run.created_at)}</p>
@@ -3433,7 +3441,7 @@ export function OrganisationDetailPage() {
           {workflowForm.is_default ? (
             <AppSelect
               value={workflowForm.default_request_kind ?? ''}
-              onValueChange={(value) => setWorkflowForm((current) => ({ ...current, default_request_kind: value }))}
+              onValueChange={(value) => setWorkflowForm((current) => ({ ...current, default_request_kind: value as ApprovalRequestKind }))}
               options={APPROVAL_REQUEST_KIND_OPTIONS.map((value) => ({ value, label: startCase(value) }))}
               placeholder="Default request kind"
             />

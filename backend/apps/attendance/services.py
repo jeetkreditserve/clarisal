@@ -9,6 +9,7 @@ from io import BytesIO
 from zoneinfo import ZoneInfo
 
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 from openpyxl import Workbook, load_workbook
 
@@ -120,6 +121,11 @@ def _policy_timezone(policy):
         return ZoneInfo(policy.timezone_name)
     except Exception:  # noqa: BLE001
         return timezone.get_default_timezone()
+
+
+def _policy_local_date(policy, dt=None):
+    current_dt = dt or timezone.now()
+    return timezone.localtime(current_dt, _policy_timezone(policy)).date()
 
 
 def _make_aware_datetime(attendance_date, time_value, policy=None):
@@ -260,6 +266,8 @@ def build_punch_sheet_sample():
 
 
 def build_normalized_attendance_workbook(job):
+    policy = get_default_attendance_policy(job.organisation)
+    policy_timezone = _policy_timezone(policy)
     normalized_rows = []
     review_notes = []
     validation_errors = []
@@ -269,8 +277,8 @@ def build_normalized_attendance_workbook(job):
                 [
                     row.employee_code,
                     row.attendance_date.isoformat() if row.attendance_date else '',
-                    timezone.localtime(row.check_in_at).strftime('%H:%M') if row.check_in_at else '',
-                    timezone.localtime(row.check_out_at).strftime('%H:%M') if row.check_out_at else '',
+                    timezone.localtime(row.check_in_at, policy_timezone).strftime('%H:%M') if row.check_in_at else '',
+                    timezone.localtime(row.check_out_at, policy_timezone).strftime('%H:%M') if row.check_out_at else '',
                 ]
             )
             review_notes.append(
@@ -717,9 +725,9 @@ def recalculate_attendance_day(employee, attendance_date, *, actor=None):
 
 
 def get_employee_attendance_summary(employee):
-    today = timezone.localdate()
-    attendance_day = recalculate_attendance_day(employee, today)
     policy = get_default_attendance_policy(employee.organisation)
+    today = _policy_local_date(policy)
+    attendance_day = recalculate_attendance_day(employee, today)
     shift_assignment = _get_effective_shift(employee, today)
     pending_regularizations = employee.attendance_regularization_requests.filter(
         status=AttendanceRegularizationStatus.PENDING
@@ -732,12 +740,12 @@ def get_employee_attendance_summary(employee):
     }
 
 
-def _month_window(month):
+def _month_window(month, *, policy=None):
     if month:
         year, month_number = [int(part) for part in month.split('-')]
         start_date = date(year, month_number, 1)
     else:
-        today = timezone.localdate()
+        today = _policy_local_date(policy) if policy is not None else timezone.localdate()
         start_date = date(today.year, today.month, 1)
     next_month = date(start_date.year + (1 if start_date.month == 12 else 0), 1 if start_date.month == 12 else start_date.month + 1, 1)
     end_date = next_month - timedelta(days=1)
@@ -745,7 +753,7 @@ def _month_window(month):
 
 
 def get_employee_attendance_history(employee, *, month=None):
-    start_date, end_date = _month_window(month)
+    start_date, end_date = _month_window(month, policy=get_default_attendance_policy(employee.organisation))
     days = []
     current = start_date
     while current <= end_date:
@@ -757,7 +765,7 @@ def get_employee_attendance_history(employee, *, month=None):
 def get_employee_attendance_calendar(employee, *, month=None):
     days = get_employee_attendance_history(employee, month=month)
     return {
-        'month': month or date.today().strftime('%Y-%m'),
+        'month': month or _month_window(None, policy=get_default_attendance_policy(employee.organisation))[0].strftime('%Y-%m'),
         'days': [
             {
                 'date': day.attendance_date.isoformat(),
@@ -827,7 +835,7 @@ def record_employee_punch(employee, *, action_type, actor=None, remote_ip='', la
     _validate_ip(policy, remote_ip)
     _validate_geo(policy, latitude, longitude)
 
-    today = timezone.localdate()
+    today = _policy_local_date(policy)
     attendance_day = recalculate_attendance_day(employee, today)
     if action_type == AttendancePunchActionType.CHECK_IN and attendance_day.check_in_at and not attendance_day.check_out_at:
         raise ValueError('You are already checked in for today.')
@@ -1004,7 +1012,7 @@ def apply_regularization_status_change(regularization, new_status, rejection_rea
 
 
 def get_org_attendance_dashboard(organisation, *, target_date=None):
-    day = target_date or timezone.localdate()
+    day = target_date or _policy_local_date(get_default_attendance_policy(organisation))
     employees = Employee.objects.filter(organisation=organisation, status=EmployeeStatus.ACTIVE).select_related('user', 'office_location')
     summaries = [recalculate_attendance_day(employee, day) for employee in employees]
     return {
@@ -1034,7 +1042,7 @@ def get_org_attendance_report(organisation, *, month=None):
         except (TypeError, ValueError) as exc:
             raise ValueError('month must use YYYY-MM format.') from exc
     else:
-        today = timezone.localdate()
+        today = _policy_local_date(get_default_attendance_policy(organisation))
         report_month = date(today.year, today.month, 1)
 
     next_month = date(report_month.year + (1 if report_month.month == 12 else 0), 1 if report_month.month == 12 else report_month.month + 1, 1)
@@ -1074,7 +1082,7 @@ def get_org_attendance_report(organisation, *, month=None):
 
 
 def list_org_attendance_days(organisation, *, target_date=None, employee_id=None, status_value=''):
-    attendance_date = target_date or timezone.localdate()
+    attendance_date = target_date or _policy_local_date(get_default_attendance_policy(organisation))
     employees = Employee.objects.filter(organisation=organisation, status=EmployeeStatus.ACTIVE)
     if employee_id:
         employees = employees.filter(id=employee_id)

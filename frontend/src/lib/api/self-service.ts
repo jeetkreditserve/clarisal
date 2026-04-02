@@ -21,6 +21,7 @@ import type {
   MyOnboardingResponse,
   MyProfileResponse,
   NoticeItem,
+  OffboardingProcess,
   OnDutyPolicy,
   OnDutyRequestRecord,
   Payslip,
@@ -33,6 +34,11 @@ export async function fetchMyDashboard() {
 
 export async function fetchMyProfile() {
   const { data } = await api.get<MyProfileResponse>('/me/profile/')
+  return data
+}
+
+export async function fetchMyOffboarding() {
+  const { data } = await api.get<OffboardingProcess | null>('/me/offboarding/')
   return data
 }
 

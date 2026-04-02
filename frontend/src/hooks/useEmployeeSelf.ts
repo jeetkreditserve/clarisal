@@ -30,6 +30,7 @@ import {
   fetchMyEvents,
   fetchMyLeaveOverview,
   fetchMyNotices,
+  fetchMyOffboarding,
   fetchMyOnDutyPolicies,
   fetchMyOnDutyRequests,
   fetchMyOnboarding,
@@ -153,6 +154,11 @@ export function useWithdrawMyAttendanceRegularization() {
 export function useMyProfile() {
   const organisationId = useEmployeeScope()
   return useQuery({ queryKey: ['me', organisationId, 'profile'], queryFn: fetchMyProfile })
+}
+
+export function useMyOffboarding() {
+  const organisationId = useEmployeeScope()
+  return useQuery({ queryKey: ['me', organisationId, 'offboarding'], queryFn: fetchMyOffboarding })
 }
 
 export function useMyOnboarding() {

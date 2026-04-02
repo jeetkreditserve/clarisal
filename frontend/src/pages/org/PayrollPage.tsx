@@ -46,7 +46,7 @@ export function PayrollPage() {
   const rerunMutation = useRerunPayrollRun()
 
   const [taxForm, setTaxForm] = useState({
-    name: 'FY Default Copy',
+    name: '',
     fiscal_year: `${currentYear}-${currentYear + 1}`,
     slab_one_limit: '300000',
     slab_two_limit: '700000',
@@ -54,10 +54,10 @@ export function PayrollPage() {
     slab_three_rate: '20',
   })
   const [templateForm, setTemplateForm] = useState({
-    name: 'Standard Monthly',
+    name: '',
     description: '',
-    basic_pay: '50000',
-    employee_deduction: '1800',
+    basic_pay: '',
+    employee_deduction: '',
   })
   const [assignmentForm, setAssignmentForm] = useState({
     employee_id: '',
@@ -67,6 +67,7 @@ export function PayrollPage() {
   const [runForm, setRunForm] = useState({
     period_year: String(currentYear),
     period_month: String(new Date().getMonth() + 1),
+    use_attendance_inputs: false,
   })
   const [activeSection, setActiveSection] = useState<(typeof PAYROLL_SECTION_OPTIONS)[number]['value']>('setup')
 
@@ -89,7 +90,9 @@ export function PayrollPage() {
     [data],
   )
 
-  const summarizeRunExceptions = (run: (typeof data.pay_runs)[number]) => {
+  type PayrollRun = NonNullable<typeof data>['pay_runs'][number]
+
+  const summarizeRunExceptions = (run: PayrollRun) => {
     const exceptionItems = run.items.filter((item) => item.status === 'EXCEPTION')
     return {
       count: exceptionItems.length,
@@ -167,6 +170,7 @@ export function PayrollPage() {
       await createRunMutation.mutateAsync({
         period_year: Number(runForm.period_year),
         period_month: Number(runForm.period_month),
+        use_attendance_inputs: runForm.use_attendance_inputs,
       })
       toast.success('Payroll run created.')
     } catch (error) {
@@ -429,8 +433,9 @@ export function PayrollPage() {
           <SectionCard title="Run readiness" description="Create and process runs only after setup and compensation sections are in place.">
             <div className="space-y-3 text-sm text-[hsl(var(--muted-foreground))]">
               <p>1. Confirm at least one approved salary assignment exists.</p>
-              <p>2. Use calculate first, then resolve every exception before submitting for approval.</p>
-              <p>3. Finalization is irreversible for the current preview snapshot and will publish payslips.</p>
+              <p>2. Decide whether this run should use attendance-linked payable days before you create it.</p>
+              <p>3. Use calculate first, then resolve every exception before submitting for approval.</p>
+              <p>4. Finalization is irreversible for the current preview snapshot and will publish payslips.</p>
             </div>
           </SectionCard>
 
@@ -438,6 +443,20 @@ export function PayrollPage() {
             <form onSubmit={handleCreateRun} className="grid gap-4 md:grid-cols-2">
               <input className="field-input" value={runForm.period_year} onChange={(event) => setRunForm((current) => ({ ...current, period_year: event.target.value }))} placeholder="Year" />
               <input className="field-input" value={runForm.period_month} onChange={(event) => setRunForm((current) => ({ ...current, period_month: event.target.value }))} placeholder="Month" />
+              <label className="md:col-span-2 flex items-start gap-3 rounded-[18px] border border-[hsl(var(--border)_/_0.84)] bg-[hsl(var(--surface-subtle))] px-4 py-3 text-sm text-[hsl(var(--foreground-strong))]">
+                <input
+                  type="checkbox"
+                  checked={runForm.use_attendance_inputs}
+                  onChange={(event) => setRunForm((current) => ({ ...current, use_attendance_inputs: event.target.checked }))}
+                  className="mt-1"
+                />
+                <span>
+                  Use attendance and leave inputs for payable days.
+                  <span className="block text-[hsl(var(--muted-foreground))]">
+                    Leave this off unless attendance for the payroll period has been reviewed and is ready to drive LOP deductions.
+                  </span>
+                </span>
+              </label>
               <div className="md:col-span-2">
                 <button type="submit" className="btn-primary" disabled={createRunMutation.isPending}>
                   Create payroll run
@@ -447,6 +466,7 @@ export function PayrollPage() {
             <div className="mt-5 space-y-3">
               {data.pay_runs.length ? data.pay_runs.map((run) => {
                 const exceptionSummary = summarizeRunExceptions(run)
+                const attendanceSummary = run.attendance_snapshot
 
                 return (
                   <div key={run.id} className="surface-shell rounded-[18px] px-4 py-4">
@@ -462,6 +482,14 @@ export function PayrollPage() {
                         <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
                           {run.items.length} items • {run.run_type} • {run.period_month}/{run.period_year}
                         </p>
+                        <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
+                          Attendance-linked payable days: {run.use_attendance_inputs ? 'enabled' : 'not applied'}
+                        </p>
+                        {attendanceSummary?.attendance_source && run.use_attendance_inputs ? (
+                          <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
+                            Attendance snapshot: {attendanceSummary.total_attendance_paid_days} paid days • {attendanceSummary.total_lop_days} LOP days • {attendanceSummary.total_overtime_minutes} overtime minutes
+                          </p>
+                        ) : null}
                       </div>
                       <div className="flex flex-wrap gap-2">
                         {run.status === 'DRAFT' || run.status === 'REJECTED' || run.status === 'CALCULATED' ? (

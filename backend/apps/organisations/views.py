@@ -363,6 +363,18 @@ class CtOrganisationPayrollSummaryView(APIView):
                     'ready_count': ready_count,
                     'exception_count': exception_count,
                     'exception_messages': exception_messages,
+                    'attendance_snapshot_summary': {
+                        'attendance_source': (pay_run.attendance_snapshot or {}).get('attendance_source', ''),
+                        'period_start': (pay_run.attendance_snapshot or {}).get('period_start'),
+                        'period_end': (pay_run.attendance_snapshot or {}).get('period_end'),
+                        'use_attendance_inputs': (pay_run.attendance_snapshot or {}).get('use_attendance_inputs', False),
+                        'employee_count': (pay_run.attendance_snapshot or {}).get('employee_count', 0),
+                        'ready_item_count': (pay_run.attendance_snapshot or {}).get('ready_item_count', 0),
+                        'exception_item_count': (pay_run.attendance_snapshot or {}).get('exception_item_count', 0),
+                        'total_attendance_paid_days': (pay_run.attendance_snapshot or {}).get('total_attendance_paid_days', '0.00'),
+                        'total_lop_days': (pay_run.attendance_snapshot or {}).get('total_lop_days', '0.00'),
+                        'total_overtime_minutes': (pay_run.attendance_snapshot or {}).get('total_overtime_minutes', 0),
+                    },
                 }
             )
 

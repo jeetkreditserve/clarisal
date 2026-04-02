@@ -17,7 +17,8 @@ export function OrgDashboardPage() {
   const { data: odRequests } = useOrgOnDutyRequests()
 
   const currentStage = ORG_ONBOARDING_STEPS.find((step) => step.id === data?.onboarding_stage)
-  const setupNeedsAttention = data && data.onboarding_stage !== 'LIVE'
+  const finalOnboardingStage = ORG_ONBOARDING_STEPS[ORG_ONBOARDING_STEPS.length - 1]?.id
+  const setupNeedsAttention = Boolean(data && finalOnboardingStage && data.onboarding_stage !== finalOnboardingStage)
 
   return (
     <div className="space-y-6">

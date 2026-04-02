@@ -4,7 +4,7 @@ import { waitForToast } from '../helpers'
 test.describe('CT Organisations', () => {
   test('Organisations list loads', async ({ page }) => {
     await page.goto('/ct/organisations')
-    await expect(page.locator('h1')).toContainText('Organisations', { timeout: 10000 })
+    await expect(page.getByRole('heading', { name: 'Organisations' })).toBeVisible({ timeout: 10000 })
   })
 
   test('Shows 4 organisations in the table', async ({ page }) => {
@@ -75,7 +75,7 @@ test.describe('CT Organisations', () => {
 
     const acmeRow = page.locator('tbody tr').filter({ hasText: 'Acme Workforce Pvt Ltd' })
     await acmeRow.locator('a:has-text("Open")').click()
-    await expect(page.locator('h1')).toContainText('Acme Workforce Pvt Ltd', { timeout: 10000 })
+    await expect(page.getByRole('heading', { name: 'Acme Workforce Pvt Ltd' })).toBeVisible({ timeout: 10000 })
   })
 
   test('Detail page shows org admin Aditi Rao in admins section', async ({ page }) => {
@@ -84,7 +84,7 @@ test.describe('CT Organisations', () => {
 
     const acmeRow = page.locator('tbody tr').filter({ hasText: 'Acme Workforce Pvt Ltd' })
     await acmeRow.locator('a:has-text("Open")').click()
-    await expect(page.locator('h1')).toContainText('Acme Workforce Pvt Ltd', { timeout: 10000 })
+    await expect(page.getByRole('heading', { name: 'Acme Workforce Pvt Ltd' })).toBeVisible({ timeout: 10000 })
 
     // The admins table should list Aditi Rao
     await expect(page.locator('text=Aditi Rao').first()).toBeVisible({ timeout: 10000 })
@@ -96,7 +96,7 @@ test.describe('CT Organisations', () => {
 
     const acmeRow = page.locator('tbody tr').filter({ hasText: 'Acme Workforce Pvt Ltd' })
     await acmeRow.locator('a:has-text("Open")').click()
-    await expect(page.locator('h1')).toContainText('Acme Workforce Pvt Ltd', { timeout: 10000 })
+    await expect(page.getByRole('heading', { name: 'Acme Workforce Pvt Ltd' })).toBeVisible({ timeout: 10000 })
 
     // Set up dialog acceptance BEFORE clicking the button
     page.once('dialog', (dialog) => dialog.accept())
@@ -112,7 +112,7 @@ test.describe('CT Organisations', () => {
 
     const acmeRow = page.locator('tbody tr').filter({ hasText: 'Acme Workforce Pvt Ltd' })
     await acmeRow.locator('a:has-text("Open")').click()
-    await expect(page.locator('h1')).toContainText('Acme Workforce Pvt Ltd', { timeout: 10000 })
+    await expect(page.getByRole('heading', { name: 'Acme Workforce Pvt Ltd' })).toBeVisible({ timeout: 10000 })
 
     await page.click('button:has-text("Restore access")')
     await waitForToast(page, 'Organisation access restored.')
@@ -120,7 +120,7 @@ test.describe('CT Organisations', () => {
 
   test('New organisation button navigates to /ct/organisations/new', async ({ page }) => {
     await page.goto('/ct/organisations')
-    await expect(page.locator('h1')).toContainText('Organisations', { timeout: 10000 })
+    await expect(page.getByRole('heading', { name: 'Organisations' })).toBeVisible({ timeout: 10000 })
 
     await page.click('a:has-text("New organisation")')
     await expect(page).toHaveURL(/\/ct\/organisations\/new/, { timeout: 10000 })

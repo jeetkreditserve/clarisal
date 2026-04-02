@@ -30,6 +30,7 @@ import {
   deactivateLocation,
   deleteEmployee,
   endEmployeeEmployment,
+  completeEmployeeOffboarding,
   fetchDepartments,
   fetchEmployeeDocumentRequests,
   fetchEmployeeDetail,
@@ -86,6 +87,8 @@ import {
   updateApprovalWorkflow,
   updateDepartment,
   updateEmployee,
+  updateEmployeeOffboarding,
+  updateEmployeeOffboardingTask,
   updateHolidayCalendar,
   updateLeaveCycle,
   updateLeavePlan,
@@ -311,6 +314,37 @@ export function useEndEmployeeEmployment(id: string) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (payload: Parameters<typeof endEmployeeEmployment>[1]) => endEmployeeEmployment(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useUpdateEmployeeOffboarding(id: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: Parameters<typeof updateEmployeeOffboarding>[1]) => updateEmployeeOffboarding(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useUpdateEmployeeOffboardingTask(employeeId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ taskId, payload }: { taskId: string; payload: Parameters<typeof updateEmployeeOffboardingTask>[2] }) =>
+      updateEmployeeOffboardingTask(employeeId, taskId, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useCompleteEmployeeOffboarding(employeeId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => completeEmployeeOffboarding(employeeId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['org'] })
     },

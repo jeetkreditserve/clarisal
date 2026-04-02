@@ -13,7 +13,8 @@ from apps.approvals.models import (
     ApprovalWorkflow,
     ApprovalWorkflowRule,
 )
-from apps.employees.services import invite_employee
+from apps.employees.models import Employee, EmployeeOffboardingProcess, OffboardingProcessStatus
+from apps.employees.services import create_or_update_offboarding_process, invite_employee
 from apps.organisations.models import (
     Organisation,
     OrganisationAccessState,
@@ -161,3 +162,47 @@ class TestInviteEmployee:
                 last_name='Employee',
                 invited_by=org_admin,
             )
+
+
+@pytest.mark.django_db
+class TestOffboardingProcess:
+    def test_create_or_update_offboarding_process_seeds_default_tasks(self, organisation, org_admin, default_workflows):
+        employee_user = User.objects.create_user(
+            email='employee.offboarding@test.com',
+            password='pass123!',
+            role=UserRole.EMPLOYEE,
+            is_active=True,
+        )
+        employee = Employee.objects.create(
+            organisation=organisation,
+            user=employee_user,
+            status='ACTIVE',
+            employee_code='EMP002',
+        )
+
+        process = create_or_update_offboarding_process(
+            employee,
+            exit_status='RESIGNED',
+            date_of_exit=date(2026, 4, 30),
+            exit_reason='Personal reason',
+            exit_notes='Handover in progress',
+            actor=org_admin,
+        )
+
+        assert process.status == OffboardingProcessStatus.IN_PROGRESS
+        assert process.exit_reason == 'Personal reason'
+        assert process.tasks.count() >= 6
+
+        updated = create_or_update_offboarding_process(
+            employee,
+            exit_status='RESIGNED',
+            date_of_exit=date(2026, 5, 2),
+            exit_reason='Updated note',
+            exit_notes='Final payroll review',
+            actor=org_admin,
+        )
+
+        assert updated.id == process.id
+        assert EmployeeOffboardingProcess.objects.count() == 1
+        assert updated.date_of_exit == date(2026, 5, 2)
+        assert updated.exit_notes == 'Final payroll review'

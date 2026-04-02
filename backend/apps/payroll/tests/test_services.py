@@ -22,6 +22,7 @@ from apps.organisations.models import (
     OrganisationMembershipStatus,
     OrganisationStatus,
 )
+from apps.organisations.services import create_licence_batch, mark_licence_batch_paid
 from apps.payroll.models import (
     CompensationAssignmentStatus,
     PayrollComponentType,
@@ -43,12 +44,38 @@ from apps.payroll.services import (
 
 
 def _create_active_organisation(name='Acme Corp'):
-    return Organisation.objects.create(
+    organisation = Organisation.objects.create(
         name=name,
         status=OrganisationStatus.ACTIVE,
         billing_status=OrganisationBillingStatus.PAID,
         access_state=OrganisationAccessState.ACTIVE,
     )
+    batch = create_licence_batch(
+        organisation,
+        quantity=25,
+        price_per_licence_per_month='99.00',
+        start_date=date(2026, 4, 1),
+        end_date=date(2027, 3, 31),
+    )
+    mark_licence_batch_paid(batch, paid_at=date(2026, 4, 1))
+    return organisation
+
+
+def _approve_assignment_for_employee(employee, template, *, requester_user, requester_employee, approver_user):
+    assignment = assign_employee_compensation(
+        employee,
+        template,
+        effective_from=date(2026, 4, 1),
+        actor=requester_user,
+    )
+    submit_compensation_assignment_for_approval(
+        assignment,
+        requester_user=requester_user,
+        requester_employee=requester_employee,
+    )
+    approve_action(assignment.approval_run.actions.get(), approver_user)
+    assignment.refresh_from_db()
+    return assignment
 
 
 def _create_workforce_user(email, *, role=UserRole.EMPLOYEE, organisation=None):
@@ -199,15 +226,27 @@ class TestPayrollServices:
             ],
             actor=requester_user,
         )
-        assignment = assign_employee_compensation(
+        _approve_assignment_for_employee(
+            requester_employee,
+            template,
+            requester_user=requester_user,
+            requester_employee=requester_employee,
+            approver_user=approver_user,
+        )
+        _approve_assignment_for_employee(
+            approver_employee,
+            template,
+            requester_user=requester_user,
+            requester_employee=requester_employee,
+            approver_user=approver_user,
+        )
+        assignment = _approve_assignment_for_employee(
             employee,
             template,
-            effective_from=date(2026, 4, 1),
-            actor=requester_user,
+            requester_user=requester_user,
+            requester_employee=requester_employee,
+            approver_user=approver_user,
         )
-        submit_compensation_assignment_for_approval(assignment, requester_user=requester_user, requester_employee=requester_employee)
-        approve_action(assignment.approval_run.actions.get(), approver_user)
-        assignment.refresh_from_db()
 
         assert assignment.status == CompensationAssignmentStatus.APPROVED
 
@@ -223,14 +262,30 @@ class TestPayrollServices:
         pay_run.refresh_from_db()
 
         assert pay_run.status == PayrollRunStatus.CALCULATED
-        assert pay_run.items.filter(status='READY').count() == 1
+        assert pay_run.items.filter(status='READY').count() == 3
         item = pay_run.items.get(employee=employee)
         assert item.gross_pay == Decimal('50000.00')
         assert item.total_deductions > Decimal('1800.00')
         assert item.net_pay < item.gross_pay
+        assert pay_run.use_attendance_inputs is False
+        assert pay_run.attendance_snapshot['attendance_source'] == 'not_applied'
+        assert pay_run.attendance_snapshot['period_start'] == '2026-04-01'
+        assert pay_run.attendance_snapshot['period_end'] == '2026-04-30'
+        assert pay_run.attendance_snapshot['employee_count'] == 3
+        employee_attendance = next(
+            entry
+            for entry in pay_run.attendance_snapshot['employees']
+            if entry['employee_id'] == str(employee.id)
+        )
+        assert employee_attendance['attendance_paid_days'] == item.snapshot['attendance']['attendance_paid_days']
+        assert item.snapshot['attendance']['period_start'] == '2026-04-01'
+        assert item.snapshot['attendance']['period_end'] == '2026-04-30'
+        assert item.snapshot['attendance']['attendance_source'] == 'not_applied'
+        assert Decimal(item.snapshot['lop_deduction']) == Decimal('0.00')
 
         submit_pay_run_for_approval(pay_run, requester_user=requester_user, requester_employee=requester_employee)
         approve_action(pay_run.approval_run.actions.get(), approver_user)
+        pay_run.refresh_from_db()
         finalize_pay_run(pay_run, actor=requester_user)
         pay_run.refresh_from_db()
 

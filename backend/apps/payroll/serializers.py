@@ -176,8 +176,10 @@ class PayrollRunSerializer(serializers.ModelSerializer):
             'period_month',
             'run_type',
             'status',
+            'use_attendance_inputs',
             'approval_run_id',
             'source_run_id',
+            'attendance_snapshot',
             'calculated_at',
             'submitted_at',
             'finalized_at',
@@ -191,6 +193,7 @@ class PayrollRunWriteSerializer(serializers.Serializer):
     period_year = serializers.IntegerField(min_value=2000, max_value=3000)
     period_month = serializers.IntegerField(min_value=1, max_value=12)
     name = serializers.CharField(max_length=255, required=False, allow_blank=True, default='')
+    use_attendance_inputs = serializers.BooleanField(required=False, default=False)
 
 
 class PayslipSerializer(serializers.ModelSerializer):

@@ -224,6 +224,7 @@ class PayrollRun(AuditedBaseModel):
     period_month = models.PositiveIntegerField()
     run_type = models.CharField(max_length=16, choices=PayrollRunType.choices, default=PayrollRunType.REGULAR)
     status = models.CharField(max_length=24, choices=PayrollRunStatus.choices, default=PayrollRunStatus.DRAFT)
+    use_attendance_inputs = models.BooleanField(default=False)
     source_run = models.ForeignKey(
         'self',
         null=True,
@@ -238,6 +239,7 @@ class PayrollRun(AuditedBaseModel):
         on_delete=models.SET_NULL,
         related_name='payroll_runs',
     )
+    attendance_snapshot = models.JSONField(default=dict, blank=True)
     calculated_at = models.DateTimeField(null=True, blank=True)
     submitted_at = models.DateTimeField(null=True, blank=True)
     finalized_at = models.DateTimeField(null=True, blank=True)
@@ -309,4 +311,3 @@ class Payslip(AuditedBaseModel):
         constraints = [
             models.UniqueConstraint(fields=['employee', 'pay_run'], name='unique_payslip_per_employee_per_run'),
         ]
-
