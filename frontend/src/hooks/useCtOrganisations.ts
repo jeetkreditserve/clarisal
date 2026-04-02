@@ -3,6 +3,7 @@ import { fetchCtAuditLogs } from '@/lib/api/audit'
 import {
   createCtApprovalWorkflow,
   createCtPayrollTaxSlabSet,
+  fetchCtOrgApprovalSummary,
   createCtHolidayCalendar,
   createCtLeaveCycle,
   createCtLeavePlan,
@@ -226,6 +227,14 @@ export function useCtOrgPayrollSummary(orgId: string, enabled = true) {
   return useQuery({
     queryKey: ['ct', 'organisations', orgId, 'payroll'],
     queryFn: () => fetchCtOrgPayrollSummary(orgId),
+    enabled: Boolean(orgId && enabled),
+  })
+}
+
+export function useCtOrgApprovalSummary(orgId: string, enabled = true) {
+  return useQuery({
+    queryKey: ['ct', 'organisations', orgId, 'approval-support'],
+    queryFn: () => fetchCtOrgApprovalSummary(orgId),
     enabled: Boolean(orgId && enabled),
   })
 }

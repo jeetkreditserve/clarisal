@@ -205,6 +205,14 @@ export interface OrganisationDetail {
     approval_workflows: number
     notices: number
   }
+  operations_guard: {
+    licence_expired: boolean
+    admin_mutations_blocked: boolean
+    approval_actions_blocked: boolean
+    seat_assignment_blocked: boolean
+    reason: string
+    summary: LicenceSummary
+  }
   addresses: OrganisationAddress[]
   legal_identifiers: Array<{
     id: string

@@ -37,8 +37,8 @@ export function LoginPage() {
   return (
     <AuthShell
       variant="workforce"
-      title="Sign in to your workplace"
-      description="Default sign-in for organisation admins and employees. Access your collated admin workspace or employee self-service."
+      title="Sign in to your organisation workspace"
+      description="Use this login for organisation admin tasks or employee self-service. Control Tower operators should use the separate platform login."
       footer={
         <div className="flex items-center justify-between gap-4">
           <a href="/auth/reset-password" className="auth-link">

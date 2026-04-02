@@ -282,6 +282,30 @@ export interface CtOrganisationPayrollSupportSummary {
   payroll_runs: CtOrganisationPayrollRunSummary[]
 }
 
+export interface CtOrganisationApprovalRunSummary {
+  id: string
+  request_kind: ApprovalRequestKind
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED'
+  subject_label: string
+  requester_name: string
+  current_stage_sequence: number
+  workflow_name: string
+  pending_actions_count: number
+  created_at: string
+  modified_at: string
+}
+
+export interface CtOrganisationApprovalSupportSummary {
+  workflows_count: number
+  active_workflows_count: number
+  default_workflows_count: number
+  pending_runs_count: number
+  approved_runs_count: number
+  rejected_runs_count: number
+  pending_actions_count: number
+  recent_runs: CtOrganisationApprovalRunSummary[]
+}
+
 export interface ProfileCompletion {
   percent: number
   completed_sections: string[]

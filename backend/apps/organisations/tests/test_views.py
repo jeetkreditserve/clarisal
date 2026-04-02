@@ -1,5 +1,6 @@
 import pytest
 from decimal import Decimal
+from django.contrib.contenttypes.models import ContentType
 from django.urls import reverse
 from rest_framework.test import APIClient
 from apps.accounts.models import AccountType, User, UserRole
@@ -22,6 +23,7 @@ from apps.organisations.models import (
     OrganisationNote,
     OrganisationStatus,
 )
+from apps.approvals.models import ApprovalRun, ApprovalWorkflow
 from apps.payroll.models import PayrollRun, PayrollRunItem
 
 
@@ -302,6 +304,22 @@ class TestCtOrganisationDetailTabsSupport:
         assert 'holiday_calendar_count' in response.data
         assert 'note_count' in response.data
         assert 'configuration_summary' in response.data
+
+    def test_org_detail_includes_operations_guard_for_blocked_orgs(self, ct_client, org):
+        client, _ = ct_client
+
+        response = client.get(f'/api/ct/organisations/{org.id}/')
+
+        assert response.status_code == 200
+        assert response.data['operations_guard'] == {
+            'licence_expired': True,
+            'admin_mutations_blocked': True,
+            'approval_actions_blocked': True,
+            'seat_assignment_blocked': True,
+            'reason': 'Organisation licences have expired. Renew licences in Control Tower to continue.',
+            'summary': response.data['operations_guard']['summary'],
+        }
+        assert response.data['operations_guard']['summary']['active_paid_quantity'] == 0
 
     def test_ct_can_create_and_list_notes(self, ct_client, org):
         client, ct_user = ct_client
@@ -589,6 +607,34 @@ class TestCtOrganisationDetailTabsSupport:
         assert 'items' not in response.data['payroll_runs'][0]
         assert 'gross_pay' not in response.data['payroll_runs'][0]
         assert 'net_pay' not in response.data['payroll_runs'][0]
+
+    def test_ct_approval_support_summary_exposes_run_state_without_inline_actions(self, ct_client, org):
+        client, _ = ct_client
+        workflow = ApprovalWorkflow.objects.create(
+            organisation=org,
+            name='Leave workflow',
+            is_active=True,
+        )
+        approval_run = ApprovalRun.objects.create(
+            organisation=org,
+            workflow=workflow,
+            request_kind='LEAVE',
+            status='PENDING',
+            current_stage_sequence=1,
+            subject_label='Sick leave request',
+            content_type_id=ContentType.objects.get_for_model(Organisation).id,
+            object_id=org.id,
+        )
+
+        response = client.get(f'/api/ct/organisations/{org.id}/approvals/')
+
+        assert response.status_code == 200
+        assert response.data['workflows_count'] == 1
+        assert response.data['pending_runs_count'] == 1
+        assert response.data['recent_runs'][0]['subject_label'] == 'Sick leave request'
+        assert response.data['recent_runs'][0]['workflow_name'] == 'Leave workflow'
+        assert response.data['recent_runs'][0]['pending_actions_count'] == 0
+        assert 'actions' not in response.data['recent_runs'][0]
 
 
 @pytest.mark.django_db

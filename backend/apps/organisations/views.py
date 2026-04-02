@@ -5,7 +5,7 @@ from rest_framework.pagination import PageNumberPagination
 from django.shortcuts import get_object_or_404
 from apps.accounts.permissions import BelongsToActiveOrg, IsControlTowerUser, IsOrgAdmin, OrgAdminMutationAllowed
 from apps.accounts.workspaces import get_active_admin_organisation
-from apps.approvals.models import ApprovalWorkflow
+from apps.approvals.models import ApprovalAction, ApprovalActionStatus, ApprovalRun, ApprovalRunStatus, ApprovalWorkflow
 from apps.approvals.serializers import ApprovalWorkflowSerializer, ApprovalWorkflowWriteSerializer
 from apps.approvals.views import _upsert_workflow as upsert_approval_workflow
 from apps.communications.models import Notice
@@ -378,6 +378,48 @@ class CtOrganisationPayrollSummaryView(APIView):
                 ).count(),
                 'payslip_count': Payslip.objects.filter(organisation=organisation).count(),
                 'payroll_runs': runs_payload,
+            }
+        )
+
+
+class CtOrganisationApprovalSupportView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def get(self, request, pk):
+        organisation = get_object_or_404(Organisation, id=pk)
+        workflows = ApprovalWorkflow.objects.filter(organisation=organisation)
+        approval_runs = ApprovalRun.objects.filter(organisation=organisation).prefetch_related('actions', 'workflow').order_by('-created_at')
+        recent_runs = []
+        for approval_run in approval_runs[:12]:
+            pending_actions_count = approval_run.actions.filter(status=ApprovalActionStatus.PENDING).count()
+            recent_runs.append(
+                {
+                    'id': str(approval_run.id),
+                    'request_kind': approval_run.request_kind,
+                    'status': approval_run.status,
+                    'subject_label': approval_run.subject_label,
+                    'requester_name': approval_run.requester_name,
+                    'current_stage_sequence': approval_run.current_stage_sequence,
+                    'workflow_name': approval_run.workflow.name,
+                    'pending_actions_count': pending_actions_count,
+                    'created_at': approval_run.created_at,
+                    'modified_at': approval_run.modified_at,
+                }
+            )
+
+        return Response(
+            {
+                'workflows_count': workflows.count(),
+                'active_workflows_count': workflows.filter(is_active=True).count(),
+                'default_workflows_count': workflows.filter(is_default=True).count(),
+                'pending_runs_count': approval_runs.filter(status=ApprovalRunStatus.PENDING).count(),
+                'approved_runs_count': approval_runs.filter(status=ApprovalRunStatus.APPROVED).count(),
+                'rejected_runs_count': approval_runs.filter(status=ApprovalRunStatus.REJECTED).count(),
+                'pending_actions_count': ApprovalAction.objects.filter(
+                    approval_run__organisation=organisation,
+                    status=ApprovalActionStatus.PENDING,
+                ).count(),
+                'recent_runs': recent_runs,
             }
         )
 

@@ -352,6 +352,7 @@ class OrganisationDetailSerializer(serializers.ModelSerializer):
     holiday_calendar_count = serializers.SerializerMethodField()
     note_count = serializers.SerializerMethodField()
     configuration_summary = serializers.SerializerMethodField()
+    operations_guard = serializers.SerializerMethodField()
 
     class Meta:
         model = Organisation
@@ -362,6 +363,7 @@ class OrganisationDetailSerializer(serializers.ModelSerializer):
             'primary_admin_email', 'primary_admin', 'bootstrap_admin', 'paid_marked_at', 'activated_at', 'suspended_at',
             'created_by_email', 'created_at', 'modified_at',
             'admin_count', 'employee_count', 'holiday_calendar_count', 'note_count', 'configuration_summary',
+            'operations_guard',
             'addresses', 'legal_identifiers', 'tax_registrations',
             'state_transitions', 'lifecycle_events', 'licence_ledger_entries', 'licence_summary',
             'licence_batches', 'batch_defaults',
@@ -416,6 +418,11 @@ class OrganisationDetailSerializer(serializers.ModelSerializer):
                 'notices': Notice.objects.filter(organisation=obj).count(),
             }
         ).data
+
+    def get_operations_guard(self, obj):
+        from .services import get_org_operations_guard
+
+        return get_org_operations_guard(obj)
 
 
 class CreateOrganisationSerializer(serializers.Serializer):

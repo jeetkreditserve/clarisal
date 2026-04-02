@@ -17,6 +17,7 @@ export function OrgDashboardPage() {
   const { data: odRequests } = useOrgOnDutyRequests()
 
   const currentStage = ORG_ONBOARDING_STEPS.find((step) => step.id === data?.onboarding_stage)
+  const setupNeedsAttention = data && data.onboarding_stage !== 'LIVE'
 
   return (
     <div className="space-y-6">
@@ -57,6 +58,45 @@ export function OrgDashboardPage() {
         </div>
       ) : (
         <>
+          {setupNeedsAttention ? (
+            <SectionCard title="Recommended next steps" description="Use this guided checklist to finish org setup and avoid getting stuck in scattered admin pages.">
+              <div className="grid gap-4 xl:grid-cols-3">
+                <div className="surface-muted rounded-[20px] px-4 py-4">
+                  <p className="text-xs uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">Current setup stage</p>
+                  <p className="mt-2 text-lg font-semibold text-[hsl(var(--foreground-strong))]">{currentStage?.label || 'Organisation setup in progress'}</p>
+                  <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
+                    {currentStage?.description || 'Complete the remaining setup steps to unlock a steadier day-to-day admin experience.'}
+                  </p>
+                </div>
+                <div className="surface-muted rounded-[20px] px-4 py-4">
+                  <p className="text-xs uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">Recommended path</p>
+                  <div className="mt-3 flex flex-wrap gap-3">
+                    <Link to="/org/setup" className="btn-primary">
+                      Continue guided setup
+                    </Link>
+                    <Link to="/org/profile" className="btn-secondary">
+                      Review organisation profile
+                    </Link>
+                  </div>
+                </div>
+                <div className="surface-muted rounded-[20px] px-4 py-4">
+                  <p className="text-xs uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">Most common next tasks</p>
+                  <div className="mt-3 flex flex-wrap gap-3">
+                    <Link to="/org/holidays" className="btn-secondary">
+                      Holidays
+                    </Link>
+                    <Link to="/org/approval-workflows" className="btn-secondary">
+                      Approval workflows
+                    </Link>
+                    <Link to="/org/payroll" className="btn-secondary">
+                      Payroll preview
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            </SectionCard>
+          ) : null}
+
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
             <MetricCard title="Total employees" value={data.total_employees} hint="All employee records in this organisation." icon={Users} tone="primary" />
             <MetricCard title="Active employees" value={data.active_employees} hint="Currently active and engaged employees." icon={UserPlus} tone="success" />

@@ -53,6 +53,12 @@ export function EmployeeDashboardPage() {
               <Link to="/me/leave" className="btn-primary">
                 Request leave
               </Link>
+              <Link to="/me/payslips" className="btn-secondary">
+                View payslips
+              </Link>
+              <Link to="/me/profile" className="btn-secondary">
+                Update profile
+              </Link>
               <Link to="/me/documents" className="btn-secondary">
                 Upload documents
               </Link>

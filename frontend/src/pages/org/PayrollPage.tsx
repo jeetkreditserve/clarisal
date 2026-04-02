@@ -25,6 +25,11 @@ import { getErrorMessage } from '@/lib/errors'
 import { formatDateTime } from '@/lib/format'
 
 const currentYear = new Date().getFullYear()
+const PAYROLL_SECTION_OPTIONS = [
+  { value: 'setup', label: 'Setup' },
+  { value: 'compensation', label: 'Compensation' },
+  { value: 'runs', label: 'Runs' },
+] as const
 
 export function PayrollPage() {
   const { data, isLoading } = usePayrollSummary()
@@ -63,6 +68,7 @@ export function PayrollPage() {
     period_year: String(currentYear),
     period_month: String(new Date().getMonth() + 1),
   })
+  const [activeSection, setActiveSection] = useState<(typeof PAYROLL_SECTION_OPTIONS)[number]['value']>('setup')
 
   const employeeOptions = useMemo(
     () =>
@@ -137,7 +143,7 @@ export function PayrollPage() {
       })
       toast.success('Compensation template created.')
     } catch (error) {
-      toast.error(getErrorMessage(error, 'Unable to create the compensation template.'))
+      toast.error(getErrorMessage(error, 'Unable to create the compensation template. Check the salary-component values and try again.'))
     }
   }
 
@@ -151,7 +157,7 @@ export function PayrollPage() {
       })
       toast.success('Compensation assignment created.')
     } catch (error) {
-      toast.error(getErrorMessage(error, 'Unable to create the compensation assignment.'))
+      toast.error(getErrorMessage(error, 'Unable to create the compensation assignment. Select an employee, an approved template, and an effective date.'))
     }
   }
 
@@ -164,7 +170,43 @@ export function PayrollPage() {
       })
       toast.success('Payroll run created.')
     } catch (error) {
-      toast.error(getErrorMessage(error, 'Unable to create the payroll run.'))
+      toast.error(getErrorMessage(error, 'Unable to create the payroll run. Check the payroll period and try again.'))
+    }
+  }
+
+  const handleSubmitTemplate = async (templateId: string) => {
+    try {
+      await submitTemplateMutation.mutateAsync(templateId)
+      toast.success('Template submitted for approval.')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to submit this template for approval. Review the template and try again.'))
+    }
+  }
+
+  const handleSubmitAssignment = async (assignmentId: string) => {
+    try {
+      await submitAssignmentMutation.mutateAsync(assignmentId)
+      toast.success('Salary assignment submitted for approval.')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to submit this salary assignment for approval. Review the assignment and try again.'))
+    }
+  }
+
+  const handleCalculateRun = async (runId: string) => {
+    try {
+      await calculateRunMutation.mutateAsync(runId)
+      toast.success('Payroll run calculated.')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to calculate this payroll run. Check salary assignments and payroll inputs, then try again.'))
+    }
+  }
+
+  const handleSubmitRun = async (runId: string) => {
+    try {
+      await submitRunMutation.mutateAsync(runId)
+      toast.success('Payroll run submitted for approval.')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to submit this payroll run. Resolve all exceptions first, then try again.'))
     }
   }
 
@@ -235,184 +277,239 @@ export function PayrollPage() {
         </div>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-2">
-        <SectionCard title="Org tax slabs" description="Create org-specific preview copies of the active tax master or additional slab sets for alternate payroll scenarios.">
-          <form onSubmit={handleCreateTaxSet} className="grid gap-4 md:grid-cols-2">
-            <input className="field-input" value={taxForm.name} onChange={(event) => setTaxForm((current) => ({ ...current, name: event.target.value }))} placeholder="Slab set name" />
-            <input className="field-input" value={taxForm.fiscal_year} onChange={(event) => setTaxForm((current) => ({ ...current, fiscal_year: event.target.value }))} placeholder="2026-2027" />
-            <input className="field-input" value={taxForm.slab_one_limit} onChange={(event) => setTaxForm((current) => ({ ...current, slab_one_limit: event.target.value }))} placeholder="First slab upper limit" />
-            <input className="field-input" value={taxForm.slab_two_limit} onChange={(event) => setTaxForm((current) => ({ ...current, slab_two_limit: event.target.value }))} placeholder="Second slab upper limit" />
-            <input className="field-input" value={taxForm.slab_two_rate} onChange={(event) => setTaxForm((current) => ({ ...current, slab_two_rate: event.target.value }))} placeholder="Second slab rate" />
-            <input className="field-input" value={taxForm.slab_three_rate} onChange={(event) => setTaxForm((current) => ({ ...current, slab_three_rate: event.target.value }))} placeholder="Top slab rate" />
-            <div className="md:col-span-2">
-              <button type="submit" className="btn-primary" disabled={createTaxSetMutation.isPending}>
-                Save tax slab set
-              </button>
-            </div>
-          </form>
-          <div className="mt-5 space-y-3">
-            {data.tax_slab_sets.map((set) => (
-              <div key={set.id} className="surface-shell rounded-[18px] px-4 py-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="font-semibold text-[hsl(var(--foreground-strong))]">{set.name}</p>
-                  <StatusBadge tone={set.source_set_id ? 'info' : 'success'}>{set.source_set_id ? 'Seeded copy' : 'Masterless copy'}</StatusBadge>
-                </div>
-                <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">{set.fiscal_year} • {set.slabs.length} slabs</p>
-              </div>
-            ))}
-          </div>
-        </SectionCard>
-
-        <SectionCard title="Compensation templates" description="Define the reusable salary structure and submit the template through approval when it is ready for controlled payroll preview use.">
-          <form onSubmit={handleCreateTemplate} className="grid gap-4 md:grid-cols-2">
-            <input className="field-input" value={templateForm.name} onChange={(event) => setTemplateForm((current) => ({ ...current, name: event.target.value }))} placeholder="Template name" />
-            <input className="field-input" value={templateForm.description} onChange={(event) => setTemplateForm((current) => ({ ...current, description: event.target.value }))} placeholder="Description" />
-            <input className="field-input" value={templateForm.basic_pay} onChange={(event) => setTemplateForm((current) => ({ ...current, basic_pay: event.target.value }))} placeholder="Basic pay" />
-            <input className="field-input" value={templateForm.employee_deduction} onChange={(event) => setTemplateForm((current) => ({ ...current, employee_deduction: event.target.value }))} placeholder="Employee deduction" />
-            <div className="md:col-span-2">
-              <button type="submit" className="btn-primary" disabled={createTemplateMutation.isPending}>
-                Create template
-              </button>
-            </div>
-          </form>
-          <div className="mt-5 space-y-3">
-            {data.compensation_templates.map((template) => (
-              <div key={template.id} className="surface-shell rounded-[18px] px-4 py-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-semibold text-[hsl(var(--foreground-strong))]">{template.name}</p>
-                      <StatusBadge tone={template.status === 'APPROVED' ? 'success' : template.status === 'REJECTED' ? 'danger' : 'warning'}>
-                        {template.status}
-                      </StatusBadge>
-                    </div>
-                    <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">{template.lines.length} lines • Modified {formatDateTime(template.modified_at)}</p>
-                  </div>
-                  {template.status !== 'PENDING_APPROVAL' && template.status !== 'APPROVED' ? (
-                    <button type="button" className="btn-secondary" onClick={() => submitTemplateMutation.mutate(template.id)}>
-                      Submit approval
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-            ))}
-          </div>
-        </SectionCard>
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-2">
-        <SectionCard title="Salary assignments" description="Assign approved structures to employees with an effective date, then submit salary revisions into the approval queue. Review carefully because downstream payroll remains limited-scope.">
-          <form onSubmit={handleCreateAssignment} className="grid gap-4">
-            <AppSelect value={assignmentForm.employee_id} onValueChange={(value) => setAssignmentForm((current) => ({ ...current, employee_id: value }))} options={employeeOptions} placeholder="Select employee" />
-            <AppSelect value={assignmentForm.template_id} onValueChange={(value) => setAssignmentForm((current) => ({ ...current, template_id: value }))} options={templateOptions} placeholder="Select template" />
-            <input className="field-input" type="date" value={assignmentForm.effective_from} onChange={(event) => setAssignmentForm((current) => ({ ...current, effective_from: event.target.value }))} />
-            <button type="submit" className="btn-primary" disabled={createAssignmentMutation.isPending}>
-              Create assignment
+      <SectionCard
+        title="Payroll workspace sections"
+        description="Work through payroll preview in three parts: setup, compensation, then run processing."
+      >
+        <div className="md:hidden">
+          <AppSelect value={activeSection} onValueChange={(value) => setActiveSection(value as typeof activeSection)} options={PAYROLL_SECTION_OPTIONS.map((option) => ({ value: option.value, label: option.label }))} />
+        </div>
+        <div className="hidden md:flex md:flex-wrap md:gap-2">
+          {PAYROLL_SECTION_OPTIONS.map((section) => (
+            <button
+              key={section.value}
+              type="button"
+              onClick={() => setActiveSection(section.value)}
+              className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition ${
+                activeSection === section.value
+                  ? 'border-[hsl(var(--brand)_/_0.35)] bg-[hsl(var(--brand)_/_0.12)] text-[hsl(var(--foreground-strong))]'
+                  : 'border-[hsl(var(--border)_/_0.84)] bg-[hsl(var(--surface))] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground-strong))]'
+              }`}
+            >
+              {section.label}
             </button>
-          </form>
-          <div className="mt-5 space-y-3">
-            {data.compensation_assignments.length ? data.compensation_assignments.map((assignment) => (
-              <div key={assignment.id} className="surface-shell rounded-[18px] px-4 py-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-semibold text-[hsl(var(--foreground-strong))]">{assignment.employee_name}</p>
-                      <StatusBadge tone={assignment.status === 'APPROVED' ? 'success' : assignment.status === 'REJECTED' ? 'danger' : 'warning'}>
-                        {assignment.status}
-                      </StatusBadge>
-                    </div>
-                    <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
-                      {assignment.template_name} • Effective {assignment.effective_from} • Version {assignment.version}
-                    </p>
-                  </div>
-                  {assignment.status !== 'PENDING_APPROVAL' && assignment.status !== 'APPROVED' ? (
-                    <button type="button" className="btn-secondary" onClick={() => submitAssignmentMutation.mutate(assignment.id)}>
-                      Submit approval
-                    </button>
-                  ) : null}
-                </div>
+          ))}
+        </div>
+      </SectionCard>
+
+      {activeSection === 'setup' ? (
+        <div className="grid gap-6 xl:grid-cols-2">
+          <SectionCard title="Org tax slabs" description="Create org-specific preview copies of the active tax master or additional slab sets for alternate payroll scenarios.">
+            <form onSubmit={handleCreateTaxSet} className="grid gap-4 md:grid-cols-2">
+              <input className="field-input" value={taxForm.name} onChange={(event) => setTaxForm((current) => ({ ...current, name: event.target.value }))} placeholder="Slab set name" />
+              <input className="field-input" value={taxForm.fiscal_year} onChange={(event) => setTaxForm((current) => ({ ...current, fiscal_year: event.target.value }))} placeholder="2026-2027" />
+              <input className="field-input" value={taxForm.slab_one_limit} onChange={(event) => setTaxForm((current) => ({ ...current, slab_one_limit: event.target.value }))} placeholder="First slab upper limit" />
+              <input className="field-input" value={taxForm.slab_two_limit} onChange={(event) => setTaxForm((current) => ({ ...current, slab_two_limit: event.target.value }))} placeholder="Second slab upper limit" />
+              <input className="field-input" value={taxForm.slab_two_rate} onChange={(event) => setTaxForm((current) => ({ ...current, slab_two_rate: event.target.value }))} placeholder="Second slab rate" />
+              <input className="field-input" value={taxForm.slab_three_rate} onChange={(event) => setTaxForm((current) => ({ ...current, slab_three_rate: event.target.value }))} placeholder="Top slab rate" />
+              <div className="md:col-span-2">
+                <button type="submit" className="btn-primary" disabled={createTaxSetMutation.isPending}>
+                  Save tax slab set
+                </button>
               </div>
-            )) : (
-              <EmptyState title="No salary assignments yet" description="Assign a compensation template to at least one employee before calculating payroll." />
-            )}
-          </div>
-        </SectionCard>
-
-        <SectionCard title="Payroll processing" description="Create a run, calculate results, submit for approval, finalize, and trigger reruns when corrections are needed. Do not treat this as full statutory payroll sign-off yet.">
-          <form onSubmit={handleCreateRun} className="grid gap-4 md:grid-cols-2">
-            <input className="field-input" value={runForm.period_year} onChange={(event) => setRunForm((current) => ({ ...current, period_year: event.target.value }))} placeholder="Year" />
-            <input className="field-input" value={runForm.period_month} onChange={(event) => setRunForm((current) => ({ ...current, period_month: event.target.value }))} placeholder="Month" />
-            <div className="md:col-span-2">
-              <button type="submit" className="btn-primary" disabled={createRunMutation.isPending}>
-                Create payroll run
-              </button>
+            </form>
+            <div className="mt-5 space-y-3">
+              {data.tax_slab_sets.map((set) => (
+                <div key={set.id} className="surface-shell rounded-[18px] px-4 py-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-semibold text-[hsl(var(--foreground-strong))]">{set.name}</p>
+                    <StatusBadge tone={set.source_set_id ? 'info' : 'success'}>{set.source_set_id ? 'Seeded copy' : 'Masterless copy'}</StatusBadge>
+                  </div>
+                  <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">{set.fiscal_year} • {set.slabs.length} slabs</p>
+                </div>
+              ))}
             </div>
-          </form>
-          <div className="mt-5 space-y-3">
-            {data.pay_runs.length ? data.pay_runs.map((run) => {
-              const exceptionSummary = summarizeRunExceptions(run)
+          </SectionCard>
 
-              return (
-                <div key={run.id} className="surface-shell rounded-[18px] px-4 py-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-semibold text-[hsl(var(--foreground-strong))]">{run.name}</p>
-                      <StatusBadge tone={run.status === 'FINALIZED' ? 'success' : run.status === 'REJECTED' ? 'danger' : 'info'}>
-                        {run.status}
-                      </StatusBadge>
-                      {exceptionSummary.count ? <StatusBadge tone="warning">{exceptionSummary.count} exceptions</StatusBadge> : null}
+          <SectionCard title="Setup guidance" description="Use this section first so payroll preview has the baseline tax and policy inputs it needs.">
+            <div className="space-y-3 text-sm text-[hsl(var(--muted-foreground))]">
+              <p>1. Confirm the correct fiscal-year slab set before assigning salary structures.</p>
+              <p>2. Treat this as preview tax setup only until statutory payroll is completed for India.</p>
+              <p>3. Move to the compensation section once the active slab set matches your intended payroll scenario.</p>
+            </div>
+          </SectionCard>
+        </div>
+      ) : null}
+
+      {activeSection === 'compensation' ? (
+        <div className="grid gap-6 xl:grid-cols-2">
+          <SectionCard title="Compensation templates" description="Define the reusable salary structure and submit the template through approval when it is ready for controlled payroll preview use.">
+            <div className="mb-4 rounded-[18px] border border-[hsl(var(--info)_/_0.24)] bg-[hsl(var(--info)_/_0.1)] px-4 py-3 text-sm text-[hsl(var(--foreground-strong))]">
+              <p className="font-medium">CTC context</p>
+              <p className="mt-1 text-[hsl(var(--muted-foreground))]">
+                Treat each template as a monthly salary-structure preview. In Indian payroll terms, this is the reusable monthly component breakup that later rolls into annual CTC and net-pay calculations.
+              </p>
+            </div>
+            <form onSubmit={handleCreateTemplate} className="grid gap-4 md:grid-cols-2">
+              <input className="field-input" value={templateForm.name} onChange={(event) => setTemplateForm((current) => ({ ...current, name: event.target.value }))} placeholder="Template name" />
+              <input className="field-input" value={templateForm.description} onChange={(event) => setTemplateForm((current) => ({ ...current, description: event.target.value }))} placeholder="Description" />
+              <input className="field-input" value={templateForm.basic_pay} onChange={(event) => setTemplateForm((current) => ({ ...current, basic_pay: event.target.value }))} placeholder="Basic pay" />
+              <input className="field-input" value={templateForm.employee_deduction} onChange={(event) => setTemplateForm((current) => ({ ...current, employee_deduction: event.target.value }))} placeholder="Employee deduction" />
+              <div className="md:col-span-2">
+                <button type="submit" className="btn-primary" disabled={createTemplateMutation.isPending}>
+                  Create template
+                </button>
+              </div>
+            </form>
+            <div className="mt-5 space-y-3">
+              {data.compensation_templates.map((template) => (
+                <div key={template.id} className="surface-shell rounded-[18px] px-4 py-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold text-[hsl(var(--foreground-strong))]">{template.name}</p>
+                        <StatusBadge tone={template.status === 'APPROVED' ? 'success' : template.status === 'REJECTED' ? 'danger' : 'warning'}>
+                          {template.status}
+                        </StatusBadge>
+                      </div>
+                      <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">{template.lines.length} lines • Modified {formatDateTime(template.modified_at)}</p>
                     </div>
-                    <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
-                      {run.items.length} items • {run.run_type} • {run.period_month}/{run.period_year}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {run.status === 'DRAFT' || run.status === 'REJECTED' || run.status === 'CALCULATED' ? (
-                      <button type="button" className="btn-secondary" onClick={() => calculateRunMutation.mutate(run.id)}>
-                        {run.status === 'CALCULATED' ? 'Recalculate' : 'Calculate'}
-                      </button>
-                    ) : null}
-                    {run.status === 'CALCULATED' && !exceptionSummary.count ? (
-                      <button type="button" className="btn-secondary" onClick={() => submitRunMutation.mutate(run.id)}>
-                        Submit
-                      </button>
-                    ) : null}
-                    {run.status === 'APPROVED' ? (
-                      <button type="button" className="btn-secondary" onClick={() => void handleFinalizeRun(run.id)}>
-                        Finalize
-                      </button>
-                    ) : null}
-                    {run.status === 'FINALIZED' ? (
-                      <button type="button" className="btn-secondary" onClick={() => void handleRerun(run.id)}>
-                        Rerun
+                    {template.status !== 'PENDING_APPROVAL' && template.status !== 'APPROVED' ? (
+                      <button type="button" className="btn-secondary" onClick={() => void handleSubmitTemplate(template.id)}>
+                        Submit approval
                       </button>
                     ) : null}
                   </div>
                 </div>
-                {exceptionSummary.count ? (
-                  <div className="mt-4 rounded-[18px] border border-[hsl(var(--warning)_/_0.32)] bg-[hsl(var(--warning)_/_0.12)] px-4 py-3 text-sm text-[hsl(var(--foreground-strong))]">
-                    <p className="font-medium">This run cannot move forward until the exceptions are fixed.</p>
-                    <ul className="mt-2 space-y-1 text-[hsl(var(--muted-foreground))]">
-                      {exceptionSummary.items.map((item) => (
-                        <li key={item.id}>
-                          {item.employee_name}: {item.message || 'Payroll data is incomplete.'}
-                        </li>
-                      ))}
-                    </ul>
-                    {exceptionSummary.hiddenCount ? (
-                      <p className="mt-2 text-[hsl(var(--muted-foreground))]">+{exceptionSummary.hiddenCount} more employees still need attention.</p>
+              ))}
+            </div>
+          </SectionCard>
+
+          <SectionCard title="Salary assignments" description="Assign approved structures to employees with an effective date, then submit salary revisions into the approval queue. Review carefully because downstream payroll remains limited-scope.">
+            <form onSubmit={handleCreateAssignment} className="grid gap-4">
+              <AppSelect value={assignmentForm.employee_id} onValueChange={(value) => setAssignmentForm((current) => ({ ...current, employee_id: value }))} options={employeeOptions} placeholder="Select employee" />
+              <AppSelect value={assignmentForm.template_id} onValueChange={(value) => setAssignmentForm((current) => ({ ...current, template_id: value }))} options={templateOptions} placeholder="Select template" />
+              <input className="field-input" type="date" value={assignmentForm.effective_from} onChange={(event) => setAssignmentForm((current) => ({ ...current, effective_from: event.target.value }))} />
+              <button type="submit" className="btn-primary" disabled={createAssignmentMutation.isPending}>
+                Create assignment
+              </button>
+            </form>
+            <div className="mt-5 space-y-3">
+              {data.compensation_assignments.length ? data.compensation_assignments.map((assignment) => (
+                <div key={assignment.id} className="surface-shell rounded-[18px] px-4 py-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold text-[hsl(var(--foreground-strong))]">{assignment.employee_name}</p>
+                        <StatusBadge tone={assignment.status === 'APPROVED' ? 'success' : assignment.status === 'REJECTED' ? 'danger' : 'warning'}>
+                          {assignment.status}
+                        </StatusBadge>
+                      </div>
+                      <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
+                        {assignment.template_name} • Effective {assignment.effective_from} • Version {assignment.version}
+                      </p>
+                    </div>
+                    {assignment.status !== 'PENDING_APPROVAL' && assignment.status !== 'APPROVED' ? (
+                      <button type="button" className="btn-secondary" onClick={() => void handleSubmitAssignment(assignment.id)}>
+                        Submit approval
+                      </button>
                     ) : null}
                   </div>
-                ) : null}
                 </div>
-              )
-            }) : (
-              <EmptyState title="No payroll runs yet" description="Create the first pay run once templates and assignments are in place." />
-            )}
-          </div>
-        </SectionCard>
-      </div>
+              )) : (
+                <EmptyState title="No salary assignments yet" description="Assign a compensation template to at least one employee before calculating payroll." />
+              )}
+            </div>
+          </SectionCard>
+        </div>
+      ) : null}
+
+      {activeSection === 'runs' ? (
+        <div className="grid gap-6 xl:grid-cols-2">
+          <SectionCard title="Run readiness" description="Create and process runs only after setup and compensation sections are in place.">
+            <div className="space-y-3 text-sm text-[hsl(var(--muted-foreground))]">
+              <p>1. Confirm at least one approved salary assignment exists.</p>
+              <p>2. Use calculate first, then resolve every exception before submitting for approval.</p>
+              <p>3. Finalization is irreversible for the current preview snapshot and will publish payslips.</p>
+            </div>
+          </SectionCard>
+
+          <SectionCard title="Payroll processing" description="Create a run, calculate results, submit for approval, finalize, and trigger reruns when corrections are needed. Do not treat this as full statutory payroll sign-off yet.">
+            <form onSubmit={handleCreateRun} className="grid gap-4 md:grid-cols-2">
+              <input className="field-input" value={runForm.period_year} onChange={(event) => setRunForm((current) => ({ ...current, period_year: event.target.value }))} placeholder="Year" />
+              <input className="field-input" value={runForm.period_month} onChange={(event) => setRunForm((current) => ({ ...current, period_month: event.target.value }))} placeholder="Month" />
+              <div className="md:col-span-2">
+                <button type="submit" className="btn-primary" disabled={createRunMutation.isPending}>
+                  Create payroll run
+                </button>
+              </div>
+            </form>
+            <div className="mt-5 space-y-3">
+              {data.pay_runs.length ? data.pay_runs.map((run) => {
+                const exceptionSummary = summarizeRunExceptions(run)
+
+                return (
+                  <div key={run.id} className="surface-shell rounded-[18px] px-4 py-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-semibold text-[hsl(var(--foreground-strong))]">{run.name}</p>
+                          <StatusBadge tone={run.status === 'FINALIZED' ? 'success' : run.status === 'REJECTED' ? 'danger' : 'info'}>
+                            {run.status}
+                          </StatusBadge>
+                          {exceptionSummary.count ? <StatusBadge tone="warning">{exceptionSummary.count} exceptions</StatusBadge> : null}
+                        </div>
+                        <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
+                          {run.items.length} items • {run.run_type} • {run.period_month}/{run.period_year}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {run.status === 'DRAFT' || run.status === 'REJECTED' || run.status === 'CALCULATED' ? (
+                          <button type="button" className="btn-secondary" onClick={() => void handleCalculateRun(run.id)}>
+                            {run.status === 'CALCULATED' ? 'Recalculate' : 'Calculate'}
+                          </button>
+                        ) : null}
+                        {run.status === 'CALCULATED' && !exceptionSummary.count ? (
+                          <button type="button" className="btn-secondary" onClick={() => void handleSubmitRun(run.id)}>
+                            Submit
+                          </button>
+                        ) : null}
+                        {run.status === 'APPROVED' ? (
+                          <button type="button" className="btn-secondary" onClick={() => void handleFinalizeRun(run.id)}>
+                            Finalize
+                          </button>
+                        ) : null}
+                        {run.status === 'FINALIZED' ? (
+                          <button type="button" className="btn-secondary" onClick={() => void handleRerun(run.id)}>
+                            Rerun
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                    {exceptionSummary.count ? (
+                      <div className="mt-4 rounded-[18px] border border-[hsl(var(--warning)_/_0.32)] bg-[hsl(var(--warning)_/_0.12)] px-4 py-3 text-sm text-[hsl(var(--foreground-strong))]">
+                        <p className="font-medium">This run cannot move forward until the exceptions are fixed.</p>
+                        <ul className="mt-2 space-y-1 text-[hsl(var(--muted-foreground))]">
+                          {exceptionSummary.items.map((item) => (
+                            <li key={item.id}>
+                              {item.employee_name}: {item.message || 'Payroll data is incomplete.'}
+                            </li>
+                          ))}
+                        </ul>
+                        {exceptionSummary.hiddenCount ? (
+                          <p className="mt-2 text-[hsl(var(--muted-foreground))]">+{exceptionSummary.hiddenCount} more employees still need attention.</p>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+                )
+              }) : (
+                <EmptyState title="No payroll runs yet" description="Create the first pay run once templates and assignments are in place." />
+              )}
+            </div>
+          </SectionCard>
+        </div>
+      ) : null}
     </div>
   )
 }

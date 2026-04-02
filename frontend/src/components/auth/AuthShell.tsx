@@ -15,7 +15,7 @@ const contentByVariant = {
   workforce: {
     eyebrow: 'Workforce access',
     headline: 'Organisation admins and employees sign in here.',
-    body: 'Use this access point for people operations inside the organisations you belong to, or to complete your own employee self-service tasks.',
+    body: 'Use this access point for day-to-day HR, leave, documents, approvals, payroll preview, and employee self-service inside the organisations you belong to.',
     chips: ['Org admin', 'Employee self-service'],
     panelTitle: 'Use this login for',
     panelItems: [
@@ -25,7 +25,7 @@ const contentByVariant = {
     ],
     noteLabel: 'Separate access',
     noteTitle: 'Platform operations use a different login.',
-    noteBody: 'If you manage organisation activation, licences, payment confirmation, or Django admin, switch to Control Tower.',
+    noteBody: 'If you manage organisation activation, licences, payment confirmation, or platform troubleshooting, switch to Control Tower.',
   },
   'control-tower': {
     eyebrow: 'Platform operations',

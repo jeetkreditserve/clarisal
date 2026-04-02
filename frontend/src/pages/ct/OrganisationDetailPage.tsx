@@ -45,6 +45,7 @@ import {
   useCreateOrganisationAddress,
   useCtAuditLogs,
   useCtHolidayCalendars,
+  useCtOrgApprovalSummary,
   useCtOrgConfiguration,
   useCtOrgEmployeeDetail,
   useCtOrgEmployees,
@@ -111,7 +112,7 @@ import {
   validatePhoneForCountry,
 } from '@/lib/organisationMetadata'
 import { ORG_ONBOARDING_STEPS } from '@/lib/status'
-import type { ApprovalWorkflowConfig, CtOrganisationPayrollSupportSummary, Department, HolidayCalendar, LeaveCycle, LeavePlan, Location, NoticeItem, OnDutyPolicy } from '@/types/hr'
+import type { ApprovalWorkflowConfig, CtOrganisationApprovalSupportSummary, CtOrganisationPayrollSupportSummary, Department, HolidayCalendar, LeaveCycle, LeavePlan, Location, NoticeItem, OnDutyPolicy } from '@/types/hr'
 import type { LicenceBatch, OrganisationAddress, OrganisationAddressType, OrganisationDetail, OrganisationEntityType } from '@/types/organisation'
 
 type DetailTabKey =
@@ -120,6 +121,7 @@ type DetailTabKey =
   | 'licences'
   | 'admins'
   | 'employees'
+  | 'approvals'
   | 'payroll'
   | 'holidays'
   | 'configuration'
@@ -269,6 +271,7 @@ const TAB_OPTIONS: Array<{
   { key: 'licences', label: 'Org Licences', icon: CreditCard },
   { key: 'admins', label: 'Org Admins', icon: Users },
   { key: 'employees', label: 'Employees', icon: Users },
+  { key: 'approvals', label: 'Approval Support', icon: FileText },
   { key: 'payroll', label: 'Payroll Support', icon: BadgeDollarSign },
   { key: 'holidays', label: 'Org Holidays', icon: CalendarDays },
   { key: 'configuration', label: 'Configuration', icon: FileText },
@@ -690,6 +693,7 @@ export function OrganisationDetailPage() {
     organisationId,
     Boolean(organisationId),
   )
+  const { data: approvalSummary, isLoading: approvalSummaryLoading } = useCtOrgApprovalSummary(organisationId, activeTab === 'approvals')
   const { data: auditLogs } = useCtAuditLogs(organisationId, activeTab === 'audit')
   const { data: notes, isLoading: notesLoading } = useCtOrgNotes(organisationId, activeTab === 'notes')
   const { data: payrollSummary, isLoading: payrollSummaryLoading } = useCtOrgPayrollSummary(organisationId, activeTab === 'payroll')
@@ -1362,6 +1366,27 @@ export function OrganisationDetailPage() {
 
   const renderOverviewTab = () => (
     <div className="space-y-6">
+      {organisation.operations_guard.licence_expired ? (
+        <div className="rounded-[24px] border border-[hsl(var(--warning)_/_0.32)] bg-[hsl(var(--warning)_/_0.12)] px-5 py-4 text-sm text-[hsl(var(--foreground-strong))]">
+          <p className="font-semibold">This organisation is currently blocked by licence state.</p>
+          <p className="mt-1 text-[hsl(var(--muted-foreground))]">{organisation.operations_guard.reason}</p>
+          <p className="mt-2 text-[hsl(var(--muted-foreground))]">
+            Admin mutations: {organisation.operations_guard.admin_mutations_blocked ? 'blocked' : 'available'} • Approval actions: {organisation.operations_guard.approval_actions_blocked ? 'blocked' : 'available'}
+          </p>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <button type="button" className="btn-secondary" onClick={() => setSearchParams({ tab: 'licences' })}>
+              Review licences
+            </button>
+            <button type="button" className="btn-secondary" onClick={() => setSearchParams({ tab: 'approvals' })}>
+              Review approval support
+            </button>
+            <button type="button" className="btn-secondary" onClick={() => setSearchParams({ tab: 'payroll' })}>
+              Review payroll support
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       <SectionCard
         title="Access state and onboarding"
         description="Track where this organisation sits across billing, activation, and onboarding."
@@ -1971,6 +1996,75 @@ export function OrganisationDetailPage() {
     )
   }
 
+  const renderApprovalsTab = () => {
+    if (approvalSummaryLoading) {
+      return <SkeletonTable rows={5} />
+    }
+
+    const summary = approvalSummary as CtOrganisationApprovalSupportSummary | undefined
+    if (!summary) {
+      return (
+        <EmptyState
+          title="Approval support data unavailable"
+          description="This tab will show workflow health and recent approval runs for Control Tower support."
+          icon={FileText}
+        />
+      )
+    }
+
+    return (
+      <div className="space-y-6">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <DetailMetric label="Workflows" value={String(summary.workflows_count)} helper={`${summary.active_workflows_count} active`} />
+          <DetailMetric label="Default workflows" value={String(summary.default_workflows_count)} helper="Per request type where configured" />
+          <DetailMetric label="Pending runs" value={String(summary.pending_runs_count)} helper={`${summary.pending_actions_count} runs still need approver action`} />
+          <DetailMetric label="Rejected runs" value={String(summary.rejected_runs_count)} helper={`${summary.approved_runs_count} approved historically`} />
+        </div>
+
+        <SectionCard
+          title="Recent approval activity"
+          description="Control Tower can inspect request type, workflow, requester, and run status here without acting as an approver."
+        >
+          {summary.recent_runs.length ? (
+            <div className="space-y-3">
+              {summary.recent_runs.map((run) => (
+                <div key={run.id} className="surface-muted rounded-[24px] p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold text-[hsl(var(--foreground-strong))]">{run.subject_label}</p>
+                        <StatusBadge tone={run.status === 'APPROVED' ? 'success' : run.status === 'REJECTED' ? 'danger' : 'warning'}>
+                          {run.status}
+                        </StatusBadge>
+                        {run.pending_actions_count ? <StatusBadge tone="warning">{run.pending_actions_count} pending actions</StatusBadge> : null}
+                      </div>
+                      <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
+                        {run.request_kind.replace(/_/g, ' ')} • {run.workflow_name} • Stage {run.current_stage_sequence}
+                      </p>
+                      <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
+                        Requested by {run.requester_name || 'Unknown requester'}
+                      </p>
+                    </div>
+                    <div className="text-right text-sm text-[hsl(var(--muted-foreground))]">
+                      <p>Created {formatDateTime(run.created_at)}</p>
+                      <p>Updated {formatDateTime(run.modified_at)}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              title="No approval runs yet"
+              description="Approval requests will appear here once the organisation starts using leave, on-duty, or payroll approval flows."
+              icon={FileText}
+            />
+          )}
+        </SectionCard>
+      </div>
+    )
+  }
+
   const renderHolidaysTab = () => (
     <div className="space-y-6">
       <SectionCard
@@ -2434,6 +2528,7 @@ export function OrganisationDetailPage() {
       {activeTab === 'licences' ? renderLicencesTab() : null}
       {activeTab === 'admins' ? renderAdminsTab() : null}
       {activeTab === 'employees' ? renderEmployeesTab() : null}
+      {activeTab === 'approvals' ? renderApprovalsTab() : null}
       {activeTab === 'payroll' ? renderPayrollTab() : null}
       {activeTab === 'holidays' ? renderHolidaysTab() : null}
       {activeTab === 'configuration' ? renderConfigurationTab() : null}
