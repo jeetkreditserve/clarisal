@@ -38,6 +38,7 @@ import {
   revokePendingCtOrgAdmin,
   suspendOrganisation,
   updateCtApprovalWorkflow,
+  updateCtOrgEmployeeDetail,
   updateCtBootstrapAdmin,
   updateCtDepartment,
   updateCtHolidayCalendar,
@@ -204,6 +205,18 @@ export function useCtOrgEmployeeDetail(orgId: string, employeeId: string, enable
     queryKey: ['ct', 'organisations', orgId, 'employees', employeeId],
     queryFn: () => fetchCtOrgEmployeeDetail(orgId, employeeId),
     enabled: Boolean(orgId && employeeId && enabled),
+  })
+}
+
+export function useUpdateCtOrgEmployeeDetail(orgId: string, employeeId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: Parameters<typeof updateCtOrgEmployeeDetail>[2]) => updateCtOrgEmployeeDetail(orgId, employeeId, payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ct', 'organisations', orgId, 'employees', employeeId] })
+      qc.invalidateQueries({ queryKey: ['ct', 'organisations', orgId, 'employees'] })
+      qc.invalidateQueries({ queryKey: ['ct', 'organisations', orgId, 'configuration'] })
+    },
   })
 }
 

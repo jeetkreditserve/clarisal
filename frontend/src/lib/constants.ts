@@ -24,7 +24,7 @@ export const LEAVE_CREDIT_FREQUENCY_OPTIONS = ['MANUAL', 'MONTHLY', 'QUARTERLY',
 export const NOTICE_AUDIENCE_TYPE_OPTIONS: NoticeAudienceType[] = ['ALL_EMPLOYEES', 'DEPARTMENTS', 'OFFICE_LOCATIONS', 'SPECIFIC_EMPLOYEES']
 export const NOTICE_STATUS_OPTIONS: NoticeStatus[] = ['DRAFT', 'SCHEDULED', 'PUBLISHED', 'EXPIRED', 'ARCHIVED']
 export const NOTICE_CATEGORY_OPTIONS: NoticeCategory[] = ['GENERAL', 'HR_POLICY', 'OPERATIONS', 'CELEBRATION', 'COMPLIANCE', 'URGENT']
-export const APPROVAL_REQUEST_KIND_OPTIONS: ApprovalRequestKind[] = ['LEAVE', 'ON_DUTY']
+export const APPROVAL_REQUEST_KIND_OPTIONS: ApprovalRequestKind[] = ['LEAVE', 'ON_DUTY', 'ATTENDANCE_REGULARIZATION']
 export const APPROVAL_APPROVER_TYPE_OPTIONS: ApprovalApproverType[] = ['REPORTING_MANAGER', 'SPECIFIC_EMPLOYEE', 'PRIMARY_ORG_ADMIN']
 export const APPROVAL_FALLBACK_TYPE_OPTIONS: ApprovalFallbackType[] = ['NONE', 'SPECIFIC_EMPLOYEE', 'PRIMARY_ORG_ADMIN']
 export const APPROVAL_STAGE_MODE_OPTIONS: ApprovalStageMode[] = ['ALL', 'ANY']
@@ -32,9 +32,10 @@ export const DOCUMENT_TYPE_OPTIONS: DocumentType[] = ['PAN', 'AADHAAR', 'EDUCATI
 
 export function createDefaultApprovalWorkflow() {
   return {
-    name: 'Default Workforce Workflow',
+    name: 'Default Leave Workflow',
     description: '',
     is_default: true,
+    default_request_kind: 'LEAVE' as ApprovalRequestKind,
     is_active: true,
     rules: [
       {
@@ -52,12 +53,12 @@ export function createDefaultApprovalWorkflow() {
     ],
     stages: [
       {
-        name: 'Primary admin approval',
+        name: 'Manager review',
         sequence: 1,
         mode: 'ALL',
         fallback_type: 'PRIMARY_ORG_ADMIN',
         fallback_employee_id: null as string | null,
-        approvers: [{ approver_type: 'PRIMARY_ORG_ADMIN', approver_employee_id: null as string | null }],
+        approvers: [{ approver_type: 'REPORTING_MANAGER', approver_employee_id: null as string | null }],
       },
     ],
   }

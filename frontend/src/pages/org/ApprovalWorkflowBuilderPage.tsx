@@ -69,6 +69,7 @@ interface WorkflowForm {
   name: string
   description: string
   is_default: boolean
+  default_request_kind: string | null
   is_active: boolean
   rules: WorkflowRuleForm[]
   stages: WorkflowStageForm[]
@@ -105,6 +106,7 @@ function mapWorkflowToForm(workflow: ApprovalWorkflowConfig): WorkflowForm {
     name: workflow.name,
     description: workflow.description,
     is_default: workflow.is_default,
+    default_request_kind: workflow.default_request_kind,
     is_active: workflow.is_active,
     rules: workflow.rules.map((rule) => ({
       id: rule.id,
@@ -138,6 +140,7 @@ function mapWorkflowToForm(workflow: ApprovalWorkflowConfig): WorkflowForm {
 function buildPayload(form: WorkflowForm) {
   return {
     ...form,
+    default_request_kind: form.is_default ? form.default_request_kind || null : null,
     rules: form.rules.map((rule) => ({
       ...(rule.id ? { id: rule.id } : {}),
       ...rule,
@@ -338,7 +341,7 @@ export function ApprovalWorkflowBuilderPage() {
             checked={form.is_default}
             onCheckedChange={(checked) => setForm((current) => ({ ...current, is_default: checked }))}
             label="Default workflow"
-            description="This workflow is used when no more specific routing rule wins."
+            description="Defaults now apply to one request type at a time."
           />
           <AppCheckbox
             checked={form.is_active}
@@ -347,6 +350,20 @@ export function ApprovalWorkflowBuilderPage() {
             description="Inactive workflows remain visible but should no longer receive fresh routing."
           />
         </div>
+        {form.is_default ? (
+          <div className="mt-5 max-w-md">
+            <label className="field-label" htmlFor="workflow-default-request-kind">
+              Default request kind
+            </label>
+            <AppSelect
+              value={form.default_request_kind ?? ''}
+              onValueChange={(value) => setForm((current) => ({ ...current, default_request_kind: value }))}
+              options={requestKindOptions}
+              placeholder="Select request kind"
+            />
+            <FieldErrorText message={fieldErrors.default_request_kind} />
+          </div>
+        ) : null}
       </SectionCard>
 
       <SectionCard
@@ -753,8 +770,10 @@ export function ApprovalWorkflowBuilderPage() {
             <p className="mt-2 text-3xl font-semibold text-[hsl(var(--foreground-strong))]">{form.stages.length}</p>
           </div>
           <div className="surface-muted rounded-[20px] px-4 py-4">
-            <p className="text-xs uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">Default workflow</p>
-            <p className="mt-2 text-lg font-semibold text-[hsl(var(--foreground-strong))]">{form.is_default ? 'Yes' : 'No'}</p>
+            <p className="text-xs uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">Default coverage</p>
+            <p className="mt-2 text-lg font-semibold text-[hsl(var(--foreground-strong))]">
+              {form.is_default ? startCase(form.default_request_kind ?? 'UNSET') : 'Custom only'}
+            </p>
           </div>
           <div className="surface-muted rounded-[20px] px-4 py-4">
             <p className="text-xs uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">Last modified</p>

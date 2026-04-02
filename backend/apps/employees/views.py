@@ -109,7 +109,17 @@ class EmployeeDetailView(APIView):
 
     def get(self, request, pk):
         organisation = _get_admin_organisation(request)
-        employee = get_object_or_404(Employee.objects.select_related('user', 'profile'), organisation=organisation, id=pk)
+        employee = get_object_or_404(
+            Employee.objects.select_related(
+                'user',
+                'profile',
+                'leave_approval_workflow',
+                'on_duty_approval_workflow',
+                'attendance_regularization_approval_workflow',
+            ),
+            organisation=organisation,
+            id=pk,
+        )
         refresh_employee_onboarding_status(employee)
         return Response(EmployeeDetailSerializer(employee).data)
 

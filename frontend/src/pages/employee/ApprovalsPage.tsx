@@ -35,7 +35,7 @@ export function ApprovalsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader eyebrow="Approvals" title="Requests needing my action" description="Approve or reject leave and on-duty requests routed to you by the organisation workflow engine." />
+      <PageHeader eyebrow="Approvals" title="Requests needing my action" description="Approve or reject leave, on-duty, and attendance regularization requests routed to you by the organisation workflow engine." />
       <SectionCard title="Approval inbox" description="Approvals are blocked automatically for the organisation when the licence expires.">
         {data && data.length > 0 ? (
           <div className="space-y-3">

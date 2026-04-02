@@ -11,6 +11,7 @@ import { SectionCard } from '@/components/ui/SectionCard'
 import { SkeletonFormBlock, SkeletonPageHeader, SkeletonTable } from '@/components/ui/Skeleton'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import {
+  useApprovalWorkflows,
   useDeleteEmployee,
   useDepartments,
   useEmployeeDetail,
@@ -35,6 +36,7 @@ export function EmployeeDetailPage() {
   const { data: employee, isLoading } = useEmployeeDetail(employeeId)
   const { data: departments } = useDepartments()
   const { data: locations } = useLocations()
+  const { data: approvalWorkflows } = useApprovalWorkflows()
   const { data: managerOptions } = useEmployees({ status: 'ACTIVE', page: 1 })
   const { data: documentRequests } = useEmployeeDocumentRequests(employeeId)
   const { data: documents } = useEmployeeDocuments(employeeId)
@@ -50,6 +52,9 @@ export function EmployeeDetailPage() {
     date_of_joining: string
     department_id: string
     office_location_id: string
+    leave_approval_workflow_id: string
+    on_duty_approval_workflow_id: string
+    attendance_regularization_approval_workflow_id: string
   }>>({})
   const [joinForm, setJoinForm] = useState({
     employee_code: '',
@@ -79,6 +84,19 @@ export function EmployeeDetailPage() {
       value: location.id,
       label: location.name,
     })) ?? []),
+  ]
+  const workflowOptionsForKind = (requestKind: 'LEAVE' | 'ON_DUTY' | 'ATTENDANCE_REGULARIZATION') => [
+    { value: '', label: `Use ${requestKind.replace(/_/g, ' ').toLowerCase()} default or rule` },
+    ...(
+      approvalWorkflows?.filter((workflow) => {
+        if (workflow.default_request_kind === requestKind) return true
+        return workflow.rules.some((rule) => rule.request_kind === requestKind)
+      }).map((workflow) => ({
+        value: workflow.id,
+        label: workflow.name,
+        hint: workflow.default_request_kind === requestKind ? 'Default' : 'Custom',
+      })) ?? []
+    ),
   ]
   if (isLoading || !employee) {
     return (
@@ -111,6 +129,10 @@ export function EmployeeDetailPage() {
     date_of_joining: draft.date_of_joining ?? employee.date_of_joining ?? '',
     department_id: draft.department_id ?? employee.department ?? '',
     office_location_id: draft.office_location_id ?? employee.office_location ?? '',
+    leave_approval_workflow_id: draft.leave_approval_workflow_id ?? employee.leave_approval_workflow_id ?? '',
+    on_duty_approval_workflow_id: draft.on_duty_approval_workflow_id ?? employee.on_duty_approval_workflow_id ?? '',
+    attendance_regularization_approval_workflow_id:
+      draft.attendance_regularization_approval_workflow_id ?? employee.attendance_regularization_approval_workflow_id ?? '',
   }
 
   const handleSave = async (event: React.FormEvent) => {
@@ -122,6 +144,9 @@ export function EmployeeDetailPage() {
         date_of_joining: formValues.date_of_joining || null,
         department_id: formValues.department_id || null,
         office_location_id: formValues.office_location_id || null,
+        leave_approval_workflow_id: formValues.leave_approval_workflow_id || null,
+        on_duty_approval_workflow_id: formValues.on_duty_approval_workflow_id || null,
+        attendance_regularization_approval_workflow_id: formValues.attendance_regularization_approval_workflow_id || null,
       })
       toast.success('Employee updated.')
       setDraft({})
@@ -229,10 +254,58 @@ export function EmployeeDetailPage() {
                 options={locationOptions}
               />
             </div>
+            <div className="grid gap-4 md:grid-cols-3">
+              <AppSelect
+                value={formValues.leave_approval_workflow_id}
+                onValueChange={(value) => setDraft((current) => ({ ...current, leave_approval_workflow_id: value }))}
+                options={workflowOptionsForKind('LEAVE')}
+                placeholder="Leave workflow"
+              />
+              <AppSelect
+                value={formValues.on_duty_approval_workflow_id}
+                onValueChange={(value) => setDraft((current) => ({ ...current, on_duty_approval_workflow_id: value }))}
+                options={workflowOptionsForKind('ON_DUTY')}
+                placeholder="On-duty workflow"
+              />
+              <AppSelect
+                value={formValues.attendance_regularization_approval_workflow_id}
+                onValueChange={(value) =>
+                  setDraft((current) => ({ ...current, attendance_regularization_approval_workflow_id: value }))
+                }
+                options={workflowOptionsForKind('ATTENDANCE_REGULARIZATION')}
+                placeholder="Regularization workflow"
+              />
+            </div>
             <button type="submit" className="btn-primary" disabled={updateMutation.isPending}>
               Save employee changes
             </button>
           </form>
+
+          <div className="mt-6 grid gap-4 md:grid-cols-3">
+            <div className="surface-muted rounded-[24px] p-5">
+              <p className="text-sm text-[hsl(var(--muted-foreground))]">Effective leave workflow</p>
+              <p className="mt-2 font-medium text-[hsl(var(--foreground-strong))]">{employee.effective_approval_workflows.leave.workflow_name}</p>
+              <p className="mt-2 text-xs uppercase tracking-[0.12em] text-[hsl(var(--muted-foreground))]">
+                {employee.effective_approval_workflows.leave.source}
+              </p>
+            </div>
+            <div className="surface-muted rounded-[24px] p-5">
+              <p className="text-sm text-[hsl(var(--muted-foreground))]">Effective on-duty workflow</p>
+              <p className="mt-2 font-medium text-[hsl(var(--foreground-strong))]">{employee.effective_approval_workflows.on_duty.workflow_name}</p>
+              <p className="mt-2 text-xs uppercase tracking-[0.12em] text-[hsl(var(--muted-foreground))]">
+                {employee.effective_approval_workflows.on_duty.source}
+              </p>
+            </div>
+            <div className="surface-muted rounded-[24px] p-5">
+              <p className="text-sm text-[hsl(var(--muted-foreground))]">Effective regularization workflow</p>
+              <p className="mt-2 font-medium text-[hsl(var(--foreground-strong))]">
+                {employee.effective_approval_workflows.attendance_regularization.workflow_name}
+              </p>
+              <p className="mt-2 text-xs uppercase tracking-[0.12em] text-[hsl(var(--muted-foreground))]">
+                {employee.effective_approval_workflows.attendance_regularization.source}
+              </p>
+            </div>
+          </div>
 
           <div className="mt-6 grid gap-4">
             {employee.status === 'PENDING' ? (

@@ -78,6 +78,7 @@ import {
   useUpdateOrganisationAddress,
 } from '@/hooks/useCtOrganisations'
 import {
+  APPROVAL_REQUEST_KIND_OPTIONS,
   createDefaultApprovalWorkflow,
   createDefaultHolidayCalendarForm,
   createDefaultLeaveCycleForm,
@@ -487,6 +488,7 @@ function createWorkflowDialogForm(workflow?: ApprovalWorkflowConfig): WorkflowFo
     name: workflow.name,
     description: workflow.description ?? '',
     is_default: workflow.is_default,
+    default_request_kind: workflow.default_request_kind,
     is_active: workflow.is_active,
     rules: workflow.rules.map((rule) => ({
       id: rule.id,
@@ -2145,7 +2147,7 @@ export function OrganisationDetailPage() {
                   <div key={workflow.id} className="space-y-2 rounded-[18px] border border-[hsl(var(--border)_/_0.72)] px-3 py-3">
                     <p>
                       {workflow.name} • {workflow.rules.length} rules • {workflow.stages.length} stages
-                      {workflow.is_default ? ' • Default' : ''}
+                      {workflow.is_default ? ` • Default ${workflow.default_request_kind?.replace(/_/g, ' ')}` : ''}
                       {workflow.is_active ? ' • Active' : ' • Inactive'}
                     </p>
                     <div className="flex flex-wrap gap-2">
@@ -3170,6 +3172,14 @@ export function OrganisationDetailPage() {
             <AppCheckbox checked={workflowForm.is_default} onCheckedChange={(checked) => setWorkflowForm((current) => ({ ...current, is_default: checked }))} label="Default workflow" />
             <AppCheckbox checked={workflowForm.is_active} onCheckedChange={(checked) => setWorkflowForm((current) => ({ ...current, is_active: checked }))} label="Workflow is active" />
           </div>
+          {workflowForm.is_default ? (
+            <AppSelect
+              value={workflowForm.default_request_kind ?? ''}
+              onValueChange={(value) => setWorkflowForm((current) => ({ ...current, default_request_kind: value }))}
+              options={APPROVAL_REQUEST_KIND_OPTIONS.map((value) => ({ value, label: startCase(value) }))}
+              placeholder="Default request kind"
+            />
+          ) : null}
           <SectionCard title="Rules" description="Lightweight rule editing keeps the current routing visible without entering employee actions.">
             <div className="space-y-3">
               {workflowForm.rules.map((rule, index) => (
@@ -3201,6 +3211,7 @@ export function OrganisationDetailPage() {
                       options={[
                         { value: 'LEAVE', label: 'Leave' },
                         { value: 'ON_DUTY', label: 'On duty' },
+                        { value: 'ATTENDANCE_REGULARIZATION', label: 'Attendance regularization' },
                       ]}
                     />
                     <input

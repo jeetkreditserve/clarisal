@@ -1552,18 +1552,45 @@ class Command(BaseCommand):
         )
 
     def _ensure_approval_workflows(self, organisation, actor, *, departments, locations, employees):
-        standard = self._upsert_workflow(
+        leave_default = self._upsert_workflow(
             organisation=organisation,
             actor=actor,
-            name='Standard People Ops Workflow',
-            description='Default sequential workflow for leave and on-duty approvals.',
+            name='Default Leave Workflow',
+            description='Default manager-led workflow for leave approvals.',
             is_default=True,
+            default_request_kind=ApprovalRequestKind.LEAVE,
             rules=[
                 {
                     'name': 'Default leave workflow',
                     'request_kind': ApprovalRequestKind.LEAVE,
                     'priority': 100,
                 },
+            ],
+            stages=[
+                {
+                    'name': 'Manager review',
+                    'sequence': 1,
+                    'mode': ApprovalStageMode.ALL,
+                    'fallback_type': ApprovalFallbackType.PRIMARY_ORG_ADMIN,
+                    'fallback_employee': None,
+                    'approvers': [
+                        {
+                            'approver_type': ApprovalApproverType.REPORTING_MANAGER,
+                            'approver_employee': None,
+                        }
+                    ],
+                },
+            ],
+        )
+
+        on_duty_default = self._upsert_workflow(
+            organisation=organisation,
+            actor=actor,
+            name='Default On-Duty Workflow',
+            description='Default manager-led workflow for on-duty approvals.',
+            is_default=True,
+            default_request_kind=ApprovalRequestKind.ON_DUTY,
+            rules=[
                 {
                     'name': 'Default on-duty workflow',
                     'request_kind': ApprovalRequestKind.ON_DUTY,
@@ -1584,15 +1611,33 @@ class Command(BaseCommand):
                         }
                     ],
                 },
+            ],
+        )
+
+        regularization_default = self._upsert_workflow(
+            organisation=organisation,
+            actor=actor,
+            name='Default Attendance Regularization Workflow',
+            description='Default manager-led workflow for attendance regularization approvals.',
+            is_default=True,
+            default_request_kind=ApprovalRequestKind.ATTENDANCE_REGULARIZATION,
+            rules=[
                 {
-                    'name': 'Org admin confirmation',
-                    'sequence': 2,
+                    'name': 'Default attendance regularization workflow',
+                    'request_kind': ApprovalRequestKind.ATTENDANCE_REGULARIZATION,
+                    'priority': 100,
+                },
+            ],
+            stages=[
+                {
+                    'name': 'Manager review',
+                    'sequence': 1,
                     'mode': ApprovalStageMode.ALL,
-                    'fallback_type': ApprovalFallbackType.NONE,
+                    'fallback_type': ApprovalFallbackType.PRIMARY_ORG_ADMIN,
                     'fallback_employee': None,
                     'approvers': [
                         {
-                            'approver_type': ApprovalApproverType.PRIMARY_ORG_ADMIN,
+                            'approver_type': ApprovalApproverType.REPORTING_MANAGER,
                             'approver_employee': None,
                         }
                     ],
@@ -1606,6 +1651,7 @@ class Command(BaseCommand):
             name='Finance Escalation Workflow',
             description='Finance requests can be escalated directly to the primary org admin.',
             is_default=False,
+            default_request_kind=None,
             rules=[
                 {
                     'name': 'Controller level approvals',
@@ -1628,30 +1674,41 @@ class Command(BaseCommand):
                             'approver_employee': None,
                         }
                     ],
-                }
+                },
             ],
         )
-        return {'standard': standard, 'finance': finance}
+        return {
+            'leave_default': leave_default,
+            'on_duty_default': on_duty_default,
+            'regularization_default': regularization_default,
+            'finance': finance,
+        }
 
-    def _upsert_workflow(self, *, organisation, actor, name, description, is_default, rules, stages):
+    def _upsert_workflow(self, *, organisation, actor, name, description, is_default, default_request_kind, rules, stages):
         workflow, _ = ApprovalWorkflow.objects.get_or_create(
             organisation=organisation,
             name=name,
             defaults={
                 'description': description,
                 'is_default': is_default,
+                'default_request_kind': default_request_kind,
                 'created_by': actor,
                 'is_active': True,
             },
         )
         workflow.description = description
         workflow.is_default = is_default
+        workflow.default_request_kind = default_request_kind if is_default else None
         workflow.is_active = True
         if workflow.created_by_id is None:
             workflow.created_by = actor
         workflow.save()
-        if workflow.is_default:
-            ApprovalWorkflow.objects.filter(organisation=organisation).exclude(id=workflow.id).update(is_default=False)
+        if workflow.is_default and workflow.default_request_kind:
+            ApprovalWorkflow.objects.filter(
+                organisation=organisation,
+                is_default=True,
+                default_request_kind=workflow.default_request_kind,
+            ).exclude(id=workflow.id).update(is_default=False, default_request_kind=None)
 
         keep_rule_ids = []
         for payload in rules:
@@ -2322,7 +2379,7 @@ class Command(BaseCommand):
             'approved': approved,
             'rejected': rejected,
             'withdrawn': withdrawn,
-            'workflow': workflow_context['standard'],
+            'workflow': workflow_context['leave_default'],
         }
 
     def _ensure_leave_request(self, *, employee, leave_type, start_date, end_date, start_session, end_session, reason, state, actor):

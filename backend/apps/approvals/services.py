@@ -20,9 +20,26 @@ from .models import (
 )
 
 
+DEFAULT_APPROVAL_REQUEST_KINDS = [
+    ApprovalRequestKind.LEAVE,
+    ApprovalRequestKind.ON_DUTY,
+    ApprovalRequestKind.ATTENDANCE_REGULARIZATION,
+]
+
+
 def ensure_default_workflow_configured(organisation):
-    if not ApprovalWorkflow.objects.filter(organisation=organisation, is_default=True, is_active=True).exists():
-        raise ValueError('Create and activate a default approval workflow before inviting employees.')
+    missing_request_kinds = [
+        request_kind
+        for request_kind in DEFAULT_APPROVAL_REQUEST_KINDS
+        if not ApprovalWorkflow.objects.filter(
+            organisation=organisation,
+            is_default=True,
+            default_request_kind=request_kind,
+            is_active=True,
+        ).exists()
+    ]
+    if missing_request_kinds:
+        raise ValueError('Create and activate a default approval workflow for each request type before inviting employees.')
 
 
 def _matches_rule(rule, employee, request_kind, leave_type=None):
@@ -43,25 +60,58 @@ def _matches_rule(rule, employee, request_kind, leave_type=None):
     return True
 
 
-def resolve_workflow(employee, request_kind, leave_type=None):
+def get_default_workflow(organisation, request_kind):
+    return ApprovalWorkflow.objects.filter(
+        organisation=organisation,
+        is_default=True,
+        default_request_kind=request_kind,
+        is_active=True,
+    ).first()
+
+
+def get_employee_assigned_workflow(employee, request_kind):
+    workflow = None
+    if request_kind == ApprovalRequestKind.LEAVE:
+        workflow = employee.leave_approval_workflow
+    elif request_kind == ApprovalRequestKind.ON_DUTY:
+        workflow = employee.on_duty_approval_workflow
+    elif request_kind == ApprovalRequestKind.ATTENDANCE_REGULARIZATION:
+        workflow = employee.attendance_regularization_approval_workflow
+
+    if workflow and workflow.organisation_id == employee.organisation_id and workflow.is_active:
+        return workflow
+    return None
+
+
+def resolve_workflow_with_source(employee, request_kind, leave_type=None):
+    assigned_workflow = get_employee_assigned_workflow(employee, request_kind)
+    if assigned_workflow is not None:
+        return assigned_workflow, 'ASSIGNMENT'
+
     organisation = employee.organisation
     rules = (
         ApprovalWorkflowRule.objects.select_related('workflow', 'department', 'office_location', 'specific_employee', 'leave_type')
-        .filter(workflow__organisation=organisation, workflow__is_active=True, is_active=True)
+        .filter(
+            workflow__organisation=organisation,
+            workflow__is_active=True,
+            is_active=True,
+            request_kind=request_kind,
+        )
         .order_by('priority', 'created_at')
     )
     for rule in rules:
         if _matches_rule(rule, employee, request_kind, leave_type=leave_type):
-            return rule.workflow
+            return rule.workflow, 'RULE'
 
-    default_workflow = ApprovalWorkflow.objects.filter(
-        organisation=organisation,
-        is_default=True,
-        is_active=True,
-    ).first()
+    default_workflow = get_default_workflow(organisation, request_kind)
     if default_workflow is None:
-        raise ValueError('No active default approval workflow is configured for this organisation.')
-    return default_workflow
+        raise ValueError(f'No active default approval workflow is configured for {request_kind.lower().replace("_", " ")} requests.')
+    return default_workflow, 'DEFAULT'
+
+
+def resolve_workflow(employee, request_kind, leave_type=None):
+    workflow, _ = resolve_workflow_with_source(employee, request_kind, leave_type=leave_type)
+    return workflow
 
 
 def _resolve_stage_fallback(stage, requester):

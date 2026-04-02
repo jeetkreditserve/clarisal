@@ -114,6 +114,7 @@ class ApprovalWorkflowSerializer(serializers.ModelSerializer):
             'name',
             'description',
             'is_default',
+            'default_request_kind',
             'is_active',
             'rules',
             'stages',
@@ -126,9 +127,33 @@ class ApprovalWorkflowWriteSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=255)
     description = serializers.CharField(required=False, allow_blank=True, default='')
     is_default = serializers.BooleanField(required=False, default=False)
+    default_request_kind = serializers.ChoiceField(
+        choices=ApprovalRequestKind.choices,
+        required=False,
+        allow_null=True,
+    )
     is_active = serializers.BooleanField(required=False, default=True)
     rules = ApprovalWorkflowRuleWriteSerializer(many=True, required=False, default=list)
     stages = ApprovalStageWriteSerializer(many=True)
+
+    def validate(self, attrs):
+        is_default = attrs.get('is_default', False)
+        default_request_kind = attrs.get('default_request_kind')
+        request_kinds = {
+            rule.get('request_kind')
+            for rule in attrs.get('rules', [])
+            if rule.get('request_kind')
+        }
+        if is_default and not default_request_kind:
+            if len(request_kinds) == 1:
+                attrs['default_request_kind'] = request_kinds.pop()
+            else:
+                raise serializers.ValidationError({'default_request_kind': 'Default workflows must be tied to a single request kind.'})
+        if is_default and request_kinds and attrs['default_request_kind'] not in request_kinds:
+            raise serializers.ValidationError({'default_request_kind': 'Default workflow kind must match at least one workflow rule.'})
+        if not is_default:
+            attrs['default_request_kind'] = None
+        return attrs
 
 
 class ApprovalActionSerializer(serializers.ModelSerializer):

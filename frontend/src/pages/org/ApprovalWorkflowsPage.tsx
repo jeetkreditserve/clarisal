@@ -111,9 +111,9 @@ export function ApprovalWorkflowsPage() {
               <div key={workflow.id} className="surface-muted rounded-[24px] p-5">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div className="space-y-2">
-                    <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                       <p className="text-lg font-semibold text-[hsl(var(--foreground-strong))]">{workflow.name}</p>
-                      {workflow.is_default ? <StatusBadge tone="success">Default</StatusBadge> : null}
+                      {workflow.is_default ? <StatusBadge tone="success">Default {workflow.default_request_kind?.replace(/_/g, ' ')}</StatusBadge> : null}
                       <StatusBadge tone={workflow.is_active ? 'info' : 'neutral'}>{workflow.is_active ? 'Active' : 'Inactive'}</StatusBadge>
                     </div>
                     <p className="max-w-3xl text-sm text-[hsl(var(--muted-foreground))]">{workflow.description || 'No description provided.'}</p>
@@ -221,15 +221,15 @@ export function ApprovalWorkflowsPage() {
             <div className="surface-shell rounded-[20px] px-5 py-4">
               <p className="font-semibold text-[hsl(var(--foreground-strong))]">Recommended baseline</p>
               <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
-                Keep at least one default workflow active, cover both leave and OD request kinds, and avoid stage definitions without fallback handling.
+                Keep one default each for leave, on-duty, and attendance regularization, and avoid stage definitions without fallback handling.
               </p>
             </div>
             <div className="surface-shell rounded-[20px] px-5 py-4">
               <p className="font-semibold text-[hsl(var(--foreground-strong))]">Current posture</p>
               <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
-                {health.defaults === 1
+                {health.defaults >= 3
                   ? 'Default coverage looks healthy. Review targeted rules and stage count next.'
-                  : 'Review default workflow coverage. Exactly one default workflow is the safest operating model.'}
+                  : 'Review default workflow coverage. Leave, on-duty, and attendance regularization each need an active default.'}
               </p>
             </div>
           </div>

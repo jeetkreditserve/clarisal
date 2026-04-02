@@ -157,6 +157,27 @@ class Employee(SoftDeleteModel):
         default=EmployeeOnboardingStatus.NOT_STARTED,
     )
     onboarding_completed_at = models.DateTimeField(null=True, blank=True)
+    leave_approval_workflow = models.ForeignKey(
+        'approvals.ApprovalWorkflow',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='assigned_leave_employees',
+    )
+    on_duty_approval_workflow = models.ForeignKey(
+        'approvals.ApprovalWorkflow',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='assigned_on_duty_employees',
+    )
+    attendance_regularization_approval_workflow = models.ForeignKey(
+        'approvals.ApprovalWorkflow',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='assigned_attendance_regularization_employees',
+    )
 
     class Meta:
         db_table = 'employees'

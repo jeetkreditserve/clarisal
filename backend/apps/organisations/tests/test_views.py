@@ -595,6 +595,7 @@ class TestCtOrganisationEditingParity:
                 'name': 'Default Workflow',
                 'description': '',
                 'is_default': True,
+                'default_request_kind': 'LEAVE',
                 'is_active': True,
                 'rules': [{'name': 'Default leave rule', 'request_kind': 'LEAVE', 'priority': 100, 'is_active': True}],
                 'stages': [

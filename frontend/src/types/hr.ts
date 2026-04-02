@@ -40,7 +40,7 @@ export type FamilyRelation =
   | 'OTHER'
 export type LeaveRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED' | 'WITHDRAWN'
 export type OnDutyRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED' | 'WITHDRAWN'
-export type ApprovalRequestKind = 'LEAVE' | 'ON_DUTY'
+export type ApprovalRequestKind = 'LEAVE' | 'ON_DUTY' | 'ATTENDANCE_REGULARIZATION'
 export type ApprovalActionStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'SKIPPED' | 'CANCELLED'
 export type HolidayCalendarStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED'
 export type HolidayClassification = 'PUBLIC' | 'RESTRICTED' | 'COMPANY'
@@ -50,6 +50,7 @@ export type CarryForwardMode = 'NONE' | 'CAPPED' | 'UNLIMITED'
 export type ApprovalApproverType = 'REPORTING_MANAGER' | 'SPECIFIC_EMPLOYEE' | 'PRIMARY_ORG_ADMIN'
 export type ApprovalFallbackType = 'NONE' | 'SPECIFIC_EMPLOYEE' | 'PRIMARY_ORG_ADMIN'
 export type ApprovalStageMode = 'ALL' | 'ANY'
+export type EffectiveApprovalWorkflowSource = 'ASSIGNMENT' | 'RULE' | 'DEFAULT'
 export type NoticeStatus = 'DRAFT' | 'SCHEDULED' | 'PUBLISHED' | 'EXPIRED' | 'ARCHIVED'
 export type NoticeCategory = 'GENERAL' | 'HR_POLICY' | 'OPERATIONS' | 'CELEBRATION' | 'COMPLIANCE' | 'URGENT'
 export type NoticeAudienceType = 'ALL_EMPLOYEES' | 'DEPARTMENTS' | 'OFFICE_LOCATIONS' | 'SPECIFIC_EMPLOYEES'
@@ -212,6 +213,17 @@ export interface EmployeeDetail {
   bank_accounts: BankAccount[]
   family_members: FamilyMember[]
   emergency_contacts: EmergencyContact[]
+  leave_approval_workflow_id: string | null
+  leave_approval_workflow_name: string | null
+  on_duty_approval_workflow_id: string | null
+  on_duty_approval_workflow_name: string | null
+  attendance_regularization_approval_workflow_id: string | null
+  attendance_regularization_approval_workflow_name: string | null
+  effective_approval_workflows: {
+    leave: EffectiveApprovalWorkflowSummary
+    on_duty: EffectiveApprovalWorkflowSummary
+    attendance_regularization: EffectiveApprovalWorkflowSummary
+  }
 }
 
 export interface ProfileCompletion {
@@ -570,9 +582,17 @@ export interface ApprovalWorkflowConfig {
   name: string
   description: string
   is_default: boolean
+  default_request_kind: ApprovalRequestKind | null
   is_active: boolean
   rules: ApprovalWorkflowRuleConfig[]
   stages: ApprovalStageConfig[]
   created_at: string
   modified_at: string
+}
+
+export interface EffectiveApprovalWorkflowSummary {
+  request_kind: ApprovalRequestKind
+  workflow_id: string
+  workflow_name: string
+  source: EffectiveApprovalWorkflowSource
 }

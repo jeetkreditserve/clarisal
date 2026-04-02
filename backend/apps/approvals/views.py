@@ -95,8 +95,12 @@ def _upsert_workflow(organisation, payload, actor, workflow=None):
                 setattr(workflow, attr, value)
             workflow.save()
 
-        if workflow.is_default:
-            ApprovalWorkflow.objects.filter(organisation=organisation).exclude(id=workflow.id).update(is_default=False)
+        if workflow.is_default and workflow.default_request_kind:
+            ApprovalWorkflow.objects.filter(
+                organisation=organisation,
+                is_default=True,
+                default_request_kind=workflow.default_request_kind,
+            ).exclude(id=workflow.id).update(is_default=False, default_request_kind=None)
 
         keep_rule_ids = []
         for rule_payload in rules_payload:

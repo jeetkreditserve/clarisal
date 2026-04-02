@@ -57,6 +57,9 @@ class EmployeeUpdateSerializer(serializers.Serializer):
     date_of_joining = serializers.DateField(required=False, allow_null=True)
     department_id = serializers.UUIDField(required=False, allow_null=True)
     office_location_id = serializers.UUIDField(required=False, allow_null=True)
+    leave_approval_workflow_id = serializers.UUIDField(required=False, allow_null=True)
+    on_duty_approval_workflow_id = serializers.UUIDField(required=False, allow_null=True)
+    attendance_regularization_approval_workflow_id = serializers.UUIDField(required=False, allow_null=True)
 
 
 class EmployeeMarkJoinedSerializer(serializers.Serializer):
@@ -211,6 +214,19 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
     bank_accounts = BankAccountSerializer(many=True, read_only=True)
     family_members = FamilyMemberSerializer(many=True, read_only=True)
     emergency_contacts = EmergencyContactSerializer(many=True, read_only=True)
+    leave_approval_workflow_id = serializers.UUIDField(source='leave_approval_workflow.id', read_only=True)
+    leave_approval_workflow_name = serializers.CharField(source='leave_approval_workflow.name', read_only=True)
+    on_duty_approval_workflow_id = serializers.UUIDField(source='on_duty_approval_workflow.id', read_only=True)
+    on_duty_approval_workflow_name = serializers.CharField(source='on_duty_approval_workflow.name', read_only=True)
+    attendance_regularization_approval_workflow_id = serializers.UUIDField(
+        source='attendance_regularization_approval_workflow.id',
+        read_only=True,
+    )
+    attendance_regularization_approval_workflow_name = serializers.CharField(
+        source='attendance_regularization_approval_workflow.name',
+        read_only=True,
+    )
+    effective_approval_workflows = serializers.SerializerMethodField()
 
     class Meta:
         model = Employee
@@ -235,6 +251,13 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
             'bank_accounts',
             'family_members',
             'emergency_contacts',
+            'leave_approval_workflow_id',
+            'leave_approval_workflow_name',
+            'on_duty_approval_workflow_id',
+            'on_duty_approval_workflow_name',
+            'attendance_regularization_approval_workflow_id',
+            'attendance_regularization_approval_workflow_name',
+            'effective_approval_workflows',
         ]
 
     def get_suggested_employee_code(self, obj):
@@ -243,3 +266,30 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
         from .services import get_next_employee_code
 
         return get_next_employee_code(obj.organisation)
+
+    def get_effective_approval_workflows(self, obj):
+        from apps.approvals.models import ApprovalRequestKind
+        from apps.approvals.services import resolve_workflow_with_source
+
+        def serialize_effective(request_kind):
+            try:
+                workflow, source = resolve_workflow_with_source(obj, request_kind)
+            except ValueError:
+                return {
+                    'request_kind': request_kind,
+                    'workflow_id': None,
+                    'workflow_name': None,
+                    'source': 'UNCONFIGURED',
+                }
+            return {
+                'request_kind': request_kind,
+                'workflow_id': str(workflow.id),
+                'workflow_name': workflow.name,
+                'source': source,
+            }
+
+        return {
+            'leave': serialize_effective(ApprovalRequestKind.LEAVE),
+            'on_duty': serialize_effective(ApprovalRequestKind.ON_DUTY),
+            'attendance_regularization': serialize_effective(ApprovalRequestKind.ATTENDANCE_REGULARIZATION),
+        }

@@ -2,6 +2,7 @@ from django.conf import settings
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
+from django.db.models import Q
 
 from apps.common.models import AuditedBaseModel
 
@@ -9,6 +10,7 @@ from apps.common.models import AuditedBaseModel
 class ApprovalRequestKind(models.TextChoices):
     LEAVE = 'LEAVE', 'Leave'
     ON_DUTY = 'ON_DUTY', 'On Duty'
+    ATTENDANCE_REGULARIZATION = 'ATTENDANCE_REGULARIZATION', 'Attendance Regularization'
 
 
 class ApprovalStageMode(models.TextChoices):
@@ -52,6 +54,12 @@ class ApprovalWorkflow(AuditedBaseModel):
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
     is_default = models.BooleanField(default=False)
+    default_request_kind = models.CharField(
+        max_length=32,
+        choices=ApprovalRequestKind.choices,
+        blank=True,
+        null=True,
+    )
     is_active = models.BooleanField(default=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -63,6 +71,13 @@ class ApprovalWorkflow(AuditedBaseModel):
     class Meta:
         db_table = 'approval_workflows'
         ordering = ['name']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['organisation', 'default_request_kind'],
+                condition=Q(is_default=True) & Q(default_request_kind__isnull=False),
+                name='unique_default_approval_workflow_per_request_kind',
+            ),
+        ]
 
     def __str__(self):
         return f'{self.organisation.name} - {self.name}'
@@ -75,7 +90,7 @@ class ApprovalWorkflowRule(AuditedBaseModel):
         related_name='rules',
     )
     name = models.CharField(max_length=255)
-    request_kind = models.CharField(max_length=20, choices=ApprovalRequestKind.choices)
+    request_kind = models.CharField(max_length=32, choices=ApprovalRequestKind.choices)
     priority = models.PositiveIntegerField(default=100)
     is_active = models.BooleanField(default=True)
     department = models.ForeignKey(
@@ -184,7 +199,7 @@ class ApprovalRun(AuditedBaseModel):
         on_delete=models.PROTECT,
         related_name='runs',
     )
-    request_kind = models.CharField(max_length=20, choices=ApprovalRequestKind.choices)
+    request_kind = models.CharField(max_length=32, choices=ApprovalRequestKind.choices)
     requested_by = models.ForeignKey(
         'employees.Employee',
         on_delete=models.PROTECT,

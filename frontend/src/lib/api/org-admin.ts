@@ -198,6 +198,9 @@ export async function updateEmployee(
     date_of_joining: string | null
     department_id: string | null
     office_location_id: string | null
+    leave_approval_workflow_id: string | null
+    on_duty_approval_workflow_id: string | null
+    attendance_regularization_approval_workflow_id: string | null
   }>
 ) {
   const { data } = await api.patch<EmployeeDetail>(`/org/employees/${id}/`, payload)

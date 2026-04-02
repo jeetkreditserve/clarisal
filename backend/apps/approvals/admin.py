@@ -12,8 +12,8 @@ from .models import (
 
 @admin.register(ApprovalWorkflow)
 class ApprovalWorkflowAdmin(admin.ModelAdmin):
-    list_display = ('name', 'organisation', 'is_default', 'is_active', 'created_at')
-    list_filter = ('is_default', 'is_active', 'organisation')
+    list_display = ('name', 'organisation', 'default_request_kind', 'is_default', 'is_active', 'created_at')
+    list_filter = ('default_request_kind', 'is_default', 'is_active', 'organisation')
     search_fields = ('name', 'organisation__name')
 
 
@@ -49,4 +49,3 @@ class ApprovalActionAdmin(admin.ModelAdmin):
     list_display = ('approval_run', 'approver_user', 'status', 'acted_at')
     list_filter = ('status',)
     search_fields = ('approver_user__email', 'approval_run__subject_label')
-

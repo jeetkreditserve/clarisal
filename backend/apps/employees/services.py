@@ -6,6 +6,7 @@ from django.utils import timezone
 
 from apps.accounts.models import AccountType, User
 from apps.accounts.workspaces import sync_user_role
+from apps.approvals.models import ApprovalRequestKind, ApprovalWorkflow
 from apps.approvals.services import ensure_default_workflow_configured
 from apps.audit.services import log_audit_event
 from apps.common.security import encrypt_value, mask_value
@@ -74,6 +75,19 @@ def _get_reporting_employee(organisation, reporting_to_employee_id):
     if not reporting_to_employee_id:
         return None
     return Employee.objects.select_related('user').get(organisation=organisation, id=reporting_to_employee_id)
+
+
+def _get_approval_workflow(organisation, workflow_id, expected_request_kind):
+    if not workflow_id:
+        return None
+    workflow = ApprovalWorkflow.objects.filter(organisation=organisation, id=workflow_id, is_active=True).first()
+    if workflow is None:
+        raise ValueError('Selected approval workflow could not be found for this organisation.')
+    if workflow.default_request_kind and workflow.default_request_kind != expected_request_kind:
+        raise ValueError('Selected approval workflow does not match the expected request type.')
+    if workflow.default_request_kind is None and not workflow.rules.filter(request_kind=expected_request_kind, is_active=True).exists():
+        raise ValueError('Selected approval workflow does not match the expected request type.')
+    return workflow
 
 
 def _next_employee_code(organisation):
@@ -295,18 +309,60 @@ def invite_employee(
 
 
 def update_employee(employee, actor=None, **fields):
+    payload = dict(fields)
+    has_leave_approval_workflow = 'leave_approval_workflow_id' in fields
+    has_on_duty_approval_workflow = 'on_duty_approval_workflow_id' in fields
+    has_attendance_regularization_approval_workflow = 'attendance_regularization_approval_workflow_id' in fields
     department_id = fields.pop('department_id', None) if 'department_id' in fields else None
     office_location_id = fields.pop('office_location_id', None) if 'office_location_id' in fields else None
+    leave_approval_workflow_id = fields.pop('leave_approval_workflow_id', None) if 'leave_approval_workflow_id' in fields else None
+    on_duty_approval_workflow_id = fields.pop('on_duty_approval_workflow_id', None) if 'on_duty_approval_workflow_id' in fields else None
+    attendance_regularization_approval_workflow_id = (
+        fields.pop('attendance_regularization_approval_workflow_id', None)
+        if 'attendance_regularization_approval_workflow_id' in fields
+        else None
+    )
     if department_id is not None:
         employee.department = _get_department(employee.organisation, department_id)
     if office_location_id is not None:
         employee.office_location = _get_location(employee.organisation, office_location_id)
+    if has_leave_approval_workflow:
+        employee.leave_approval_workflow = _get_approval_workflow(
+            employee.organisation,
+            leave_approval_workflow_id,
+            ApprovalRequestKind.LEAVE,
+        )
+    if has_on_duty_approval_workflow:
+        employee.on_duty_approval_workflow = _get_approval_workflow(
+            employee.organisation,
+            on_duty_approval_workflow_id,
+            ApprovalRequestKind.ON_DUTY,
+        )
+    if has_attendance_regularization_approval_workflow:
+        employee.attendance_regularization_approval_workflow = _get_approval_workflow(
+            employee.organisation,
+            attendance_regularization_approval_workflow_id,
+            ApprovalRequestKind.ATTENDANCE_REGULARIZATION,
+        )
     if 'employee_code' in fields:
         fields['employee_code'] = (fields['employee_code'] or '').strip().upper() or None
     for attr, value in fields.items():
         setattr(employee, attr, value)
     employee.save()
-    log_audit_event(actor, 'employee.updated', organisation=employee.organisation, target=employee, payload=fields)
+    payload.update(
+        {
+            'department_id': str(department_id) if department_id else None,
+            'office_location_id': str(office_location_id) if office_location_id else None,
+            'leave_approval_workflow_id': str(leave_approval_workflow_id) if has_leave_approval_workflow and leave_approval_workflow_id else None,
+            'on_duty_approval_workflow_id': str(on_duty_approval_workflow_id) if has_on_duty_approval_workflow and on_duty_approval_workflow_id else None,
+            'attendance_regularization_approval_workflow_id': (
+                str(attendance_regularization_approval_workflow_id)
+                if has_attendance_regularization_approval_workflow and attendance_regularization_approval_workflow_id
+                else None
+            ),
+        }
+    )
+    log_audit_event(actor, 'employee.updated', organisation=employee.organisation, target=employee, payload=payload)
     return employee
 
 

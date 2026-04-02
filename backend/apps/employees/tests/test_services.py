@@ -54,30 +54,66 @@ def organisation(ct_user):
 
 
 @pytest.fixture
-def default_workflow(organisation, org_admin):
-    workflow = ApprovalWorkflow.objects.create(
+def default_workflows(organisation, org_admin):
+    leave_workflow = ApprovalWorkflow.objects.create(
         organisation=organisation,
-        name='Default Employee Workflow',
+        name='Default Leave Workflow',
         is_default=True,
+        default_request_kind=ApprovalRequestKind.LEAVE,
         is_active=True,
         created_by=org_admin,
     )
     ApprovalWorkflowRule.objects.create(
-        workflow=workflow,
+        workflow=leave_workflow,
         name='Default Leave Rule',
         request_kind=ApprovalRequestKind.LEAVE,
         priority=100,
         is_active=True,
     )
+    ApprovalStage.objects.create(
+        workflow=leave_workflow,
+        name='Primary Admin Approval',
+        sequence=1,
+    )
+
+    on_duty_workflow = ApprovalWorkflow.objects.create(
+        organisation=organisation,
+        name='Default On-Duty Workflow',
+        is_default=True,
+        default_request_kind=ApprovalRequestKind.ON_DUTY,
+        is_active=True,
+        created_by=org_admin,
+    )
     ApprovalWorkflowRule.objects.create(
-        workflow=workflow,
+        workflow=on_duty_workflow,
         name='Default OD Rule',
         request_kind=ApprovalRequestKind.ON_DUTY,
         priority=100,
         is_active=True,
     )
+    ApprovalStage.objects.create(
+        workflow=on_duty_workflow,
+        name='Primary Admin Approval',
+        sequence=1,
+    )
+
+    regularization_workflow = ApprovalWorkflow.objects.create(
+        organisation=organisation,
+        name='Default Attendance Regularization Workflow',
+        is_default=True,
+        default_request_kind=ApprovalRequestKind.ATTENDANCE_REGULARIZATION,
+        is_active=True,
+        created_by=org_admin,
+    )
+    ApprovalWorkflowRule.objects.create(
+        workflow=regularization_workflow,
+        name='Default Regularization Rule',
+        request_kind=ApprovalRequestKind.ATTENDANCE_REGULARIZATION,
+        priority=100,
+        is_active=True,
+    )
     stage = ApprovalStage.objects.create(
-        workflow=workflow,
+        workflow=regularization_workflow,
         name='Primary Admin Approval',
         sequence=1,
     )
@@ -87,13 +123,17 @@ def default_workflow(organisation, org_admin):
     )
     organisation.primary_admin_user = org_admin
     organisation.save(update_fields=['primary_admin_user', 'modified_at'])
-    return workflow
+    return {
+        'leave': leave_workflow,
+        'on_duty': on_duty_workflow,
+        'attendance_regularization': regularization_workflow,
+    }
 
 
 @pytest.mark.django_db
 class TestInviteEmployee:
     @patch('apps.invitations.services.transaction.on_commit')
-    def test_invite_blocks_when_active_paid_capacity_is_exhausted(self, mock_on_commit, organisation, org_admin, default_workflow):
+    def test_invite_blocks_when_active_paid_capacity_is_exhausted(self, mock_on_commit, organisation, org_admin, default_workflows):
         mock_on_commit.side_effect = lambda fn: None
         batch = create_licence_batch(
             organisation,
