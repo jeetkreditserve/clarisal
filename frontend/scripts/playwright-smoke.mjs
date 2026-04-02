@@ -1,11 +1,19 @@
 import { chromium } from 'playwright'
 
+function requireEnv(name, message) {
+  const value = process.env[name]
+  if (!value) {
+    throw new Error(message ?? `${name} must be set before running the smoke script.`)
+  }
+  return value
+}
+
 const baseUrl = process.env.APP_BASE_URL ?? 'http://127.0.0.1:8080'
 const controlTowerEmail = process.env.CONTROL_TOWER_EMAIL ?? 'admin@clarisal.com'
-const controlTowerPassword = process.env.CONTROL_TOWER_PASSWORD ?? 'change-me-in-production'
+const controlTowerPassword = requireEnv('CONTROL_TOWER_PASSWORD', 'CONTROL_TOWER_PASSWORD must be set before running the smoke script.')
 const orgAdminEmail = process.env.SEED_ORG_ADMIN_EMAIL ?? 'admin@acmeworkforce.com'
-const orgAdminPassword = process.env.SEED_ORG_ADMIN_PASSWORD ?? 'Admin@12345'
-const employeePassword = process.env.SEED_EMPLOYEE_PASSWORD ?? 'Employee@12345'
+const orgAdminPassword = requireEnv('SEED_ORG_ADMIN_PASSWORD', 'SEED_ORG_ADMIN_PASSWORD must be set before running the smoke script.')
+const employeePassword = requireEnv('SEED_EMPLOYEE_PASSWORD', 'SEED_EMPLOYEE_PASSWORD must be set before running the smoke script.')
 const browser = await chromium.launch({ headless: true })
 const results = []
 const authViewportMatrix = [

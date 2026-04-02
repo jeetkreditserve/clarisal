@@ -22,6 +22,7 @@ from apps.organisations.models import (
     OrganisationNote,
     OrganisationStatus,
 )
+from apps.payroll.models import PayrollRun, PayrollRunItem
 
 
 def organisation_create_payload(name='New Org'):
@@ -533,6 +534,61 @@ class TestCtOrganisationDetailTabsSupport:
             'approval_workflows',
             'notices',
         }
+
+    def test_ct_payroll_support_summary_is_sanitized(self, ct_client, org):
+        client, _ = ct_client
+        workforce_user = User.objects.create_user(
+            email='payroll.employee@test.com',
+            password='pass123!',
+            account_type=AccountType.WORKFORCE,
+            role=UserRole.EMPLOYEE,
+            is_active=True,
+            first_name='Ira',
+            last_name='Nair',
+        )
+        employee = Employee.objects.create(
+            organisation=org,
+            user=workforce_user,
+            employee_code='EMP900',
+            designation='Operator',
+            employment_type='FULL_TIME',
+            status='ACTIVE',
+        )
+        pay_run = PayrollRun.objects.create(
+            organisation=org,
+            name='April Payroll',
+            period_year=2026,
+            period_month=4,
+            status='CALCULATED',
+        )
+        PayrollRunItem.objects.create(
+            pay_run=pay_run,
+            employee=employee,
+            status='EXCEPTION',
+            message='No approved compensation assignment is effective for this period.',
+        )
+
+        response = client.get(f'/api/ct/organisations/{org.id}/payroll/')
+
+        assert response.status_code == 200
+        assert response.data['payroll_runs'][0] == {
+            'id': str(pay_run.id),
+            'name': 'April Payroll',
+            'period_year': 2026,
+            'period_month': 4,
+            'run_type': 'REGULAR',
+            'status': 'CALCULATED',
+            'created_at': response.data['payroll_runs'][0]['created_at'],
+            'calculated_at': None,
+            'submitted_at': None,
+            'finalized_at': None,
+            'ready_count': 0,
+            'exception_count': 1,
+            'exception_messages': ['No approved compensation assignment is effective for this period.'],
+        }
+        assert 'items' not in response.data['payroll_runs'][0]
+        assert 'gross_pay' not in response.data['payroll_runs'][0]
+        assert 'net_pay' not in response.data['payroll_runs'][0]
 
 
 @pytest.mark.django_db

@@ -11,7 +11,7 @@ import { OrgSetupBanner } from '@/components/org/OrgSetupBanner'
 const navItems: NavItem[] = [
   { label: 'Dashboard', href: '/org/dashboard', icon: LayoutDashboard },
   { label: 'Organisation', href: '/org/profile', icon: Building2 },
-  { label: 'Payroll', href: '/org/payroll', icon: Landmark },
+  { label: 'Payroll Preview', href: '/org/payroll', icon: Landmark },
   { label: 'Locations', href: '/org/locations', icon: MapPin },
   { label: 'Departments', href: '/org/departments', icon: Building },
   { label: 'Employees', href: '/org/employees', icon: Users },
@@ -45,6 +45,7 @@ export function OrgLayout() {
               <StatusBadge tone={getAccessStateTone(user?.organisation_access_state)}>
                 {user?.organisation_access_state || 'Provisioning'}
               </StatusBadge>
+              <StatusBadge tone="warning">Attendance not live</StatusBadge>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-3">

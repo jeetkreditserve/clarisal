@@ -1,5 +1,5 @@
 import { Outlet, useNavigate } from 'react-router-dom'
-import { CheckSquare, CreditCard, FileText, GraduationCap, IdCard, LayoutDashboard, LogOut, PlaneTakeoff, User } from 'lucide-react'
+import { CheckSquare, FileText, GraduationCap, LayoutDashboard, LogOut, PlaneTakeoff, User } from 'lucide-react'
 import { SidebarNav, type NavItem } from './SidebarNav'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
 import { useAuth } from '@/hooks/useAuth'
@@ -7,16 +7,14 @@ import { StatusBadge } from '@/components/ui/StatusBadge'
 import { ThemeToggle } from '@/components/ui/ThemeToggle'
 
 const navItems: NavItem[] = [
-  { label: 'Onboarding', href: '/me/onboarding', icon: CheckSquare },
   { label: 'Dashboard', href: '/me/dashboard', icon: LayoutDashboard },
+  { label: 'Onboarding', href: '/me/onboarding', icon: CheckSquare },
   { label: 'Profile', href: '/me/profile', icon: User },
   { label: 'Education', href: '/me/education', icon: GraduationCap },
-  { label: 'Identity', href: '/me/profile', icon: IdCard },
-  { label: 'Banking', href: '/me/profile', icon: CreditCard },
   { label: 'Documents', href: '/me/documents', icon: FileText },
   { label: 'Leave', href: '/me/leave', icon: LayoutDashboard },
   { label: 'On Duty', href: '/me/od', icon: PlaneTakeoff },
-  { label: 'Payslips', href: '/me/payslips', icon: FileText },
+  { label: 'Payslips Preview', href: '/me/payslips', icon: FileText },
   { label: 'Approvals', href: '/me/approvals', icon: CheckSquare },
 ]
 

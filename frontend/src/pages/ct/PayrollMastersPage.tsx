@@ -56,11 +56,18 @@ export function PayrollMastersPage() {
       <PageHeader
         eyebrow="Control Tower • Payroll"
         title="Payroll masters"
-        description="Maintain the central India tax slab masters that are copied into each organisation payroll workspace."
+        description="Maintain the central India tax slab masters that are copied into each organisation payroll preview workspace."
       />
 
+      <div className="rounded-[24px] border border-[hsl(var(--warning)_/_0.32)] bg-[hsl(var(--warning)_/_0.12)] px-5 py-4 text-sm text-[hsl(var(--foreground-strong))]">
+        <p className="font-semibold">Payroll support is still limited-scope.</p>
+        <p className="mt-1 text-[hsl(var(--muted-foreground))]">
+          These masters support preview payroll configuration only. They do not yet guarantee complete India statutory payroll behavior across every organisation.
+        </p>
+      </div>
+
       <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-        <SectionCard title="Create master" description="Publish a new fiscal-year slab definition that organisations can copy and customize.">
+        <SectionCard title="Create master" description="Publish a new fiscal-year slab definition that organisations can copy and customize for preview payroll setup.">
           <form onSubmit={handleSubmit} className="grid gap-4">
             <input className="field-input" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="Master name" />
             <input className="field-input" value={form.fiscal_year} onChange={(event) => setForm((current) => ({ ...current, fiscal_year: event.target.value }))} placeholder="2026-2027" />

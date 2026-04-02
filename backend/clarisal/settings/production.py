@@ -1,9 +1,11 @@
 from .base import *
+from apps.common.security import validate_field_encryption_configuration
 
 # In production, ALLOWED_HOSTS MUST be set via environment variable — no fallback
 ALLOWED_HOSTS = env.list('ALLOWED_HOSTS')
 
 DEBUG = False
+validate_field_encryption_configuration(field_encryption_key=FIELD_ENCRYPTION_KEY, debug=DEBUG)
 
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True

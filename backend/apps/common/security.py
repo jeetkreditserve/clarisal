@@ -5,6 +5,7 @@ from typing import Optional
 
 from cryptography.fernet import Fernet, InvalidToken
 from django.conf import settings
+from django.core.exceptions import ImproperlyConfigured
 
 
 def generate_secure_token(length: int = 48) -> str:
@@ -13,6 +14,15 @@ def generate_secure_token(length: int = 48) -> str:
 
 def hash_token(raw_token: str) -> str:
     return hashlib.sha256(raw_token.encode('utf-8')).hexdigest()
+
+
+def validate_field_encryption_configuration(*, field_encryption_key: str, debug: bool) -> None:
+    if debug:
+        return
+    if not field_encryption_key or field_encryption_key == 'replace-with-a-32-byte-secret':
+        raise ImproperlyConfigured(
+            'FIELD_ENCRYPTION_KEY must be set to a real secret when DEBUG is false.'
+        )
 
 
 def _derive_fernet_key() -> bytes:

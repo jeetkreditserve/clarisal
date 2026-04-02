@@ -185,12 +185,9 @@ DEFAULT_ORGANISATION = {
 
 DEFAULT_ORG_ADMIN = {
     'email': 'admin@acmeworkforce.com',
-    'password': 'Admin@12345',
     'first_name': 'Aditi',
     'last_name': 'Rao',
 }
-
-DEFAULT_EMPLOYEE_PASSWORD = 'Employee@12345'
 PRIMARY_CONSUMING_EMPLOYEE_COUNT = 7
 
 SECONDARY_ORGANISATIONS = [
@@ -331,12 +328,18 @@ class Command(BaseCommand):
     help = 'Creates an exhaustive local Control Tower seed covering organisations, roles, onboarding, approvals, time-off, and document scenarios.'
 
     def handle(self, *args, **options):
-        control_tower_password = os.environ.get('CONTROL_TOWER_PASSWORD')
-        if not control_tower_password:
-            raise CommandError(
-                'CONTROL_TOWER_PASSWORD environment variable is not set. '
-                'Set it before running this command.'
-            )
+        control_tower_password = self._require_env(
+            'CONTROL_TOWER_PASSWORD',
+            'CONTROL_TOWER_PASSWORD environment variable is not set. Set it before running this command.',
+        )
+        org_admin_password = self._require_env(
+            'SEED_ORG_ADMIN_PASSWORD',
+            'SEED_ORG_ADMIN_PASSWORD environment variable is not set. Set it before running this command.',
+        )
+        employee_password = self._require_env(
+            'SEED_EMPLOYEE_PASSWORD',
+            'SEED_EMPLOYEE_PASSWORD environment variable is not set. Set it before running this command.',
+        )
 
         licence_count = self._get_int_env('SEED_ORGANISATION_LICENCE_COUNT', DEFAULT_ORGANISATION['licence_count'])
         if licence_count < PRIMARY_CONSUMING_EMPLOYEE_COUNT:
@@ -350,7 +353,7 @@ class Command(BaseCommand):
             ensure_default_document_types()
             control_tower = self._ensure_control_tower_user(control_tower_password, groups['control_tower'])
             primary_org = self._ensure_primary_organisation(control_tower, licence_count)
-            primary_admin = self._ensure_primary_org_admin(primary_org, control_tower, groups['org_admin'])
+            primary_admin = self._ensure_primary_org_admin(primary_org, control_tower, groups['org_admin'], org_admin_password)
             primary_org = self._ensure_primary_admin(primary_org, primary_admin, control_tower)
             primary_org = self._ensure_active(primary_org, control_tower)
             shared_admin = self._ensure_same_email_workforce_admin(
@@ -359,7 +362,14 @@ class Command(BaseCommand):
                 control_tower_password,
                 groups,
             )
-            primary_context = self._seed_primary_org(primary_org, control_tower, primary_admin, shared_admin, groups)
+            primary_context = self._seed_primary_org(
+                primary_org,
+                control_tower,
+                primary_admin,
+                shared_admin,
+                groups,
+                employee_password,
+            )
             secondary_context = self._seed_secondary_organisations(control_tower, shared_admin, groups)
             self._print_seed_summary(control_tower, primary_admin, shared_admin, primary_context, secondary_context)
 
@@ -373,6 +383,12 @@ class Command(BaseCommand):
             raise CommandError(f'{key} must be an integer.') from exc
         if value < 1:
             raise CommandError(f'{key} must be at least 1.')
+        return value
+
+    def _require_env(self, key, message):
+        value = os.environ.get(key)
+        if not value:
+            raise CommandError(message)
         return value
 
     def _primary_domain(self):
@@ -548,8 +564,7 @@ class Command(BaseCommand):
             )
         return organisation
 
-    def _ensure_primary_org_admin(self, organisation, actor, group):
-        password = os.environ.get('SEED_ORG_ADMIN_PASSWORD', DEFAULT_ORG_ADMIN['password'])
+    def _ensure_primary_org_admin(self, organisation, actor, group, password):
         email = os.environ.get('SEED_ORG_ADMIN_EMAIL', DEFAULT_ORG_ADMIN['email'])
         first_name = os.environ.get('SEED_ORG_ADMIN_FIRST_NAME', DEFAULT_ORG_ADMIN['first_name'])
         last_name = os.environ.get('SEED_ORG_ADMIN_LAST_NAME', DEFAULT_ORG_ADMIN['last_name'])
@@ -666,10 +681,9 @@ class Command(BaseCommand):
             batch = mark_licence_batch_paid(batch, paid_by=actor, paid_at=start_date)
         return batch
 
-    def _seed_primary_org(self, organisation, control_tower, primary_admin, shared_admin, groups):
+    def _seed_primary_org(self, organisation, control_tower, primary_admin, shared_admin, groups, employee_password):
         locations = self._ensure_primary_locations(organisation, primary_admin)
         departments = self._ensure_primary_departments(organisation)
-        employee_password = os.environ.get('SEED_EMPLOYEE_PASSWORD', DEFAULT_EMPLOYEE_PASSWORD)
 
         shared_admin_employee = self._ensure_employee_record(
             organisation=organisation,

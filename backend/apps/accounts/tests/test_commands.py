@@ -54,6 +54,22 @@ class TestSeedControlTowerCommand:
 
         assert 'CONTROL_TOWER_PASSWORD environment variable is not set' in str(exc_info.value)
 
+    def test_command_fails_without_org_admin_password_env_var(self, seed_env):
+        seed_env.delenv('SEED_ORG_ADMIN_PASSWORD', raising=False)
+
+        with pytest.raises(CommandError) as exc_info:
+            call_command('seed_control_tower')
+
+        assert 'SEED_ORG_ADMIN_PASSWORD environment variable is not set' in str(exc_info.value)
+
+    def test_command_fails_without_employee_password_env_var(self, seed_env):
+        seed_env.delenv('SEED_EMPLOYEE_PASSWORD', raising=False)
+
+        with pytest.raises(CommandError) as exc_info:
+            call_command('seed_control_tower')
+
+        assert 'SEED_EMPLOYEE_PASSWORD environment variable is not set' in str(exc_info.value)
+
     def test_command_creates_exhaustive_seed_data(self, seed_env):
         call_command('seed_control_tower')
 

@@ -22,6 +22,15 @@ from apps.locations.models import OfficeLocation
 from apps.locations.repositories import list_locations
 from apps.locations.serializers import LocationCreateUpdateSerializer, LocationSerializer
 from apps.locations.services import create_location, deactivate_location, update_location
+from apps.payroll.models import (
+    CompensationAssignment,
+    CompensationAssignmentStatus,
+    CompensationTemplate,
+    PayrollRun,
+    PayrollRunItemStatus,
+    PayrollTaxSlabSet,
+    Payslip,
+)
 from apps.timeoff.models import HolidayCalendar, LeaveCycle, LeavePlan, LeaveType, OnDutyPolicy
 from apps.timeoff.serializers import (
     HolidayCalendarSerializer,
@@ -316,6 +325,61 @@ class CtOrganisationEmployeeDetailView(APIView):
         organisation = get_object_or_404(Organisation, id=pk)
         employee = get_employee(organisation, employee_id)
         return Response(CtEmployeeDetailSerializer(employee).data)
+
+
+class CtOrganisationPayrollSummaryView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def get(self, request, pk):
+        organisation = get_object_or_404(Organisation, id=pk)
+        pay_runs = PayrollRun.objects.filter(organisation=organisation).prefetch_related('items').order_by('-period_year', '-period_month', '-created_at')
+        runs_payload = []
+        for pay_run in pay_runs:
+            ready_count = 0
+            exception_count = 0
+            exception_messages = []
+            for item in pay_run.items.all():
+                if item.status == PayrollRunItemStatus.READY:
+                    ready_count += 1
+                elif item.status == PayrollRunItemStatus.EXCEPTION:
+                    exception_count += 1
+                    if item.message and item.message not in exception_messages and len(exception_messages) < 3:
+                        exception_messages.append(item.message)
+
+            runs_payload.append(
+                {
+                    'id': str(pay_run.id),
+                    'name': pay_run.name,
+                    'period_year': pay_run.period_year,
+                    'period_month': pay_run.period_month,
+                    'run_type': pay_run.run_type,
+                    'status': pay_run.status,
+                    'created_at': pay_run.created_at,
+                    'calculated_at': pay_run.calculated_at,
+                    'submitted_at': pay_run.submitted_at,
+                    'finalized_at': pay_run.finalized_at,
+                    'ready_count': ready_count,
+                    'exception_count': exception_count,
+                    'exception_messages': exception_messages,
+                }
+            )
+
+        return Response(
+            {
+                'tax_slab_set_count': PayrollTaxSlabSet.objects.filter(organisation=organisation).count(),
+                'compensation_template_count': CompensationTemplate.objects.filter(organisation=organisation).count(),
+                'approved_assignment_count': CompensationAssignment.objects.filter(
+                    employee__organisation=organisation,
+                    status=CompensationAssignmentStatus.APPROVED,
+                ).count(),
+                'pending_assignment_count': CompensationAssignment.objects.filter(
+                    employee__organisation=organisation,
+                    status=CompensationAssignmentStatus.PENDING_APPROVAL,
+                ).count(),
+                'payslip_count': Payslip.objects.filter(organisation=organisation).count(),
+                'payroll_runs': runs_payload,
+            }
+        )
 
 
 class CtOrganisationHolidayCalendarListCreateView(APIView):

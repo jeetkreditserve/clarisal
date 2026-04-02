@@ -83,6 +83,15 @@ export function PayrollPage() {
     [data],
   )
 
+  const summarizeRunExceptions = (run: (typeof data.pay_runs)[number]) => {
+    const exceptionItems = run.items.filter((item) => item.status === 'EXCEPTION')
+    return {
+      count: exceptionItems.length,
+      items: exceptionItems.slice(0, 3),
+      hiddenCount: Math.max(0, exceptionItems.length - 3),
+    }
+  }
+
   const handleCreateTaxSet = async (event: React.FormEvent) => {
     event.preventDefault()
     try {
@@ -159,6 +168,30 @@ export function PayrollPage() {
     }
   }
 
+  const handleFinalizeRun = async (runId: string) => {
+    if (!window.confirm('Finalize this payroll run? This will publish payslips from the current limited-scope payroll snapshot.')) {
+      return
+    }
+    try {
+      await finalizeRunMutation.mutateAsync(runId)
+      toast.success('Payroll run finalized.')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to finalize this payroll run.'))
+    }
+  }
+
+  const handleRerun = async (runId: string) => {
+    if (!window.confirm('Create a rerun for this payroll period? Use this only for correction testing while payroll remains in preview scope.')) {
+      return
+    }
+    try {
+      await rerunMutation.mutateAsync(runId)
+      toast.success('Payroll rerun created.')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to create the payroll rerun.'))
+    }
+  }
+
   if (isLoading || !data) {
     return (
       <div className="space-y-5">
@@ -173,8 +206,15 @@ export function PayrollPage() {
       <PageHeader
         eyebrow="Payroll"
         title="Payroll control room"
-        description="Manage tax slabs, compensation templates, employee salary assignments, payroll runs, and payslip publication from one place."
+        description="Preview tax slabs, compensation templates, employee salary assignments, payroll runs, and payslip publication from one place."
       />
+
+      <div className="rounded-[24px] border border-[hsl(var(--warning)_/_0.32)] bg-[hsl(var(--warning)_/_0.12)] px-5 py-4 text-sm text-[hsl(var(--foreground-strong))]">
+        <p className="font-semibold">Payroll is currently limited-scope.</p>
+        <p className="mt-1 text-[hsl(var(--muted-foreground))]">
+          Use this workspace for controlled setup and preview flows only. Full India statutory payroll coverage, attendance integration, Form 16, and final settlement are not complete yet.
+        </p>
+      </div>
 
       <div className="grid gap-4 xl:grid-cols-4">
         <div className="surface-muted rounded-[22px] px-5 py-4">
@@ -196,7 +236,7 @@ export function PayrollPage() {
       </div>
 
       <div className="grid gap-6 xl:grid-cols-2">
-        <SectionCard title="Org tax slabs" description="Create org-specific copies of the active tax master or additional slab sets for alternate payroll scenarios.">
+        <SectionCard title="Org tax slabs" description="Create org-specific preview copies of the active tax master or additional slab sets for alternate payroll scenarios.">
           <form onSubmit={handleCreateTaxSet} className="grid gap-4 md:grid-cols-2">
             <input className="field-input" value={taxForm.name} onChange={(event) => setTaxForm((current) => ({ ...current, name: event.target.value }))} placeholder="Slab set name" />
             <input className="field-input" value={taxForm.fiscal_year} onChange={(event) => setTaxForm((current) => ({ ...current, fiscal_year: event.target.value }))} placeholder="2026-2027" />
@@ -223,7 +263,7 @@ export function PayrollPage() {
           </div>
         </SectionCard>
 
-        <SectionCard title="Compensation templates" description="Define the reusable salary structure and then submit the template through approval when it is ready for production use.">
+        <SectionCard title="Compensation templates" description="Define the reusable salary structure and submit the template through approval when it is ready for controlled payroll preview use.">
           <form onSubmit={handleCreateTemplate} className="grid gap-4 md:grid-cols-2">
             <input className="field-input" value={templateForm.name} onChange={(event) => setTemplateForm((current) => ({ ...current, name: event.target.value }))} placeholder="Template name" />
             <input className="field-input" value={templateForm.description} onChange={(event) => setTemplateForm((current) => ({ ...current, description: event.target.value }))} placeholder="Description" />
@@ -261,7 +301,7 @@ export function PayrollPage() {
       </div>
 
       <div className="grid gap-6 xl:grid-cols-2">
-        <SectionCard title="Salary assignments" description="Assign approved structures to employees with an effective date, then submit salary revisions into the approval queue.">
+        <SectionCard title="Salary assignments" description="Assign approved structures to employees with an effective date, then submit salary revisions into the approval queue. Review carefully because downstream payroll remains limited-scope.">
           <form onSubmit={handleCreateAssignment} className="grid gap-4">
             <AppSelect value={assignmentForm.employee_id} onValueChange={(value) => setAssignmentForm((current) => ({ ...current, employee_id: value }))} options={employeeOptions} placeholder="Select employee" />
             <AppSelect value={assignmentForm.template_id} onValueChange={(value) => setAssignmentForm((current) => ({ ...current, template_id: value }))} options={templateOptions} placeholder="Select template" />
@@ -298,7 +338,7 @@ export function PayrollPage() {
           </div>
         </SectionCard>
 
-        <SectionCard title="Payroll processing" description="Create a run, calculate results, submit for approval, finalize, and trigger reruns when corrections are needed.">
+        <SectionCard title="Payroll processing" description="Create a run, calculate results, submit for approval, finalize, and trigger reruns when corrections are needed. Do not treat this as full statutory payroll sign-off yet.">
           <form onSubmit={handleCreateRun} className="grid gap-4 md:grid-cols-2">
             <input className="field-input" value={runForm.period_year} onChange={(event) => setRunForm((current) => ({ ...current, period_year: event.target.value }))} placeholder="Year" />
             <input className="field-input" value={runForm.period_month} onChange={(event) => setRunForm((current) => ({ ...current, period_month: event.target.value }))} placeholder="Month" />
@@ -309,8 +349,11 @@ export function PayrollPage() {
             </div>
           </form>
           <div className="mt-5 space-y-3">
-            {data.pay_runs.length ? data.pay_runs.map((run) => (
-              <div key={run.id} className="surface-shell rounded-[18px] px-4 py-4">
+            {data.pay_runs.length ? data.pay_runs.map((run) => {
+              const exceptionSummary = summarizeRunExceptions(run)
+
+              return (
+                <div key={run.id} className="surface-shell rounded-[18px] px-4 py-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -318,36 +361,53 @@ export function PayrollPage() {
                       <StatusBadge tone={run.status === 'FINALIZED' ? 'success' : run.status === 'REJECTED' ? 'danger' : 'info'}>
                         {run.status}
                       </StatusBadge>
+                      {exceptionSummary.count ? <StatusBadge tone="warning">{exceptionSummary.count} exceptions</StatusBadge> : null}
                     </div>
                     <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
                       {run.items.length} items • {run.run_type} • {run.period_month}/{run.period_year}
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {run.status === 'DRAFT' || run.status === 'REJECTED' ? (
+                    {run.status === 'DRAFT' || run.status === 'REJECTED' || run.status === 'CALCULATED' ? (
                       <button type="button" className="btn-secondary" onClick={() => calculateRunMutation.mutate(run.id)}>
-                        Calculate
+                        {run.status === 'CALCULATED' ? 'Recalculate' : 'Calculate'}
                       </button>
                     ) : null}
-                    {run.status === 'CALCULATED' ? (
+                    {run.status === 'CALCULATED' && !exceptionSummary.count ? (
                       <button type="button" className="btn-secondary" onClick={() => submitRunMutation.mutate(run.id)}>
                         Submit
                       </button>
                     ) : null}
                     {run.status === 'APPROVED' ? (
-                      <button type="button" className="btn-secondary" onClick={() => finalizeRunMutation.mutate(run.id)}>
+                      <button type="button" className="btn-secondary" onClick={() => void handleFinalizeRun(run.id)}>
                         Finalize
                       </button>
                     ) : null}
                     {run.status === 'FINALIZED' ? (
-                      <button type="button" className="btn-secondary" onClick={() => rerunMutation.mutate(run.id)}>
+                      <button type="button" className="btn-secondary" onClick={() => void handleRerun(run.id)}>
                         Rerun
                       </button>
                     ) : null}
                   </div>
                 </div>
-              </div>
-            )) : (
+                {exceptionSummary.count ? (
+                  <div className="mt-4 rounded-[18px] border border-[hsl(var(--warning)_/_0.32)] bg-[hsl(var(--warning)_/_0.12)] px-4 py-3 text-sm text-[hsl(var(--foreground-strong))]">
+                    <p className="font-medium">This run cannot move forward until the exceptions are fixed.</p>
+                    <ul className="mt-2 space-y-1 text-[hsl(var(--muted-foreground))]">
+                      {exceptionSummary.items.map((item) => (
+                        <li key={item.id}>
+                          {item.employee_name}: {item.message || 'Payroll data is incomplete.'}
+                        </li>
+                      ))}
+                    </ul>
+                    {exceptionSummary.hiddenCount ? (
+                      <p className="mt-2 text-[hsl(var(--muted-foreground))]">+{exceptionSummary.hiddenCount} more employees still need attention.</p>
+                    ) : null}
+                  </div>
+                ) : null}
+                </div>
+              )
+            }) : (
               <EmptyState title="No payroll runs yet" description="Create the first pay run once templates and assignments are in place." />
             )}
           </div>
@@ -356,4 +416,3 @@ export function PayrollPage() {
     </div>
   )
 }
-

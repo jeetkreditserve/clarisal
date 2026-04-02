@@ -202,8 +202,22 @@ def upload_document(employee, file_obj, document_type, uploaded_by, metadata=Non
     return _upload_document_record(employee, file_obj, document_type, uploaded_by, metadata=metadata)
 
 
-def generate_download_url(document):
-    return generate_presigned_url(document.file_key)
+def generate_download_url(document, *, accessed_by=None, request=None, access_context='DIRECT', expiry=900):
+    url = generate_presigned_url(document.file_key, expiry=expiry)
+    if accessed_by is not None:
+        log_audit_event(
+            accessed_by,
+            'document.download_url_generated',
+            organisation=document.employee.organisation,
+            target=document,
+            payload={
+                'document_type': document.document_type,
+                'access_context': access_context,
+                'expires_in_seconds': expiry,
+            },
+            request=request,
+        )
+    return url
 
 
 def verify_document(document, reviewed_by):

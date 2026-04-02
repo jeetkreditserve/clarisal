@@ -12,6 +12,7 @@ import type {
 } from '@/types/organisation'
 import type {
   ApprovalWorkflowConfig,
+  CtOrganisationPayrollSupportSummary,
   CtEmployeeDetail,
   CtEmployeeListItem,
   PayrollTaxSlabSet,
@@ -216,6 +217,11 @@ export async function fetchCtOrgEmployees(
 
 export async function fetchCtOrgEmployeeDetail(id: string, employeeId: string): Promise<CtEmployeeDetail> {
   const { data } = await api.get(`/ct/organisations/${id}/employees/${employeeId}/`)
+  return data
+}
+
+export async function fetchCtOrgPayrollSummary(id: string): Promise<CtOrganisationPayrollSupportSummary> {
+  const { data } = await api.get(`/ct/organisations/${id}/payroll/`)
   return data
 }
 

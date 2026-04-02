@@ -11,6 +11,17 @@ export function PayslipsPage() {
   const { data, isLoading } = useMyPayslips()
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
+  const selectedPayslip = data?.find((item) => item.id === selectedId) ?? data?.[0] ?? null
+  const lines = Array.isArray(selectedPayslip?.snapshot?.lines)
+    ? (selectedPayslip?.snapshot?.lines as Array<Record<string, unknown>>)
+    : []
+  const earningLines = lines.filter((line) => {
+    const componentType = String(line.component_type ?? '')
+    return componentType === 'EARNING' || componentType === 'REIMBURSEMENT'
+  })
+  const deductionLines = lines.filter((line) => String(line.component_type ?? '') === 'EMPLOYEE_DEDUCTION')
+  const employerLines = lines.filter((line) => String(line.component_type ?? '') === 'EMPLOYER_CONTRIBUTION')
+
   if (isLoading) {
     return (
       <div className="space-y-5">
@@ -20,15 +31,20 @@ export function PayslipsPage() {
     )
   }
 
-  const selectedPayslip = data?.find((item) => item.id === selectedId) ?? data?.[0] ?? null
-
   return (
     <div className="space-y-6">
       <PageHeader
         eyebrow="Payroll"
-        title="Payslips"
+        title="Payslips Preview"
         description="Review published salary slips and the locked earnings and deduction snapshot for each payroll period."
       />
+
+      <div className="rounded-[24px] border border-[hsl(var(--warning)_/_0.32)] bg-[hsl(var(--warning)_/_0.12)] px-5 py-4 text-sm text-[hsl(var(--foreground-strong))]">
+        <p className="font-semibold">Payslips are generated from the current preview payroll engine.</p>
+        <p className="mt-1 text-[hsl(var(--muted-foreground))]">
+          Treat these slips as limited-scope previews until statutory payroll coverage is completed by your organisation.
+        </p>
+      </div>
 
       {!data?.length ? (
         <EmptyState title="No payslips available yet" description="Payslips will appear here after payroll is finalized by your organisation." />
@@ -55,19 +71,25 @@ export function PayslipsPage() {
             </div>
           </SectionCard>
 
-          <SectionCard title="Slip details" description="This is the finalized snapshot used to generate the salary slip.">
+          <SectionCard title="Slip details" description="This view organizes the finalized payroll snapshot into a document-style summary for the selected period.">
             {selectedPayslip ? (
               <div className="space-y-4">
-                <div className="surface-muted rounded-[20px] px-4 py-4">
-                  <p className="text-sm text-[hsl(var(--muted-foreground))]">Gross pay</p>
-                  <p className="mt-2 text-2xl font-semibold text-[hsl(var(--foreground-strong))]">
-                    {String(selectedPayslip.snapshot.gross_pay ?? '0')}
-                  </p>
+                <div className="surface-muted rounded-[20px] px-5 py-5">
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                      <p className="text-sm text-[hsl(var(--muted-foreground))]">Payslip period</p>
+                      <p className="mt-2 text-2xl font-semibold text-[hsl(var(--foreground-strong))]">
+                        {String(selectedPayslip.snapshot.period_label ?? `${selectedPayslip.period_month}/${selectedPayslip.period_year}`)}
+                      </p>
+                      <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">Slip number {selectedPayslip.slip_number}</p>
+                    </div>
+                    <StatusBadge tone="success">Finalized snapshot</StatusBadge>
+                  </div>
                 </div>
                 <div className="grid gap-4 md:grid-cols-3">
                   <div className="surface-shell rounded-[18px] px-4 py-4">
-                    <p className="text-sm text-[hsl(var(--muted-foreground))]">Income tax</p>
-                    <p className="mt-2 font-semibold text-[hsl(var(--foreground-strong))]">{String(selectedPayslip.snapshot.income_tax ?? '0')}</p>
+                    <p className="text-sm text-[hsl(var(--muted-foreground))]">Gross pay</p>
+                    <p className="mt-2 font-semibold text-[hsl(var(--foreground-strong))]">{String(selectedPayslip.snapshot.gross_pay ?? '0')}</p>
                   </div>
                   <div className="surface-shell rounded-[18px] px-4 py-4">
                     <p className="text-sm text-[hsl(var(--muted-foreground))]">Total deductions</p>
@@ -78,9 +100,53 @@ export function PayslipsPage() {
                     <p className="mt-2 font-semibold text-[hsl(var(--foreground-strong))]">{String(selectedPayslip.snapshot.net_pay ?? '0')}</p>
                   </div>
                 </div>
-                <pre className="surface-shell overflow-x-auto rounded-[18px] px-4 py-4 text-sm text-[hsl(var(--foreground-strong))]">
-                  {selectedPayslip.rendered_text}
-                </pre>
+                <div className="grid gap-4 xl:grid-cols-3">
+                  <div className="surface-shell rounded-[18px] px-4 py-4">
+                    <p className="text-sm font-semibold text-[hsl(var(--foreground-strong))]">Earnings</p>
+                    {earningLines.length ? (
+                      <div className="mt-3 space-y-2">
+                        {earningLines.map((line, index) => (
+                          <div key={`${String(line.component_name ?? 'earning')}-${index}`} className="flex items-center justify-between gap-3 text-sm">
+                            <span className="text-[hsl(var(--muted-foreground))]">{String(line.component_name ?? 'Component')}</span>
+                            <span className="font-medium text-[hsl(var(--foreground-strong))]">{String(line.monthly_amount ?? '0')}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="mt-3 text-sm text-[hsl(var(--muted-foreground))]">No earning line details were stored for this preview slip.</p>
+                    )}
+                  </div>
+                  <div className="surface-shell rounded-[18px] px-4 py-4">
+                    <p className="text-sm font-semibold text-[hsl(var(--foreground-strong))]">Employee deductions</p>
+                    <div className="mt-3 space-y-2">
+                      {deductionLines.length ? deductionLines.map((line, index) => (
+                        <div key={`${String(line.component_name ?? 'deduction')}-${index}`} className="flex items-center justify-between gap-3 text-sm">
+                          <span className="text-[hsl(var(--muted-foreground))]">{String(line.component_name ?? 'Component')}</span>
+                          <span className="font-medium text-[hsl(var(--foreground-strong))]">{String(line.monthly_amount ?? '0')}</span>
+                        </div>
+                      )) : (
+                        <p className="text-sm text-[hsl(var(--muted-foreground))]">No line-level deductions were stored. Income tax is shown in the summary cards above.</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="surface-shell rounded-[18px] px-4 py-4">
+                    <p className="text-sm font-semibold text-[hsl(var(--foreground-strong))]">Employer contributions</p>
+                    <div className="mt-3 space-y-2">
+                      {employerLines.length ? employerLines.map((line, index) => (
+                        <div key={`${String(line.component_name ?? 'employer')}-${index}`} className="flex items-center justify-between gap-3 text-sm">
+                          <span className="text-[hsl(var(--muted-foreground))]">{String(line.component_name ?? 'Component')}</span>
+                          <span className="font-medium text-[hsl(var(--foreground-strong))]">{String(line.monthly_amount ?? '0')}</span>
+                        </div>
+                      )) : (
+                        <p className="text-sm text-[hsl(var(--muted-foreground))]">No employer contribution lines were stored for this preview slip.</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <div className="surface-shell rounded-[18px] px-4 py-4">
+                  <p className="text-sm font-semibold text-[hsl(var(--foreground-strong))]">Raw generated text</p>
+                  <pre className="mt-3 overflow-x-auto text-sm text-[hsl(var(--foreground-strong))]">{selectedPayslip.rendered_text}</pre>
+                </div>
               </div>
             ) : null}
           </SectionCard>
@@ -89,4 +155,3 @@ export function PayslipsPage() {
     </div>
   )
 }
-

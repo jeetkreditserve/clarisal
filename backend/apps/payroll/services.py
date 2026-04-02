@@ -99,6 +99,22 @@ def _build_rendered_payslip(snapshot):
     return '\n'.join(lines)
 
 
+def _summarize_pay_run_exceptions(pay_run):
+    exception_items = list(
+        pay_run.items.filter(status=PayrollRunItemStatus.EXCEPTION).select_related('employee__user').order_by('employee__employee_code', 'created_at')
+    )
+    if not exception_items:
+        return ''
+
+    summary_parts = []
+    for item in exception_items[:3]:
+        employee_name = item.employee.user.full_name or item.employee.employee_code or str(item.employee_id)
+        summary_parts.append(f'{employee_name}: {item.message or "Payroll data is incomplete."}')
+    if len(exception_items) > 3:
+        summary_parts.append(f'+{len(exception_items) - 3} more')
+    return 'Resolve payroll exceptions before proceeding: ' + '; '.join(summary_parts)
+
+
 def _calculate_annual_tax(tax_slab_set, annual_taxable_income):
     taxable = _normalize_decimal(annual_taxable_income) or ZERO
     annual_tax = ZERO
@@ -426,6 +442,8 @@ def _employee_payroll_snapshot(employee):
 
 
 def calculate_pay_run(pay_run, *, actor=None):
+    if pay_run.status == PayrollRunStatus.APPROVED:
+        raise ValueError('Approved payroll runs cannot be recalculated. Create a rerun or move the run back to draft first.')
     if pay_run.status == PayrollRunStatus.FINALIZED:
         raise ValueError('Finalized payroll runs cannot be recalculated.')
     if pay_run.approval_run_id and pay_run.approval_run.status == ApprovalRunStatus.PENDING:
@@ -511,6 +529,11 @@ def calculate_pay_run(pay_run, *, actor=None):
 def submit_pay_run_for_approval(pay_run, *, requester_user, requester_employee=None):
     if pay_run.status != PayrollRunStatus.CALCULATED:
         raise ValueError('Only calculated payroll runs can be submitted for approval.')
+    if not pay_run.items.filter(status=PayrollRunItemStatus.READY).exists():
+        raise ValueError('Calculate payroll successfully for at least one employee before submitting the run for approval.')
+    exception_summary = _summarize_pay_run_exceptions(pay_run)
+    if exception_summary:
+        raise ValueError(exception_summary)
     organisation, requester_user, requester_employee = _resolve_payroll_requester_context(
         requester_user=requester_user,
         requester_employee=requester_employee,
@@ -536,6 +559,11 @@ def finalize_pay_run(pay_run, *, actor=None, skip_approval=False):
         raise ValueError('Only approved or explicitly bypassed calculated payroll runs can be finalized.')
     if pay_run.status == PayrollRunStatus.CALCULATED and not skip_approval:
         raise ValueError('Approval is required before finalization.')
+    if not pay_run.items.filter(status=PayrollRunItemStatus.READY).exists():
+        raise ValueError('Calculate payroll successfully for at least one employee before finalization.')
+    exception_summary = _summarize_pay_run_exceptions(pay_run)
+    if exception_summary:
+        raise ValueError(exception_summary)
 
     with transaction.atomic():
         for item in pay_run.items.select_related('employee__user').filter(status=PayrollRunItemStatus.READY):
@@ -590,4 +618,3 @@ def rerun_payroll_run(pay_run, *, actor=None, requester_user=None, requester_emp
     )
     log_audit_event(actor or requester_user, 'payroll.run.rerun_created', organisation=pay_run.organisation, target=new_run)
     return new_run
-

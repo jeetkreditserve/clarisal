@@ -257,6 +257,31 @@ export interface CtEmployeeDetail {
   reporting_to_name: string | null
 }
 
+export interface CtOrganisationPayrollRunSummary {
+  id: string
+  name: string
+  period_year: number
+  period_month: number
+  run_type: PayrollRunType
+  status: PayrollRunStatus
+  created_at: string
+  calculated_at: string | null
+  submitted_at: string | null
+  finalized_at: string | null
+  ready_count: number
+  exception_count: number
+  exception_messages: string[]
+}
+
+export interface CtOrganisationPayrollSupportSummary {
+  tax_slab_set_count: number
+  compensation_template_count: number
+  approved_assignment_count: number
+  pending_assignment_count: number
+  payslip_count: number
+  payroll_runs: CtOrganisationPayrollRunSummary[]
+}
+
 export interface ProfileCompletion {
   percent: number
   completed_sections: string[]

@@ -15,6 +15,18 @@
 
 import { test, expect } from '@playwright/test'
 
+function requireEnv(name: string): string {
+  const value = process.env[name]
+  if (!value) {
+    throw new Error(`${name} must be set before running onboarding E2E tests.`)
+  }
+  return value
+}
+
+const ORG_ADMIN_EMAIL = process.env.SEED_ORG_ADMIN_EMAIL ?? 'admin@acmeworkforce.com'
+const ORG_ADMIN_PASSWORD = requireEnv('SEED_ORG_ADMIN_PASSWORD')
+const EXISTING_EMPLOYEE_EMAIL = process.env.SEED_PRIMARY_EMPLOYEE_EMAIL ?? 'priya.sharma@acmeworkforce.com'
+const EXISTING_EMPLOYEE_PASSWORD = requireEnv('SEED_EMPLOYEE_PASSWORD')
 const ONBOARDING_EMAIL = `onboarding.e2e.${Date.now()}@acmeworkforce.com`
 const ONBOARDING_PASSWORD = 'Onboard@E2E2024!'
 let inviteToken = ''
@@ -27,7 +39,7 @@ test('org admin invites the onboarding test employee', async ({ request }) => {
 
   // Login as org admin to get session
   const loginResp = await request.post('http://localhost:8000/api/auth/login/', {
-    data: { email: 'admin@acmeworkforce.com', password: 'Admin@12345' },
+    data: { email: ORG_ADMIN_EMAIL, password: ORG_ADMIN_PASSWORD },
   })
   expect(loginResp.status()).toBe(200)
 
@@ -166,8 +178,8 @@ test('onboarding basic details form visible', async ({ page }) => {
 test('active employee redirected away from /me/onboarding', async ({ page }) => {
   // Login as Priya Sharma (ACTIVE employee)
   await page.goto('/auth/login')
-  await page.fill('#email', 'priya.sharma@acmeworkforce.com')
-  await page.fill('#password', 'Employee@12345')
+  await page.fill('#email', EXISTING_EMPLOYEE_EMAIL)
+  await page.fill('#password', EXISTING_EMPLOYEE_PASSWORD)
   await page.click('button[type="submit"]')
   await page.waitForURL('**/me/dashboard', { timeout: 15000 })
 

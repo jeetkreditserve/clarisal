@@ -23,6 +23,7 @@ import {
   fetchCtOrgEmployeeDetail,
   fetchCtOrgEmployees,
   fetchCtOrgNotes,
+  fetchCtOrgPayrollSummary,
   fetchCtPayrollTaxSlabSets,
   fetchCtStats,
   fetchLicenceBatches,
@@ -218,6 +219,14 @@ export function useCtOrgEmployeeDetail(orgId: string, employeeId: string, enable
     queryKey: ['ct', 'organisations', orgId, 'employees', employeeId],
     queryFn: () => fetchCtOrgEmployeeDetail(orgId, employeeId),
     enabled: Boolean(orgId && employeeId && enabled),
+  })
+}
+
+export function useCtOrgPayrollSummary(orgId: string, enabled = true) {
+  return useQuery({
+    queryKey: ['ct', 'organisations', orgId, 'payroll'],
+    queryFn: () => fetchCtOrgPayrollSummary(orgId),
+    enabled: Boolean(orgId && enabled),
   })
 }
 

@@ -238,3 +238,63 @@ class TestPayrollServices:
         payslip = Payslip.objects.get(employee=employee, pay_run=pay_run)
         assert payslip.snapshot['employee_id'] == str(employee.id)
         assert Decimal(payslip.snapshot['net_pay']) == item.net_pay
+
+    def test_pay_run_with_exception_items_cannot_be_submitted_or_finalized(self):
+        organisation = _create_active_organisation('Exception Org')
+        requester_user = _create_workforce_user('exception-admin@test.com', role=UserRole.ORG_ADMIN, organisation=organisation)
+        requester_employee = Employee.objects.create(
+            organisation=organisation,
+            user=requester_user,
+            employee_code='EMP100',
+            designation='Payroll Admin',
+            status=EmployeeStatus.ACTIVE,
+        )
+        affected_user = _create_workforce_user('missing-comp@test.com', organisation=organisation)
+        Employee.objects.create(
+            organisation=organisation,
+            user=affected_user,
+            employee_code='EMP101',
+            designation='Analyst',
+            status=EmployeeStatus.ACTIVE,
+            date_of_joining=date(2026, 4, 1),
+        )
+        OrganisationMembership.objects.create(
+            user=requester_user,
+            organisation=organisation,
+            is_org_admin=True,
+            status=OrganisationMembershipStatus.ACTIVE,
+        )
+
+        create_tax_slab_set(
+            fiscal_year='2026-2027',
+            name='FY 2026 Master',
+            country_code='IN',
+            slabs=[
+                {'min_income': '0', 'max_income': '300000', 'rate_percent': '0'},
+                {'min_income': '300000', 'max_income': '700000', 'rate_percent': '10'},
+                {'min_income': '700000', 'max_income': None, 'rate_percent': '20'},
+            ],
+            actor=requester_user,
+        )
+        ensure_org_payroll_setup(organisation, actor=requester_user)
+
+        pay_run = create_payroll_run(
+            organisation,
+            period_year=2026,
+            period_month=4,
+            actor=requester_user,
+            requester_user=requester_user,
+            requester_employee=requester_employee,
+        )
+        calculate_pay_run(pay_run, actor=requester_user)
+        pay_run.refresh_from_db()
+
+        assert pay_run.items.filter(status='EXCEPTION').count() == 2
+
+        with pytest.raises(ValueError) as submit_exc:
+            submit_pay_run_for_approval(pay_run, requester_user=requester_user, requester_employee=requester_employee)
+        assert 'Resolve payroll exceptions before proceeding' in str(submit_exc.value)
+
+        with pytest.raises(ValueError) as finalize_exc:
+            finalize_pay_run(pay_run, actor=requester_user, skip_approval=True)
+        assert 'Resolve payroll exceptions before proceeding' in str(finalize_exc.value)

@@ -159,7 +159,7 @@ class TestPayrollViews:
             ],
             actor=org_admin_user,
         )
-        assignment = assign_employee_compensation(
+        assign_employee_compensation(
             employee,
             template,
             effective_from=date(2026, 4, 1),
@@ -182,3 +182,15 @@ class TestPayrollViews:
         assert len(response.data) == 1
         assert response.data[0]['employee_id'] == str(employee.id)
         assert response.data[0]['pay_run_id'] == str(pay_run.id)
+
+    def test_control_tower_cannot_access_org_payroll_summary_or_employee_payslips(self, payroll_setup):
+        ct_client = payroll_setup['ct_client']
+        employee = payroll_setup['employee']
+
+        summary_response = ct_client.get('/api/org/payroll/summary/')
+        payslip_response = ct_client.get('/api/me/payroll/payslips/')
+        payslip_detail_response = ct_client.get(f'/api/me/payroll/payslips/{employee.id}/')
+
+        assert summary_response.status_code == 403
+        assert payslip_response.status_code == 403
+        assert payslip_detail_response.status_code == 403

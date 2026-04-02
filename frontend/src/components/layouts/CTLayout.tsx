@@ -7,7 +7,7 @@ import { ThemeToggle } from '@/components/ui/ThemeToggle'
 
 const navItems: NavItem[] = [
   { label: 'Dashboard', href: '/ct/dashboard', icon: LayoutDashboard },
-  { label: 'Payroll', href: '/ct/payroll', icon: Landmark },
+  { label: 'Payroll Preview', href: '/ct/payroll', icon: Landmark },
   { label: 'Organisations', href: '/ct/organisations', icon: Building2 },
 ]
 
@@ -26,10 +26,10 @@ export function CTLayout() {
       <div className="flex min-w-0 flex-1 flex-col px-4 pb-6 lg:pl-0 lg:pr-6">
         <header className="shell-topbar sticky top-4 z-20 mt-0 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-sm font-medium text-[hsl(var(--muted-foreground))]">Platform operations</p>
+            <p className="text-sm font-medium text-[hsl(var(--muted-foreground))]">Platform support and configuration oversight</p>
             <div className="mt-2 flex flex-wrap items-center gap-3">
               <h1 className="text-xl font-semibold tracking-tight text-[hsl(var(--foreground-strong))]">Control Tower</h1>
-              <StatusBadge tone="info">Global access</StatusBadge>
+              <StatusBadge tone="info">Sanitized support access</StatusBadge>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-3">

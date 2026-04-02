@@ -76,7 +76,7 @@ class EmployeeDocumentDownloadView(APIView):
             employee__organisation=organisation,
             id=doc_id,
         )
-        return Response({'url': generate_download_url(document)})
+        return Response({'url': generate_download_url(document, accessed_by=request.user, request=request, access_context='ORG_ADMIN')})
 
 
 class EmployeeDocumentVerifyView(APIView):
@@ -175,4 +175,4 @@ class MyDocumentDownloadView(APIView):
     def get(self, request, doc_id):
         employee = get_active_employee(request, request.user)
         document = get_object_or_404(Document, employee=employee, id=doc_id)
-        return Response({'url': generate_download_url(document)})
+        return Response({'url': generate_download_url(document, accessed_by=request.user, request=request, access_context='EMPLOYEE_SELF')})
