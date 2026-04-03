@@ -484,6 +484,14 @@ def end_employment(employee, end_status, date_of_exit, exit_reason='', exit_note
         exit_notes=exit_notes,
         actor=actor,
     )
+    from apps.payroll.services import create_full_and_final_settlement
+
+    fnf = create_full_and_final_settlement(
+        employee=employee,
+        last_working_day=date_of_exit,
+        initiated_by=actor,
+        offboarding_process=offboarding,
+    )
     log_audit_event(
         actor,
         'employee.employment_ended',
@@ -494,6 +502,7 @@ def end_employment(employee, end_status, date_of_exit, exit_reason='', exit_note
             'date_of_exit': date_of_exit.isoformat(),
             'exit_reason': (exit_reason or '').strip(),
             'offboarding_process_id': str(offboarding.id),
+            'fnf_settlement_id': str(fnf.id),
         },
     )
     return employee

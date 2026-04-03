@@ -23,6 +23,12 @@ def validate_field_encryption_configuration(*, field_encryption_key: str, debug:
         raise ImproperlyConfigured(
             'FIELD_ENCRYPTION_KEY must be set to a real secret when DEBUG is false.'
         )
+    try:
+        Fernet(field_encryption_key)
+    except (TypeError, ValueError) as exc:
+        raise ImproperlyConfigured(
+            'FIELD_ENCRYPTION_KEY must be a Fernet-compatible URL-safe base64-encoded 32-byte key.'
+        ) from exc
 
 
 def _derive_fernet_key() -> bytes:

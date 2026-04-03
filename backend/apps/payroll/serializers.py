@@ -5,12 +5,15 @@ from .models import (
     CompensationAssignmentLine,
     CompensationTemplate,
     CompensationTemplateLine,
+    FullAndFinalSettlement,
     PayrollComponent,
     PayrollRun,
     PayrollRunItem,
     PayrollTaxSlab,
     PayrollTaxSlabSet,
     Payslip,
+    TaxRegime,
+    InvestmentDeclaration,
 )
 
 
@@ -24,6 +27,18 @@ class PayrollTaxSlabWriteSerializer(serializers.Serializer):
     min_income = serializers.DecimalField(max_digits=12, decimal_places=2)
     max_income = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, allow_null=True)
     rate_percent = serializers.DecimalField(max_digits=5, decimal_places=2)
+
+    def validate_min_income(self, value):
+        if value < 0:
+            raise serializers.ValidationError('Minimum income cannot be negative.')
+        return value
+
+    def validate_rate_percent(self, value):
+        if value < 0:
+            raise serializers.ValidationError('Tax rate cannot be negative.')
+        if value > 100:
+            raise serializers.ValidationError('Tax rate cannot exceed 100%.')
+        return value
 
 
 class PayrollTaxSlabSetSerializer(serializers.ModelSerializer):
@@ -39,6 +54,7 @@ class PayrollTaxSlabSetSerializer(serializers.ModelSerializer):
             'fiscal_year',
             'is_active',
             'is_system_master',
+            'is_old_regime',
             'source_set_id',
             'slabs',
             'created_at',
@@ -51,6 +67,7 @@ class PayrollTaxSlabSetWriteSerializer(serializers.Serializer):
     country_code = serializers.CharField(max_length=2, default='IN')
     fiscal_year = serializers.CharField(max_length=16)
     is_active = serializers.BooleanField(required=False, default=True)
+    is_old_regime = serializers.BooleanField(required=False, default=False)
     slabs = PayrollTaxSlabWriteSerializer(many=True)
 
 
@@ -75,6 +92,13 @@ class CompensationTemplateLineWriteSerializer(serializers.Serializer):
     component_type = serializers.CharField(max_length=32)
     monthly_amount = serializers.DecimalField(max_digits=12, decimal_places=2)
     is_taxable = serializers.BooleanField(required=False, default=True)
+
+    def validate_monthly_amount(self, value):
+        if value < 0:
+            raise serializers.ValidationError(
+                'Monthly amount cannot be negative. Use a deduction component type for amounts that reduce pay.'
+            )
+        return value
 
 
 class CompensationTemplateSerializer(serializers.ModelSerializer):
@@ -125,6 +149,7 @@ class CompensationAssignmentSerializer(serializers.ModelSerializer):
             'template_name',
             'effective_from',
             'version',
+            'tax_regime',
             'status',
             'approval_run_id',
             'lines',
@@ -137,6 +162,7 @@ class CompensationAssignmentWriteSerializer(serializers.Serializer):
     employee_id = serializers.UUIDField()
     template_id = serializers.UUIDField()
     effective_from = serializers.DateField()
+    tax_regime = serializers.ChoiceField(choices=TaxRegime.choices, required=False, default=TaxRegime.NEW)
     auto_approve = serializers.BooleanField(required=False, default=False)
 
 
@@ -213,3 +239,63 @@ class PayslipSerializer(serializers.ModelSerializer):
             'rendered_text',
             'created_at',
         ]
+
+
+class InvestmentDeclarationSerializer(serializers.ModelSerializer):
+    employee_id = serializers.UUIDField(source='employee.id', read_only=True)
+
+    class Meta:
+        model = InvestmentDeclaration
+        fields = [
+            'id',
+            'employee_id',
+            'fiscal_year',
+            'section',
+            'description',
+            'declared_amount',
+            'proof_file_key',
+            'is_verified',
+            'created_at',
+            'modified_at',
+        ]
+
+
+class FullAndFinalSettlementSerializer(serializers.ModelSerializer):
+    employee_id = serializers.UUIDField(source='employee.id', read_only=True)
+    employee_name = serializers.CharField(source='employee.user.full_name', read_only=True)
+    offboarding_process_id = serializers.UUIDField(source='offboarding_process.id', read_only=True, allow_null=True)
+
+    class Meta:
+        model = FullAndFinalSettlement
+        fields = [
+            'id',
+            'employee_id',
+            'employee_name',
+            'offboarding_process_id',
+            'last_working_day',
+            'status',
+            'prorated_salary',
+            'leave_encashment',
+            'gratuity',
+            'arrears',
+            'other_credits',
+            'tds_deduction',
+            'pf_deduction',
+            'loan_recovery',
+            'other_deductions',
+            'gross_payable',
+            'net_payable',
+            'notes',
+            'approved_at',
+            'paid_at',
+            'created_at',
+            'modified_at',
+        ]
+
+
+class InvestmentDeclarationWriteSerializer(serializers.Serializer):
+    fiscal_year = serializers.CharField(max_length=16)
+    section = serializers.ChoiceField(choices=InvestmentDeclaration._meta.get_field('section').choices)
+    description = serializers.CharField(max_length=200)
+    declared_amount = serializers.DecimalField(max_digits=12, decimal_places=2)
+    proof_file_key = serializers.CharField(required=False, allow_blank=True, allow_null=True, default='')

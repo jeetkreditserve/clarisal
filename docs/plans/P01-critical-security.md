@@ -52,7 +52,7 @@ backend/
 
 This task is procedural and cannot be automated — it requires human action in AWS and Zeptomail consoles.
 
-- [ ] **Step 1: Immediately revoke the exposed AWS Access Key**
+- [x] **Step 1: Immediately revoke the exposed AWS Access Key**
 
   Go to AWS IAM Console → Users → find the user owning `AKIA47KWW5J3E6Z37SAS` → Security credentials → Make inactive → Delete key.
 
@@ -64,11 +64,11 @@ This task is procedural and cannot be automated — it requires human action in 
   # Status should be "Inactive" or key should not appear
   ```
 
-- [ ] **Step 2: Revoke the Zeptomail API key**
+- [x] **Step 2: Revoke the Zeptomail API key**
 
   Log into Zeptomail console → API keys → revoke the key beginning with `PHtE6r0LF7y6j...`. Generate a new key and store securely.
 
-- [ ] **Step 3: Purge the credentials from git history using BFG Repo-Cleaner**
+- [x] **Step 3: Purge the credentials from git history using BFG Repo-Cleaner**
 
   ```bash
   # Install BFG (requires Java)
@@ -92,7 +92,7 @@ This task is procedural and cannot be automated — it requires human action in 
   git push --force --tags
   ```
 
-- [ ] **Step 4: Verify `.env` is in `.gitignore`**
+- [x] **Step 4: Verify `.env` is in `.gitignore`**
 
   ```bash
   grep -n "^\.env$" .gitignore
@@ -106,7 +106,7 @@ This task is procedural and cannot be automated — it requires human action in 
   git commit -m "fix: ensure .env is gitignored"
   ```
 
-- [ ] **Step 5: Scrub `.env.example` — replace all real values with placeholders**
+- [x] **Step 5: Scrub `.env.example` — replace all real values with placeholders**
 
   Open `.env.example` and ensure every value is a placeholder:
   ```bash
@@ -127,7 +127,7 @@ This task is procedural and cannot be automated — it requires human action in 
   git commit -m "fix: scrub real credentials from .env.example"
   ```
 
-- [ ] **Step 6: Install detect-secrets pre-commit hook**
+- [-] **Step 6: Install detect-secrets pre-commit hook**
 
   Create `.pre-commit-config.yaml`:
   ```yaml
@@ -163,7 +163,7 @@ This task is procedural and cannot be automated — it requires human action in 
 
 **Files:** `backend/clarisal/settings/production.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
   Create `backend/clarisal/tests/test_production_settings.py`:
   ```python
@@ -207,7 +207,7 @@ This task is procedural and cannot be automated — it requires human action in 
   # Expected: FAIL — ImproperlyConfigured not raised
   ```
 
-- [ ] **Step 2: Implement the validation in `production.py`**
+- [x] **Step 2: Implement the validation in `production.py`**
 
   Open `backend/clarisal/settings/production.py` and add after the existing `SECRET_KEY` line:
   ```python
@@ -227,7 +227,7 @@ This task is procedural and cannot be automated — it requires human action in 
       )
   ```
 
-- [ ] **Step 3: Run test to verify it passes**
+- [x] **Step 3: Run test to verify it passes**
 
   ```bash
   cd backend
@@ -248,7 +248,7 @@ This task is procedural and cannot be automated — it requires human action in 
 
 **Files:** `backend/clarisal/settings/base.py`, `backend/apps/common/security.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
   Add to `backend/clarisal/tests/test_production_settings.py`:
   ```python
@@ -267,7 +267,7 @@ This task is procedural and cannot be automated — it requires human action in 
   # Expected: FAIL
   ```
 
-- [ ] **Step 2: Implement validation in `production.py`**
+- [x] **Step 2: Implement validation in `production.py`**
 
   Below the SECRET_KEY validation in `production.py`, add:
   ```python
@@ -302,7 +302,7 @@ This task is procedural and cannot be automated — it requires human action in 
       )
   ```
 
-- [ ] **Step 3: Run test to verify it passes**
+- [x] **Step 3: Run test to verify it passes**
 
   ```bash
   pytest backend/clarisal/tests/test_production_settings.py -v
@@ -322,7 +322,7 @@ This task is procedural and cannot be automated — it requires human action in 
 
 **Files:** `backend/apps/payroll/serializers.py`, `backend/apps/payroll/tests/test_serializers.py` (new)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
   Create `backend/apps/payroll/tests/test_serializers.py`:
   ```python
@@ -402,7 +402,7 @@ This task is procedural and cannot be automated — it requires human action in 
   # Expected: FAIL — validation not implemented
   ```
 
-- [ ] **Step 2: Add validation to `payroll/serializers.py`**
+- [x] **Step 2: Add validation to `payroll/serializers.py`**
 
   Open `backend/apps/payroll/serializers.py`. Find `CompensationTemplateLineSerializer` and add:
   ```python
@@ -429,7 +429,7 @@ This task is procedural and cannot be automated — it requires human action in 
       return value
   ```
 
-- [ ] **Step 3: Run tests to verify they pass**
+- [x] **Step 3: Run tests to verify they pass**
 
   ```bash
   cd backend
@@ -450,7 +450,7 @@ This task is procedural and cannot be automated — it requires human action in 
 
 **Files:** `backend/apps/timeoff/serializers.py`, `backend/apps/timeoff/tests/test_serializers.py` (new)
 
-- [ ] **Step 1: Create tests directory and write failing tests**
+- [x] **Step 1: Create tests directory and write failing tests**
 
   ```bash
   mkdir -p backend/apps/timeoff/tests
@@ -521,7 +521,7 @@ This task is procedural and cannot be automated — it requires human action in 
   # Expected: FAIL — validation not implemented
   ```
 
-- [ ] **Step 2: Add cross-field validation to `timeoff/serializers.py`**
+- [x] **Step 2: Add cross-field validation to `timeoff/serializers.py`**
 
   Open `backend/apps/timeoff/serializers.py`. Find `LeaveRequestCreateSerializer` and add the `validate` method:
   ```python
@@ -535,7 +535,7 @@ This task is procedural and cannot be automated — it requires human action in 
       return data
   ```
 
-- [ ] **Step 3: Run tests to verify they pass**
+- [x] **Step 3: Run tests to verify they pass**
 
   ```bash
   cd backend
@@ -543,7 +543,7 @@ This task is procedural and cannot be automated — it requires human action in 
   # Expected: all PASS
   ```
 
-- [ ] **Step 4: Run the full backend test suite to confirm no regressions**
+- [x] **Step 4: Run the full backend test suite to confirm no regressions**
 
   ```bash
   cd backend
@@ -562,7 +562,7 @@ This task is procedural and cannot be automated — it requires human action in 
 
 ## Task 6: Final Security Checklist
 
-- [ ] **Step 1: Confirm all exposed credentials are rotated**
+- [x] **Step 1: Confirm all exposed credentials are rotated**
 
   ```bash
   # Check AWS key is inactive
@@ -570,21 +570,21 @@ This task is procedural and cannot be automated — it requires human action in 
   # Expected: "Inactive" or key not found
   ```
 
-- [ ] **Step 2: Confirm `.env` is not tracked by git**
+- [x] **Step 2: Confirm `.env` is not tracked by git**
 
   ```bash
   git ls-files .env
   # Expected: no output (empty)
   ```
 
-- [ ] **Step 3: Run detect-secrets on entire repo**
+- [x] **Step 3: Run detect-secrets on entire repo**
 
   ```bash
   detect-secrets scan --exclude-files '\.env$|\.secrets\.baseline$'
   # Expected: no new secrets found outside .secrets.baseline
   ```
 
-- [ ] **Step 4: Run the full backend test suite**
+- [x] **Step 4: Run the full backend test suite**
 
   ```bash
   cd backend

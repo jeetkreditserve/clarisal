@@ -1,8 +1,16 @@
 from .base import *
+import warnings
 
 INSTALLED_APPS += ['django_extensions']
 
 DEBUG = True
+
+if not FIELD_ENCRYPTION_KEY:
+    warnings.warn(
+        'FIELD_ENCRYPTION_KEY is not set. Falling back to a SECRET_KEY-derived key. '
+        'Use a real Fernet key outside development.',
+        stacklevel=1,
+    )
 
 EMAIL_HOST = env('EMAIL_HOST', default='mailpit')
 EMAIL_PORT = env.int('EMAIL_PORT', default=1025)

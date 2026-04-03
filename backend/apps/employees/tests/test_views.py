@@ -176,6 +176,8 @@ class TestEmployeeWorkflowAssignments:
         assert response.data['status'] == EmployeeStatus.RESIGNED
         assert response.data['offboarding']['status'] == OffboardingProcessStatus.IN_PROGRESS
         assert response.data['offboarding']['exit_reason'] == 'Personal reasons'
+        assert response.data['offboarding']['fnf_settlement_id'] is not None
+        assert response.data['offboarding']['fnf_status'] == 'DRAFT'
         assert len(response.data['offboarding']['tasks']) >= 6
 
     def test_offboarding_tasks_can_be_updated_and_completed(self, org_admin_client):

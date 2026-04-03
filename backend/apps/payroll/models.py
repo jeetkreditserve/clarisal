@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.db import models
 from django.db.models import Q
 
@@ -25,9 +27,39 @@ class CompensationAssignmentStatus(models.TextChoices):
     REJECTED = 'REJECTED', 'Rejected'
 
 
+class TaxRegime(models.TextChoices):
+    NEW = 'NEW', 'New Regime'
+    OLD = 'OLD', 'Old Regime'
+
+
+class InvestmentSection(models.TextChoices):
+    SECTION_80C = '80C', 'Section 80C'
+    SECTION_80D = '80D', 'Section 80D'
+    SECTION_80TTA = '80TTA', 'Section 80TTA'
+    SECTION_80G = '80G', 'Section 80G'
+    HRA = 'HRA', 'House Rent Allowance'
+    LTA = 'LTA', 'Leave Travel Allowance'
+    OTHER = 'OTHER', 'Other'
+
+
+SECTION_LIMITS = {
+    InvestmentSection.SECTION_80C: Decimal('150000.00'),
+    InvestmentSection.SECTION_80D: Decimal('50000.00'),
+    InvestmentSection.SECTION_80TTA: Decimal('10000.00'),
+}
+
+
 class PayrollRunType(models.TextChoices):
     REGULAR = 'REGULAR', 'Regular'
     RERUN = 'RERUN', 'Rerun'
+
+
+class FNFStatus(models.TextChoices):
+    DRAFT = 'DRAFT', 'Draft'
+    CALCULATED = 'CALCULATED', 'Calculated'
+    APPROVED = 'APPROVED', 'Approved'
+    PAID = 'PAID', 'Paid'
+    CANCELLED = 'CANCELLED', 'Cancelled'
 
 
 class PayrollRunStatus(models.TextChoices):
@@ -65,6 +97,13 @@ class PayrollTaxSlabSet(AuditedBaseModel):
     fiscal_year = models.CharField(max_length=16)
     is_active = models.BooleanField(default=True)
     is_system_master = models.BooleanField(default=False)
+    is_old_regime = models.BooleanField(
+        default=False,
+        help_text=(
+            'If True, this slab set represents the old tax regime. '
+            'Old regime allows additional deductions such as HRA, 80C, and 80D.'
+        ),
+    )
 
     class Meta:
         db_table = 'payroll_tax_slab_sets'
@@ -177,6 +216,7 @@ class CompensationAssignment(AuditedBaseModel):
     )
     effective_from = models.DateField()
     version = models.PositiveIntegerField(default=1)
+    tax_regime = models.CharField(max_length=3, choices=TaxRegime.choices, default=TaxRegime.NEW)
     status = models.CharField(max_length=24, choices=CompensationAssignmentStatus.choices, default=CompensationAssignmentStatus.DRAFT)
     approval_run = models.ForeignKey(
         'approvals.ApprovalRun',
@@ -211,6 +251,106 @@ class CompensationAssignmentLine(AuditedBaseModel):
     class Meta:
         db_table = 'compensation_assignment_lines'
         ordering = ['sequence', 'created_at']
+
+
+class InvestmentDeclaration(AuditedBaseModel):
+    employee = models.ForeignKey(
+        'employees.Employee',
+        on_delete=models.CASCADE,
+        related_name='investment_declarations',
+    )
+    fiscal_year = models.CharField(max_length=16)
+    section = models.CharField(max_length=10, choices=InvestmentSection.choices)
+    description = models.CharField(max_length=200)
+    declared_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    proof_file_key = models.CharField(max_length=500, blank=True, null=True)
+    is_verified = models.BooleanField(default=False)
+    verified_by = models.ForeignKey(
+        'accounts.User',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='verified_investment_declarations',
+    )
+
+    class Meta:
+        db_table = 'investment_declarations'
+        ordering = ['section', 'created_at']
+        indexes = [
+            models.Index(fields=['employee', 'fiscal_year']),
+        ]
+
+    def __str__(self):
+        return f'{self.employee} - {self.section} - ₹{self.declared_amount}'
+
+
+class FullAndFinalSettlement(AuditedBaseModel):
+    employee = models.OneToOneField(
+        'employees.Employee',
+        on_delete=models.PROTECT,
+        related_name='full_and_final_settlement',
+    )
+    offboarding_process = models.OneToOneField(
+        'employees.EmployeeOffboardingProcess',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='fnf_settlement',
+    )
+    last_working_day = models.DateField()
+    status = models.CharField(max_length=20, choices=FNFStatus.choices, default=FNFStatus.DRAFT)
+    prorated_salary = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    leave_encashment = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    gratuity = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    arrears = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    other_credits = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    tds_deduction = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    pf_deduction = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    loan_recovery = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    other_deductions = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    gross_payable = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    net_payable = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    notes = models.TextField(blank=True)
+    approved_by = models.ForeignKey(
+        'accounts.User',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='approved_fnf_settlements',
+    )
+    approved_at = models.DateTimeField(null=True, blank=True)
+    paid_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'full_and_final_settlements'
+        ordering = ['-created_at']
+
+
+class Arrears(AuditedBaseModel):
+    employee = models.ForeignKey(
+        'employees.Employee',
+        on_delete=models.CASCADE,
+        related_name='arrears',
+    )
+    pay_run = models.ForeignKey(
+        'PayrollRun',
+        on_delete=models.CASCADE,
+        related_name='arrears_items',
+        null=True,
+        blank=True,
+    )
+    for_period_year = models.PositiveSmallIntegerField()
+    for_period_month = models.PositiveSmallIntegerField()
+    reason = models.CharField(max_length=200)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    is_included_in_payslip = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = 'payroll_arrears'
+        ordering = ['for_period_year', 'for_period_month', 'created_at']
+        indexes = [
+            models.Index(fields=['employee', 'pay_run']),
+        ]
 
 
 class PayrollRun(AuditedBaseModel):

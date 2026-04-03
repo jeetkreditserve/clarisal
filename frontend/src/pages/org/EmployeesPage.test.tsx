@@ -86,7 +86,8 @@ describe('EmployeesPage', () => {
     await user.type(screen.getByLabelText('Company email'), 'e2e.tester@acme.test')
     await user.type(screen.getByLabelText('Designation'), 'QA Engineer')
     await user.click(screen.getByRole('checkbox', { name: /Address Proof/i }))
-    await user.click(screen.getAllByRole('button', { name: 'Invite employee' }).at(-1)!)
+    const inviteButtons = screen.getAllByRole('button', { name: 'Invite employee' })
+    await user.click(inviteButtons[inviteButtons.length - 1]!)
 
     await waitFor(() => {
       expect(inviteMutation).toHaveBeenCalledWith({
@@ -126,7 +127,8 @@ describe('EmployeesPage', () => {
     await user.type(screen.getByLabelText('First name'), 'E2E')
     await user.type(screen.getByLabelText('Last name'), 'Tester')
     await user.type(screen.getByLabelText('Company email'), 'e2e.failure@acme.test')
-    await user.click(screen.getAllByRole('button', { name: 'Invite employee' }).at(-1)!)
+    const inviteButtons = screen.getAllByRole('button', { name: 'Invite employee' })
+    await user.click(inviteButtons[inviteButtons.length - 1]!)
 
     await waitFor(() => {
       expect(toastError).toHaveBeenCalledWith('Unable to invite employee.')

@@ -1,3 +1,4 @@
+from django.core.exceptions import ObjectDoesNotExist
 from rest_framework import serializers
 
 from .models import (
@@ -137,6 +138,8 @@ class OffboardingProcessSerializer(serializers.ModelSerializer):
     pending_required_task_count = serializers.SerializerMethodField()
     pending_document_requests = serializers.SerializerMethodField()
     has_primary_bank_account = serializers.SerializerMethodField()
+    fnf_settlement_id = serializers.SerializerMethodField()
+    fnf_status = serializers.SerializerMethodField()
 
     class Meta:
         model = EmployeeOffboardingProcess
@@ -154,6 +157,8 @@ class OffboardingProcessSerializer(serializers.ModelSerializer):
             'pending_required_task_count',
             'pending_document_requests',
             'has_primary_bank_account',
+            'fnf_settlement_id',
+            'fnf_status',
             'tasks',
         ]
 
@@ -171,6 +176,20 @@ class OffboardingProcessSerializer(serializers.ModelSerializer):
 
     def get_has_primary_bank_account(self, obj):
         return obj.employee.bank_accounts.filter(is_primary=True).exists()
+
+    def _get_fnf_settlement(self, obj):
+        try:
+            return obj.fnf_settlement
+        except ObjectDoesNotExist:
+            return None
+
+    def get_fnf_settlement_id(self, obj):
+        fnf_settlement = self._get_fnf_settlement(obj)
+        return str(fnf_settlement.id) if fnf_settlement is not None else None
+
+    def get_fnf_status(self, obj):
+        fnf_settlement = self._get_fnf_settlement(obj)
+        return fnf_settlement.status if fnf_settlement is not None else None
 
 
 class EmployeeProfileSerializer(serializers.ModelSerializer):

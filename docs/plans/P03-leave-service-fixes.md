@@ -54,7 +54,7 @@ backend/apps/timeoff/
 
 Context: `LeaveType.carry_forward_mode` can be `NONE`, `CAPPED`, or `UNLIMITED`. `LeaveType.carry_forward_cap` is the maximum days that can carry over. Currently, the service that processes cycle-end carry-forward never reads `carry_forward_cap`, so employees carry over unlimited days regardless of the configured cap.
 
-- [ ] **Step 1: Create tests directory and write failing tests**
+- [x] **Step 1: Create tests directory and write failing tests**
 
   ```bash
   mkdir -p backend/apps/timeoff/tests
@@ -242,7 +242,7 @@ Context: `LeaveType.carry_forward_mode` can be `NONE`, `CAPPED`, or `UNLIMITED`.
   # Expected: FAIL — process_cycle_end_carry_forward does not exist or doesn't enforce cap
   ```
 
-- [ ] **Step 2: Implement `process_cycle_end_carry_forward()` in `timeoff/services.py`**
+- [x] **Step 2: Implement `process_cycle_end_carry_forward()` in `timeoff/services.py`**
 
   Find the existing carry-forward logic in `backend/apps/timeoff/services.py` (search for `CARRY_FORWARD` or `carry_forward`). If a function already exists, modify it. If not, add:
 
@@ -327,7 +327,7 @@ Context: `LeaveType.carry_forward_mode` can be `NONE`, `CAPPED`, or `UNLIMITED`.
       )
   ```
 
-- [ ] **Step 3: Run tests to verify carry-forward tests pass**
+- [x] **Step 3: Run tests to verify carry-forward tests pass**
 
   ```bash
   cd backend
@@ -348,7 +348,7 @@ Context: `LeaveType.carry_forward_mode` can be `NONE`, `CAPPED`, or `UNLIMITED`.
 
 **Files:** `backend/apps/timeoff/services.py`, `backend/apps/timeoff/tests/test_services.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
   Add to `test_services.py`:
   ```python
@@ -441,7 +441,7 @@ Context: `LeaveType.carry_forward_mode` can be `NONE`, `CAPPED`, or `UNLIMITED`.
   # Expected: FAIL
   ```
 
-- [ ] **Step 2: Modify `credit_leave_for_period()` in `timeoff/services.py`**
+- [x] **Step 2: Modify `credit_leave_for_period()` in `timeoff/services.py`**
 
   Find the function that credits monthly leave (look for `credit_frequency` logic). Add the max balance check:
 
@@ -490,7 +490,7 @@ Context: `LeaveType.carry_forward_mode` can be `NONE`, `CAPPED`, or `UNLIMITED`.
       )
   ```
 
-- [ ] **Step 3: Run tests and commit**
+- [x] **Step 3: Run tests and commit**
 
   ```bash
   pytest apps/timeoff/tests/test_services.py -v
@@ -506,7 +506,7 @@ Context: `LeaveType.carry_forward_mode` can be `NONE`, `CAPPED`, or `UNLIMITED`.
 
 **Files:** `backend/apps/timeoff/tests/test_services.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [-] **Step 1: Write the failing tests**
 
   Add to `test_services.py`:
   ```python
@@ -592,7 +592,7 @@ Context: `LeaveType.carry_forward_mode` can be `NONE`, `CAPPED`, or `UNLIMITED`.
   # Expected: FAIL
   ```
 
-- [ ] **Step 2: Add `validate_leave_balance()` function to `services.py`**
+- [-] **Step 2: Add `validate_leave_balance()` function to `services.py`**
 
   In `backend/apps/timeoff/services.py`, add:
   ```python

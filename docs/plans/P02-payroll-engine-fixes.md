@@ -60,7 +60,7 @@ backend/apps/payroll/
 
 Context: Currently `_calculate_annual_tax()` is called and the result is used directly as `annual_tax_before_cess`. Section 87A of the Income Tax Act allows a rebate of up to ₹25,000 for taxpayers with net taxable income ≤ ₹7,00,000 under the new regime. Without this rebate, employees earning ₹5L–₹7L incorrectly pay TDS.
 
-- [ ] **Step 1: Create test file and write the failing 87A tests**
+- [x] **Step 1: Create test file and write the failing 87A tests**
 
   Create `backend/apps/payroll/tests/test_statutory_calculations.py`:
   ```python
@@ -222,7 +222,7 @@ Context: Currently `_calculate_annual_tax()` is called and the result is used di
   # Expected: FAIL — calculate_income_tax_with_rebate not defined
   ```
 
-- [ ] **Step 2: Add helper functions and rebate logic to `services.py`**
+- [x] **Step 2: Add helper functions and rebate logic to `services.py`**
 
   Open `backend/apps/payroll/services.py`. After the constants block (around line 90), add:
 
@@ -300,7 +300,7 @@ Context: Currently `_calculate_annual_tax()` is called and the result is used di
   snapshot['income_tax']['tax_before_rebate'] = str(tax_result['tax_before_rebate'])
   ```
 
-- [ ] **Step 3: Run tests to verify rebate is correct**
+- [x] **Step 3: Run tests to verify rebate is correct**
 
   ```bash
   cd backend
@@ -321,7 +321,7 @@ Context: Currently `_calculate_annual_tax()` is called and the result is used di
 
 **Files:** `backend/apps/payroll/services.py`, `backend/apps/payroll/tests/test_statutory_calculations.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
   Add to `test_statutory_calculations.py`:
   ```python
@@ -347,7 +347,7 @@ Context: Currently `_calculate_annual_tax()` is called and the result is used di
   # Expected: FAIL — ensure_non_negative_net_pay not defined
   ```
 
-- [ ] **Step 2: Add the guard function and apply it in the snapshot computation**
+- [x] **Step 2: Add the guard function and apply it in the snapshot computation**
 
   In `backend/apps/payroll/services.py`, add near the other utility functions:
   ```python
@@ -372,7 +372,7 @@ Context: Currently `_calculate_annual_tax()` is called and the result is used di
   net_pay = ensure_non_negative_net_pay(gross_pay - total_deductions)
   ```
 
-- [ ] **Step 3: Run tests and commit**
+- [x] **Step 3: Run tests and commit**
 
   ```bash
   cd backend
@@ -389,7 +389,7 @@ Context: Currently `_calculate_annual_tax()` is called and the result is used di
 
 **Files:** `backend/apps/payroll/models.py`, `backend/apps/payroll/services.py`, migration
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
   Add to `test_statutory_calculations.py`:
   ```python
@@ -416,7 +416,7 @@ Context: Currently `_calculate_annual_tax()` is called and the result is used di
   # Expected: FAIL — is_old_regime field not found
   ```
 
-- [ ] **Step 2: Add `is_old_regime` field to `PayrollTaxSlabSet`**
+- [x] **Step 2: Add `is_old_regime` field to `PayrollTaxSlabSet`**
 
   Open `backend/apps/payroll/models.py`. Find `PayrollTaxSlabSet` and add:
   ```python
@@ -437,7 +437,7 @@ Context: Currently `_calculate_annual_tax()` is called and the result is used di
   python manage.py migrate --run-syncdb
   ```
 
-- [ ] **Step 3: Update `CompensationAssignment` to allow per-employee regime selection**
+- [x] **Step 3: Update `CompensationAssignment` to allow per-employee regime selection**
 
   In `models.py`, find `CompensationAssignment` and add:
   ```python
@@ -458,7 +458,7 @@ Context: Currently `_calculate_annual_tax()` is called and the result is used di
   python manage.py makemigrations payroll --name add_tax_regime_to_compensation_assignment
   ```
 
-- [ ] **Step 4: Run tests and commit**
+- [x] **Step 4: Run tests and commit**
 
   ```bash
   pytest apps/payroll/tests/test_statutory_calculations.py -v
@@ -474,7 +474,7 @@ Context: Currently `_calculate_annual_tax()` is called and the result is used di
 
 **Files:** `backend/apps/payroll/models.py`, `services.py`, `serializers.py`, `views.py`, `self_urls.py`, migration
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
   Create `backend/apps/payroll/tests/test_investment_declarations.py`:
   ```python
@@ -541,7 +541,7 @@ Context: Currently `_calculate_annual_tax()` is called and the result is used di
   # Expected: FAIL
   ```
 
-- [ ] **Step 2: Create `InvestmentDeclaration` model**
+- [x] **Step 2: Create `InvestmentDeclaration` model**
 
   In `backend/apps/payroll/models.py`, add before the last class:
   ```python
@@ -596,7 +596,7 @@ Context: Currently `_calculate_annual_tax()` is called and the result is used di
   python manage.py makemigrations payroll --name add_investment_declaration
   ```
 
-- [ ] **Step 3: Add service functions for investment deduction**
+- [x] **Step 3: Add service functions for investment deduction**
 
   In `backend/apps/payroll/services.py`, add:
   ```python
@@ -639,7 +639,7 @@ Context: Currently `_calculate_annual_tax()` is called and the result is used di
           return after_std_deduction
   ```
 
-- [ ] **Step 4: Run tests and commit**
+- [x] **Step 4: Run tests and commit**
 
   ```bash
   pytest apps/payroll/tests/test_investment_declarations.py -v
@@ -655,7 +655,7 @@ Context: Currently `_calculate_annual_tax()` is called and the result is used di
 
 **Files:** `backend/apps/payroll/models.py`, `services.py`, `serializers.py`, `views.py`, migration
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
   Create `backend/apps/payroll/tests/test_full_and_final.py`:
   ```python
@@ -717,7 +717,7 @@ Context: Currently `_calculate_annual_tax()` is called and the result is used di
   # Expected: FAIL
   ```
 
-- [ ] **Step 2: Create `FullAndFinalSettlement` model**
+- [x] **Step 2: Create `FullAndFinalSettlement` model**
 
   In `backend/apps/payroll/models.py`, add:
   ```python
@@ -779,7 +779,7 @@ Context: Currently `_calculate_annual_tax()` is called and the result is used di
   python manage.py makemigrations payroll --name add_full_and_final_settlement
   ```
 
-- [ ] **Step 3: Add F&F service functions**
+- [x] **Step 3: Add F&F service functions**
 
   In `backend/apps/payroll/services.py`, add:
   ```python
@@ -843,7 +843,7 @@ Context: Currently `_calculate_annual_tax()` is called and the result is used di
 
 **Files:** `backend/apps/payroll/models.py`, `services.py`, migration
 
-- [ ] **Step 1: Create `Arrears` model**
+- [x] **Step 1: Create `Arrears` model**
 
   In `backend/apps/payroll/models.py`, add:
   ```python
@@ -879,7 +879,7 @@ Context: Currently `_calculate_annual_tax()` is called and the result is used di
   python manage.py makemigrations payroll --name add_arrears
   ```
 
-- [ ] **Step 2: Write test and service**
+- [x] **Step 2: Write test and service**
 
   ```python
   # In test file:
@@ -902,7 +902,7 @@ Context: Currently `_calculate_annual_tax()` is called and the result is used di
       ).aggregate(total=Sum('amount'))['total'] or ZERO
   ```
 
-- [ ] **Step 3: Integrate arrears into payslip computation**
+- [x] **Step 3: Integrate arrears into payslip computation**
 
   In `_compute_pay_run_item_snapshot()`, after computing `gross_pay`, add:
   ```python
@@ -924,7 +924,7 @@ Context: Currently `_calculate_annual_tax()` is called and the result is used di
 
 **Files:** `backend/apps/payroll/views.py`, `backend/apps/payroll/org_urls.py`
 
-- [ ] **Step 1: Write failing test**
+- [x] **Step 1: Write failing test**
 
   ```python
   # In backend/apps/payroll/tests/test_views.py, add:
@@ -941,7 +941,7 @@ Context: Currently `_calculate_annual_tax()` is called and the result is used di
       assert 'part_b' in first_emp  # Salary breakdown, deductions, tax computation
   ```
 
-- [ ] **Step 2: Implement the view**
+- [x] **Step 2: Implement the view**
 
   In `backend/apps/payroll/views.py`, add:
   ```python

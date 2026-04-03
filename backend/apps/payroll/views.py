@@ -7,12 +7,15 @@ from apps.accounts.permissions import BelongsToActiveOrg, IsControlTowerUser, Is
 from apps.accounts.workspaces import get_active_admin_organisation, get_active_employee
 from apps.employees.models import Employee, EmployeeStatus
 
-from .models import CompensationAssignment, CompensationTemplate, PayrollRun, PayrollTaxSlabSet, Payslip
+from .models import CompensationAssignment, CompensationTemplate, FullAndFinalSettlement, PayrollRun, PayrollTaxSlabSet, Payslip
 from .serializers import (
     CompensationAssignmentSerializer,
     CompensationAssignmentWriteSerializer,
     CompensationTemplateSerializer,
     CompensationTemplateWriteSerializer,
+    FullAndFinalSettlementSerializer,
+    InvestmentDeclarationSerializer,
+    InvestmentDeclarationWriteSerializer,
     PayrollComponentSerializer,
     PayrollRunSerializer,
     PayrollRunWriteSerializer,
@@ -28,6 +31,7 @@ from .services import (
     create_tax_slab_set,
     ensure_org_payroll_setup,
     finalize_pay_run,
+    generate_form16_data,
     rerun_payroll_run,
     submit_compensation_assignment_for_approval,
     submit_compensation_template_for_approval,
@@ -185,6 +189,7 @@ class OrgCompensationAssignmentListCreateView(APIView):
             effective_from=serializer.validated_data['effective_from'],
             actor=request.user,
             auto_approve=serializer.validated_data.get('auto_approve', False),
+            tax_regime=serializer.validated_data.get('tax_regime'),
         )
         return Response(CompensationAssignmentSerializer(assignment).data, status=status.HTTP_201_CREATED)
 
@@ -235,6 +240,20 @@ class OrgPayrollRunDetailView(APIView):
         organisation = _get_admin_organisation(request)
         pay_run = get_object_or_404(PayrollRun.objects.prefetch_related('items__employee__user'), organisation=organisation, id=pk)
         return Response(PayrollRunSerializer(pay_run).data)
+
+
+class OrgPayrollRunForm16View(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+
+    def get(self, request, pk):
+        organisation = _get_admin_organisation(request)
+        pay_run = get_object_or_404(PayrollRun.objects.prefetch_related('payslips__employee__user'), organisation=organisation, id=pk)
+        if pay_run.status != 'FINALIZED':
+            return Response(
+                {'error': 'Form 16 is only available for finalized payroll runs.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(generate_form16_data(pay_run))
 
 
 class OrgPayrollRunCalculateView(APIView):
@@ -294,6 +313,28 @@ class OrgPayrollRunRerunView(APIView):
         return Response(PayrollRunSerializer(rerun).data, status=status.HTTP_201_CREATED)
 
 
+class OrgFullAndFinalSettlementListView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+
+    def get(self, request):
+        organisation = _get_admin_organisation(request)
+        queryset = FullAndFinalSettlement.objects.filter(employee__organisation=organisation).select_related('employee__user', 'offboarding_process')
+        return Response(FullAndFinalSettlementSerializer(queryset, many=True).data)
+
+
+class OrgFullAndFinalSettlementDetailView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+
+    def get(self, request, pk):
+        organisation = _get_admin_organisation(request)
+        settlement = get_object_or_404(
+            FullAndFinalSettlement.objects.select_related('employee__user', 'offboarding_process'),
+            employee__organisation=organisation,
+            id=pk,
+        )
+        return Response(FullAndFinalSettlementSerializer(settlement).data)
+
+
 class MyPayslipListView(APIView):
     permission_classes = [IsEmployee, BelongsToActiveOrg]
 
@@ -310,3 +351,19 @@ class MyPayslipDetailView(APIView):
         employee = _get_employee(request)
         payslip = get_object_or_404(Payslip, employee=employee, id=pk)
         return Response(PayslipSerializer(payslip).data)
+
+
+class MyInvestmentDeclarationListCreateView(APIView):
+    permission_classes = [IsEmployee, BelongsToActiveOrg]
+
+    def get(self, request):
+        employee = _get_employee(request)
+        queryset = employee.investment_declarations.all()
+        return Response(InvestmentDeclarationSerializer(queryset, many=True).data)
+
+    def post(self, request):
+        employee = _get_employee(request)
+        serializer = InvestmentDeclarationWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        declaration = employee.investment_declarations.create(**serializer.validated_data)
+        return Response(InvestmentDeclarationSerializer(declaration).data, status=status.HTTP_201_CREATED)

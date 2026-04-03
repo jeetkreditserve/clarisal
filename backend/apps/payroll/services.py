@@ -3,6 +3,7 @@ from __future__ import annotations
 from calendar import monthrange
 from datetime import date
 from decimal import Decimal
+import logging
 
 from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
@@ -15,12 +16,15 @@ from apps.audit.services import log_audit_event
 from apps.employees.models import Employee, EmployeeStatus, GovernmentIdType
 
 from .models import (
+    Arrears,
     CompensationAssignment,
     CompensationAssignmentLine,
     CompensationAssignmentStatus,
     CompensationTemplate,
     CompensationTemplateLine,
     CompensationTemplateStatus,
+    FNFStatus,
+    FullAndFinalSettlement,
     PayrollComponent,
     PayrollComponentType,
     PayrollRun,
@@ -31,6 +35,10 @@ from .models import (
     PayrollTaxSlab,
     PayrollTaxSlabSet,
     Payslip,
+    TaxRegime,
+    InvestmentDeclaration,
+    InvestmentSection,
+    SECTION_LIMITS,
 )
 
 ZERO = Decimal('0.00')
@@ -38,6 +46,8 @@ ZERO = Decimal('0.00')
 # India statutory constants
 INDIA_STANDARD_DEDUCTION = Decimal('75000.00')   # FY2024-25+ new regime
 INDIA_CESS_RATE = Decimal('0.04')                 # 4% health & education cess
+INDIA_REBATE_87A_MAX = Decimal('25000.00')
+INDIA_REBATE_87A_THRESHOLD = Decimal('700000.00')
 PF_RATE = Decimal('0.12')                         # 12% of basic
 ESI_EMPLOYEE_RATE = Decimal('0.0075')             # 0.75% of gross
 ESI_EMPLOYER_RATE = Decimal('0.0325')             # 3.25% of gross
@@ -189,6 +199,12 @@ def _build_rendered_payslip(snapshot):
         out.append('  EARNINGS')
         for e in earnings:
             out.append(row(e.get('component_name', ''), e.get('monthly_amount', '0')))
+    arrears = snapshot.get('arrears', '0')
+    try:
+        if Decimal(str(arrears)) > ZERO:
+            out.append(row('Arrears', arrears))
+    except Exception:
+        pass
     out.append(row('Gross Salary', snapshot.get('gross_pay', '0')))
     out.append(THIN)
 
@@ -290,17 +306,233 @@ def _calculate_annual_tax(tax_slab_set, annual_taxable_income):
     return annual_tax.quantize(Decimal('0.01'))
 
 
-def _get_active_tax_slab_set(organisation, fiscal_year):
+def calculate_taxable_income_after_standard_deduction(gross_taxable_income):
+    taxable_income = (_normalize_decimal(gross_taxable_income) or ZERO) - INDIA_STANDARD_DEDUCTION
+    return max(ZERO, taxable_income).quantize(Decimal('0.01'))
+
+
+def apply_cess(tax_before_cess):
+    base_tax = _normalize_decimal(tax_before_cess) or ZERO
+    return (base_tax * (Decimal('1.00') + INDIA_CESS_RATE)).quantize(Decimal('0.01'))
+
+
+def calculate_income_tax_with_rebate(*, taxable_income, tax_slab_set):
+    annual_taxable_income = _normalize_decimal(taxable_income) or ZERO
+    tax_before_rebate = _calculate_annual_tax(tax_slab_set, annual_taxable_income)
+    rebate_87a = ZERO
+    if annual_taxable_income <= INDIA_REBATE_87A_THRESHOLD:
+        rebate_87a = min(tax_before_rebate, INDIA_REBATE_87A_MAX).quantize(Decimal('0.01'))
+    tax_after_rebate = max(ZERO, tax_before_rebate - rebate_87a).quantize(Decimal('0.01'))
+    cess = (tax_after_rebate * INDIA_CESS_RATE).quantize(Decimal('0.01'))
+    annual_tax = apply_cess(tax_after_rebate)
+    return {
+        'tax_before_rebate': tax_before_rebate,
+        'rebate_87a': rebate_87a,
+        'tax_after_rebate': tax_after_rebate,
+        'cess': cess,
+        'annual_tax': annual_tax,
+    }
+
+
+def ensure_non_negative_net_pay(net_pay):
+    normalized_net_pay = _normalize_decimal(net_pay) or ZERO
+    if normalized_net_pay < ZERO:
+        logging.getLogger(__name__).warning(
+            'Net pay calculated as negative (%s). Clamping to zero. Check deduction components.',
+            normalized_net_pay,
+        )
+    return max(ZERO, normalized_net_pay).quantize(Decimal('0.01'))
+
+
+def get_total_80c_deduction(employee, fiscal_year):
+    total = (
+        InvestmentDeclaration.objects.filter(
+            employee=employee,
+            fiscal_year=fiscal_year,
+            section=InvestmentSection.SECTION_80C,
+        ).aggregate(total=Sum('declared_amount'))['total']
+        or ZERO
+    )
+    cap = SECTION_LIMITS[InvestmentSection.SECTION_80C]
+    return min(_normalize_decimal(total) or ZERO, cap).quantize(Decimal('0.01'))
+
+
+def calculate_taxable_income_with_investments(*, employee, annual_gross, fiscal_year, tax_regime):
+    after_standard_deduction = calculate_taxable_income_after_standard_deduction(annual_gross)
+    if tax_regime != TaxRegime.OLD:
+        return after_standard_deduction
+
+    total_deductions = ZERO
+    for section, cap in SECTION_LIMITS.items():
+        section_total = (
+            InvestmentDeclaration.objects.filter(
+                employee=employee,
+                fiscal_year=fiscal_year,
+                section=section,
+            ).aggregate(total=Sum('declared_amount'))['total']
+            or ZERO
+        )
+        total_deductions += min(_normalize_decimal(section_total) or ZERO, cap)
+    return max(ZERO, after_standard_deduction - total_deductions).quantize(Decimal('0.01'))
+
+
+def calculate_fnf_salary_proration(
+    gross_monthly_salary: Decimal,
+    last_working_day: date,
+    period_year: int,
+    period_month: int,
+) -> Decimal:
+    total_days = Decimal(str(monthrange(period_year, period_month)[1]))
+    paid_days = Decimal(str(last_working_day.day))
+    salary = _normalize_decimal(gross_monthly_salary) or ZERO
+    return (salary * paid_days / total_days).quantize(Decimal('0.01'))
+
+
+def calculate_leave_encashment_amount(
+    leave_days: Decimal,
+    monthly_basic_salary: Decimal,
+) -> Decimal:
+    per_day_basic = ((_normalize_decimal(monthly_basic_salary) or ZERO) / Decimal('26')).quantize(Decimal('0.01'))
+    encashment_days = _normalize_decimal(leave_days) or ZERO
+    return (encashment_days * per_day_basic).quantize(Decimal('0.01'))
+
+
+def _get_assignment_monthly_amounts(assignment):
+    gross_monthly_salary = ZERO
+    monthly_basic_salary = ZERO
+    for line in assignment.lines.select_related('component').order_by('sequence', 'created_at'):
+        amount = _normalize_decimal(line.monthly_amount) or ZERO
+        if line.component_type == PayrollComponentType.EARNING:
+            gross_monthly_salary += amount
+        if line.component_id and line.component.code == 'BASIC':
+            monthly_basic_salary = amount
+    return gross_monthly_salary, monthly_basic_salary
+
+
+def _calculate_fnf_totals(employee, last_working_day):
+    assignment = get_effective_compensation_assignment(employee, last_working_day)
+    if assignment is None:
+        return {
+            'prorated_salary': ZERO,
+            'leave_encashment': ZERO,
+            'gross_payable': ZERO,
+            'net_payable': ZERO,
+        }
+
+    gross_monthly_salary, monthly_basic_salary = _get_assignment_monthly_amounts(assignment)
+    prorated_salary = calculate_fnf_salary_proration(
+        gross_monthly_salary=gross_monthly_salary,
+        last_working_day=last_working_day,
+        period_year=last_working_day.year,
+        period_month=last_working_day.month,
+    )
+    leave_encashment = ZERO
+    if monthly_basic_salary > ZERO:
+        leave_encashment = calculate_leave_encashment_amount(
+            leave_days=ZERO,
+            monthly_basic_salary=monthly_basic_salary,
+        )
+    gross_payable = (prorated_salary + leave_encashment).quantize(Decimal('0.01'))
+    net_payable = gross_payable
+    return {
+        'prorated_salary': prorated_salary,
+        'leave_encashment': leave_encashment,
+        'gross_payable': gross_payable,
+        'net_payable': net_payable,
+    }
+
+
+def create_full_and_final_settlement(employee, last_working_day: date, initiated_by=None, offboarding_process=None):
+    totals = _calculate_fnf_totals(employee, last_working_day)
+    fnf, created = FullAndFinalSettlement.objects.get_or_create(
+        employee=employee,
+        defaults={
+            'offboarding_process': offboarding_process,
+            'last_working_day': last_working_day,
+            'status': FNFStatus.DRAFT,
+            'prorated_salary': totals['prorated_salary'],
+            'leave_encashment': totals['leave_encashment'],
+            'gross_payable': totals['gross_payable'],
+            'net_payable': totals['net_payable'],
+            'created_by': initiated_by,
+            'modified_by': initiated_by,
+        },
+    )
+    update_fields = []
+    if fnf.last_working_day != last_working_day:
+        fnf.last_working_day = last_working_day
+        update_fields.append('last_working_day')
+    if offboarding_process is not None and fnf.offboarding_process_id != offboarding_process.id:
+        fnf.offboarding_process = offboarding_process
+        update_fields.append('offboarding_process')
+    if fnf.status == FNFStatus.DRAFT:
+        for field_name in ('prorated_salary', 'leave_encashment', 'gross_payable', 'net_payable'):
+            if getattr(fnf, field_name) != totals[field_name]:
+                setattr(fnf, field_name, totals[field_name])
+                update_fields.append(field_name)
+    if update_fields:
+        fnf.modified_by = initiated_by
+        update_fields.extend(['modified_by', 'modified_at'])
+        fnf.save(update_fields=update_fields)
+    log_audit_event(
+        initiated_by,
+        'payroll.fnf.created' if created else 'payroll.fnf.updated',
+        organisation=employee.organisation,
+        target=employee,
+        payload={
+            'fnf_settlement_id': str(fnf.id),
+            'last_working_day': last_working_day.isoformat(),
+            'status': fnf.status,
+        },
+    )
+    return fnf
+
+
+def get_employee_arrears_for_run(employee, pay_run) -> Decimal:
+    total = (
+        Arrears.objects.filter(
+            employee=employee,
+            pay_run=pay_run,
+            is_included_in_payslip=False,
+        ).aggregate(total=Sum('amount'))['total']
+        or ZERO
+    )
+    return (_normalize_decimal(total) or ZERO).quantize(Decimal('0.01'))
+
+
+def _get_active_tax_slab_set(organisation, fiscal_year, *, tax_regime=TaxRegime.NEW):
+    is_old_regime = tax_regime == TaxRegime.OLD
     tax_slab_set = PayrollTaxSlabSet.objects.filter(
         organisation=organisation,
         fiscal_year=fiscal_year,
         is_active=True,
+        is_old_regime=is_old_regime,
+    ).order_by('-created_at').first()
+    if tax_slab_set:
+        return tax_slab_set
+    tax_slab_set = PayrollTaxSlabSet.objects.filter(
+        organisation=organisation,
+        is_active=True,
+        is_old_regime=is_old_regime,
+    ).order_by('-created_at').first()
+    if tax_slab_set:
+        return tax_slab_set
+    tax_slab_set = PayrollTaxSlabSet.objects.filter(
+        organisation__isnull=True,
+        is_system_master=True,
+        country_code='IN',
+        fiscal_year=fiscal_year,
+        is_active=True,
+        is_old_regime=is_old_regime,
     ).order_by('-created_at').first()
     if tax_slab_set:
         return tax_slab_set
     return PayrollTaxSlabSet.objects.filter(
-        organisation=organisation,
+        organisation__isnull=True,
+        is_system_master=True,
+        country_code='IN',
         is_active=True,
+        is_old_regime=is_old_regime,
     ).order_by('-created_at').first()
 
 
@@ -310,6 +542,7 @@ def _ensure_global_default_tax_master(actor=None):
         is_system_master=True,
         is_active=True,
         country_code='IN',
+        is_old_regime=False,
     ).order_by('-created_at').first()
     if tax_slab_set:
         return tax_slab_set
@@ -321,6 +554,7 @@ def _ensure_global_default_tax_master(actor=None):
         actor=actor,
         organisation=None,
         is_active=True,
+        is_old_regime=False,
     )
 
 
@@ -369,7 +603,11 @@ def _create_payroll_approval_run(subject, request_kind, organisation, requester_
 
 def ensure_org_payroll_setup(organisation, actor=None):
     master = _ensure_global_default_tax_master(actor=actor)
-    org_tax_slab_set = PayrollTaxSlabSet.objects.filter(organisation=organisation, is_active=True).order_by('-created_at').first()
+    org_tax_slab_set = PayrollTaxSlabSet.objects.filter(
+        organisation=organisation,
+        is_active=True,
+        is_old_regime=False,
+    ).order_by('-created_at').first()
     if org_tax_slab_set is None:
         org_tax_slab_set = create_tax_slab_set(
             fiscal_year=master.fiscal_year,
@@ -387,6 +625,7 @@ def ensure_org_payroll_setup(organisation, actor=None):
             organisation=organisation,
             source_set=master,
             is_active=True,
+            is_old_regime=False,
         )
 
     components = []
@@ -405,7 +644,7 @@ def ensure_org_payroll_setup(organisation, actor=None):
     return {'tax_slab_set': org_tax_slab_set, 'components': components}
 
 
-def create_tax_slab_set(*, fiscal_year, name, country_code, slabs, actor=None, organisation=None, source_set=None, is_active=True):
+def create_tax_slab_set(*, fiscal_year, name, country_code, slabs, actor=None, organisation=None, source_set=None, is_active=True, is_old_regime=False):
     if not slabs:
         raise ValueError('At least one tax slab is required.')
     is_system_master = organisation is None
@@ -418,6 +657,7 @@ def create_tax_slab_set(*, fiscal_year, name, country_code, slabs, actor=None, o
             fiscal_year=fiscal_year,
             is_active=is_active,
             is_system_master=is_system_master,
+            is_old_regime=is_old_regime,
         )
         for slab in slabs:
             PayrollTaxSlab.objects.create(
@@ -430,13 +670,15 @@ def create_tax_slab_set(*, fiscal_year, name, country_code, slabs, actor=None, o
     return tax_slab_set
 
 
-def update_tax_slab_set(tax_slab_set, *, name=None, fiscal_year=None, is_active=None, slabs=None, actor=None):
+def update_tax_slab_set(tax_slab_set, *, name=None, fiscal_year=None, is_active=None, is_old_regime=None, slabs=None, actor=None):
     if name is not None:
         tax_slab_set.name = name
     if fiscal_year is not None:
         tax_slab_set.fiscal_year = fiscal_year
     if is_active is not None:
         tax_slab_set.is_active = is_active
+    if is_old_regime is not None:
+        tax_slab_set.is_old_regime = is_old_regime
     tax_slab_set.save()
     if slabs is not None:
         tax_slab_set.slabs.all().delete()
@@ -518,7 +760,7 @@ def submit_compensation_template_for_approval(template, *, requester_user, reque
     return template
 
 
-def assign_employee_compensation(employee, template, *, effective_from, actor=None, auto_approve=False):
+def assign_employee_compensation(employee, template, *, effective_from, actor=None, auto_approve=False, tax_regime=TaxRegime.NEW):
     version = employee.compensation_assignments.count() + 1
     with transaction.atomic():
         assignment = CompensationAssignment.objects.create(
@@ -526,6 +768,7 @@ def assign_employee_compensation(employee, template, *, effective_from, actor=No
             template=template,
             effective_from=effective_from,
             version=version,
+            tax_regime=tax_regime,
             status=CompensationAssignmentStatus.APPROVED if auto_approve else CompensationAssignmentStatus.DRAFT,
         )
         for line in template.lines.select_related('component').all():
@@ -612,10 +855,6 @@ def calculate_pay_run(pay_run, *, actor=None):
     period_end = date(pay_run.period_year, pay_run.period_month, monthrange(pay_run.period_year, pay_run.period_month)[1])
     total_days_in_period = period_end.day
     fiscal_year = _fiscal_year_for_period(pay_run.period_year, pay_run.period_month)
-    tax_slab_set = _get_active_tax_slab_set(pay_run.organisation, fiscal_year)
-    if tax_slab_set is None:
-        raise ValueError('No active tax slab set is configured for this payroll period.')
-
     # Determine org state code for Professional Tax (default Maharashtra)
     from apps.timeoff.models import LeaveRequest, LeaveRequestStatus
     org_state_code = getattr(pay_run.organisation, 'state_code', 'MH') or 'MH'
@@ -660,6 +899,32 @@ def calculate_pay_run(pay_run, *, actor=None):
                         'employee_code': employee.employee_code or '',
                         'status': 'EXCEPTION',
                         'reason': 'No approved compensation assignment is effective for this period.',
+                    }
+                )
+                continue
+            tax_slab_set = _get_active_tax_slab_set(
+                pay_run.organisation,
+                fiscal_year,
+                tax_regime=assignment.tax_regime,
+            )
+            if tax_slab_set is None:
+                PayrollRunItem.objects.create(
+                    pay_run=pay_run,
+                    employee=employee,
+                    status=PayrollRunItemStatus.EXCEPTION,
+                    message=f'No active {assignment.tax_regime.lower()} tax slab set is configured for this payroll period.',
+                    snapshot={
+                        'readiness': _employee_payroll_snapshot(employee),
+                        'tax_regime': assignment.tax_regime,
+                    },
+                )
+                run_attendance_snapshot['exception_item_count'] += 1
+                run_attendance_snapshot['employees'].append(
+                    {
+                        'employee_id': str(employee.id),
+                        'employee_code': employee.employee_code or '',
+                        'status': 'EXCEPTION',
+                        'reason': f'No active {assignment.tax_regime.lower()} tax slab set is configured for this payroll period.',
                     }
                 )
                 continue
@@ -725,6 +990,10 @@ def calculate_pay_run(pay_run, *, actor=None):
                     raw_employer_contributions += amount
 
             gross_pay = raw_gross
+            arrears_amount = get_employee_arrears_for_run(employee, pay_run)
+            if arrears_amount > ZERO:
+                gross_pay = (gross_pay + arrears_amount).quantize(Decimal('0.01'))
+                taxable_monthly = (taxable_monthly + arrears_amount).quantize(Decimal('0.01'))
 
             # ── Step 2: PF auto-calculation (12% of basic) ──────────────────
             auto_pf = ZERO
@@ -899,17 +1168,32 @@ def calculate_pay_run(pay_run, *, actor=None):
             )
 
             # ── Step 7: Income tax with standard deduction + cess ────────────
-            annual_taxable_gross = taxable_monthly * Decimal('12.00')
+            annual_taxable_gross = (taxable_monthly * Decimal('12.00')).quantize(Decimal('0.01'))
             annual_standard_deduction = INDIA_STANDARD_DEDUCTION
-            annual_taxable_after_sd = max(ZERO, annual_taxable_gross - annual_standard_deduction)
-            annual_tax_before_cess = _calculate_annual_tax(tax_slab_set, annual_taxable_after_sd)
-            annual_cess = (annual_tax_before_cess * INDIA_CESS_RATE).quantize(Decimal('0.01'))
-            annual_tax_total = (annual_tax_before_cess + annual_cess).quantize(Decimal('0.01'))
+            annual_taxable_after_sd = calculate_taxable_income_with_investments(
+                employee=employee,
+                annual_gross=annual_taxable_gross,
+                fiscal_year=fiscal_year,
+                tax_regime=assignment.tax_regime,
+            )
+            annual_investment_deductions = max(
+                ZERO,
+                (calculate_taxable_income_after_standard_deduction(annual_taxable_gross) - annual_taxable_after_sd),
+            ).quantize(Decimal('0.01'))
+            annual_tax_breakdown = calculate_income_tax_with_rebate(
+                taxable_income=annual_taxable_after_sd,
+                tax_slab_set=tax_slab_set,
+            )
+            annual_tax_before_rebate = annual_tax_breakdown['tax_before_rebate']
+            annual_rebate_87a = annual_tax_breakdown['rebate_87a']
+            annual_tax_before_cess = annual_tax_breakdown['tax_after_rebate']
+            annual_cess = annual_tax_breakdown['cess']
+            annual_tax_total = annual_tax_breakdown['annual_tax']
             income_tax = (annual_tax_total / Decimal('12.00')).quantize(Decimal('0.01'))
 
             # ── Step 8: Final totals ─────────────────────────────────────────
             total_deductions = (employee_deductions + income_tax + lop_deduction).quantize(Decimal('0.01'))
-            net_pay = (gross_pay - total_deductions).quantize(Decimal('0.01'))
+            net_pay = ensure_non_negative_net_pay(gross_pay - total_deductions)
 
             PayrollRunItem.objects.create(
                 pay_run=pay_run,
@@ -923,8 +1207,11 @@ def calculate_pay_run(pay_run, *, actor=None):
                 net_pay=net_pay,
                 snapshot={
                     'assignment_id': str(assignment.id),
+                    'tax_regime': assignment.tax_regime,
+                    'tax_slab_set_id': str(tax_slab_set.id),
                     'readiness': _employee_payroll_snapshot(employee),
                     'lines': lines_snapshot,
+                    'arrears': str(arrears_amount),
                     # Period detail
                     'period_start': str(period_start),
                     'period_end': str(period_end),
@@ -945,7 +1232,10 @@ def calculate_pay_run(pay_run, *, actor=None):
                     # Tax working
                     'annual_taxable_gross': str(annual_taxable_gross),
                     'annual_standard_deduction': str(annual_standard_deduction),
+                    'annual_investment_deductions': str(annual_investment_deductions),
                     'annual_taxable_after_sd': str(annual_taxable_after_sd),
+                    'annual_tax_before_rebate': str(annual_tax_before_rebate),
+                    'annual_rebate_87a': str(annual_rebate_87a),
                     'annual_tax_before_cess': str(annual_tax_before_cess),
                     'annual_cess': str(annual_cess),
                     'annual_tax_total': str(annual_tax_total),
@@ -963,6 +1253,54 @@ def calculate_pay_run(pay_run, *, actor=None):
 
     log_audit_event(actor, 'payroll.run.calculated', organisation=pay_run.organisation, target=pay_run)
     return pay_run
+
+
+def generate_form16_data(pay_run) -> dict:
+    employees_data = []
+    fiscal_year = _fiscal_year_for_period(pay_run.period_year, pay_run.period_month)
+    for payslip in pay_run.payslips.select_related('employee__user').all():
+        snapshot = payslip.snapshot or {}
+        employee = payslip.employee
+        pan_identifier = (
+            employee.government_ids.filter(id_type=GovernmentIdType.PAN)
+            .order_by('-created_at')
+            .values_list('masked_identifier', flat=True)
+            .first()
+            or ''
+        )
+        tax_regime = snapshot.get('tax_regime', payslip.pay_run_item.snapshot.get('tax_regime', TaxRegime.NEW))
+        employees_data.append(
+            {
+                'employee_id': str(employee.id),
+                'employee_code': employee.employee_code or '',
+                'employee_name': employee.user.full_name,
+                'employee_pan': pan_identifier,
+                'part_a': {
+                    'employer_name': pay_run.organisation.name,
+                    'employer_pan': pay_run.organisation.pan_number or '',
+                    'certificate_period': f'{pay_run.period_month:02d}/{pay_run.period_year}',
+                    'tax_deducted': snapshot.get('income_tax', '0'),
+                    'tax_deposited': snapshot.get('income_tax', '0'),
+                },
+                'part_b': {
+                    'opting_out_of_section_115bac_1a': 'YES' if tax_regime == TaxRegime.OLD else 'NO',
+                    'gross_salary': snapshot.get('gross_pay', '0'),
+                    'standard_deduction': snapshot.get('annual_standard_deduction', str(INDIA_STANDARD_DEDUCTION)),
+                    'deductions_chapter_via': snapshot.get('annual_investment_deductions', '0'),
+                    'total_taxable_income': snapshot.get('annual_taxable_after_sd', '0'),
+                    'tax_on_total_income': snapshot.get('annual_tax_before_rebate', snapshot.get('annual_tax_before_cess', '0')),
+                    'rebate_87a': snapshot.get('annual_rebate_87a', '0'),
+                    'health_and_education_cess': snapshot.get('annual_cess', '0'),
+                    'tax_payable': snapshot.get('annual_tax_total', '0'),
+                },
+            }
+        )
+    return {
+        'pay_run_id': str(pay_run.id),
+        'organisation': pay_run.organisation.name,
+        'fiscal_year': fiscal_year,
+        'employees': employees_data,
+    }
 
 
 def submit_pay_run_for_approval(pay_run, *, requester_user, requester_employee=None):
@@ -1020,6 +1358,7 @@ def finalize_pay_run(pay_run, *, actor=None, skip_approval=False):
                 'income_tax': str(item.income_tax),
                 'total_deductions': str(item.total_deductions),
                 'net_pay': str(item.net_pay),
+                'arrears': calc.get('arrears', '0'),
                 'lines': calc.get('lines', []),
                 # Period / pro-ration detail
                 'paid_days': calc.get('paid_days', ''),
@@ -1049,6 +1388,11 @@ def finalize_pay_run(pay_run, *, actor=None, skip_approval=False):
                     'rendered_text': _build_rendered_payslip(snapshot),
                 },
             )
+            Arrears.objects.filter(
+                employee=item.employee,
+                pay_run=pay_run,
+                is_included_in_payslip=False,
+            ).update(is_included_in_payslip=True)
 
         pay_run.status = PayrollRunStatus.FINALIZED
         pay_run.finalized_at = timezone.now()

@@ -29,6 +29,7 @@ from apps.payroll.models import (
     PayrollRunStatus,
     PayrollTaxSlabSet,
     Payslip,
+    TaxRegime,
 )
 from apps.payroll.services import (
     assign_employee_compensation,
@@ -61,12 +62,13 @@ def _create_active_organisation(name='Acme Corp'):
     return organisation
 
 
-def _approve_assignment_for_employee(employee, template, *, requester_user, requester_employee, approver_user):
+def _approve_assignment_for_employee(employee, template, *, requester_user, requester_employee, approver_user, tax_regime=TaxRegime.NEW):
     assignment = assign_employee_compensation(
         employee,
         template,
         effective_from=date(2026, 4, 1),
         actor=requester_user,
+        tax_regime=tax_regime,
     )
     submit_compensation_assignment_for_approval(
         assignment,
@@ -353,3 +355,214 @@ class TestPayrollServices:
         with pytest.raises(ValueError) as finalize_exc:
             finalize_pay_run(pay_run, actor=requester_user, skip_approval=True)
         assert 'Resolve payroll exceptions before proceeding' in str(finalize_exc.value)
+
+    def test_pay_run_uses_old_regime_slab_set_for_old_regime_assignment(self):
+        organisation = _create_active_organisation('Old Regime Org')
+        requester_user = _create_workforce_user('old-regime-admin@test.com', role=UserRole.ORG_ADMIN, organisation=organisation)
+        employee_user = _create_workforce_user('old-regime-employee@test.com', organisation=organisation)
+        employee = Employee.objects.create(
+            organisation=organisation,
+            user=employee_user,
+            employee_code='EMP200',
+            designation='Analyst',
+            status=EmployeeStatus.ACTIVE,
+            date_of_joining=date(2026, 4, 1),
+        )
+        OrganisationMembership.objects.create(
+            user=requester_user,
+            organisation=organisation,
+            is_org_admin=True,
+            status=OrganisationMembershipStatus.ACTIVE,
+        )
+
+        create_tax_slab_set(
+            fiscal_year='2026-2027',
+            name='FY 2026 New Regime',
+            country_code='IN',
+            slabs=[
+                {'min_income': '0', 'max_income': '300000', 'rate_percent': '0'},
+                {'min_income': '300000', 'max_income': '700000', 'rate_percent': '5'},
+                {'min_income': '700000', 'max_income': '1000000', 'rate_percent': '10'},
+                {'min_income': '1000000', 'max_income': None, 'rate_percent': '20'},
+            ],
+            actor=requester_user,
+            organisation=organisation,
+            is_old_regime=False,
+        )
+        old_regime_set = create_tax_slab_set(
+            fiscal_year='2026-2027',
+            name='FY 2026 Old Regime',
+            country_code='IN',
+            slabs=[
+                {'min_income': '0', 'max_income': '250000', 'rate_percent': '0'},
+                {'min_income': '250000', 'max_income': '500000', 'rate_percent': '5'},
+                {'min_income': '500000', 'max_income': '1000000', 'rate_percent': '20'},
+                {'min_income': '1000000', 'max_income': None, 'rate_percent': '30'},
+            ],
+            actor=requester_user,
+            organisation=organisation,
+            is_old_regime=True,
+        )
+
+        template = create_compensation_template(
+            organisation,
+            name='Old Regime Template',
+            description='Tax regime routing test',
+            lines=[
+                {
+                    'component_code': 'BASIC',
+                    'name': 'Basic Pay',
+                    'component_type': PayrollComponentType.EARNING,
+                    'monthly_amount': '60000',
+                    'is_taxable': True,
+                }
+            ],
+            actor=requester_user,
+        )
+        assign_employee_compensation(
+            employee,
+            template,
+            effective_from=date(2026, 4, 1),
+            actor=requester_user,
+            auto_approve=True,
+            tax_regime=TaxRegime.OLD,
+        )
+
+        pay_run = create_payroll_run(
+            organisation,
+            period_year=2026,
+            period_month=4,
+            actor=requester_user,
+            requester_user=requester_user,
+        )
+        calculate_pay_run(pay_run, actor=requester_user)
+        item = pay_run.items.get(employee=employee)
+
+        assert item.snapshot['tax_regime'] == TaxRegime.OLD
+        assert item.snapshot['tax_slab_set_id'] == str(old_regime_set.id)
+
+    def test_get_employee_arrears_for_run_sums_only_unincluded_entries(self):
+        from apps.payroll.models import Arrears
+        from apps.payroll.services import get_employee_arrears_for_run
+
+        organisation = _create_active_organisation('Arrears Lookup Org')
+        requester_user = _create_workforce_user('arrears-lookup-admin@test.com', role=UserRole.ORG_ADMIN, organisation=organisation)
+        employee_user = _create_workforce_user('arrears-lookup-employee@test.com', organisation=organisation)
+        employee = Employee.objects.create(
+            organisation=organisation,
+            user=employee_user,
+            employee_code='EMP300',
+            designation='Analyst',
+            status=EmployeeStatus.ACTIVE,
+            date_of_joining=date(2026, 4, 1),
+        )
+        pay_run = create_payroll_run(
+            organisation,
+            period_year=2026,
+            period_month=4,
+            actor=requester_user,
+            requester_user=requester_user,
+        )
+        Arrears.objects.create(
+            employee=employee,
+            pay_run=pay_run,
+            for_period_year=2026,
+            for_period_month=3,
+            reason='Salary revision',
+            amount=Decimal('5000.00'),
+        )
+        Arrears.objects.create(
+            employee=employee,
+            pay_run=pay_run,
+            for_period_year=2026,
+            for_period_month=2,
+            reason='Prior payout',
+            amount=Decimal('2000.00'),
+            is_included_in_payslip=True,
+        )
+
+        result = get_employee_arrears_for_run(employee, pay_run)
+
+        assert result == Decimal('5000.00')
+
+    def test_pay_run_includes_arrears_and_marks_them_processed_on_finalize(self):
+        from apps.payroll.models import Arrears
+
+        organisation = _create_active_organisation('Arrears Payroll Org')
+        requester_user = _create_workforce_user('arrears-admin@test.com', role=UserRole.ORG_ADMIN, organisation=organisation)
+        employee_user = _create_workforce_user('arrears-employee@test.com', organisation=organisation)
+        employee = Employee.objects.create(
+            organisation=organisation,
+            user=employee_user,
+            employee_code='EMP301',
+            designation='Engineer',
+            status=EmployeeStatus.ACTIVE,
+            date_of_joining=date(2026, 4, 1),
+        )
+        OrganisationMembership.objects.create(
+            user=requester_user,
+            organisation=organisation,
+            is_org_admin=True,
+            status=OrganisationMembershipStatus.ACTIVE,
+        )
+        create_tax_slab_set(
+            fiscal_year='2026-2027',
+            name='FY 2026 Master',
+            country_code='IN',
+            slabs=[
+                {'min_income': '0', 'max_income': '300000', 'rate_percent': '0'},
+                {'min_income': '300000', 'max_income': '700000', 'rate_percent': '10'},
+                {'min_income': '700000', 'max_income': None, 'rate_percent': '20'},
+            ],
+            actor=requester_user,
+        )
+        ensure_org_payroll_setup(organisation, actor=requester_user)
+        template = create_compensation_template(
+            organisation,
+            name='Arrears Template',
+            description='Arrears integration test',
+            lines=[
+                {
+                    'component_code': 'BASIC',
+                    'name': 'Basic Pay',
+                    'component_type': PayrollComponentType.EARNING,
+                    'monthly_amount': '50000',
+                    'is_taxable': True,
+                }
+            ],
+            actor=requester_user,
+        )
+        assign_employee_compensation(
+            employee,
+            template,
+            effective_from=date(2026, 4, 1),
+            actor=requester_user,
+            auto_approve=True,
+        )
+        pay_run = create_payroll_run(
+            organisation,
+            period_year=2026,
+            period_month=4,
+            actor=requester_user,
+            requester_user=requester_user,
+        )
+        arrears = Arrears.objects.create(
+            employee=employee,
+            pay_run=pay_run,
+            for_period_year=2026,
+            for_period_month=3,
+            reason='Salary revision',
+            amount=Decimal('5000.00'),
+        )
+
+        calculate_pay_run(pay_run, actor=requester_user)
+        pay_run.refresh_from_db()
+        item = pay_run.items.get(employee=employee)
+
+        assert item.gross_pay == Decimal('55000.00')
+        assert Decimal(item.snapshot['arrears']) == Decimal('5000.00')
+
+        finalize_pay_run(pay_run, actor=requester_user, skip_approval=True)
+        arrears.refresh_from_db()
+
+        assert arrears.is_included_in_payslip is True

@@ -35,6 +35,8 @@ from .models import (
     OnDutyRequestStatus,
 )
 
+ZERO = Decimal('0.00')
+
 
 def _decimal(value):
     return Decimal(str(value)).quantize(Decimal('0.01'))
@@ -254,6 +256,21 @@ def _compute_credit_for_period(employee, leave_type, cycle_start, cycle_end):
     return _decimal(entitlement)
 
 
+def _calculate_period_credit_amount(leave_type):
+    annual = _decimal(leave_type.annual_entitlement)
+    if leave_type.credit_frequency == LeaveCreditFrequency.MANUAL:
+        return ZERO
+    if leave_type.credit_frequency == LeaveCreditFrequency.YEARLY:
+        return annual
+    if leave_type.credit_frequency == LeaveCreditFrequency.MONTHLY:
+        return _decimal(annual / Decimal('12'))
+    if leave_type.credit_frequency == LeaveCreditFrequency.QUARTERLY:
+        return _decimal(annual / Decimal('4'))
+    if leave_type.credit_frequency == LeaveCreditFrequency.HALF_YEARLY:
+        return _decimal(annual / Decimal('2'))
+    return ZERO
+
+
 def _leave_request_units(start_date, end_date, start_session, end_session):
     days = Decimal((end_date - start_date).days + 1)
     if start_date == end_date and start_session != DaySession.FULL_DAY and end_session != DaySession.FULL_DAY:
@@ -299,7 +316,17 @@ def get_or_create_leave_balance(employee, leave_type, as_of=None):
     ).aggregate(total=_Sum('total_units'))['total']
     used = _decimal(used_total or Decimal('0.00'))
     pending = _decimal(pending_total or Decimal('0.00'))
-    balance.credited_amount = _decimal(credited)
+    capped_credited = _decimal(credited)
+    if leave_type.max_balance is not None:
+        max_credit_total = _decimal(
+            leave_type.max_balance
+            - balance.opening_balance
+            - balance.carried_forward_amount
+            + used
+            + pending
+        )
+        capped_credited = max(ZERO, min(capped_credited, max_credit_total))
+    balance.credited_amount = capped_credited
     balance.used_amount = _decimal(used)
     balance.pending_amount = _decimal(pending)
     balance.save(update_fields=['credited_amount', 'used_amount', 'pending_amount', 'modified_at'])
@@ -310,6 +337,52 @@ def get_or_create_leave_balance(employee, leave_type, as_of=None):
             amount=balance.credited_amount,
             effective_date=cycle_start,
         )
+    return balance
+
+
+@transaction.atomic
+def credit_leave_for_period(*, employee, leave_type, cycle_start, cycle_end, credit_date=None, actor=None):
+    credit_amount = _calculate_period_credit_amount(leave_type)
+    if credit_amount <= ZERO:
+        return None
+
+    balance, _ = LeaveBalance.objects.get_or_create(
+        employee=employee,
+        leave_type=leave_type,
+        cycle_start=cycle_start,
+        cycle_end=cycle_end,
+        defaults={
+            'opening_balance': ZERO,
+            'credited_amount': ZERO,
+            'used_amount': ZERO,
+            'pending_amount': ZERO,
+            'carried_forward_amount': ZERO,
+        },
+    )
+
+    if leave_type.max_balance is not None:
+        current_total = (
+            balance.opening_balance
+            + balance.carried_forward_amount
+            + balance.credited_amount
+            - balance.used_amount
+            - balance.pending_amount
+        )
+        available_capacity = _decimal(leave_type.max_balance - current_total)
+        if available_capacity <= ZERO:
+            return balance
+        credit_amount = min(credit_amount, available_capacity)
+
+    balance.credited_amount = _decimal(balance.credited_amount + credit_amount)
+    balance.save(update_fields=['credited_amount', 'modified_at'])
+    LeaveBalanceLedgerEntry.objects.create(
+        leave_balance=balance,
+        entry_type=LeaveBalanceEntryType.CREDIT,
+        amount=credit_amount,
+        effective_date=credit_date or date.today(),
+        note=f'Periodic credit ({leave_type.credit_frequency})',
+        created_by=actor,
+    )
     return balance
 
 
@@ -333,6 +406,70 @@ def get_employee_leave_balances(employee):
             }
         )
     return balances
+
+
+@transaction.atomic
+def process_cycle_end_carry_forward(
+    *,
+    employee,
+    leave_type,
+    old_cycle_start,
+    old_cycle_end,
+    new_cycle_start,
+    new_cycle_end,
+    actor=None,
+):
+    old_balance = LeaveBalance.objects.filter(
+        employee=employee,
+        leave_type=leave_type,
+        cycle_start=old_cycle_start,
+        cycle_end=old_cycle_end,
+    ).first()
+    available_to_carry = ZERO
+    if old_balance is not None:
+        available_to_carry = max(
+            ZERO,
+            old_balance.opening_balance
+            + old_balance.carried_forward_amount
+            + old_balance.credited_amount
+            - old_balance.used_amount
+            - old_balance.pending_amount,
+        )
+
+    if leave_type.carry_forward_mode == CarryForwardMode.NONE:
+        carry_forward_amount = ZERO
+    elif leave_type.carry_forward_mode == CarryForwardMode.UNLIMITED:
+        carry_forward_amount = _decimal(available_to_carry)
+    else:
+        cap = _decimal(leave_type.carry_forward_cap or ZERO)
+        carry_forward_amount = min(_decimal(available_to_carry), cap)
+
+    new_balance, _ = LeaveBalance.objects.get_or_create(
+        employee=employee,
+        leave_type=leave_type,
+        cycle_start=new_cycle_start,
+        cycle_end=new_cycle_end,
+        defaults={
+            'opening_balance': ZERO,
+            'credited_amount': ZERO,
+            'used_amount': ZERO,
+            'pending_amount': ZERO,
+            'carried_forward_amount': ZERO,
+        },
+    )
+    new_balance.carried_forward_amount = carry_forward_amount
+    new_balance.save(update_fields=['carried_forward_amount', 'modified_at'])
+    LeaveBalanceLedgerEntry.objects.update_or_create(
+        leave_balance=new_balance,
+        entry_type=LeaveBalanceEntryType.CARRY_FORWARD,
+        effective_date=new_cycle_start,
+        defaults={
+            'amount': carry_forward_amount,
+            'note': f'Carry forward from {old_cycle_start.isoformat()} to {old_cycle_end.isoformat()}',
+            'created_by': actor,
+        },
+    )
+    return new_balance
 
 
 def create_leave_request(employee, leave_type, start_date, end_date, start_session, end_session, reason='', actor=None):

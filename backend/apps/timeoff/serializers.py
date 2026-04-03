@@ -262,6 +262,15 @@ class LeaveRequestCreateSerializer(serializers.Serializer):
     end_session = serializers.ChoiceField(choices=LeaveRequest._meta.get_field('end_session').choices, default='FULL_DAY')
     reason = serializers.CharField(required=False, allow_blank=True, default='')
 
+    def validate(self, data):
+        start_date = data.get('start_date')
+        end_date = data.get('end_date')
+        if start_date and end_date and end_date < start_date:
+            raise serializers.ValidationError(
+                {'end_date': 'End date must be on or after the start date.'}
+            )
+        return data
+
 
 class OnDutyPolicySerializer(serializers.ModelSerializer):
     class Meta:
