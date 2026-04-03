@@ -25,14 +25,14 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/147</span>
+                <span class='fraction'>0/145</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>0/123</span>
+                <span class='fraction'>0/121</span>
             </div>
         
             
@@ -46,7 +46,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/117</span>
+                <span class='fraction'>0/116</span>
             </div>
         
             
@@ -683,7 +683,15 @@
 <a name='L618'></a><a href='#L618'>618</a>
 <a name='L619'></a><a href='#L619'>619</a>
 <a name='L620'></a><a href='#L620'>620</a>
-<a name='L621'></a><a href='#L621'>621</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L621'></a><a href='#L621'>621</a>
+<a name='L622'></a><a href='#L622'>622</a>
+<a name='L623'></a><a href='#L623'>623</a>
+<a name='L624'></a><a href='#L624'>624</a>
+<a name='L625'></a><a href='#L625'>625</a>
+<a name='L626'></a><a href='#L626'>626</a>
+<a name='L627'></a><a href='#L627'>627</a>
+<a name='L628'></a><a href='#L628'>628</a>
+<a name='L629'></a><a href='#L629'>629</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -718,6 +726,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -916,7 +925,6 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -1218,6 +1226,14 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -1310,6 +1326,7 @@ import { toast } from 'sonner'
 &nbsp;
 import { EmptyState } from '@/components/ui/EmptyState'
 import { AppDatePicker } from '@/components/ui/AppDatePicker'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { AppSelect } from '@/components/ui/AppSelect'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
@@ -1537,7 +1554,6 @@ export function <span class="fstat-no" title="function not covered" >EmployeeDet
   }
 &nbsp;
   const handleDelete = <span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" >async () =&gt; {</span></span>
-<span class="cstat-no" title="statement not covered" >    if (!window.confirm('Delete this invited or pending employee record?')) <span class="cstat-no" title="statement not covered" >return</span></span>
 <span class="cstat-no" title="statement not covered" >    try {</span>
 <span class="cstat-no" title="statement not covered" >      await deleteEmployeeMutation.mutateAsync()</span>
 <span class="cstat-no" title="statement not covered" >      toast.success('Employee deleted.')</span>
@@ -1854,9 +1870,17 @@ export function <span class="fstat-no" title="function not covered" >EmployeeDet
               &lt;div className="surface-muted rounded-[24px] p-5"&gt;
                 &lt;p className="font-semibold text-[hsl(var(--foreground-strong))]"&gt;Delete employee record&lt;/p&gt;
                 &lt;p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]"&gt;Invited and pending employees can be deleted to release the consumed licence seat.&lt;/p&gt;
-                &lt;button onClick={handleDelete} className="btn-danger mt-4" disabled={deleteEmployeeMutation.isPending}&gt;
-                  Delete employee
-                &lt;/button&gt;
+                &lt;ConfirmDialog
+                  trigger={
+                    &lt;button type="button" className="btn-danger mt-4" disabled={deleteEmployeeMutation.isPending}&gt;
+                      Delete employee
+                    &lt;/button&gt;
+                  }
+                  title="Delete employee record?"
+                  description="This permanently removes the invited or pending employee record and cannot be undone."
+                  confirmLabel="Delete employee"
+                  onConfirm={handleDelete}
+                /&gt;
               &lt;/div&gt;
             ) : null}
           &lt;/div&gt;
@@ -1930,7 +1954,7 @@ export function <span class="fstat-no" title="function not covered" >EmployeeDet
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-04-03T09:36:33.120Z
+                at 2026-04-03T15:49:11.005Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

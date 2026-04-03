@@ -39,7 +39,7 @@
 **Files:**
 - Create: `backend/apps/performance/models.py`
 
-- [ ] **Step 1: Create app**
+- [x] **Step 1: Create app**
 
 ```bash
 cd backend && python manage.py startapp performance apps/performance
@@ -57,7 +57,7 @@ class PerformanceConfig(AppConfig):
 
 Add `'apps.performance'` to `LOCAL_APPS` in `backend/clarisal/settings/base.py`.
 
-- [ ] **Step 2: Write the model**
+- [x] **Step 2: Write the model**
 
 ```python
 # backend/apps/performance/models.py
@@ -188,7 +188,7 @@ class FeedbackRequest(AuditedBaseModel):
     message = models.TextField(blank=True)
 ```
 
-- [ ] **Step 3: Generate and apply migration**
+- [x] **Step 3: Generate and apply migration**
 
 ```bash
 cd backend && python manage.py makemigrations performance --name initial
@@ -210,7 +210,7 @@ git commit -m "feat(performance): create performance app with GoalCycle, Goal, A
 - Create: `backend/apps/performance/services.py`
 - Create: `backend/apps/performance/tests/test_services.py`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Create `backend/apps/performance/tests/__init__.py` and:
 
@@ -307,7 +307,7 @@ class TestProbationReviewSchedule(TestCase):
         self.assertEqual(cycle.review_type, ReviewType.MANAGER)
 ```
 
-- [ ] **Step 2: Run tests to verify failure**
+- [x] **Step 2: Run tests to verify failure**
 
 ```bash
 cd backend && python -m pytest apps/performance/tests/test_services.py -v
@@ -315,7 +315,7 @@ cd backend && python -m pytest apps/performance/tests/test_services.py -v
 
 Expected: FAIL.
 
-- [ ] **Step 3: Create `services.py`**
+- [x] **Step 3: Create `services.py`**
 
 ```python
 # backend/apps/performance/services.py
@@ -424,7 +424,7 @@ def schedule_probation_review(employee, actor) -> AppraisalCycle:
     return cycle
 ```
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 ```bash
 cd backend && python -m pytest apps/performance/tests/test_services.py -v
@@ -451,7 +451,7 @@ git commit -m "feat(performance): performance service layer — goal cycles, app
 - Create: `backend/apps/performance/self_urls.py`
 - Modify: `backend/clarisal/urls.py`
 
-- [ ] **Step 1: Create `serializers.py`**
+- [x] **Step 1: Create `serializers.py`**
 
 ```python
 # backend/apps/performance/serializers.py
@@ -497,7 +497,7 @@ class FeedbackRequestSerializer(serializers.ModelSerializer):
         read_only_fields = ['id']
 ```
 
-- [ ] **Step 2: Create `org_views.py`**
+- [x] **Step 2: Create `org_views.py`**
 
 ```python
 # backend/apps/performance/org_views.py
@@ -559,7 +559,7 @@ class OrgAppraisalCycleListCreateView(APIView):
         return Response(AppraisalCycleSerializer(cycle).data, status=status.HTTP_201_CREATED)
 ```
 
-- [ ] **Step 3: Create `self_views.py`**
+- [x] **Step 3: Create `self_views.py`**
 
 ```python
 # backend/apps/performance/self_views.py
@@ -622,7 +622,7 @@ class MyAppraisalReviewSubmitView(APIView):
         return Response(AppraisalReviewSerializer(review).data)
 ```
 
-- [ ] **Step 4: Create URL files**
+- [x] **Step 4: Create URL files**
 
 ```python
 # backend/apps/performance/org_urls.py
@@ -651,7 +651,7 @@ urlpatterns = [
 ]
 ```
 
-- [ ] **Step 5: Register in `clarisal/urls.py`**
+- [x] **Step 5: Register in `clarisal/urls.py`**
 
 Add to both legacy and versioned URL includes:
 ```python
@@ -679,7 +679,7 @@ git commit -m "feat(performance): REST API endpoints for goal cycles, appraisal 
 - Create: `backend/apps/performance/tasks.py`
 - Modify: `backend/clarisal/settings/base.py`
 
-- [ ] **Step 1: Create task**
+- [x] **Step 1: Create task**
 
 ```python
 # backend/apps/performance/tasks.py
@@ -723,7 +723,7 @@ def auto_schedule_probation_reviews():
     return {'status': 'OK', 'scheduled': scheduled}
 ```
 
-- [ ] **Step 2: Add to beat schedule**
+- [x] **Step 2: Add to beat schedule**
 
 In `backend/clarisal/settings/base.py`, add to `CELERY_BEAT_SCHEDULE`:
 ```python
@@ -750,7 +750,7 @@ git commit -m "feat(performance): daily Celery task to auto-schedule probation r
 - Create: `frontend/src/pages/org/AppraisalCyclesPage.tsx`
 - Create: `frontend/src/pages/employee/PerformancePage.tsx`
 
-- [ ] **Step 1: Create API file**
+- [x] **Step 1: Create API file**
 
 ```typescript
 // frontend/src/lib/api/performance.ts
@@ -796,7 +796,7 @@ export const performanceApi = {
 };
 ```
 
-- [ ] **Step 2: Create `GoalCyclesPage.tsx`**
+- [x] **Step 2: Create `GoalCyclesPage.tsx`**
 
 ```tsx
 // frontend/src/pages/org/GoalCyclesPage.tsx
@@ -853,7 +853,7 @@ export default function GoalCyclesPage() {
 }
 ```
 
-- [ ] **Step 3: Create `PerformancePage.tsx` (employee)**
+- [x] **Step 3: Create `PerformancePage.tsx` (employee)**
 
 ```tsx
 // frontend/src/pages/employee/PerformancePage.tsx
@@ -925,7 +925,7 @@ export default function PerformancePage() {
 }
 ```
 
-- [ ] **Step 4: Add routes and nav items**
+- [x] **Step 4: Add routes and nav items**
 
 In `frontend/src/routes/index.tsx`, add:
 ```tsx

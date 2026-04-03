@@ -23,30 +23,30 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">57.14% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/7</span>
+                <span class='fraction'>4/7</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">50% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>0/2</span>
+                <span class='fraction'>1/2</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">57.14% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>0/7</span>
+                <span class='fraction'>4/7</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">57.14% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/7</span>
+                <span class='fraction'>4/7</span>
             </div>
         
             
@@ -61,7 +61,7 @@
             </div>
         </template>
     </div>
-    <div class='status-line low'></div>
+    <div class='status-line medium'></div>
     <pre><table class="coverage">
 <tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
 <a name='L2'></a><a href='#L2'>2</a>
@@ -135,7 +135,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">68x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -162,7 +162,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">5x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -178,10 +178,10 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">9x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">43x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -202,8 +202,8 @@
 <span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">import type { HTMLAttributes } from 'react'
 import { cn } from '@/lib/utils'
 &nbsp;
-export function <span class="fstat-no" title="function not covered" >Skeleton({</span> className, ...props }: HTMLAttributes&lt;HTMLDivElement&gt;) {
-<span class="cstat-no" title="statement not covered" >  return (</span>
+export function Skeleton({ className, ...props }: HTMLAttributes&lt;HTMLDivElement&gt;) {
+  return (
     &lt;div
       className={cn(
         'rounded-[22px] bg-[linear-gradient(110deg,var(--skeleton-base),var(--skeleton-highlight),var(--skeleton-base))] bg-[length:200%_100%] [animation:shimmer_1.7s_linear_infinite]',
@@ -229,8 +229,8 @@ export function <span class="fstat-no" title="function not covered" >SkeletonMet
   )
 }
 &nbsp;
-export function <span class="fstat-no" title="function not covered" >SkeletonPageHeader() {</span>
-<span class="cstat-no" title="statement not covered" >  return (</span>
+export function SkeletonPageHeader() {
+  return (
     &lt;div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between"&gt;
       &lt;div className="space-y-3"&gt;
         &lt;Skeleton className="h-3 w-24 rounded-full" /&gt;
@@ -245,11 +245,11 @@ export function <span class="fstat-no" title="function not covered" >SkeletonPag
   )
 }
 &nbsp;
-export function <span class="fstat-no" title="function not covered" >SkeletonTable({</span> rows = <span class="branch-0 cbranch-no" title="branch not covered" >6 }: { rows?: number }) {</span>
-<span class="cstat-no" title="statement not covered" >  return (</span>
+export function SkeletonTable({ rows = 6 }: { rows?: number }) {
+  return (
     &lt;div className="space-y-3"&gt;
-      {Array.from({ length: rows }).<span class="fstat-no" title="function not covered" >map((_</span>, index) =&gt; (
-<span class="cstat-no" title="statement not covered" >        &lt;Skeleton key={index} className="h-16" /&gt;</span>
+      {Array.from({ length: rows }).map((_, index) =&gt; (
+        &lt;Skeleton key={index} className="h-16" /&gt;
       ))}
     &lt;/div&gt;
   )
@@ -274,7 +274,7 @@ export function <span class="fstat-no" title="function not covered" >SkeletonFor
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-04-03T09:36:33.120Z
+                at 2026-04-03T15:49:11.005Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

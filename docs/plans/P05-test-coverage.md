@@ -39,7 +39,7 @@
 
 These tests call service-layer helpers directly — they do not go through views, so no HTTP client or auth setup needed.
 
-- [ ] **Step 1: Create test factory if not exists**
+- [x] **Step 1: Create test factory if not exists**
 
 Check `backend/apps/payroll/tests/factories.py`. If it does not exist, create it:
 
@@ -89,7 +89,7 @@ class PayrollRunFactory(factory.django.DjangoModelFactory):
     year = 2024
 ```
 
-- [ ] **Step 2: Write `test_statutory_calculations.py`**
+- [x] **Step 2: Write `test_statutory_calculations.py`**
 
 ```python
 """
@@ -310,7 +310,7 @@ def test_negative_net_pay_guarded_to_zero():
     assert ensure_non_negative_net_pay(Decimal('500')) == Decimal('500')
 ```
 
-- [ ] **Step 3: Run tests**
+- [x] **Step 3: Run tests**
 
 ```bash
 cd backend && python -m pytest apps/payroll/tests/test_statutory_calculations.py -v
@@ -318,7 +318,7 @@ cd backend && python -m pytest apps/payroll/tests/test_statutory_calculations.py
 
 Expected: All 18 tests PASS (after P02 is implemented).
 
-- [ ] **Step 4: Check coverage**
+- [-] **Step 4: Check coverage**
 
 ```bash
 cd backend && python -m pytest apps/payroll/services.py --cov=apps/payroll/services --cov-report=term-missing
@@ -341,13 +341,13 @@ git commit -m "test(payroll): 18 statutory calculation unit tests with exact rup
 - Create: `backend/apps/timeoff/tests/__init__.py`
 - Create: `backend/apps/timeoff/tests/test_services.py`
 
-- [ ] **Step 1: Create `__init__.py`**
+- [x] **Step 1: Create `__init__.py`**
 
 ```bash
 touch backend/apps/timeoff/tests/__init__.py
 ```
 
-- [ ] **Step 2: Create factory if not exists**
+- [x] **Step 2: Create factory if not exists**
 
 Create `backend/apps/timeoff/tests/factories.py`:
 
@@ -385,7 +385,7 @@ class LeaveLedgerEntryFactory(factory.django.DjangoModelFactory):
     note = ''
 ```
 
-- [ ] **Step 3: Write `test_services.py`**
+- [x] **Step 3: Write `test_services.py`**
 
 ```python
 """
@@ -519,7 +519,7 @@ class TestLeaveBalanceValidation(TestCase):
             validate_leave_balance(employee, leave_type, days_requested=Decimal('2.00'))
 ```
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 ```bash
 cd backend && python -m pytest apps/timeoff/tests/test_services.py -v
@@ -1126,13 +1126,13 @@ git commit -m "test(frontend): unit tests for PayrollPage, LeavePage, Attendance
 
 ## Task 9 — Coverage Check and Gap Fill
 
-- [ ] **Step 1: Generate backend coverage report**
+- [x] **Step 1: Generate backend coverage report**
 
 ```bash
 cd backend && python -m pytest --cov=apps/payroll/services --cov=apps/timeoff/services --cov=apps/attendance/services --cov-report=term-missing --cov-fail-under=80
 ```
 
-- [ ] **Step 2: Generate frontend coverage report**
+- [x] **Step 2: Generate frontend coverage report**
 
 ```bash
 cd frontend && npx vitest run --coverage
@@ -1140,7 +1140,11 @@ cd frontend && npx vitest run --coverage
 
 Expected: Coverage report shows all new service functions covered.
 
-- [ ] **Step 3: Fix any gaps surfaced by coverage report**
+- [-] **Step 3: Fix any gaps surfaced by coverage report**
+
+Current residual note:
+The frontend coverage run now completes, but backend module-wide coverage remains far below the original plan target because `apps/payroll/services.py`, `apps/timeoff/services.py`, and `apps/attendance/services.py` have grown into large orchestration modules. The latest backend gate measured `17.18%` total coverage across those three files, while the frontend coverage report measured `12.65%` overall statements.
+See `docs/P05_SERVICE_COVERAGE_DECOMPOSITION_20260403.md` for the current cluster breakdown and execution order.
 
 Add additional tests for any uncovered lines identified in the reports. Follow TDD — write test, see fail, implement or confirm coverage.
 

@@ -45,7 +45,7 @@
 
 `OrgPayrollRunCalculateView.post()` currently calls `calculate_pay_run()` synchronously inside the HTTP request. For runs with 500+ employees this can time out. The fix: dispatch a Celery task immediately and return HTTP 202.
 
-- [-] **Step 1: Write the failing test for async dispatch**
+- [x] **Step 1: Write the failing test for async dispatch**
 
 Create `backend/apps/payroll/tests/test_tasks.py`:
 
@@ -208,7 +208,7 @@ git commit -m "feat(payroll): async calculation via Celery task, return 202 + po
 
 All current routes use `/api/auth/`, `/api/org/`, `/api/me/`, `/api/ct/`. Adding a `/v1/` layer enables future breaking changes without disrupting existing clients. Strategy: add versioned routes alongside legacy routes (both work) so frontend migration is not required immediately.
 
-- [-] **Step 1: Add versioned URL includes to `backend/clarisal/urls.py`**
+- [x] **Step 1: Add versioned URL includes to `backend/clarisal/urls.py`**
 
 Open the file. After the existing `urlpatterns` list, append:
 

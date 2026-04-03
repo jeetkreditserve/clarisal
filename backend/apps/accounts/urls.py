@@ -1,4 +1,7 @@
 from django.urls import path
+from rest_framework_simplejwt.views import TokenRefreshView
+
+from .jwt_views import EmailTokenObtainPairView
 from .views import (
     CsrfTokenView,
     WorkforceLoginView,
@@ -16,6 +19,8 @@ from apps.invitations.views import ValidateInviteTokenView, AcceptInviteView
 urlpatterns = [
     path('csrf/', CsrfTokenView.as_view(), name='auth-csrf'),
     path('login/', WorkforceLoginView.as_view(), name='auth-login'),
+    path('token/', EmailTokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('control-tower/login/', ControlTowerLoginView.as_view(), name='control-tower-login'),
     path('logout/', LogoutView.as_view(), name='auth-logout'),
     path('me/', MeView.as_view(), name='auth-me'),

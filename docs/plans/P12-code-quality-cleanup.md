@@ -36,7 +36,7 @@
 
 `djangorestframework-simplejwt` is already in `requirements.txt` but not configured. Adding it alongside `SessionAuthentication` allows API clients (mobile apps, external integrations) to authenticate via JWT tokens without breaking the existing session-based frontend.
 
-- [ ] **Step 1: Write a failing test**
+- [x] **Step 1: Write a failing test**
 
 Create `backend/apps/accounts/tests/test_jwt.py`:
 
@@ -95,7 +95,7 @@ cd backend && python -m pytest apps/accounts/tests/test_jwt.py -v
 
 Expected: FAIL — URL not found.
 
-- [ ] **Step 3: Update DRF settings in `backend/clarisal/settings/base.py`**
+- [x] **Step 3: Update DRF settings in `backend/clarisal/settings/base.py`**
 
 Find the `REST_FRAMEWORK` dict. Update `DEFAULT_AUTHENTICATION_CLASSES`:
 
@@ -129,7 +129,7 @@ SIMPLE_JWT = {
 
 Add `'rest_framework_simplejwt.token_blacklist'` to `INSTALLED_APPS` (under `THIRD_PARTY_APPS`).
 
-- [ ] **Step 4: Create a custom token serializer that accepts email**
+- [x] **Step 4: Create a custom token serializer that accepts email**
 
 Create `backend/apps/accounts/jwt_serializers.py`:
 
@@ -158,7 +158,7 @@ class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
         return super().validate(attrs)
 ```
 
-- [ ] **Step 5: Add JWT URL endpoints to `accounts/urls.py`**
+- [x] **Step 5: Add JWT URL endpoints to `accounts/urls.py`**
 
 Open `backend/apps/accounts/urls.py`. Add:
 
@@ -182,13 +182,13 @@ class EmailTokenObtainPairView(TokenObtainPairView):
     serializer_class = EmailTokenObtainPairSerializer
 ```
 
-- [ ] **Step 6: Generate and apply token blacklist migration**
+- [x] **Step 6: Generate and apply token blacklist migration**
 
 ```bash
 cd backend && python manage.py makemigrations token_blacklist --check || python manage.py migrate
 ```
 
-- [ ] **Step 7: Run tests**
+- [x] **Step 7: Run tests**
 
 ```bash
 cd backend && python -m pytest apps/accounts/tests/test_jwt.py -v
@@ -218,7 +218,7 @@ git commit -m "feat(auth): add JWT authentication alongside session auth, email-
 
 The `leave.spec.ts` test file contains `test.skip()` calls due to date picker interaction being unimplemented. The date picker is likely an `<input type="date">` or a custom `AppDatePicker` using Radix.
 
-- [ ] **Step 1: Read the current test file**
+- [x] **Step 1: Read the current test file**
 
 ```bash
 cat frontend/e2e/employee/leave.spec.ts
@@ -226,7 +226,7 @@ cat frontend/e2e/employee/leave.spec.ts
 
 Note all `test.skip` occurrences and what they were trying to test.
 
-- [ ] **Step 2: Identify the date picker component in LeavePage**
+- [x] **Step 2: Identify the date picker component in LeavePage**
 
 ```bash
 grep -n "DatePicker\|type=\"date\"\|date-input" frontend/src/pages/employee/LeavePage.tsx | head -10
@@ -234,7 +234,7 @@ grep -n "DatePicker\|type=\"date\"\|date-input" frontend/src/pages/employee/Leav
 
 Note the component name and how dates are set (native input vs. custom picker).
 
-- [ ] **Step 3: Implement the date picker interaction**
+- [x] **Step 3: Implement the date picker interaction**
 
 Replace each `test.skip(...)` with a working `test(...)`. For a native `<input type="date">`:
 
@@ -269,7 +269,7 @@ grep -n "data-testid\|testId" frontend/src/components/ui/AppDatePicker.tsx
 
 Use the appropriate Playwright selector.
 
-- [ ] **Step 4: Run the previously-skipped tests**
+- [x] **Step 4: Run the previously-skipped tests**
 
 ```bash
 cd frontend && npx playwright test e2e/employee/leave.spec.ts --headed
@@ -300,7 +300,7 @@ pip install pre-commit
 cd backend && pip install pre-commit
 ```
 
-- [ ] **Step 2: Create `.pre-commit-config.yaml`**
+- [x] **Step 2: Create `.pre-commit-config.yaml`**
 
 Create at the repository root:
 
@@ -345,7 +345,7 @@ repos:
         exclude: '^(backend/apps/.*/migrations/|.*\.lock$|\.env\.example$)'
 ```
 
-- [ ] **Step 3: Create `ruff` configuration**
+- [x] **Step 3: Create `ruff` configuration**
 
 Create `backend/pyproject.toml` if it does not exist (or add to existing):
 
@@ -422,7 +422,7 @@ git commit -m "chore: add pre-commit hooks for ruff linting, bandit security sca
 - Modify/Create: `backend/pytest.ini`
 - Modify/Create: `backend/.coveragerc`
 
-- [ ] **Step 1: Update `backend/pytest.ini`**
+- [x] **Step 1: Update `backend/pytest.ini`**
 
 If `pytest.ini` exists, open and update. If not, create:
 
@@ -440,7 +440,7 @@ addopts =
     --cov-fail-under=80
 ```
 
-- [ ] **Step 2: Create `.coveragerc`**
+- [x] **Step 2: Create `.coveragerc`**
 
 ```ini
 # backend/.coveragerc
@@ -466,7 +466,7 @@ exclude_lines =
 directory = htmlcov
 ```
 
-- [ ] **Step 3: Add `pytest-cov` to dev requirements**
+- [x] **Step 3: Add `pytest-cov` to dev requirements**
 
 Create `backend/requirements-dev.txt` if it does not exist:
 
@@ -484,7 +484,7 @@ Install:
 cd backend && pip install -r requirements-dev.txt
 ```
 
-- [ ] **Step 4: Run coverage and verify it passes 80%**
+- [-] **Step 4: Run coverage and verify it passes 80%**
 
 ```bash
 cd backend && python -m pytest --cov=apps --cov-report=term-missing --cov-fail-under=80
@@ -507,7 +507,7 @@ git commit -m "chore(test): configure coverage enforcement ≥80% via pytest-cov
 - Create: `backend/mypy.ini`
 - Modify: `backend/requirements-dev.txt`
 
-- [ ] **Step 1: Add mypy to dev requirements**
+- [x] **Step 1: Add mypy to dev requirements**
 
 Add to `backend/requirements-dev.txt`:
 ```
@@ -521,7 +521,7 @@ Install:
 cd backend && pip install mypy django-stubs djangorestframework-stubs
 ```
 
-- [ ] **Step 2: Create `backend/mypy.ini`**
+- [x] **Step 2: Create `backend/mypy.ini`**
 
 ```ini
 [mypy]
@@ -541,7 +541,7 @@ exclude = migrations
 ignore_errors = True
 ```
 
-- [ ] **Step 3: Run mypy and note errors**
+- [-] **Step 3: Run mypy and note errors**
 
 ```bash
 cd backend && python -m mypy apps/ --ignore-missing-imports 2>&1 | head -50
@@ -565,7 +565,7 @@ git commit -m "chore: add mypy configuration for Django type checking"
 **Files:**
 - Create: `Makefile`
 
-- [ ] **Step 1: Create `Makefile` at repo root**
+- [x] **Step 1: Create `Makefile` at repo root**
 
 ```makefile
 # Makefile — Clarisal HRMS developer targets
@@ -647,7 +647,7 @@ git commit -m "chore: add Makefile with test, coverage, lint, typecheck, e2e tar
 **Files:**
 - Create: `CONTRIBUTING.md`
 
-- [ ] **Step 1: Create `CONTRIBUTING.md`**
+- [x] **Step 1: Create `CONTRIBUTING.md`**
 
 ```markdown
 # Contributing to Clarisal HRMS

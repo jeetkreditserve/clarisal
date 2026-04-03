@@ -25,14 +25,14 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/112</span>
+                <span class='fraction'>0/110</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>0/122</span>
+                <span class='fraction'>0/120</span>
             </div>
         
             
@@ -46,7 +46,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/87</span>
+                <span class='fraction'>0/86</span>
             </div>
         
             
@@ -610,7 +610,15 @@
 <a name='L545'></a><a href='#L545'>545</a>
 <a name='L546'></a><a href='#L546'>546</a>
 <a name='L547'></a><a href='#L547'>547</a>
-<a name='L548'></a><a href='#L548'>548</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L548'></a><a href='#L548'>548</a>
+<a name='L549'></a><a href='#L549'>549</a>
+<a name='L550'></a><a href='#L550'>550</a>
+<a name='L551'></a><a href='#L551'>551</a>
+<a name='L552'></a><a href='#L552'>552</a>
+<a name='L553'></a><a href='#L553'>553</a>
+<a name='L554'></a><a href='#L554'>554</a>
+<a name='L555'></a><a href='#L555'>555</a>
+<a name='L556'></a><a href='#L556'>556</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -663,6 +671,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -776,7 +785,6 @@
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -1076,8 +1084,16 @@
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -1162,6 +1178,7 @@ import { CreditCard, IdCard } from 'lucide-react'
 import { toast } from 'sonner'
 import { AppCheckbox } from '@/components/ui/AppCheckbox'
 import { AppDatePicker } from '@/components/ui/AppDatePicker'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { AppSelect } from '@/components/ui/AppSelect'
 import {
   useBankAccounts,
@@ -1320,7 +1337,6 @@ export function <span class="fstat-no" title="function not covered" >ProfilePage
   }
 &nbsp;
   const handleDeleteBank = <span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" >async (b</span>ankId: string) =&gt; {</span>
-<span class="cstat-no" title="statement not covered" >    if (!window.confirm('Remove this bank account?')) <span class="cstat-no" title="statement not covered" >return</span></span>
 <span class="cstat-no" title="statement not covered" >    try {</span>
 <span class="cstat-no" title="statement not covered" >      await deleteBankAccountMutation.mutateAsync(bankId)</span>
 <span class="cstat-no" title="statement not covered" >      toast.success('Bank account removed.')</span>
@@ -1623,9 +1639,17 @@ export function <span class="fstat-no" title="function not covered" >ProfilePage
                         &lt;button type="button" className="btn-secondary" <span class="fstat-no" title="function not covered" >onClick={() =&gt; <span class="cstat-no" title="statement not covered" >h</span>andleEditBank(account.id)}</span>&gt;
                           Edit
                         &lt;/button&gt;
-                        &lt;button type="button" className="btn-danger" <span class="fstat-no" title="function not covered" >onClick={() =&gt; <span class="cstat-no" title="statement not covered" >h</span>andleDeleteBank(account.id)}</span>&gt;
-                          Remove
-                        &lt;/button&gt;
+                        &lt;ConfirmDialog
+                          trigger={
+                            &lt;button type="button" className="btn-danger"&gt;
+                              Remove
+                            &lt;/button&gt;
+                          }
+                          title="Remove bank account?"
+                          description="This bank account will be removed from your profile and payroll setup."
+                          confirmLabel="Remove"
+<span class="fstat-no" title="function not covered" >                          onConfirm={() =&gt; <span class="cstat-no" title="statement not covered" >h</span>andleDeleteBank(account.id)}</span>
+                        /&gt;
                       &lt;/div&gt;
                     &lt;/div&gt;
                     &lt;p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]"&gt;
@@ -1711,7 +1735,7 @@ export function <span class="fstat-no" title="function not covered" >ProfilePage
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-04-03T09:36:33.120Z
+                at 2026-04-03T15:49:11.005Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

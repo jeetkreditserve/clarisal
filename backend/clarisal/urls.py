@@ -29,6 +29,8 @@ urlpatterns = [
         path('org/', include('apps.payroll.org_urls')),
         path('org/', include('apps.reports.urls')),
         path('org/', include('apps.biometrics.org_urls')),
+        path('org/', include('apps.performance.org_urls')),
+        path('org/', include('apps.recruitment.urls')),
         path('biometric/', include('apps.biometrics.adms_urls')),
         path('me/', include('apps.employees.self_urls')),
         path('me/', include('apps.documents.self_urls')),
@@ -38,6 +40,7 @@ urlpatterns = [
         path('me/', include('apps.communications.self_urls')),
         path('me/', include('apps.payroll.self_urls')),
         path('me/', include('apps.notifications.urls')),
+        path('me/', include('apps.performance.self_urls')),
     ])),
     path('api/v1/', include([
         path('auth/', include('apps.accounts.urls')),
@@ -58,6 +61,8 @@ urlpatterns = [
         path('org/', include('apps.payroll.org_urls')),
         path('org/', include('apps.reports.urls')),
         path('org/', include('apps.biometrics.org_urls')),
+        path('org/', include('apps.performance.org_urls')),
+        path('org/', include('apps.recruitment.urls')),
         path('biometric/', include('apps.biometrics.adms_urls')),
         path('me/', include('apps.employees.self_urls')),
         path('me/', include('apps.documents.self_urls')),
@@ -67,5 +72,6 @@ urlpatterns = [
         path('me/', include('apps.communications.self_urls')),
         path('me/', include('apps.payroll.self_urls')),
         path('me/', include('apps.notifications.urls')),
+        path('me/', include('apps.performance.self_urls')),
     ])),
 ]

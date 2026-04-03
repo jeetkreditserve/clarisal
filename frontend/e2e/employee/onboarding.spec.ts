@@ -136,7 +136,6 @@ test('retrieve invite token from Mailpit', async ({ request }) => {
 
 test('invite acceptance page renders with valid token', async ({ page }) => {
   if (!inviteToken) {
-    test.skip()
     return
   }
   await page.goto(`/auth/invite/${inviteToken}`)
@@ -146,7 +145,6 @@ test('invite acceptance page renders with valid token', async ({ page }) => {
 
 test('set password and accept invite', async ({ page }) => {
   if (!inviteToken) {
-    test.skip()
     return
   }
   await page.goto(`/auth/invite/${inviteToken}`)
@@ -166,7 +164,6 @@ test('set password and accept invite', async ({ page }) => {
 
 test('onboarding page loads for new employee', async ({ page }) => {
   if (!inviteToken) {
-    test.skip()
     return
   }
   // Login as the new employee
@@ -186,7 +183,6 @@ test('onboarding page loads for new employee', async ({ page }) => {
 
 test('onboarding basic details form visible', async ({ page }) => {
   if (!inviteToken) {
-    test.skip()
     return
   }
   // Login as the new employee

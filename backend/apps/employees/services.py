@@ -352,6 +352,26 @@ def invite_employee(
         return employee, invitation
 
 
+def create_employee_from_offer(offer, actor=None):
+    posting = offer.application.job_posting
+    candidate = offer.application.candidate
+
+    employee, _invitation = invite_employee(
+        posting.organisation,
+        company_email=candidate.email,
+        first_name=candidate.first_name,
+        last_name=candidate.last_name,
+        designation=posting.title,
+        employment_type='FULL_TIME',
+        date_of_joining=offer.joining_date,
+        department_id=str(posting.department_id) if posting.department_id else None,
+        office_location_id=str(posting.location_id) if posting.location_id else None,
+        required_document_type_ids=None,
+        invited_by=actor,
+    )
+    return employee
+
+
 def update_employee(employee, actor=None, **fields):
     payload = dict(fields)
     has_leave_approval_workflow = 'leave_approval_workflow_id' in fields

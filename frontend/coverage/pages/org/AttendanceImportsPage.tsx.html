@@ -25,28 +25,28 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/225</span>
+                <span class='fraction'>0/213</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>0/169</span>
+                <span class='fraction'>0/154</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>0/104</span>
+                <span class='fraction'>0/102</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/182</span>
+                <span class='fraction'>0/175</span>
             </div>
         
             
@@ -800,19 +800,8 @@
 <a name='L735'></a><a href='#L735'>735</a>
 <a name='L736'></a><a href='#L736'>736</a>
 <a name='L737'></a><a href='#L737'>737</a>
-<a name='L738'></a><a href='#L738'>738</a>
-<a name='L739'></a><a href='#L739'>739</a>
-<a name='L740'></a><a href='#L740'>740</a>
-<a name='L741'></a><a href='#L741'>741</a>
-<a name='L742'></a><a href='#L742'>742</a>
-<a name='L743'></a><a href='#L743'>743</a>
-<a name='L744'></a><a href='#L744'>744</a>
-<a name='L745'></a><a href='#L745'>745</a>
-<a name='L746'></a><a href='#L746'>746</a>
-<a name='L747'></a><a href='#L747'>747</a>
-<a name='L748'></a><a href='#L748'>748</a>
-<a name='L749'></a><a href='#L749'>749</a>
-<a name='L750'></a><a href='#L750'>750</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L738'></a><a href='#L738'>738</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -854,19 +843,6 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -1598,6 +1574,7 @@ import {
 } from '@/hooks/useOrgAdmin'
 import { getErrorMessage } from '@/lib/errors'
 import { formatDateTime } from '@/lib/format'
+import { getAttendanceDayStatusTone, getAttendanceImportTone } from '@/lib/status'
 import type { AttendanceDayRecord, AttendancePolicy } from '@/types/hr'
 &nbsp;
 function <span class="fstat-no" title="function not covered" >triggerDownload(b</span>lob: Blob, filename: string) {
@@ -1607,19 +1584,6 @@ function <span class="fstat-no" title="function not covered" >triggerDownload(b<
 <span class="cstat-no" title="statement not covered" >  link.download = filename</span>
 <span class="cstat-no" title="statement not covered" >  link.click()</span>
 <span class="cstat-no" title="statement not covered" >  URL.revokeObjectURL(url)</span>
-}
-&nbsp;
-function <span class="fstat-no" title="function not covered" >getImportTone(s</span>tatus: string) {
-<span class="cstat-no" title="statement not covered" >  if (status === 'POSTED') <span class="cstat-no" title="statement not covered" >return 'success'</span></span>
-<span class="cstat-no" title="statement not covered" >  if (status === 'READY_FOR_REVIEW') <span class="cstat-no" title="statement not covered" >return 'info'</span></span>
-<span class="cstat-no" title="statement not covered" >  return 'danger'</span>
-}
-&nbsp;
-function <span class="fstat-no" title="function not covered" >getAttendanceTone(s</span>tatus: string) {
-<span class="cstat-no" title="statement not covered" >  if (status === 'PRESENT' || status === 'ON_DUTY') <span class="cstat-no" title="statement not covered" >return 'success'</span></span>
-<span class="cstat-no" title="statement not covered" >  if (status === 'HALF_DAY' || status === 'HOLIDAY' || status === 'WEEK_OFF') <span class="cstat-no" title="statement not covered" >return 'info'</span></span>
-<span class="cstat-no" title="statement not covered" >  if (status === 'INCOMPLETE') <span class="cstat-no" title="statement not covered" >return 'warning'</span></span>
-<span class="cstat-no" title="statement not covered" >  return 'danger'</span>
 }
 &nbsp;
 function <span class="fstat-no" title="function not covered" >getRegularizationTone(s</span>tatus: string) {
@@ -2083,7 +2047,7 @@ export function <span class="fstat-no" title="function not covered" >AttendanceI
                           {day.employee_code || 'Unassigned code'} • Worked {day.worked_minutes} mins • OT {day.overtime_minutes} mins
                         &lt;/p&gt;
                       &lt;/div&gt;
-                      &lt;StatusBadge tone={getAttendanceTone(day.status)}&gt;{day.status}&lt;/StatusBadge&gt;
+                      &lt;StatusBadge tone={getAttendanceDayStatusTone(day.status)}&gt;{day.status}&lt;/StatusBadge&gt;
                     &lt;/div&gt;
                     &lt;div className="mt-4 grid gap-3 md:grid-cols-3"&gt;
                       &lt;input
@@ -2234,7 +2198,7 @@ export function <span class="fstat-no" title="function not covered" >AttendanceI
                       &lt;/p&gt;
                     &lt;/div&gt;
                     &lt;div className="flex items-center gap-3"&gt;
-                      &lt;StatusBadge tone={getAttendanceTone(day.status)}&gt;{day.status}&lt;/StatusBadge&gt;
+                      &lt;StatusBadge tone={getAttendanceDayStatusTone(day.status)}&gt;{day.status}&lt;/StatusBadge&gt;
                       {day.is_late ? &lt;StatusBadge tone="warning"&gt;Late&lt;/StatusBadge&gt; : null}
                     &lt;/div&gt;
                   &lt;/div&gt;
@@ -2278,7 +2242,7 @@ export function <span class="fstat-no" title="function not covered" >AttendanceI
                 &lt;div&gt;
                   &lt;div className="flex flex-wrap items-center gap-2"&gt;
                     &lt;p className="font-semibold text-[hsl(var(--foreground-strong))]"&gt;{job.original_filename}&lt;/p&gt;
-                    &lt;StatusBadge tone={getImportTone(job.status)}&gt;{job.status}&lt;/StatusBadge&gt;
+                    &lt;StatusBadge tone={getAttendanceImportTone(job.status)}&gt;{job.status}&lt;/StatusBadge&gt;
                   &lt;/div&gt;
                   &lt;p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]"&gt;
                     {job.mode.replace(/_/g, ' ')} • Uploaded {formatDateTime(job.created_at)} • Valid {job.valid_rows} • Errors {job.error_rows}
@@ -2317,7 +2281,7 @@ export function <span class="fstat-no" title="function not covered" >AttendanceI
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-04-03T09:36:33.120Z
+                at 2026-04-03T15:49:11.005Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

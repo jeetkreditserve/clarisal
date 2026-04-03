@@ -37,7 +37,7 @@
 **Files:**
 - Create: `backend/apps/recruitment/models.py`
 
-- [ ] **Step 1: Create app**
+- [x] **Step 1: Create app**
 
 ```bash
 cd backend && python manage.py startapp recruitment apps/recruitment
@@ -55,7 +55,7 @@ class RecruitmentConfig(AppConfig):
 
 Add `'apps.recruitment'` to `LOCAL_APPS` in `backend/clarisal/settings/base.py`.
 
-- [ ] **Step 2: Write `models.py`**
+- [x] **Step 2: Write `models.py`**
 
 ```python
 # backend/apps/recruitment/models.py
@@ -190,7 +190,7 @@ class OfferLetter(AuditedBaseModel):
     )
 ```
 
-- [ ] **Step 3: Generate and apply migration**
+- [x] **Step 3: Generate and apply migration**
 
 ```bash
 cd backend && python manage.py makemigrations recruitment --name initial
@@ -214,7 +214,7 @@ git commit -m "feat(recruitment): create recruitment app with JobPosting, Candid
 - Create: `backend/apps/recruitment/tests/__init__.py`
 - Create: `backend/apps/recruitment/tests/test_services.py`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 ```python
 # backend/apps/recruitment/tests/test_services.py
@@ -315,7 +315,7 @@ class TestOfferAndOnboarding(TestCase):
         self.assertEqual(self.application.stage, ApplicationStage.HIRED)
 ```
 
-- [ ] **Step 2: Run tests to verify failure**
+- [x] **Step 2: Run tests to verify failure**
 
 ```bash
 cd backend && python -m pytest apps/recruitment/tests/test_services.py -v
@@ -323,7 +323,7 @@ cd backend && python -m pytest apps/recruitment/tests/test_services.py -v
 
 Expected: FAIL.
 
-- [ ] **Step 3: Create `recruitment/services.py`**
+- [x] **Step 3: Create `recruitment/services.py`**
 
 ```python
 # backend/apps/recruitment/services.py
@@ -432,7 +432,7 @@ def accept_offer_and_onboard(offer: OfferLetter, actor=None):
     return employee
 ```
 
-- [ ] **Step 4: Add `create_employee_from_offer` to `employees/services.py`**
+- [x] **Step 4: Add `create_employee_from_offer` to `employees/services.py`**
 
 Open `backend/apps/employees/services.py`. Add:
 
@@ -477,7 +477,7 @@ def create_employee_from_offer(offer, actor=None):
     return employee
 ```
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 ```bash
 cd backend && python -m pytest apps/recruitment/tests/test_services.py -v
@@ -504,7 +504,7 @@ git commit -m "feat(recruitment): recruitment service layer — job postings, ap
 - Create: `backend/apps/recruitment/urls.py`
 - Modify: `backend/clarisal/urls.py`
 
-- [ ] **Step 1: Create `serializers.py`**
+- [x] **Step 1: Create `serializers.py`**
 
 ```python
 # backend/apps/recruitment/serializers.py
@@ -560,7 +560,7 @@ class OfferLetterSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'sent_at', 'accepted_at', 'onboarded_employee']
 ```
 
-- [ ] **Step 2: Create `views.py`**
+- [x] **Step 2: Create `views.py`**
 
 ```python
 # backend/apps/recruitment/views.py
@@ -664,7 +664,7 @@ class OrgOfferAcceptView(APIView):
         return Response({'employee_id': str(employee.id), 'status': employee.status})
 ```
 
-- [ ] **Step 3: Create `urls.py`**
+- [x] **Step 3: Create `urls.py`**
 
 ```python
 # backend/apps/recruitment/urls.py
@@ -683,7 +683,7 @@ urlpatterns = [
 ]
 ```
 
-- [ ] **Step 4: Register in `clarisal/urls.py`**
+- [x] **Step 4: Register in `clarisal/urls.py`**
 
 Add `path('org/', include('apps.recruitment.urls'))` to both legacy and versioned includes.
 
@@ -704,7 +704,7 @@ git commit -m "feat(recruitment): REST API for job postings, applications, offer
 - Create: `frontend/src/pages/org/JobPostingsPage.tsx`
 - Create: `frontend/src/pages/org/ApplicationsPage.tsx`
 
-- [ ] **Step 1: Create API file**
+- [x] **Step 1: Create API file**
 
 ```typescript
 // frontend/src/lib/api/recruitment.ts
@@ -743,7 +743,7 @@ export const recruitmentApi = {
 };
 ```
 
-- [ ] **Step 2: Create `JobPostingsPage.tsx`**
+- [x] **Step 2: Create `JobPostingsPage.tsx`**
 
 ```tsx
 // frontend/src/pages/org/JobPostingsPage.tsx
@@ -810,7 +810,7 @@ export default function JobPostingsPage() {
 }
 ```
 
-- [ ] **Step 3: Create `ApplicationsPage.tsx`**
+- [x] **Step 3: Create `ApplicationsPage.tsx` and `CandidateDetailPage.tsx`**
 
 ```tsx
 // frontend/src/pages/org/ApplicationsPage.tsx
@@ -892,7 +892,7 @@ export default function ApplicationsPage() {
 }
 ```
 
-- [ ] **Step 4: Add routes and nav items**
+- [x] **Step 4: Add routes and nav items**
 
 In `frontend/src/routes/index.tsx`:
 ```tsx

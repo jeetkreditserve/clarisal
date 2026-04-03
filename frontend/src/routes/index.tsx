@@ -20,6 +20,11 @@ import { OrgDashboardPage } from '@/pages/org/DashboardPage'
 import { OrgSetupPage } from '@/pages/org/SetupPage'
 import { OrgProfilePage } from '@/pages/org/ProfilePage'
 import { PayrollPage } from '@/pages/org/PayrollPage'
+import { JobPostingsPage } from '@/pages/org/JobPostingsPage'
+import { ApplicationsPage } from '@/pages/org/ApplicationsPage'
+import { CandidateDetailPage } from '@/pages/org/CandidateDetailPage'
+import { GoalCyclesPage } from '@/pages/org/GoalCyclesPage'
+import { AppraisalCyclesPage } from '@/pages/org/AppraisalCyclesPage'
 import { ReportsPage } from '@/pages/org/ReportsPage'
 import { OrgAuditPage } from '@/pages/org/AuditPage'
 import { LocationsPage } from '@/pages/org/LocationsPage'
@@ -38,6 +43,7 @@ import { LeavePage } from '@/pages/employee/LeavePage'
 import { OnDutyPage } from '@/pages/employee/OnDutyPage'
 import { ApprovalsPage } from '@/pages/employee/ApprovalsPage'
 import { PayslipsPage } from '@/pages/employee/PayslipsPage'
+import { PerformancePage } from '@/pages/employee/PerformancePage'
 import { HolidaysPage } from '@/pages/org/HolidaysPage'
 import { LeaveCyclesPage } from '@/pages/org/LeaveCyclesPage'
 import { LeavePlansPage } from '@/pages/org/LeavePlansPage'
@@ -132,6 +138,11 @@ export const router = createBrowserRouter([
           { path: '/org/attendance', element: <AttendanceImportsPage /> },
           { path: '/org/biometric-devices', element: <BiometricDevicesPage /> },
           { path: '/org/payroll', element: <PayrollPage /> },
+          { path: '/org/recruitment/jobs', element: <JobPostingsPage /> },
+          { path: '/org/recruitment/applications', element: <ApplicationsPage /> },
+          { path: '/org/recruitment/candidates/:id', element: <CandidateDetailPage /> },
+          { path: '/org/performance/goals', element: <GoalCyclesPage /> },
+          { path: '/org/performance/appraisals', element: <AppraisalCyclesPage /> },
           { path: '/org/reports', element: <ReportsPage /> },
           { path: '/org/locations', element: <LocationsPage /> },
           { path: '/org/departments', element: <DepartmentsPage /> },
@@ -173,6 +184,7 @@ export const router = createBrowserRouter([
           { path: '/me/leave', element: <LeavePage /> },
           { path: '/me/od', element: <OnDutyPage /> },
           { path: '/me/payslips', element: <PayslipsPage /> },
+          { path: '/me/performance', element: <PerformancePage /> },
           { path: '/me/approvals', element: <ApprovalsPage /> },
         ],
       },

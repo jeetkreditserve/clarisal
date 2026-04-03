@@ -23,16 +23,16 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">17.85% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/28</span>
+                <span class='fraction'>5/28</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">4.54% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>0/23</span>
+                <span class='fraction'>1/22</span>
             </div>
         
             
@@ -44,9 +44,9 @@
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">18.51% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/27</span>
+                <span class='fraction'>5/27</span>
             </div>
         
             
@@ -128,8 +128,8 @@
 <a name='L63'></a><a href='#L63'>63</a>
 <a name='L64'></a><a href='#L64'>64</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">7x</span>
+<span class="cline-any cline-yes">7x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -144,7 +144,7 @@
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">7x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -152,23 +152,23 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">7x</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">7x</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -191,8 +191,8 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">import axios, { type AxiosError } from 'axios'
 &nbsp;
-const BASE_URL = <span class="cstat-no" title="statement not covered" >import.meta.env.DEV ? '/api' : import.meta.env.VITE_API_BASE_URL || '/api'</span>
-let csrfPrimed = <span class="cstat-no" title="statement not covered" >false</span>
+const BASE_URL = import.meta.env.DEV ? '/api' : <span class="branch-1 cbranch-no" title="branch not covered" >import.meta.env.VITE_API_BASE_URL || '/api'</span>
+let csrfPrimed = false
 &nbsp;
 function <span class="fstat-no" title="function not covered" >getCookie(n</span>ame: string): string | null {
   const match = <span class="cstat-no" title="statement not covered" >document.cookie</span>
@@ -207,7 +207,7 @@ export async function <span class="fstat-no" title="function not covered" >ensur
 <span class="cstat-no" title="statement not covered" >  csrfPrimed = true</span>
 }
 &nbsp;
-export const api = <span class="cstat-no" title="statement not covered" >axios.create({</span>
+export const api = axios.create({
   baseURL: BASE_URL,
   withCredentials: true,
   headers: {
@@ -215,7 +215,7 @@ export const api = <span class="cstat-no" title="statement not covered" >axios.c
   },
 })
 &nbsp;
-<span class="cstat-no" title="statement not covered" >api.interceptors.request.use(<span class="fstat-no" title="function not covered" >async (c</span>onfig) =&gt; {</span>
+api.interceptors.request.use(<span class="fstat-no" title="function not covered" >async (c</span>onfig) =&gt; {
   const method = <span class="cstat-no" title="statement not covered" >config.method?.toLowerCase()</span>
   const safeMethod = <span class="cstat-no" title="statement not covered" >!method || ['get', 'head', 'options'].includes(method)</span>
   const csrfRequest = <span class="cstat-no" title="statement not covered" >config.url?.includes('/auth/csrf/')</span>
@@ -231,7 +231,7 @@ export const api = <span class="cstat-no" title="statement not covered" >axios.c
 <span class="cstat-no" title="statement not covered" >  return config</span>
 })
 &nbsp;
-<span class="cstat-no" title="statement not covered" >api.interceptors.response.<span class="fstat-no" title="function not covered" >use(</span></span>
+api.interceptors.response.<span class="fstat-no" title="function not covered" >use(</span>
   (response) =&gt; <span class="cstat-no" title="statement not covered" >response,</span>
 <span class="fstat-no" title="function not covered" >  async (e</span>rror: AxiosError) =&gt; {
     const url = <span class="cstat-no" title="statement not covered" >error.config?.url ?? ''</span>
@@ -243,7 +243,7 @@ export const api = <span class="cstat-no" title="statement not covered" >axios.c
       '/auth/password-reset/confirm/',
     ].<span class="fstat-no" title="function not covered" >some((p</span>ath) =&gt; <span class="cstat-no" title="statement not covered" >url.includes(path))</span>
 &nbsp;
-<span class="cstat-no" title="statement not covered" >    if ((error.response?.status === 401 || error.response?.status === 403) &amp;&amp; !isAuthMutation) {</span>
+<span class="cstat-no" title="statement not covered" >    if (error.response?.status === 401 &amp;&amp; !isAuthMutation) {</span>
 <span class="cstat-no" title="statement not covered" >      window.dispatchEvent(new Event('clarisal:auth-lost'))</span>
     }
 &nbsp;
@@ -259,7 +259,7 @@ export default api
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-04-03T09:36:33.120Z
+                at 2026-04-03T15:49:11.005Z
             </div>
         <script src="../prettify.js"></script>
         <script>

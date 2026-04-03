@@ -1,7 +1,8 @@
 import os
-from pathlib import Path
 from datetime import timedelta
 from decimal import Decimal
+from pathlib import Path
+
 import environ
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -28,6 +29,7 @@ DJANGO_APPS = [
 
 THIRD_PARTY_APPS = [
     'rest_framework',
+    'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
     'django_celery_results',
     'django_celery_beat',
@@ -51,6 +53,8 @@ LOCAL_APPS = [
     'apps.notifications',
     'apps.reports',
     'apps.biometrics',
+    'apps.performance',
+    'apps.recruitment',
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -122,6 +126,7 @@ AUTHENTICATION_BACKENDS = [
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework.authentication.SessionAuthentication',
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
@@ -150,6 +155,16 @@ REST_FRAMEWORK = {
         'rest_framework.renderers.JSONRenderer',
     ),
     'EXCEPTION_HANDLER': 'apps.accounts.exceptions.custom_exception_handler',
+}
+
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True,
+    'USER_ID_FIELD': 'id',
+    'USER_ID_CLAIM': 'user_id',
+    'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
 }
 
 # CORS
@@ -210,6 +225,10 @@ CELERY_BEAT_SCHEDULE = {
     'sync-biometric-devices-every-5-min': {
         'task': 'biometrics.sync_pull_devices',
         'schedule': 300,
+    },
+    'auto-schedule-probation-reviews-daily': {
+        'task': 'performance.auto_schedule_probation_reviews',
+        'schedule': 86400,
     },
 }
 

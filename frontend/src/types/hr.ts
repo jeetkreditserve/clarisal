@@ -717,6 +717,122 @@ export interface BiometricSyncLog {
   success: boolean
 }
 
+export interface RecruitmentInterview {
+  id: string
+  application: string
+  interviewer_id: string | null
+  interviewer_name: string | null
+  scheduled_at: string
+  format: string
+  feedback: string
+  outcome: string
+  meet_link: string
+  created_at: string
+}
+
+export interface RecruitmentOfferLetter {
+  id: string
+  application_id: string
+  ctc_annual: string
+  joining_date: string | null
+  status: string
+  template_text: string
+  sent_at: string | null
+  accepted_at: string | null
+  expires_at: string | null
+  onboarded_employee_id: string | null
+}
+
+export interface RecruitmentApplication {
+  id: string
+  candidate: string
+  candidate_name: string
+  candidate_email: string
+  job_posting_id: string
+  job_posting_title: string
+  stage: string
+  applied_at: string
+  notes: string
+  rejection_reason: string
+  interviews: RecruitmentInterview[]
+  offer_letter: RecruitmentOfferLetter | null
+}
+
+export interface RecruitmentCandidateDetail {
+  id: string
+  first_name: string
+  last_name: string
+  full_name: string
+  email: string
+  phone: string
+  source: string
+  created_at: string
+  applications: RecruitmentApplication[]
+}
+
+export interface RecruitmentJobPosting {
+  id: string
+  title: string
+  department_id: string | null
+  department_name: string | null
+  location_id: string | null
+  location_name: string | null
+  description: string
+  requirements: string
+  status: string
+  posted_at: string | null
+  closes_at: string | null
+  application_count: number
+  created_at: string
+}
+
+export interface PerformanceGoalCycle {
+  id: string
+  name: string
+  start_date: string
+  end_date: string
+  status: string
+  created_at: string
+}
+
+export interface PerformanceGoal {
+  id: string
+  cycle: string
+  employee: string
+  title: string
+  description: string
+  target: string
+  metric: string
+  weight: string
+  status: string
+  due_date: string | null
+  progress_percent: number
+  created_at: string
+}
+
+export interface PerformanceAppraisalCycle {
+  id: string
+  name: string
+  review_type: string
+  start_date: string
+  end_date: string
+  status: string
+  is_probation_review: boolean
+  created_at: string
+}
+
+export interface PerformanceReview {
+  id: string
+  cycle: string
+  employee: string
+  reviewer: string | null
+  relationship: string
+  ratings: Record<string, number>
+  comments: string
+  status: string
+  submitted_at: string | null
+}
+
 export interface OrgAttendanceDashboard {
   date: string
   total_employees: number

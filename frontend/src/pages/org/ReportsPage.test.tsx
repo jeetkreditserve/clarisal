@@ -5,11 +5,19 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ReportsPage } from '@/pages/org/ReportsPage'
 
-const toastLoading = vi.fn(() => 'toast-id')
-const toastSuccess = vi.fn()
-const toastError = vi.fn()
-const usePayrollSummary = vi.fn()
-const downloadOrgReport = vi.fn()
+const {
+  toastLoading,
+  toastSuccess,
+  toastError,
+  usePayrollSummary,
+  downloadOrgReport,
+} = vi.hoisted(() => ({
+  toastLoading: vi.fn(() => 'toast-id'),
+  toastSuccess: vi.fn(),
+  toastError: vi.fn(),
+  usePayrollSummary: vi.fn(),
+  downloadOrgReport: vi.fn(),
+}))
 
 vi.mock('sonner', () => ({
   toast: {
