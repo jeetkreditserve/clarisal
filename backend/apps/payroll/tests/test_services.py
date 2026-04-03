@@ -1,5 +1,6 @@
 from datetime import date
 from decimal import Decimal
+from unittest.mock import patch
 
 import pytest
 
@@ -23,6 +24,7 @@ from apps.organisations.models import (
     OrganisationStatus,
 )
 from apps.organisations.services import create_licence_batch, mark_licence_batch_paid
+from apps.notifications.models import Notification, NotificationKind
 from apps.payroll.models import (
     CompensationAssignmentStatus,
     PayrollComponentType,
@@ -566,3 +568,75 @@ class TestPayrollServices:
         arrears.refresh_from_db()
 
         assert arrears.is_included_in_payslip is True
+
+    @patch('django.db.transaction.on_commit')
+    def test_finalize_pay_run_notifies_employees_and_queues_email(self, mock_on_commit):
+        mock_on_commit.side_effect = lambda callback: callback()
+        organisation = _create_active_organisation('Payroll Notification Org')
+        requester_user = _create_workforce_user('payroll-notify-admin@test.com', role=UserRole.ORG_ADMIN, organisation=organisation)
+        employee_user = _create_workforce_user('payroll-notify-employee@test.com', organisation=organisation)
+        employee = Employee.objects.create(
+            organisation=organisation,
+            user=employee_user,
+            employee_code='EMP400',
+            designation='Engineer',
+            status=EmployeeStatus.ACTIVE,
+            date_of_joining=date(2026, 4, 1),
+        )
+        OrganisationMembership.objects.create(
+            user=requester_user,
+            organisation=organisation,
+            is_org_admin=True,
+            status=OrganisationMembershipStatus.ACTIVE,
+        )
+        create_tax_slab_set(
+            fiscal_year='2026-2027',
+            name='FY 2026 Master',
+            country_code='IN',
+            slabs=[
+                {'min_income': '0', 'max_income': '300000', 'rate_percent': '0'},
+                {'min_income': '300000', 'max_income': '700000', 'rate_percent': '10'},
+                {'min_income': '700000', 'max_income': None, 'rate_percent': '20'},
+            ],
+            actor=requester_user,
+        )
+        ensure_org_payroll_setup(organisation, actor=requester_user)
+        template = create_compensation_template(
+            organisation,
+            name='Notification Template',
+            description='Payroll notification test',
+            lines=[
+                {
+                    'component_code': 'BASIC',
+                    'name': 'Basic Pay',
+                    'component_type': PayrollComponentType.EARNING,
+                    'monthly_amount': '50000',
+                    'is_taxable': True,
+                }
+            ],
+            actor=requester_user,
+        )
+        assign_employee_compensation(
+            employee,
+            template,
+            effective_from=date(2026, 4, 1),
+            actor=requester_user,
+            auto_approve=True,
+        )
+        pay_run = create_payroll_run(
+            organisation,
+            period_year=2026,
+            period_month=4,
+            actor=requester_user,
+            requester_user=requester_user,
+        )
+        calculate_pay_run(pay_run, actor=requester_user)
+
+        with patch('apps.notifications.tasks.send_payroll_ready_email.delay') as mock_delay:
+            finalize_pay_run(pay_run, actor=requester_user, skip_approval=True)
+
+        notification = Notification.objects.get(recipient=employee_user)
+        assert notification.kind == NotificationKind.PAYROLL_FINALIZED
+        assert notification.title == 'Your payslip for April 2026 is ready'
+        assert notification.object_id == str(pay_run.id)
+        mock_delay.assert_called_once()

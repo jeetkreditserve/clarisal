@@ -14,6 +14,8 @@ from apps.approvals.models import ApprovalRequestKind, ApprovalRun, ApprovalRunS
 from apps.approvals.services import cancel_approval_run, get_default_workflow
 from apps.audit.services import log_audit_event
 from apps.employees.models import Employee, EmployeeStatus, GovernmentIdType
+from apps.notifications.models import NotificationKind
+from apps.notifications.services import create_notification
 
 from .models import (
     Arrears,
@@ -286,6 +288,29 @@ def _summarize_pay_run_exceptions(pay_run):
     if len(exception_items) > 3:
         summary_parts.append(f'+{len(exception_items) - 3} more')
     return 'Resolve payroll exceptions before proceeding: ' + '; '.join(summary_parts)
+
+
+def _notify_employees_payroll_finalized(pay_run, actor=None):
+    from apps.notifications.tasks import send_payroll_ready_email
+
+    period_label = date(pay_run.period_year, pay_run.period_month, 1).strftime('%B %Y')
+    for payslip in pay_run.payslips.select_related('employee__user').all():
+        recipient = payslip.employee.user
+        create_notification(
+            recipient=recipient,
+            kind=NotificationKind.PAYROLL_FINALIZED,
+            title=f'Your payslip for {period_label} is ready',
+            body='Your payslip has been finalized. View it in your payslips section.',
+            organisation=pay_run.organisation,
+            related_object=pay_run,
+            actor=actor,
+        )
+        transaction.on_commit(
+            lambda user_id=str(recipient.id), label=period_label: send_payroll_ready_email.delay(
+                user_id,
+                pay_period=label,
+            )
+        )
 
 
 def _calculate_annual_tax(tax_slab_set, annual_taxable_income):
@@ -1410,6 +1435,7 @@ def finalize_pay_run(pay_run, *, actor=None, skip_approval=False):
         pay_run.status = PayrollRunStatus.FINALIZED
         pay_run.finalized_at = timezone.now()
         pay_run.save(update_fields=['status', 'finalized_at', 'modified_at'])
+        _notify_employees_payroll_finalized(pay_run, actor=actor)
 
     log_audit_event(actor, 'payroll.run.finalized', organisation=pay_run.organisation, target=pay_run)
     return pay_run

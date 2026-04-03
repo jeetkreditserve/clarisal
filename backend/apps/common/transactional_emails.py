@@ -124,3 +124,35 @@ def render_org_admin_password_set_email(*, user, organisation_name: str, fronten
             'fallback_label': 'If the button does not work, copy and paste this login URL into your browser:',
         },
     )
+
+
+def render_notification_email(
+    *,
+    subject: str,
+    greeting_name: str,
+    title: str,
+    body: str,
+    subtitle: str = '',
+    action_label: str = '',
+    action_path: str = '',
+    frontend_url: str | None = None,
+    preheader: str = '',
+    meta_lines: list[str] | None = None,
+) -> RenderedTransactionalEmail:
+    action_url = build_frontend_url(action_path, frontend_url) if action_path else ''
+
+    return _render_email(
+        subject=subject,
+        template_name='notification_generic',
+        context={
+            'preheader': preheader or subject,
+            'title': title,
+            'subtitle': subtitle,
+            'greeting_name': greeting_name,
+            'body': body,
+            'action_label': action_label,
+            'action_url': action_url,
+            'meta_lines': meta_lines or [],
+            'fallback_label': 'If the button does not work, copy and paste this URL into your browser:',
+        },
+    )

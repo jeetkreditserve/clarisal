@@ -34,6 +34,7 @@ urlpatterns = [
         path('me/', include('apps.attendance.self_urls')),
         path('me/', include('apps.communications.self_urls')),
         path('me/', include('apps.payroll.self_urls')),
+        path('me/', include('apps.notifications.urls')),
     ])),
     path('api/v1/', include([
         path('auth/', include('apps.accounts.urls')),
@@ -59,5 +60,6 @@ urlpatterns = [
         path('me/', include('apps.attendance.self_urls')),
         path('me/', include('apps.communications.self_urls')),
         path('me/', include('apps.payroll.self_urls')),
+        path('me/', include('apps.notifications.urls')),
     ])),
 ]

@@ -44,13 +44,13 @@
 - Create: `backend/apps/notifications/models.py`
 - Modify: `backend/clarisal/settings/base.py`
 
-- [ ] **Step 1: Create app skeleton**
+- [x] **Step 1: Create app skeleton**
 
 ```bash
 cd backend && python manage.py startapp notifications apps/notifications
 ```
 
-- [ ] **Step 2: Update `apps.py`**
+- [x] **Step 2: Update `apps.py`**
 
 ```python
 # backend/apps/notifications/apps.py
@@ -63,11 +63,11 @@ class NotificationsConfig(AppConfig):
     label = 'notifications'
 ```
 
-- [ ] **Step 3: Add to `INSTALLED_APPS`**
+- [x] **Step 3: Add to `INSTALLED_APPS`**
 
 In `backend/clarisal/settings/base.py`, add `'apps.notifications'` to the `LOCAL_APPS` list.
 
-- [ ] **Step 4: Write the model**
+- [x] **Step 4: Write the model**
 
 ```python
 # backend/apps/notifications/models.py
@@ -126,7 +126,7 @@ class Notification(AuditedBaseModel):
         return f'{self.kind} → {self.recipient_id} | {self.title[:40]}'
 ```
 
-- [ ] **Step 5: Generate and apply migration**
+- [x] **Step 5: Generate and apply migration**
 
 ```bash
 cd backend && python manage.py makemigrations notifications --name initial
@@ -149,7 +149,7 @@ git commit -m "feat(notifications): create notifications app with Notification m
 - Create: `backend/apps/notifications/tests/__init__.py`
 - Create: `backend/apps/notifications/tests/test_services.py`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 ```python
 # backend/apps/notifications/tests/test_services.py
@@ -215,7 +215,7 @@ class TestMarkRead(TestCase):
         self.assertEqual(Notification.objects.filter(recipient=other_user, is_read=False).count(), 1)
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 ```bash
 cd backend && python -m pytest apps/notifications/tests/test_services.py -v
@@ -223,7 +223,7 @@ cd backend && python -m pytest apps/notifications/tests/test_services.py -v
 
 Expected: `FAIL` — services module not found.
 
-- [ ] **Step 3: Create `services.py`**
+- [x] **Step 3: Create `services.py`**
 
 ```python
 # backend/apps/notifications/services.py
@@ -283,7 +283,7 @@ def mark_all_read(user) -> int:
     )
 ```
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 ```bash
 cd backend && python -m pytest apps/notifications/tests/test_services.py -v
@@ -308,7 +308,7 @@ git commit -m "feat(notifications): NotificationService with create, mark_read, 
 - Create: `backend/apps/notifications/urls.py`
 - Modify: `backend/clarisal/urls.py`
 
-- [ ] **Step 1: Create `serializers.py`**
+- [x] **Step 1: Create `serializers.py`**
 
 ```python
 # backend/apps/notifications/serializers.py
@@ -326,7 +326,7 @@ class NotificationSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 ```
 
-- [ ] **Step 2: Create `views.py`**
+- [x] **Step 2: Create `views.py`**
 
 ```python
 # backend/apps/notifications/views.py
@@ -377,7 +377,7 @@ class MyNotificationMarkAllReadView(APIView):
         return Response({'marked_read': count})
 ```
 
-- [ ] **Step 3: Create `urls.py`**
+- [x] **Step 3: Create `urls.py`**
 
 ```python
 # backend/apps/notifications/urls.py
@@ -391,7 +391,7 @@ urlpatterns = [
 ]
 ```
 
-- [ ] **Step 4: Register in `clarisal/urls.py`**
+- [x] **Step 4: Register in `clarisal/urls.py`**
 
 Add to the `_app_includes` list (and to the legacy `urlpatterns`) under the `me/` group:
 ```python
@@ -412,7 +412,7 @@ git commit -m "feat(notifications): REST endpoints for list, mark-read, mark-all
 **Files:**
 - Modify: `backend/apps/approvals/services.py`
 
-- [ ] **Step 1: Find approval outcome handlers**
+- [x] **Step 1: Find approval outcome handlers**
 
 ```bash
 grep -n "APPROVED\|REJECTED\|status" backend/apps/approvals/services.py | head -30
@@ -420,7 +420,7 @@ grep -n "APPROVED\|REJECTED\|status" backend/apps/approvals/services.py | head -
 
 Locate the function(s) that set an approval request status to APPROVED or REJECTED (likely `process_approval_action()` or similar).
 
-- [ ] **Step 2: Add notification calls after status change**
+- [x] **Step 2: Add notification calls after status change**
 
 In the function that finalizes an approval outcome, add notification creation:
 
@@ -469,7 +469,7 @@ def _notify_approval_outcome(approval_request, new_status: str, actor):
 
 Call `_notify_approval_outcome(approval_request, new_status, actor)` at the end of `process_approval_action()`.
 
-- [ ] **Step 3: Run existing approval tests to verify no regression**
+- [x] **Step 3: Run existing approval tests to verify no regression**
 
 ```bash
 cd backend && python -m pytest apps/approvals/ -v --tb=short
@@ -491,13 +491,13 @@ git commit -m "feat(notifications): trigger in-app notification on approval appr
 **Files:**
 - Modify: `backend/apps/payroll/services.py`
 
-- [ ] **Step 1: Find `finalize_pay_run` in `services.py`**
+- [x] **Step 1: Find `finalize_pay_run` in `services.py`**
 
 ```bash
 grep -n "def finalize_pay_run\|finalize" backend/apps/payroll/services.py
 ```
 
-- [ ] **Step 2: Add notification for all employees after finalization**
+- [x] **Step 2: Add notification for all employees after finalization**
 
 At the end of `finalize_pay_run()`, after payslips are committed, add:
 
@@ -543,7 +543,7 @@ git commit -m "feat(notifications): notify employees when payroll run is finaliz
 **Files:**
 - Create: `backend/apps/notifications/tasks.py`
 
-- [ ] **Step 1: Create email tasks**
+- [x] **Step 1: Create email tasks**
 
 ```python
 # backend/apps/notifications/tasks.py
@@ -600,7 +600,7 @@ def send_payroll_ready_email(user_id: str, pay_period: str, frontend_url: str):
         return {'status': 'ERROR', 'reason': f'User {user_id} not found'}
 ```
 
-- [ ] **Step 2: Dispatch email tasks from notification triggers**
+- [x] **Step 2: Dispatch email tasks from notification triggers**
 
 In `backend/apps/approvals/services.py` `_notify_approval_outcome()`, after `create_notification()`:
 
@@ -632,7 +632,7 @@ git commit -m "feat(notifications): Celery email tasks for approval and payroll 
 - Modify: `frontend/src/components/layouts/OrgLayout.tsx`
 - Modify: `frontend/src/components/layouts/EmployeeLayout.tsx`
 
-- [ ] **Step 1: Create API functions**
+- [x] **Step 1: Create API functions**
 
 ```typescript
 // frontend/src/lib/api/notifications.ts
@@ -670,7 +670,7 @@ export async function markAllNotificationsRead(): Promise<{ marked_read: number 
 }
 ```
 
-- [ ] **Step 2: Create React Query hooks**
+- [x] **Step 2: Create React Query hooks**
 
 ```typescript
 // frontend/src/hooks/useNotifications.ts
@@ -711,7 +711,7 @@ export function useMarkAllRead() {
 }
 ```
 
-- [ ] **Step 3: Create `NotificationPanel.tsx`**
+- [x] **Step 3: Create `NotificationPanel.tsx`**
 
 ```tsx
 // frontend/src/components/ui/NotificationPanel.tsx
@@ -766,7 +766,7 @@ export function NotificationPanel({ notifications, onClose }: Props) {
 }
 ```
 
-- [ ] **Step 4: Create `NotificationBell.tsx`**
+- [x] **Step 4: Create `NotificationBell.tsx`**
 
 ```tsx
 // frontend/src/components/ui/NotificationBell.tsx
@@ -808,7 +808,7 @@ export function NotificationBell() {
 }
 ```
 
-- [ ] **Step 5: Add to layout headers**
+- [x] **Step 5: Add to layout headers**
 
 In `OrgLayout.tsx` and `EmployeeLayout.tsx`, find the header element and add the bell:
 

@@ -1,15 +1,24 @@
+from unittest.mock import patch
+
 import pytest
+from django.contrib.contenttypes.models import ContentType
 
 from apps.accounts.models import User, UserRole
 from apps.approvals.models import (
+    ApprovalAction,
+    ApprovalApproverType,
     ApprovalRequestKind,
+    ApprovalRun,
+    ApprovalRunStatus,
+    ApprovalStage,
     ApprovalWorkflow,
     ApprovalWorkflowRule,
 )
-from apps.approvals.services import resolve_workflow
+from apps.approvals.services import approve_action, reject_action, resolve_workflow
 from apps.departments.models import Department
 from apps.employees.models import Employee, EmployeeStatus
 from apps.locations.models import OfficeLocation
+from apps.notifications.models import Notification, NotificationKind
 from apps.organisations.models import Organisation, OrganisationAccessState, OrganisationBillingStatus, OrganisationStatus
 from apps.timeoff.models import LeaveCycle, LeaveCycleType, LeavePlan, LeaveType
 
@@ -220,3 +229,109 @@ class TestResolveWorkflow:
         assert resolve_workflow(employee, ApprovalRequestKind.ON_DUTY) == default_od_workflow
         assert resolve_workflow(employee, ApprovalRequestKind.ATTENDANCE_REGULARIZATION) == default_regularization_workflow
 
+
+def _create_pending_action(*, organisation, requester, approver_user, subject, request_kind, subject_label):
+    workflow = ApprovalWorkflow.objects.create(
+        organisation=organisation,
+        name=f'{subject_label} Workflow',
+        is_active=True,
+    )
+    stage = ApprovalStage.objects.create(
+        workflow=workflow,
+        name='Primary review',
+        sequence=1,
+    )
+    return ApprovalAction.objects.create(
+        approval_run=ApprovalRun.objects.create(
+            organisation=organisation,
+            workflow=workflow,
+            request_kind=request_kind,
+            requested_by=requester,
+            requested_by_user=requester.user,
+            status=ApprovalRunStatus.PENDING,
+            current_stage_sequence=stage.sequence,
+            subject_label=subject_label,
+            content_type=ContentType.objects.get_for_model(subject.__class__),
+            object_id=subject.id,
+        ),
+        stage=stage,
+        approver_user=approver_user,
+    )
+
+
+@pytest.mark.django_db
+class TestApprovalNotifications:
+    @patch('django.db.transaction.on_commit')
+    def test_approve_action_creates_leave_notification_and_queues_email(
+        self,
+        mock_on_commit,
+        organisation,
+        employee,
+        department,
+    ):
+        mock_on_commit.side_effect = lambda callback: callback()
+        approver_user = User.objects.create_user(
+            email='leave-approver@test.com',
+            password='pass123!',
+            role=UserRole.ORG_ADMIN,
+            is_active=True,
+        )
+        action = _create_pending_action(
+            organisation=organisation,
+            requester=employee,
+            approver_user=approver_user,
+            subject=department,
+            request_kind=ApprovalRequestKind.LEAVE,
+            subject_label='Annual leave',
+        )
+
+        with patch('apps.approvals.services.get_org_operations_guard', return_value={'approval_actions_blocked': False, 'reason': ''}):
+            with patch('apps.approvals.services._apply_subject_status'):
+                with patch('apps.notifications.tasks.send_approval_outcome_email.delay') as mock_delay:
+                    approve_action(action, approver_user)
+
+        action.approval_run.refresh_from_db()
+        notification = Notification.objects.get(recipient=employee.user)
+        assert action.approval_run.status == ApprovalRunStatus.APPROVED
+        assert notification.kind == NotificationKind.LEAVE_APPROVED
+        assert notification.title == 'Your leave request has been approved'
+        assert 'approved' in notification.body.lower()
+        assert notification.object_id == str(department.id)
+        mock_delay.assert_called_once()
+
+    @patch('django.db.transaction.on_commit')
+    def test_reject_action_creates_regularization_notification_and_queues_email(
+        self,
+        mock_on_commit,
+        organisation,
+        employee,
+        location,
+    ):
+        mock_on_commit.side_effect = lambda callback: callback()
+        approver_user = User.objects.create_user(
+            email='regularization-approver@test.com',
+            password='pass123!',
+            role=UserRole.ORG_ADMIN,
+            is_active=True,
+        )
+        action = _create_pending_action(
+            organisation=organisation,
+            requester=employee,
+            approver_user=approver_user,
+            subject=location,
+            request_kind=ApprovalRequestKind.ATTENDANCE_REGULARIZATION,
+            subject_label='Attendance regularization',
+        )
+
+        with patch('apps.approvals.services.get_org_operations_guard', return_value={'approval_actions_blocked': False, 'reason': ''}):
+            with patch('apps.approvals.services._apply_subject_status'):
+                with patch('apps.notifications.tasks.send_approval_outcome_email.delay') as mock_delay:
+                    reject_action(action, approver_user, comment='Missing supporting detail')
+
+        action.approval_run.refresh_from_db()
+        notification = Notification.objects.get(recipient=employee.user)
+        assert action.approval_run.status == ApprovalRunStatus.REJECTED
+        assert notification.kind == NotificationKind.ATTENDANCE_REGULARIZATION_REJECTED
+        assert notification.title == 'Your attendance regularization request has been rejected'
+        assert 'missing supporting detail' in notification.body.lower()
+        mock_delay.assert_called_once()

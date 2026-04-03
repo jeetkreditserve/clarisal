@@ -4,6 +4,7 @@ import { SidebarNav, type NavGroup } from './SidebarNav'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
 import { useAuth } from '@/hooks/useAuth'
 import { StatusBadge } from '@/components/ui/StatusBadge'
+import { NotificationBell } from '@/components/ui/NotificationBell'
 import { ThemeToggle } from '@/components/ui/ThemeToggle'
 import { getAccessStateTone } from '@/lib/status'
 import { OrgSetupBanner } from '@/components/org/OrgSetupBanner'
@@ -70,6 +71,7 @@ export function OrgLayout() {
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-3">
+            <NotificationBell />
             <ThemeToggle />
             <WorkspaceSwitcher currentMode="ADMIN" />
             <div className="shell-user-card rounded-[22px] px-4 py-2 text-right text-sm">

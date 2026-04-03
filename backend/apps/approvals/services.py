@@ -3,6 +3,8 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.audit.services import log_audit_event
+from apps.notifications.models import NotificationKind
+from apps.notifications.services import create_notification
 from apps.organisations.services import get_org_operations_guard
 
 from .models import (
@@ -260,6 +262,57 @@ def get_pending_approval_actions_for_user(user, organisation=None):
     return queryset.order_by('created_at')
 
 
+def _approval_outcome_kind(approval_run, new_status):
+    approved = new_status == ApprovalRunStatus.APPROVED
+    if approval_run.request_kind == ApprovalRequestKind.LEAVE:
+        return NotificationKind.LEAVE_APPROVED if approved else NotificationKind.LEAVE_REJECTED
+    if approval_run.request_kind == ApprovalRequestKind.ATTENDANCE_REGULARIZATION:
+        return (
+            NotificationKind.ATTENDANCE_REGULARIZATION_APPROVED
+            if approved
+            else NotificationKind.ATTENDANCE_REGULARIZATION_REJECTED
+        )
+    if approval_run.request_kind in {
+        ApprovalRequestKind.SALARY_REVISION,
+        ApprovalRequestKind.COMPENSATION_TEMPLATE_CHANGE,
+    }:
+        return NotificationKind.COMPENSATION_APPROVED if approved else NotificationKind.COMPENSATION_REJECTED
+    return NotificationKind.GENERAL
+
+
+def _notify_approval_outcome(approval_run, *, new_status, actor, comment=''):
+    requester_user = approval_run.requested_by_user
+    if requester_user is None:
+        return
+
+    request_label = approval_run.get_request_kind_display().lower()
+    title = f'Your {request_label} request has been {"approved" if new_status == ApprovalRunStatus.APPROVED else "rejected"}'
+    body = f'Your {request_label} request has been {"approved" if new_status == ApprovalRunStatus.APPROVED else "rejected"}.'
+    if comment:
+        body = f'{body} Reason: {comment}'
+
+    create_notification(
+        recipient=requester_user,
+        kind=_approval_outcome_kind(approval_run, new_status),
+        title=title,
+        body=body,
+        organisation=approval_run.organisation,
+        related_object=approval_run.content_object or approval_run,
+        actor=actor,
+    )
+
+    from apps.notifications.tasks import send_approval_outcome_email
+
+    transaction.on_commit(
+        lambda: send_approval_outcome_email.delay(
+            str(requester_user.id),
+            subject=title,
+            title=title,
+            body=body,
+        )
+    )
+
+
 def _advance_or_complete_run(approval_run, actor):
     next_stage = approval_run.workflow.stages.prefetch_related('approvers__approver_employee__user').filter(
         sequence__gt=approval_run.current_stage_sequence
@@ -268,6 +321,7 @@ def _advance_or_complete_run(approval_run, actor):
         approval_run.status = ApprovalRunStatus.APPROVED
         approval_run.save(update_fields=['status', 'modified_at'])
         _apply_subject_status(approval_run, 'APPROVED')
+        _notify_approval_outcome(approval_run, new_status=ApprovalRunStatus.APPROVED, actor=actor)
         log_audit_event(actor, 'approval.run.approved', organisation=approval_run.organisation, target=approval_run)
         return approval_run
 
@@ -342,6 +396,7 @@ def reject_action(action, actor, comment=''):
             modified_at=timezone.now(),
         )
         _apply_subject_status(action.approval_run, 'REJECTED', rejection_reason=comment)
+        _notify_approval_outcome(action.approval_run, new_status=ApprovalRunStatus.REJECTED, actor=actor, comment=comment)
 
     log_audit_event(
         actor,

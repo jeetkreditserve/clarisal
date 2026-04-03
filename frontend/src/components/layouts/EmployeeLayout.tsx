@@ -3,6 +3,7 @@ import { CheckSquare, Clock3, FileText, GraduationCap, LayoutDashboard, LogOut, 
 import { SidebarNav, type NavItem } from './SidebarNav'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
 import { useAuth } from '@/hooks/useAuth'
+import { NotificationBell } from '@/components/ui/NotificationBell'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { ThemeToggle } from '@/components/ui/ThemeToggle'
 
@@ -46,6 +47,7 @@ export function EmployeeLayout() {
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-3">
+            <NotificationBell />
             <ThemeToggle />
             <WorkspaceSwitcher currentMode="EMPLOYEE" />
             <div className="shell-user-card rounded-[22px] px-4 py-2 text-right text-sm">

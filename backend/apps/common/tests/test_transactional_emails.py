@@ -4,7 +4,7 @@ import pytest
 from django.test import override_settings
 
 from apps.accounts.models import AccountType
-from apps.common.transactional_emails import render_invitation_email, render_password_reset_email
+from apps.common.transactional_emails import render_invitation_email, render_notification_email, render_password_reset_email
 from apps.invitations.models import InvitationRole
 
 
@@ -66,3 +66,23 @@ def test_render_password_reset_email_uses_account_specific_paths():
     assert 'https://dev.clarisal.com/auth/reset-password/workforce-reset' in workforce.html_body
     assert 'https://dev.clarisal.com/ct/reset-password/ct-reset' in control_tower.html_body
     assert 'Reset your password' in workforce.html_body
+
+
+@pytest.mark.django_db
+@override_settings(FRONTEND_URL='https://dev.clarisal.com')
+def test_render_notification_email_uses_generic_template_and_optional_action():
+    rendered = render_notification_email(
+        subject='Your request has been approved',
+        greeting_name='Jeet',
+        title='Approval complete',
+        subtitle='Leave request',
+        body='Your leave request was approved by HR.',
+        action_label='View details',
+        action_path='/me/approvals',
+    )
+
+    assert rendered.subject == 'Your request has been approved'
+    assert 'Approval complete' in rendered.html_body
+    assert 'Leave request' in rendered.html_body
+    assert 'Your leave request was approved by HR.' in rendered.text_body
+    assert 'https://dev.clarisal.com/me/approvals' in rendered.html_body
