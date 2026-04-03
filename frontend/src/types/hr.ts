@@ -64,6 +64,7 @@ export type AttendanceImportMode = 'ATTENDANCE_SHEET' | 'PUNCH_SHEET'
 export type AttendanceImportStatus = 'FAILED' | 'READY_FOR_REVIEW' | 'POSTED'
 export type AttendanceDayStatus = 'PRESENT' | 'HALF_DAY' | 'ABSENT' | 'INCOMPLETE' | 'HOLIDAY' | 'WEEK_OFF' | 'ON_LEAVE' | 'ON_DUTY'
 export type AttendanceRegularizationStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED' | 'WITHDRAWN'
+export type BiometricProtocol = 'ZK_ADMS' | 'ESSL_EBIOSERVER' | 'MATRIX_COSEC' | 'SUPREMA_BIOSTAR' | 'HIKVISION_ISAPI'
 export type OffboardingProcessStatus = 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED'
 export type OffboardingTaskStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'WAIVED'
 export type OffboardingTaskOwner = 'ORG_ADMIN' | 'MANAGER' | 'EMPLOYEE' | 'PAYROLL' | 'IT'
@@ -687,6 +688,33 @@ export interface AttendanceSourceConfig {
   last_error: string
   created_at: string
   modified_at: string
+}
+
+export interface BiometricDevice {
+  id: string
+  name: string
+  device_serial: string
+  protocol: BiometricProtocol
+  ip_address: string | null
+  port: number
+  auth_username: string
+  oauth_client_id: string
+  location_id: string | null
+  secret_preview: string
+  endpoint_path: string
+  is_active: boolean
+  last_sync_at: string | null
+  created_at: string
+}
+
+export interface BiometricSyncLog {
+  id: string
+  synced_at: string
+  records_fetched: number
+  records_processed: number
+  records_skipped: number
+  errors: string[]
+  success: boolean
 }
 
 export interface OrgAttendanceDashboard {

@@ -28,6 +28,7 @@ class AttendancePunchSource(models.TextChoices):
     WEB = 'WEB', 'Web'
     IMPORT = 'IMPORT', 'Excel Import'
     API = 'API', 'External API'
+    DEVICE = 'DEVICE', 'Biometric Device'
     REGULARIZATION = 'REGULARIZATION', 'Regularization'
     MANUAL = 'MANUAL', 'Manual'
 

@@ -987,6 +987,63 @@ def ingest_source_punches(source_config, *, punches, actor=None):
     }
 
 
+def create_punch_from_source(
+    employee_code: str,
+    punch_time,
+    organisation_id: str,
+    direction: str = 'IN',
+    source: str = AttendancePunchSource.DEVICE,
+    device_id: str | None = None,
+    source_config=None,
+    metadata: dict | None = None,
+) -> dict:
+    try:
+        employee = Employee.objects.select_related('organisation').get(
+            organisation_id=organisation_id,
+            employee_code=_strip_string(employee_code).upper(),
+            status=EmployeeStatus.ACTIVE,
+        )
+    except Employee.DoesNotExist:
+        return {'status': 'skipped', 'reason': f'No active employee with code {employee_code}'}
+    except Employee.MultipleObjectsReturned:
+        return {'status': 'error', 'reason': f'Multiple employees match code {employee_code}'}
+
+    if timezone.is_naive(punch_time):
+        punch_time = timezone.make_aware(punch_time, timezone.get_default_timezone())
+
+    action_type = {
+        'IN': AttendancePunchActionType.CHECK_IN,
+        'OUT': AttendancePunchActionType.CHECK_OUT,
+    }.get(str(direction).upper(), AttendancePunchActionType.RAW)
+
+    duplicate = AttendancePunch.objects.filter(
+        organisation_id=organisation_id,
+        employee=employee,
+        action_type=action_type,
+        punch_at__gte=punch_time - timedelta(minutes=1),
+        punch_at__lte=punch_time + timedelta(minutes=1),
+    ).exists()
+    if duplicate:
+        return {'status': 'skipped', 'reason': 'Duplicate punch within 1-minute window'}
+
+    safe_source = source if source in AttendancePunchSource.values else AttendancePunchSource.DEVICE
+    punch = AttendancePunch.objects.create(
+        organisation=employee.organisation,
+        employee=employee,
+        source_config=source_config,
+        action_type=action_type,
+        source=safe_source,
+        punch_at=punch_time,
+        metadata={
+            'device_id': device_id or '',
+            **(metadata or {}),
+        },
+    )
+    policy = get_default_attendance_policy(employee.organisation)
+    recalculate_attendance_day(employee, timezone.localtime(punch_time, _policy_timezone(policy)).date())
+    return {'status': 'created', 'punch_id': str(punch.id)}
+
+
 def upsert_attendance_override(employee, attendance_date, *, check_in_at=None, check_out_at=None, source=AttendanceRecordSource.MANUAL_OVERRIDE, actor=None, note=''):
     if check_in_at is None and check_out_at is not None:
         check_in_at = check_out_at

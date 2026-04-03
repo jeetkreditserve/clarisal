@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Integrate with the four leading biometric attendance protocols used in the Indian market — ZK ADMS (push), Matrix COSEC (REST pull), Suprema BioStar 2 (REST/OAuth2 pull), and HikVision ISAPI (digest auth pull) — plus a device management UI.
+**Goal:** Integrate with the leading biometric attendance protocols used in the Indian market — ZK ADMS (push, including ADMS-capable eSSL devices), eSSL eBioserver (webhook push via middleware), Matrix COSEC (REST pull), Suprema BioStar 2 (REST pull), and HikVision ISAPI (digest auth pull) — plus a device management UI.
 
-**Architecture:** New `biometrics` Django app. Protocol handlers are isolated in `protocols/` sub-package. Each handler converts device-specific attendance records to `AttendancePunch` records via an existing service helper. A Celery beat task runs every 5 minutes for pull protocols. ADMS devices push directly to an endpoint — no polling needed.
+**Architecture:** New `biometrics` Django app. Protocol handlers are isolated in `protocols/` sub-package. Each handler converts device-specific attendance records to `AttendancePunch` records via an existing service helper. A Celery beat task runs every 5 minutes for pull protocols. ADMS-capable devices push directly to an endpoint, while eSSL eBioserver installations POST real-time punch events to a device-scoped webhook secured with a shared secret.
 
-**Tech Stack:** Django 4.2 · DRF · Celery 5.4 · `requests` library · React 19 · TypeScript
+**Tech Stack:** Django 4.2 · DRF · Celery 5.4 · stdlib HTTP wrapper for vendor APIs · React 19 · TypeScript
 
 ---
 
@@ -20,6 +20,7 @@
 | `backend/apps/biometrics/services.py` | Create | Device registration, sync orchestration |
 | `backend/apps/biometrics/protocols/__init__.py` | Create | Package |
 | `backend/apps/biometrics/protocols/adms.py` | Create | ZK ADMS push handler |
+| `backend/apps/biometrics/protocols/essl_ebioserver.py` | Create | eSSL eBioserver webhook handler |
 | `backend/apps/biometrics/protocols/matrix_cosec.py` | Create | Matrix COSEC pull |
 | `backend/apps/biometrics/protocols/suprema.py` | Create | Suprema BioStar 2 pull |
 | `backend/apps/biometrics/protocols/hikvision.py` | Create | HikVision ISAPI pull |
@@ -36,12 +37,55 @@
 
 ---
 
+## Task 10 — eSSL eBioserver Webhook Extension
+
+**Files:**
+- Create: `backend/apps/biometrics/protocols/essl_ebioserver.py`
+- Modify: `backend/apps/biometrics/models.py`
+- Modify: `backend/apps/biometrics/serializers.py`
+- Modify: `backend/apps/biometrics/views.py`
+- Modify: `backend/apps/biometrics/adms_urls.py`
+- Modify: `backend/apps/biometrics/tests/test_protocols.py`
+- Modify: `backend/apps/biometrics/tests/test_views.py`
+- Modify: `frontend/src/pages/org/BiometricDevicesPage.tsx`
+- Modify: `frontend/src/pages/org/BiometricDevicesPage.test.tsx`
+- Modify: `frontend/src/types/hr.ts`
+
+- [x] **Step 1: Add protocol and device validation**
+
+Add `ESSL_EBIOSERVER` to `BiometricProtocol` and require a shared secret for this protocol while keeping `device_serial` optional and `ip_address` unnecessary.
+
+- [x] **Step 2: Add payload normalization and ingestion**
+
+Create `protocols/essl_ebioserver.py` to normalize CAMS/eBioserver payloads into `{ employee_code, punch_time, direction, metadata }` and route them through `create_punch_from_source()`.
+
+- [x] **Step 3: Add shared-secret webhook endpoint**
+
+Expose `/api/biometric/essl/ebioserver/<device_id>/events/`, authenticate it with a shared secret from `X-Biometric-Secret` or `RealTime.AuthToken`, and write `BiometricSyncLog` rows for each delivery.
+
+- [x] **Step 4: Update org admin UI**
+
+Add the `eSSL eBioserver` option to the biometric device page, switch the form into webhook/secret mode, and surface the generated endpoint path plus masked secret preview after creation.
+
+- [x] **Step 5: Cover duplicate and unknown-employee behavior**
+
+Verify webhook deliveries deduplicate within the existing one-minute window and skip unknown employees without failing the whole request.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add backend/apps/biometrics/ frontend/src/pages/org/BiometricDevicesPage.tsx frontend/src/pages/org/BiometricDevicesPage.test.tsx frontend/src/types/hr.ts docs/plans/P09-biometric-integration.md
+git commit -m "feat(biometrics): add eSSL eBioserver webhook integration"
+```
+
+---
+
 ## Task 1 — `biometrics` App and Models
 
 **Files:**
 - Create: `backend/apps/biometrics/models.py`
 
-- [ ] **Step 1: Create app**
+- [x] **Step 1: Create app**
 
 ```bash
 cd backend && python manage.py startapp biometrics apps/biometrics
@@ -59,7 +103,7 @@ class BiometricsConfig(AppConfig):
 
 Add `'apps.biometrics'` to `LOCAL_APPS` in `backend/clarisal/settings/base.py`.
 
-- [ ] **Step 2: Create `models.py`**
+- [x] **Step 2: Create `models.py`**
 
 ```python
 # backend/apps/biometrics/models.py
@@ -129,7 +173,7 @@ class BiometricSyncLog(AuditedBaseModel):
         ordering = ['-synced_at']
 ```
 
-- [ ] **Step 3: Generate and apply migration**
+- [x] **Step 3: Generate and apply migration**
 
 ```bash
 cd backend && python manage.py makemigrations biometrics --name initial
@@ -150,7 +194,7 @@ git commit -m "feat(biometrics): create biometrics app with BiometricDevice and 
 **Files:**
 - Modify: `backend/apps/attendance/services.py`
 
-- [ ] **Step 1: Add helper function**
+- [x] **Step 1: Add helper function**
 
 In `backend/apps/attendance/services.py`, add:
 
@@ -225,7 +269,7 @@ git commit -m "feat(attendance): add create_punch_from_source() helper for biome
 
 ADMS (Attendance Data Management System) is a push protocol. The device periodically POSTs attendance records to the server. The device must first be registered via a GET to the cdata endpoint, then attendance logs are POSTed with `table=ATTLOG`. Each ATTLOG line: `PIN<tab>DateTime<tab>Status<tab>Verify<tab>WorkCode\n` where PIN is the employee's enrolled PIN (mapped to employee_code).
 
-- [ ] **Step 1: Write failing test**
+- [x] **Step 1: Write failing test**
 
 Create `backend/apps/biometrics/tests/__init__.py` and `backend/apps/biometrics/tests/test_protocols.py`:
 
@@ -255,7 +299,7 @@ class TestAdmsProtocol(TestCase):
         self.assertEqual(result['pin'], '2002')
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 ```bash
 cd backend && python -m pytest apps/biometrics/tests/test_protocols.py -v
@@ -263,13 +307,13 @@ cd backend && python -m pytest apps/biometrics/tests/test_protocols.py -v
 
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Create `protocols/__init__.py`**
+- [x] **Step 3: Create `protocols/__init__.py`**
 
 ```bash
 touch backend/apps/biometrics/protocols/__init__.py
 ```
 
-- [ ] **Step 4: Create `protocols/adms.py`**
+- [x] **Step 4: Create `protocols/adms.py`**
 
 ```python
 # backend/apps/biometrics/protocols/adms.py
@@ -356,7 +400,7 @@ def handle_adms_push(body: str, organisation_id: str, device_serial: str) -> dic
     return {'processed': processed, 'skipped': skipped, 'errors': errors}
 ```
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 ```bash
 cd backend && python -m pytest apps/biometrics/tests/test_protocols.py -v
@@ -364,7 +408,7 @@ cd backend && python -m pytest apps/biometrics/tests/test_protocols.py -v
 
 Expected: All ADMS tests PASS.
 
-- [ ] **Step 6: Create ADMS views**
+- [x] **Step 6: Create ADMS views**
 
 In `backend/apps/biometrics/views.py`:
 
@@ -446,7 +490,7 @@ class AdmsCdataView(View):
         return HttpResponse('OK', content_type='text/plain')
 ```
 
-- [ ] **Step 7: Create `urls.py` and register**
+- [x] **Step 7: Create `urls.py` and register**
 
 ```python
 # backend/apps/biometrics/urls.py
@@ -498,7 +542,7 @@ git commit -m "feat(biometrics): ZK ADMS push protocol handler and endpoint"
 **Files:**
 - Create: `backend/apps/biometrics/protocols/matrix_cosec.py`
 
-- [ ] **Step 1: Write failing test**
+- [x] **Step 1: Write failing test**
 
 Add to `test_protocols.py`:
 
@@ -530,7 +574,7 @@ class TestMatrixCosecProtocol(TestCase):
         self.assertEqual(records[0]['employee_code'], '1001')
 ```
 
-- [ ] **Step 2: Create `protocols/matrix_cosec.py`**
+- [x] **Step 2: Create `protocols/matrix_cosec.py`**
 
 ```python
 # backend/apps/biometrics/protocols/matrix_cosec.py
@@ -637,7 +681,7 @@ def sync_cosec_device(device, organisation_id: str) -> dict:
     return {'processed': processed, 'skipped': skipped, 'errors': errors}
 ```
 
-- [ ] **Step 3: Run tests**
+- [x] **Step 3: Run tests**
 
 ```bash
 cd backend && python -m pytest apps/biometrics/tests/test_protocols.py::TestMatrixCosecProtocol -v
@@ -659,7 +703,7 @@ git commit -m "feat(biometrics): Matrix COSEC REST pull protocol handler"
 **Files:**
 - Create: `backend/apps/biometrics/protocols/suprema.py`
 
-- [ ] **Step 1: Write test**
+- [x] **Step 1: Write test**
 
 Add to `test_protocols.py`:
 
@@ -694,7 +738,7 @@ class TestSupremaProtocol(TestCase):
         self.assertGreaterEqual(len(records), 1)
 ```
 
-- [ ] **Step 2: Create `protocols/suprema.py`**
+- [x] **Step 2: Create `protocols/suprema.py`**
 
 ```python
 # backend/apps/biometrics/protocols/suprema.py
@@ -827,7 +871,7 @@ git commit -m "feat(biometrics): Suprema BioStar 2 OAuth2 pull protocol handler"
 **Files:**
 - Create: `backend/apps/biometrics/protocols/hikvision.py`
 
-- [ ] **Step 1: Write test**
+- [x] **Step 1: Write test**
 
 Add to `test_protocols.py`:
 
@@ -859,7 +903,7 @@ class TestHikVisionProtocol(TestCase):
         self.assertEqual(len(records), 1)
 ```
 
-- [ ] **Step 2: Create `protocols/hikvision.py`**
+- [x] **Step 2: Create `protocols/hikvision.py`**
 
 ```python
 # backend/apps/biometrics/protocols/hikvision.py
@@ -982,7 +1026,7 @@ git commit -m "feat(biometrics): HikVision ISAPI digest auth pull protocol handl
 - Create: `backend/apps/biometrics/tasks.py`
 - Modify: `backend/clarisal/settings/base.py`
 
-- [ ] **Step 1: Create `tasks.py`**
+- [x] **Step 1: Create `tasks.py`**
 
 ```python
 # backend/apps/biometrics/tasks.py
@@ -1040,7 +1084,7 @@ def sync_pull_devices():
             )
 ```
 
-- [ ] **Step 2: Add Celery beat schedule**
+- [x] **Step 2: Add Celery beat schedule**
 
 In `backend/clarisal/settings/base.py`, add to `CELERY_BEAT_SCHEDULE`:
 
@@ -1070,7 +1114,7 @@ git commit -m "feat(biometrics): Celery beat task to sync all pull-protocol devi
 - Modify: `backend/apps/biometrics/views.py` (add CRUD views)
 - Create: `backend/apps/biometrics/org_urls.py`
 
-- [ ] **Step 1: Create `serializers.py`**
+- [x] **Step 1: Create `serializers.py`**
 
 ```python
 # backend/apps/biometrics/serializers.py
@@ -1115,7 +1159,7 @@ class BiometricSyncLogSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 ```
 
-- [ ] **Step 2: Add CRUD views to `views.py`**
+- [x] **Step 2: Add CRUD views to `views.py`**
 
 Append to `backend/apps/biometrics/views.py`:
 
@@ -1174,7 +1218,7 @@ class BiometricSyncLogListView(APIView):
         return Response(BiometricSyncLogSerializer(logs, many=True).data)
 ```
 
-- [ ] **Step 3: Create `org_urls.py`**
+- [x] **Step 3: Create `org_urls.py`**
 
 ```python
 # backend/apps/biometrics/org_urls.py
@@ -1188,7 +1232,7 @@ urlpatterns = [
 ]
 ```
 
-- [ ] **Step 4: Register in `clarisal/urls.py`**
+- [x] **Step 4: Register in `clarisal/urls.py`**
 
 Add `path('org/', include('apps.biometrics.org_urls'))` to both legacy and versioned URL includes.
 
@@ -1206,7 +1250,7 @@ git commit -m "feat(biometrics): device CRUD API endpoints with sync log history
 **Files:**
 - Create: `frontend/src/pages/org/BiometricDevicesPage.tsx`
 
-- [ ] **Step 1: Add API functions to `org-admin.ts`**
+- [x] **Step 1: Add API functions to `org-admin.ts`**
 
 ```typescript
 // In frontend/src/lib/api/org-admin.ts
@@ -1242,7 +1286,7 @@ export async function getDeviceSyncLogs(deviceId: string): Promise<object[]> {
 }
 ```
 
-- [ ] **Step 2: Create `BiometricDevicesPage.tsx`**
+- [x] **Step 2: Create `BiometricDevicesPage.tsx`**
 
 ```tsx
 // frontend/src/pages/org/BiometricDevicesPage.tsx
@@ -1391,7 +1435,7 @@ export default function BiometricDevicesPage() {
 }
 ```
 
-- [ ] **Step 3: Add route and nav item**
+- [x] **Step 3: Add route and nav item**
 
 In `frontend/src/routes/index.tsx`, add route for `/org/biometric-devices`.
 In `OrgLayout.tsx`, add `{ label: 'Biometric Devices', href: '/org/biometric-devices', icon: FingerPrintIcon }` to the Time & Leave nav group.

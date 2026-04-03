@@ -25,6 +25,7 @@ import { OrgAuditPage } from '@/pages/org/AuditPage'
 import { LocationsPage } from '@/pages/org/LocationsPage'
 import { DepartmentsPage } from '@/pages/org/DepartmentsPage'
 import { AttendanceImportsPage } from '@/pages/org/AttendanceImportsPage'
+import { BiometricDevicesPage } from '@/pages/org/BiometricDevicesPage'
 import { EmployeesPage } from '@/pages/org/EmployeesPage'
 import { EmployeeDetailPage } from '@/pages/org/EmployeeDetailPage'
 import { EmployeeDashboardPage } from '@/pages/employee/DashboardPage'
@@ -48,6 +49,7 @@ import { ApprovalWorkflowBuilderPage } from '@/pages/org/ApprovalWorkflowBuilder
 import { NoticesPage } from '@/pages/org/NoticesPage'
 import { NoticeEditorPage } from '@/pages/org/NoticeEditorPage'
 import { PayrollMastersPage } from '@/pages/ct/PayrollMastersPage'
+import { CtOrgPayrollPage } from '@/pages/ct/CtOrgPayrollPage'
 
 function withErrorBoundary(element: ReactNode) {
   return <AppErrorBoundary>{element}</AppErrorBoundary>
@@ -110,6 +112,7 @@ export const router = createBrowserRouter([
           { path: '/ct/organisations/:organisationId/notices/new', element: <NoticeEditorPage /> },
           { path: '/ct/organisations/:organisationId/notices/:id', element: <NoticeEditorPage /> },
           { path: '/ct/organisations/:organisationId/audit', element: <OrgAuditPage /> },
+          { path: '/ct/organisations/:organisationId/payroll', element: <CtOrgPayrollPage /> },
           { path: '/ct/organisations/:id', element: <OrganisationDetailPage /> },
         ],
       },
@@ -127,6 +130,7 @@ export const router = createBrowserRouter([
           { path: '/org/dashboard', element: <OrgDashboardPage /> },
           { path: '/org/profile', element: <OrgProfilePage /> },
           { path: '/org/attendance', element: <AttendanceImportsPage /> },
+          { path: '/org/biometric-devices', element: <BiometricDevicesPage /> },
           { path: '/org/payroll', element: <PayrollPage /> },
           { path: '/org/reports', element: <ReportsPage /> },
           { path: '/org/locations', element: <LocationsPage /> },

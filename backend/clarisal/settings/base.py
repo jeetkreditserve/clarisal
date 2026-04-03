@@ -50,6 +50,7 @@ LOCAL_APPS = [
     'apps.payroll',
     'apps.notifications',
     'apps.reports',
+    'apps.biometrics',
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -205,6 +206,12 @@ CACHES = {
 }
 
 CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
+CELERY_BEAT_SCHEDULE = {
+    'sync-biometric-devices-every-5-min': {
+        'task': 'biometrics.sync_pull_devices',
+        'schedule': 300,
+    },
+}
 
 # Email
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'

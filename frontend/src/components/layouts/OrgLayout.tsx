@@ -1,5 +1,5 @@
 import { Outlet, useNavigate } from 'react-router-dom'
-import { BarChart3, Bell, Building, Building2, CalendarDays, ClipboardCheck, Clock3, Landmark, LayoutDashboard, LogOut, MapPin, PlaneTakeoff, Repeat, ScrollText, Users } from 'lucide-react'
+import { BarChart3, Bell, Building, Building2, CalendarDays, ClipboardCheck, Clock3, Fingerprint, Landmark, LayoutDashboard, LogOut, MapPin, PlaneTakeoff, Repeat, ScrollText, Users } from 'lucide-react'
 import { SidebarNav, type NavGroup } from './SidebarNav'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
 import { useAuth } from '@/hooks/useAuth'
@@ -29,6 +29,7 @@ const navGroups: NavGroup[] = [
     label: 'Time & Leave',
     items: [
       { label: 'Attendance', href: '/org/attendance', icon: Clock3 },
+      { label: 'Biometric Devices', href: '/org/biometric-devices', icon: Fingerprint },
       { label: 'Holidays', href: '/org/holidays', icon: CalendarDays },
       { label: 'Leave cycles', href: '/org/leave-cycles', icon: Repeat },
       { label: 'Leave plans', href: '/org/leave-plans', icon: ClipboardCheck },

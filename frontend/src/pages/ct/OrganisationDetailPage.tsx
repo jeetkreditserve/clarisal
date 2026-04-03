@@ -53,7 +53,6 @@ import {
   useCtOrgEmployees,
   useCtOrgOnboardingSummary,
   useCtOrgNotes,
-  useCtOrgPayrollSummary,
   useDeactivateCtDepartment,
   useDeactivateCtLocation,
   useDeactivateCtOrgAdmin,
@@ -115,7 +114,7 @@ import {
   validatePhoneForCountry,
 } from '@/lib/organisationMetadata'
 import { ORG_ONBOARDING_STEPS } from '@/lib/status'
-import type { ApprovalRequestKind, ApprovalWorkflowConfig, CtOrganisationApprovalSupportSummary, CtOrganisationAttendanceSupportSummary, CtOrganisationOnboardingSupportSummary, CtOrganisationPayrollSupportSummary, Department, HolidayCalendar, LeaveCycle, LeavePlan, Location, NoticeItem, OnDutyPolicy } from '@/types/hr'
+import type { ApprovalRequestKind, ApprovalWorkflowConfig, CtOrganisationApprovalSupportSummary, CtOrganisationAttendanceSupportSummary, CtOrganisationOnboardingSupportSummary, Department, HolidayCalendar, LeaveCycle, LeavePlan, Location, NoticeItem, OnDutyPolicy } from '@/types/hr'
 import type { LicenceBatch, OrganisationAddress, OrganisationAddressType, OrganisationDetail, OrganisationEntityType } from '@/types/organisation'
 
 type DetailTabKey =
@@ -127,7 +126,6 @@ type DetailTabKey =
   | 'onboarding'
   | 'attendance'
   | 'approvals'
-  | 'payroll'
   | 'holidays'
   | 'configuration'
   | 'audit'
@@ -279,7 +277,6 @@ const TAB_OPTIONS: Array<{
   { key: 'onboarding', label: 'Onboarding Support', icon: UserPlus },
   { key: 'attendance', label: 'Attendance Support', icon: Clock3 },
   { key: 'approvals', label: 'Approval Support', icon: FileText },
-  { key: 'payroll', label: 'Payroll Support', icon: BadgeDollarSign },
   { key: 'holidays', label: 'Org Holidays', icon: CalendarDays },
   { key: 'configuration', label: 'Configuration', icon: FileText },
   { key: 'audit', label: 'Audit Timeline', icon: History },
@@ -748,8 +745,6 @@ export function OrganisationDetailPage() {
   const { data: approvalSummary, isLoading: approvalSummaryLoading } = useCtOrgApprovalSummary(organisationId, activeTab === 'approvals')
   const { data: auditLogs } = useCtAuditLogs(organisationId, activeTab === 'audit')
   const { data: notes, isLoading: notesLoading } = useCtOrgNotes(organisationId, activeTab === 'notes')
-  const { data: payrollSummary, isLoading: payrollSummaryLoading } = useCtOrgPayrollSummary(organisationId, activeTab === 'payroll')
-
   const updateOrganisationMutation = useUpdateOrganisation(organisationId)
   const updateBootstrapAdminMutation = useUpdateCtBootstrapAdmin(organisationId)
   const createAddressMutation = useCreateOrganisationAddress(organisationId)
@@ -1432,7 +1427,7 @@ export function OrganisationDetailPage() {
             <button type="button" className="btn-secondary" onClick={() => setSearchParams({ tab: 'approvals' })}>
               Review approval support
             </button>
-            <button type="button" className="btn-secondary" onClick={() => setSearchParams({ tab: 'payroll' })}>
+            <button type="button" className="btn-secondary" onClick={() => navigate(`/ct/organisations/${id}/payroll`)}>
               Review payroll support
             </button>
           </div>
@@ -1970,93 +1965,6 @@ export function OrganisationDetailPage() {
       </SectionCard>
     </div>
   )
-
-  const renderPayrollTab = () => {
-    if (payrollSummaryLoading) {
-      return <SkeletonTable rows={5} />
-    }
-
-    const summary = payrollSummary as CtOrganisationPayrollSupportSummary | undefined
-    if (!summary) {
-      return (
-        <EmptyState
-          title="Payroll support data unavailable"
-          description="Open this tab after CT payroll support visibility is enabled for the organisation."
-          icon={BadgeDollarSign}
-        />
-      )
-    }
-
-    return (
-      <div className="space-y-6">
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-          <DetailMetric label="Tax slab sets" value={String(summary.tax_slab_set_count)} helper="Org-scoped preview masters" />
-          <DetailMetric label="Templates" value={String(summary.compensation_template_count)} helper="Reusable structures" />
-          <DetailMetric label="Approved assignments" value={String(summary.approved_assignment_count)} helper="Salary records ready" />
-          <DetailMetric label="Pending assignments" value={String(summary.pending_assignment_count)} helper="Waiting on approval" />
-          <DetailMetric label="Payslips" value={String(summary.payslip_count)} helper="Generated preview slips" />
-        </div>
-
-        <SupportDiagnostics diagnostics={summary.diagnostics} />
-
-        <SectionCard
-          title="Payroll run history"
-          description="Sanitized payroll support visibility for Control Tower. Run state and exception counts are visible here, while employee-level pay remains hidden."
-        >
-          {summary.payroll_runs.length ? (
-            <div className="space-y-3">
-              {summary.payroll_runs.map((run) => (
-                <div key={run.id} className="surface-muted rounded-[24px] p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-semibold text-[hsl(var(--foreground-strong))]">{run.name}</p>
-                        <StatusBadge tone={run.status === 'FINALIZED' ? 'success' : run.status === 'REJECTED' ? 'danger' : 'info'}>
-                          {run.status}
-                        </StatusBadge>
-                        {run.exception_count ? <StatusBadge tone="warning">{run.exception_count} exceptions</StatusBadge> : null}
-                      </div>
-                      <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
-                        {run.period_month}/{run.period_year} • {run.run_type} • {run.ready_count} ready items
-                      </p>
-                      <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
-                        Attendance-linked payable days: {run.attendance_snapshot_summary.use_attendance_inputs ? 'enabled' : 'not applied'}
-                      </p>
-                      {run.attendance_snapshot_summary.attendance_source && run.attendance_snapshot_summary.use_attendance_inputs ? (
-                        <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
-                          Attendance inputs: {run.attendance_snapshot_summary.total_attendance_paid_days} paid days • {run.attendance_snapshot_summary.total_lop_days} LOP days • {run.attendance_snapshot_summary.total_overtime_minutes} overtime minutes
-                        </p>
-                      ) : null}
-                    </div>
-                    <div className="text-right text-sm text-[hsl(var(--muted-foreground))]">
-                      <p>Created {formatDateTime(run.created_at)}</p>
-                      <p>{run.finalized_at ? `Finalized ${formatDateTime(run.finalized_at)}` : run.calculated_at ? `Calculated ${formatDateTime(run.calculated_at)}` : 'Not finalized yet'}</p>
-                    </div>
-                  </div>
-                  {run.exception_messages.length ? (
-                    <div className="mt-4 rounded-[18px] border border-[hsl(var(--warning)_/_0.32)] bg-[hsl(var(--warning)_/_0.12)] px-4 py-3 text-sm text-[hsl(var(--foreground-strong))]">
-                      <p className="font-medium">Why this run is blocked</p>
-                      <ul className="mt-2 space-y-1 text-[hsl(var(--muted-foreground))]">
-                        {run.exception_messages.map((message) => (
-                          <li key={message}>{message}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <EmptyState
-              title="No payroll runs yet"
-              description="Once this organisation starts payroll preview processing, CT will be able to inspect run status here without seeing salary amounts."
-              icon={BadgeDollarSign}
-            />
-          )}
-        </SectionCard>
-      </div>
-    )
-  }
 
   const renderOnboardingTab = () => {
     if (onboardingSummaryLoading) {
@@ -2788,7 +2696,6 @@ export function OrganisationDetailPage() {
       {activeTab === 'onboarding' ? renderOnboardingTab() : null}
       {activeTab === 'attendance' ? renderAttendanceTab() : null}
       {activeTab === 'approvals' ? renderApprovalsTab() : null}
-      {activeTab === 'payroll' ? renderPayrollTab() : null}
       {activeTab === 'holidays' ? renderHolidaysTab() : null}
       {activeTab === 'configuration' ? renderConfigurationTab() : null}
       {activeTab === 'audit' ? renderAuditTab() : null}

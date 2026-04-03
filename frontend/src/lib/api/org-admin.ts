@@ -14,6 +14,8 @@ import type {
   AttendancePolicy,
   AttendanceRegularization,
   AttendanceSourceConfig,
+  BiometricDevice,
+  BiometricSyncLog,
   AttendanceShift,
   AttendanceShiftAssignment,
   ApprovalWorkflowConfig,
@@ -584,6 +586,36 @@ export async function downloadNormalizedAttendanceFile(jobId: string) {
     blob: data,
     filename: headers['content-disposition']?.match(/filename=\"?([^"]+)\"?/)?.[1] || `normalized-attendance-${jobId}.xlsx`,
   }
+}
+
+export async function getBiometricDevices() {
+  const { data } = await api.get<BiometricDevice[]>('/org/biometrics/devices/')
+  return data
+}
+
+export async function createBiometricDevice(payload: {
+  name: string
+  device_serial?: string
+  protocol: BiometricDevice['protocol']
+  ip_address?: string
+  port?: number
+  auth_username?: string
+  api_key?: string
+  oauth_client_id?: string
+  oauth_client_secret?: string
+  is_active?: boolean
+}) {
+  const { data } = await api.post<BiometricDevice>('/org/biometrics/devices/', payload)
+  return data
+}
+
+export async function deleteBiometricDevice(id: string) {
+  await api.delete(`/org/biometrics/devices/${id}/`)
+}
+
+export async function getDeviceSyncLogs(deviceId: string) {
+  const { data } = await api.get<BiometricSyncLog[]>(`/org/biometrics/devices/${deviceId}/sync-logs/`)
+  return data
 }
 
 export async function fetchPayrollSummary() {

@@ -126,11 +126,12 @@ export function useUpdateOrgSetup() {
   })
 }
 
-export function useOrgAuditLogs(params?: Parameters<typeof fetchOrgAuditLogs>[0]) {
+export function useOrgAuditLogs(params?: Parameters<typeof fetchOrgAuditLogs>[0], enabled = true) {
   const organisationId = useOrgScope()
   return useQuery({
     queryKey: ['org', organisationId, 'audit', params],
     queryFn: () => fetchOrgAuditLogs(params),
+    enabled,
   })
 }
 
@@ -979,12 +980,12 @@ export function useNotices(params?: Parameters<typeof fetchNotices>[0], enabled 
   })
 }
 
-export function useNotice(id: string) {
+export function useNotice(id: string, enabled = true) {
   const organisationId = useOrgScope()
   return useQuery({
     queryKey: ['org', organisationId, 'notices', id],
     queryFn: () => fetchNotice(id),
-    enabled: Boolean(id),
+    enabled: enabled && Boolean(id),
   })
 }
 
