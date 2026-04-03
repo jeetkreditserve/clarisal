@@ -179,11 +179,12 @@ export function useDeactivateOrgAddress() {
   })
 }
 
-export function useLocations(includeInactive = false) {
+export function useLocations(includeInactive = false, enabled = true) {
   const organisationId = useOrgScope()
   return useQuery({
     queryKey: ['org', organisationId, 'locations', includeInactive],
     queryFn: () => fetchLocations(includeInactive),
+    enabled,
   })
 }
 
@@ -217,11 +218,12 @@ export function useDeactivateLocation() {
   })
 }
 
-export function useDepartments(includeInactive = false) {
+export function useDepartments(includeInactive = false, enabled = true) {
   const organisationId = useOrgScope()
   return useQuery({
     queryKey: ['org', organisationId, 'departments', includeInactive],
     queryFn: () => fetchDepartments(includeInactive),
+    enabled,
   })
 }
 
@@ -255,11 +257,12 @@ export function useDeactivateDepartment() {
   })
 }
 
-export function useEmployees(params?: { status?: string; search?: string; page?: number }) {
+export function useEmployees(params?: { status?: string; search?: string; page?: number }, enabled = true) {
   const organisationId = useOrgScope()
   return useQuery({
     queryKey: ['org', organisationId, 'employees', params],
     queryFn: () => fetchEmployees(params),
+    enabled,
   })
 }
 
@@ -417,20 +420,21 @@ export function useEmployeeDocumentDownload() {
   })
 }
 
-export function useApprovalWorkflows() {
+export function useApprovalWorkflows(enabled = true) {
   const organisationId = useOrgScope()
   return useQuery({
     queryKey: ['org', organisationId, 'approval-workflows'],
     queryFn: fetchApprovalWorkflows,
+    enabled,
   })
 }
 
-export function useApprovalWorkflow(id: string) {
+export function useApprovalWorkflow(id: string, enabled = true) {
   const organisationId = useOrgScope()
   return useQuery({
     queryKey: ['org', organisationId, 'approval-workflows', id],
     queryFn: () => fetchApprovalWorkflow(id),
-    enabled: Boolean(id),
+    enabled: enabled && Boolean(id),
   })
 }
 
@@ -454,11 +458,12 @@ export function useUpdateApprovalWorkflow(id: string) {
   })
 }
 
-export function useApprovalInbox() {
+export function useApprovalInbox(enabled = true) {
   const organisationId = useOrgScope()
   return useQuery({
     queryKey: ['org', organisationId, 'approval-inbox'],
     queryFn: fetchApprovalInbox,
+    enabled,
   })
 }
 
@@ -843,11 +848,12 @@ export function usePublishHolidayCalendar() {
   })
 }
 
-export function useLeaveCycles() {
+export function useLeaveCycles(enabled = true) {
   const organisationId = useOrgScope()
   return useQuery({
     queryKey: ['org', organisationId, 'leave-cycles'],
     queryFn: fetchLeaveCycles,
+    enabled,
   })
 }
 
@@ -871,20 +877,21 @@ export function useUpdateLeaveCycle(id: string) {
   })
 }
 
-export function useLeavePlans() {
+export function useLeavePlans(enabled = true) {
   const organisationId = useOrgScope()
   return useQuery({
     queryKey: ['org', organisationId, 'leave-plans'],
     queryFn: fetchLeavePlans,
+    enabled,
   })
 }
 
-export function useLeavePlan(id: string) {
+export function useLeavePlan(id: string, enabled = true) {
   const organisationId = useOrgScope()
   return useQuery({
     queryKey: ['org', organisationId, 'leave-plans', id],
     queryFn: () => fetchLeavePlan(id),
-    enabled: Boolean(id),
+    enabled: enabled && Boolean(id),
   })
 }
 

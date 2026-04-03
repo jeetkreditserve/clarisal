@@ -52,7 +52,7 @@ api.interceptors.response.use(
       '/auth/password-reset/confirm/',
     ].some((path) => url.includes(path))
 
-    if ((error.response?.status === 401 || error.response?.status === 403) && !isAuthMutation) {
+    if (error.response?.status === 401 && !isAuthMutation) {
       window.dispatchEvent(new Event('clarisal:auth-lost'))
     }
 

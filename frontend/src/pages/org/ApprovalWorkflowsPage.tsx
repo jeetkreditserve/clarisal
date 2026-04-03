@@ -35,9 +35,9 @@ export function ApprovalWorkflowsPage() {
   const tabs = isCtMode ? CT_TABS : ORG_TABS
   const [searchParams, setSearchParams] = useSearchParams()
   const activeTab = tabs.some((tab) => tab.id === searchParams.get('tab')) ? searchParams.get('tab') : 'workflows'
-  const { data: workflows, isLoading } = useApprovalWorkflows()
+  const { data: workflows, isLoading } = useApprovalWorkflows(!isCtMode)
   const { data: configuration, isLoading: isCtLoading } = useCtOrgConfiguration(organisationId ?? '', isCtMode)
-  const { data: inbox } = useApprovalInbox()
+  const { data: inbox } = useApprovalInbox(!isCtMode)
   const approveMutation = useApproveApprovalAction()
   const rejectMutation = useRejectApprovalAction()
   const resolvedWorkflows = isCtMode ? configuration?.approval_workflows : workflows
