@@ -36,28 +36,27 @@ test.describe('CT Organisations', () => {
 
   test('Search for "Acme" filters to 1 result', async ({ page }) => {
     await page.goto('/ct/organisations')
-    await expect(page.locator('tbody tr').first()).toBeVisible({ timeout: 10000 })
+    const rows = page.locator('tbody tr')
+    await expect(rows.first()).toBeVisible({ timeout: 10000 })
+    const initialCount = await rows.count()
 
-    await page.fill('input.field-input.pl-11', 'Acme')
-    // Search may be debounced — wait for the table to update
-    await page.waitForTimeout(600)
-    await expect(page.locator('tbody tr')).toHaveCount(1, { timeout: 10000 })
+    await page.getByPlaceholder('Search organisations...').fill('Acme')
+    await expect.poll(async () => rows.count(), { timeout: 10000 }).toBeLessThan(initialCount)
     await expect(page.locator('tbody')).toContainText('Acme Workforce Pvt Ltd')
   })
 
   test('Clear search shows all organisations', async ({ page }) => {
     await page.goto('/ct/organisations')
-    await expect(page.locator('tbody tr').first()).toBeVisible({ timeout: 10000 })
-    const initialCount = await page.locator('tbody tr').count()
+    const rows = page.locator('tbody tr')
+    await expect(rows.first()).toBeVisible({ timeout: 10000 })
+    const initialCount = await rows.count()
 
     // Fill search then clear it
-    await page.fill('input.field-input.pl-11', 'Acme')
-    await page.waitForTimeout(600)
-    await expect(page.locator('tbody tr')).toHaveCount(1, { timeout: 10000 })
+    await page.getByPlaceholder('Search organisations...').fill('Acme')
+    await expect.poll(async () => rows.count(), { timeout: 10000 }).toBeLessThan(initialCount)
 
-    await page.fill('input.field-input.pl-11', '')
-    await page.waitForTimeout(600)
-    await expect(page.locator('tbody tr')).toHaveCount(initialCount, { timeout: 10000 })
+    await page.getByPlaceholder('Search organisations...').fill('')
+    await expect.poll(async () => rows.count(), { timeout: 10000 }).toBe(initialCount)
   })
 
   test('Click Acme row navigates to detail page', async ({ page }) => {

@@ -29,15 +29,15 @@ test.describe('Employee Dashboard', () => {
   test('continue onboarding button links to /me/onboarding', async ({ page }) => {
     await page.goto('/me/dashboard')
     await page.waitForSelector('text=My dashboard', { timeout: 15000 })
-    const onboardingLink = page.locator('a[href="/me/onboarding"]')
+    const onboardingLink = page.getByRole('link', { name: 'Continue onboarding' }).first()
     await expect(onboardingLink).toBeVisible({ timeout: 10000 })
+    await expect(onboardingLink).toHaveAttribute('href', '/me/onboarding')
   })
 
   test('month calendar widget renders', async ({ page }) => {
     await page.goto('/me/dashboard')
     await page.waitForSelector('text=My dashboard', { timeout: 15000 })
-    // MonthCalendar component renders day cells
-    const calendar = page.locator('[class*="calendar"], [class*="CalendarCell"], table').first()
+    const calendar = page.getByText('Month calendar').first()
     await expect(calendar).toBeVisible({ timeout: 15000 })
   })
 })

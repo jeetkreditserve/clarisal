@@ -1,0 +1,16 @@
+[run]
+branch = True
+source =
+    apps
+    clarisal
+omit =
+    */tests/*
+    */migrations/*
+    manage.py
+    clarisal/asgi.py
+    clarisal/wsgi.py
+    clarisal/settings/*
+
+[report]
+show_missing = True
+skip_covered = True

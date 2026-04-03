@@ -1,13 +1,19 @@
+from datetime import timedelta
+from decimal import Decimal
+
 import pytest
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.accounts.models import User, UserRole
 from apps.approvals.models import ApprovalRequestKind
 from apps.organisations.models import Organisation, OrganisationAccessState, OrganisationBillingStatus, OrganisationMembership, OrganisationMembershipStatus, OrganisationStatus
+from apps.organisations.services import create_licence_batch, mark_licence_batch_paid
 
 
 @pytest.fixture
 def org_admin_client(db):
+    today = timezone.localdate()
     organisation = Organisation.objects.create(
         name='Acme Corp',
         status=OrganisationStatus.ACTIVE,
@@ -26,6 +32,15 @@ def org_admin_client(db):
         is_org_admin=True,
         status=OrganisationMembershipStatus.ACTIVE,
     )
+    paid_batch = create_licence_batch(
+        organisation=organisation,
+        quantity=5,
+        price_per_licence_per_month=Decimal('100.00'),
+        start_date=today - timedelta(days=7),
+        end_date=today + timedelta(days=30),
+        created_by=user,
+    )
+    mark_licence_batch_paid(paid_batch, paid_by=user, paid_at=today - timedelta(days=1))
     client = APIClient()
     client.force_authenticate(user=user)
     session = client.session

@@ -11,10 +11,13 @@ test.describe('Employee Leave', () => {
     test('leave balance cards visible', async ({ page }) => {
       await page.goto('/me/leave')
       await page.waitForSelector('text=Leave management', { timeout: 15000 })
-      // Balance cards are surface-card divs with leave type names
-      // Either balances exist or a "no leave plan" empty state is shown
-      const balanceOrEmpty = page.locator('.surface-card, text=No leave plan, text=no leave').first()
-      await expect(balanceOrEmpty).toBeVisible({ timeout: 15000 })
+      const balanceCards = page.locator('.surface-card')
+      if (await balanceCards.count()) {
+        await expect(balanceCards.first()).toBeVisible({ timeout: 15000 })
+        return
+      }
+
+      await expect(page.locator('text=No leave plan is assigned to your employee record yet.')).toBeVisible({ timeout: 15000 })
     })
 
     test('leave request form visible', async ({ page }) => {
@@ -27,8 +30,7 @@ test.describe('Employee Leave', () => {
     test('leave history section visible', async ({ page }) => {
       await page.goto('/me/leave')
       await page.waitForSelector('text=Leave management', { timeout: 15000 })
-      // History table or empty state
-      const historySection = page.locator('text=Leave requests, text=No leave requests, text=history').first()
+      const historySection = page.locator('text=My leave requests').first()
       await expect(historySection).toBeVisible({ timeout: 15000 })
     })
   })

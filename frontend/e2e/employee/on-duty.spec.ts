@@ -20,8 +20,7 @@ test.describe('Employee On-Duty', () => {
     test('OD requests history visible', async ({ page }) => {
       await page.goto('/me/od')
       await page.waitForSelector('body', { timeout: 10000 })
-      // Either request list or empty state
-      const content = page.locator('text=On-duty requests, text=No on-duty, text=requests').first()
+      const content = page.locator('text=My on-duty requests').first()
       await expect(content).toBeVisible({ timeout: 15000 })
     })
   })
