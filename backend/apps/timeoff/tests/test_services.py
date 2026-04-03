@@ -11,6 +11,14 @@ from apps.organisations.models import (
     OrganisationBillingStatus,
     OrganisationStatus,
 )
+from apps.approvals.models import (
+    ApprovalApproverType,
+    ApprovalRequestKind,
+    ApprovalStage,
+    ApprovalStageApprover,
+    ApprovalWorkflow,
+    ApprovalWorkflowRule,
+)
 from apps.timeoff.models import (
     CarryForwardMode,
     LeaveBalance,
@@ -81,6 +89,49 @@ def _create_leave_type(
         carry_forward_mode=carry_forward_mode,
         carry_forward_cap=carry_forward_cap,
     )
+
+
+def _create_leave_approval_workflow(organisation):
+    approver_user = User.objects.create_user(
+        email=f'approver-{organisation.id}@test.com',
+        password='pass123!',
+        account_type=AccountType.WORKFORCE,
+        role=UserRole.ORG_ADMIN,
+        organisation=organisation,
+        is_active=True,
+    )
+    approver_employee = Employee.objects.create(
+        organisation=organisation,
+        user=approver_user,
+        employee_code=f'APR{str(organisation.id).replace("-", "")[:5]}',
+        designation='HR Manager',
+        status=EmployeeStatus.ACTIVE,
+    )
+    workflow = ApprovalWorkflow.objects.create(
+        organisation=organisation,
+        name='Leave Workflow',
+        is_default=True,
+        default_request_kind=ApprovalRequestKind.LEAVE,
+        is_active=True,
+    )
+    ApprovalWorkflowRule.objects.create(
+        workflow=workflow,
+        name='Leave Rule',
+        request_kind=ApprovalRequestKind.LEAVE,
+        priority=100,
+        is_active=True,
+    )
+    stage = ApprovalStage.objects.create(
+        workflow=workflow,
+        name='Manager Review',
+        sequence=1,
+    )
+    ApprovalStageApprover.objects.create(
+        stage=stage,
+        approver_type=ApprovalApproverType.SPECIFIC_EMPLOYEE,
+        approver_employee=approver_employee,
+    )
+    return workflow
 
 
 def _create_balance(employee, leave_type, *, cycle_start, cycle_end, available_amount):
@@ -421,3 +472,41 @@ class TestLeaveBalanceValidation:
             cycle_end=date(2026, 12, 31),
             requested_units=Decimal('5.00'),
         )
+
+
+@pytest.mark.django_db
+class TestLeaveEncashment:
+    def test_encashment_request_created_with_pending_approval(self):
+        from apps.timeoff.models import LeaveEncashmentStatus
+        from apps.timeoff.services import create_leave_encashment_request
+
+        organisation = _create_organisation('Encashment Org')
+        employee = _create_employee(organisation, email='encash@test.com')
+        _create_leave_approval_workflow(organisation)
+        leave_type = _create_leave_type(organisation, code='EN')
+        leave_type.allows_encashment = True
+        leave_type.save(update_fields=['allows_encashment', 'modified_at'])
+        LeaveBalance.objects.create(
+            employee=employee,
+            leave_type=leave_type,
+            cycle_start=date(2026, 1, 1),
+            cycle_end=date(2026, 12, 31),
+            opening_balance=ZERO,
+            credited_amount=Decimal('10.00'),
+            used_amount=ZERO,
+            pending_amount=ZERO,
+            carried_forward_amount=ZERO,
+        )
+
+        request = create_leave_encashment_request(
+            employee=employee,
+            leave_type=leave_type,
+            cycle_start=date(2026, 1, 1),
+            cycle_end=date(2026, 12, 31),
+            days_to_encash=Decimal('5.00'),
+            actor=employee.user,
+        )
+
+        assert request.status == LeaveEncashmentStatus.PENDING
+        assert request.days_to_encash == Decimal('5.00')
+        assert request.approval_run is not None

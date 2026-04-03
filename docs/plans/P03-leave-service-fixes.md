@@ -592,7 +592,7 @@ Context: `LeaveType.carry_forward_mode` can be `NONE`, `CAPPED`, or `UNLIMITED`.
   # Expected: FAIL
   ```
 
-- [-] **Step 2: Add `validate_leave_balance()` function to `services.py`**
+- [x] **Step 2: Add `validate_leave_balance()` function to `services.py`**
 
   In `backend/apps/timeoff/services.py`, add:
   ```python
@@ -625,7 +625,7 @@ Context: `LeaveType.carry_forward_mode` can be `NONE`, `CAPPED`, or `UNLIMITED`.
           )
   ```
 
-- [ ] **Step 3: Run tests and commit**
+- [x] **Step 3: Run tests and commit**
 
   ```bash
   pytest apps/timeoff/tests/test_services.py -v
@@ -641,7 +641,7 @@ Context: `LeaveType.carry_forward_mode` can be `NONE`, `CAPPED`, or `UNLIMITED`.
 
 **Files:** `backend/apps/timeoff/models.py`, migration
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
   Add to `test_services.py`:
   ```python
@@ -687,7 +687,7 @@ Context: `LeaveType.carry_forward_mode` can be `NONE`, `CAPPED`, or `UNLIMITED`.
   # Expected: FAIL
   ```
 
-- [ ] **Step 2: Add `allows_encashment` to `LeaveType` and create encashment models**
+- [x] **Step 2: Add `allows_encashment` to `LeaveType` and create encashment models**
 
   In `backend/apps/timeoff/models.py`:
 
@@ -776,7 +776,7 @@ Context: `LeaveType.carry_forward_mode` can be `NONE`, `CAPPED`, or `UNLIMITED`.
   python manage.py makemigrations timeoff --name add_leave_encashment
   ```
 
-- [ ] **Step 3: Add encashment service functions**
+- [x] **Step 3: Add encashment service functions**
 
   In `backend/apps/timeoff/services.py`, add:
   ```python
@@ -890,7 +890,7 @@ Context: `LeaveType.carry_forward_mode` can be `NONE`, `CAPPED`, or `UNLIMITED`.
 
 **Files:** `backend/apps/timeoff/serializers.py`, `views.py`, `org_urls.py`, `self_urls.py`
 
-- [ ] **Step 1: Add serializers**
+- [x] **Step 1: Add serializers**
 
   In `backend/apps/timeoff/serializers.py`, add:
   ```python
@@ -919,7 +919,7 @@ Context: `LeaveType.carry_forward_mode` can be `NONE`, `CAPPED`, or `UNLIMITED`.
           return value
   ```
 
-- [ ] **Step 2: Add views**
+- [x] **Step 2: Add views**
 
   In `backend/apps/timeoff/views.py`, add:
   ```python
@@ -964,7 +964,7 @@ Context: `LeaveType.carry_forward_mode` can be `NONE`, `CAPPED`, or `UNLIMITED`.
           return Response(LeaveEncashmentRequestSerializer(qs, many=True).data)
   ```
 
-- [ ] **Step 3: Register URLs**
+- [x] **Step 3: Register URLs**
 
   In `backend/apps/timeoff/self_urls.py`, add:
   ```python
@@ -976,7 +976,7 @@ Context: `LeaveType.carry_forward_mode` can be `NONE`, `CAPPED`, or `UNLIMITED`.
   path('leave-encashments/', OrgLeaveEncashmentListView.as_view(), name='org-leave-encashments'),
   ```
 
-- [ ] **Step 4: Run full test suite and commit**
+- [x] **Step 4: Run full test suite and commit**
 
   ```bash
   cd backend

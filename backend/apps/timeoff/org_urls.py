@@ -10,6 +10,7 @@ from .views import (
     LeavePlanListCreateView,
     OnDutyPolicyDetailView,
     OnDutyPolicyListCreateView,
+    OrgLeaveEncashmentListView,
     OrgLeaveRequestListView,
     OrgOnDutyRequestListView,
 )
@@ -25,5 +26,6 @@ urlpatterns = [
     path('on-duty-policies/', OnDutyPolicyListCreateView.as_view(), name='on-duty-policy-list-create'),
     path('on-duty-policies/<uuid:pk>/', OnDutyPolicyDetailView.as_view(), name='on-duty-policy-detail'),
     path('leave-requests/', OrgLeaveRequestListView.as_view(), name='org-leave-request-list'),
+    path('leave-encashments/', OrgLeaveEncashmentListView.as_view(), name='org-leave-encashment-list'),
     path('on-duty-requests/', OrgOnDutyRequestListView.as_view(), name='org-on-duty-request-list'),
 ]

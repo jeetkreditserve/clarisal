@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from rest_framework import serializers
 
 from .models import (
@@ -5,6 +7,7 @@ from .models import (
     HolidayCalendar,
     HolidayClassification,
     LeaveCycle,
+    LeaveEncashmentRequest,
     LeaveCycleType,
     LeaveCreditFrequency,
     LeavePlan,
@@ -125,6 +128,8 @@ class LeaveTypeSerializer(serializers.ModelSerializer):
             'carry_forward_mode',
             'carry_forward_cap',
             'max_balance',
+            'allows_encashment',
+            'max_encashment_days_per_year',
             'allows_half_day',
             'requires_attachment',
             'attachment_after_days',
@@ -151,6 +156,8 @@ class LeaveTypeWriteSerializer(serializers.Serializer):
     carry_forward_mode = serializers.ChoiceField(choices=LeaveType._meta.get_field('carry_forward_mode').choices, default='NONE')
     carry_forward_cap = serializers.DecimalField(max_digits=8, decimal_places=2, required=False, allow_null=True)
     max_balance = serializers.DecimalField(max_digits=8, decimal_places=2, required=False, allow_null=True)
+    allows_encashment = serializers.BooleanField(required=False, default=False)
+    max_encashment_days_per_year = serializers.DecimalField(max_digits=5, decimal_places=2, required=False, allow_null=True)
     allows_half_day = serializers.BooleanField(required=False, default=True)
     requires_attachment = serializers.BooleanField(required=False, default=False)
     attachment_after_days = serializers.DecimalField(max_digits=8, decimal_places=2, required=False, allow_null=True)
@@ -341,3 +348,40 @@ class OnDutyRequestCreateSerializer(serializers.Serializer):
     end_time = serializers.TimeField(required=False, allow_null=True)
     purpose = serializers.CharField()
     destination = serializers.CharField(required=False, allow_blank=True, default='')
+
+
+class LeaveEncashmentRequestSerializer(serializers.ModelSerializer):
+    employee_id = serializers.UUIDField(source='employee.id', read_only=True)
+    employee_name = serializers.CharField(source='employee.user.full_name', read_only=True)
+    leave_type_id = serializers.UUIDField(source='leave_type.id', read_only=True)
+    leave_type_name = serializers.CharField(source='leave_type.name', read_only=True)
+
+    class Meta:
+        model = LeaveEncashmentRequest
+        fields = [
+            'id',
+            'employee_id',
+            'employee_name',
+            'leave_type_id',
+            'leave_type_name',
+            'cycle_start',
+            'cycle_end',
+            'days_to_encash',
+            'encashment_amount',
+            'status',
+            'rejection_reason',
+            'created_at',
+            'modified_at',
+        ]
+
+
+class LeaveEncashmentRequestCreateSerializer(serializers.Serializer):
+    leave_type_id = serializers.UUIDField()
+    cycle_start = serializers.DateField()
+    cycle_end = serializers.DateField()
+    days_to_encash = serializers.DecimalField(max_digits=5, decimal_places=2, min_value=Decimal('0.50'))
+
+    def validate(self, attrs):
+        if attrs['cycle_end'] < attrs['cycle_start']:
+            raise serializers.ValidationError({'cycle_end': 'Cycle end must be on or after cycle start.'})
+        return attrs

@@ -22,6 +22,8 @@ from .models import (
     LeaveBalanceLedgerEntry,
     LeaveCreditFrequency,
     LeaveCycle,
+    LeaveEncashmentRequest,
+    LeaveEncashmentStatus,
     LeaveCycleType,
     LeavePlan,
     LeavePlanEmployeeAssignment,
@@ -472,6 +474,128 @@ def process_cycle_end_carry_forward(
     return new_balance
 
 
+def validate_leave_balance(*, employee, leave_type, requested_units, cycle_start=None, cycle_end=None, as_of=None):
+    if leave_type.is_loss_of_pay:
+        return
+
+    if cycle_start is not None and cycle_end is not None:
+        balance = LeaveBalance.objects.filter(
+            employee=employee,
+            leave_type=leave_type,
+            cycle_start=cycle_start,
+            cycle_end=cycle_end,
+        ).first()
+    else:
+        balance = get_or_create_leave_balance(employee, leave_type, as_of=as_of)
+
+    available = ZERO
+    if balance is not None:
+        available = (
+            balance.opening_balance
+            + balance.carried_forward_amount
+            + balance.credited_amount
+            - balance.used_amount
+            - balance.pending_amount
+        )
+
+    if _decimal(requested_units) > _decimal(available):
+        raise ValueError(
+            f'Insufficient leave balance. Available: {_decimal(available)} days, '
+            f'Requested: {_decimal(requested_units)} days.'
+        )
+
+
+@transaction.atomic
+def create_leave_encashment_request(*, employee, leave_type, cycle_start, cycle_end, days_to_encash, actor=None):
+    if not leave_type.allows_encashment:
+        raise ValueError(f"Leave type '{leave_type.name}' does not allow encashment.")
+
+    balance = LeaveBalance.objects.filter(
+        employee=employee,
+        leave_type=leave_type,
+        cycle_start=cycle_start,
+        cycle_end=cycle_end,
+    ).first()
+    available = ZERO
+    if balance is not None:
+        available = (
+            balance.opening_balance
+            + balance.carried_forward_amount
+            + balance.credited_amount
+            - balance.used_amount
+            - balance.pending_amount
+        )
+    if _decimal(days_to_encash) > _decimal(available):
+        raise ValueError(
+            f'Cannot encash {_decimal(days_to_encash)} days. Available balance: {_decimal(available)} days.'
+        )
+
+    if leave_type.max_encashment_days_per_year is not None:
+        already_encashed = (
+            LeaveEncashmentRequest.objects.filter(
+                employee=employee,
+                leave_type=leave_type,
+                cycle_start=cycle_start,
+                cycle_end=cycle_end,
+                status__in=[
+                    LeaveEncashmentStatus.PENDING,
+                    LeaveEncashmentStatus.APPROVED,
+                    LeaveEncashmentStatus.PAID,
+                ],
+            ).aggregate(total=Sum('days_to_encash'))['total']
+            or ZERO
+        )
+        if _decimal(already_encashed) + _decimal(days_to_encash) > _decimal(leave_type.max_encashment_days_per_year):
+            raise ValueError(f'Exceeds annual encashment limit of {leave_type.max_encashment_days_per_year} days.')
+
+    encashment_request = LeaveEncashmentRequest.objects.create(
+        employee=employee,
+        leave_type=leave_type,
+        cycle_start=cycle_start,
+        cycle_end=cycle_end,
+        days_to_encash=_decimal(days_to_encash),
+        status=LeaveEncashmentStatus.PENDING,
+    )
+    approval_run = create_approval_run(
+        encashment_request,
+        ApprovalRequestKind.LEAVE,
+        requester=employee,
+        actor=actor,
+        leave_type=leave_type,
+        subject_label=f'{leave_type.name} encashment',
+    )
+    encashment_request.approval_run = approval_run
+    encashment_request.save(update_fields=['approval_run', 'modified_at'])
+    return encashment_request
+
+
+@transaction.atomic
+def finalize_leave_encashment(encashment_request):
+    balance = LeaveBalance.objects.select_for_update().get(
+        employee=encashment_request.employee,
+        leave_type=encashment_request.leave_type,
+        cycle_start=encashment_request.cycle_start,
+        cycle_end=encashment_request.cycle_end,
+    )
+    ledger_note = f'Leave encashment - request {encashment_request.id}'
+    if balance.ledger_entries.filter(
+        entry_type=LeaveBalanceEntryType.DEBIT,
+        note=ledger_note,
+    ).exists():
+        return encashment_request
+
+    balance.used_amount = _decimal(balance.used_amount + encashment_request.days_to_encash)
+    balance.save(update_fields=['used_amount', 'modified_at'])
+    LeaveBalanceLedgerEntry.objects.create(
+        leave_balance=balance,
+        entry_type=LeaveBalanceEntryType.DEBIT,
+        amount=encashment_request.days_to_encash,
+        effective_date=date.today(),
+        note=ledger_note,
+    )
+    return encashment_request
+
+
 def create_leave_request(employee, leave_type, start_date, end_date, start_session, end_session, reason='', actor=None):
     if end_date < start_date:
         raise ValueError('End date cannot be before start date.')
@@ -485,10 +609,7 @@ def create_leave_request(employee, leave_type, start_date, end_date, start_sessi
         if _leave_requests_overlap(existing_request, start_date, end_date, start_session, end_session):
             raise ValueError('A leave request already exists for the selected dates.')
     total_units = _leave_request_units(start_date, end_date, start_session, end_session)
-    balance = get_or_create_leave_balance(employee, leave_type)
-    available = balance.opening_balance + balance.carried_forward_amount + balance.credited_amount - balance.used_amount - balance.pending_amount
-    if not leave_type.is_loss_of_pay and total_units > available:
-        raise ValueError('This leave request exceeds the available balance.')
+    validate_leave_balance(employee=employee, leave_type=leave_type, requested_units=total_units, as_of=start_date)
 
     leave_request = LeaveRequest.objects.create(
         employee=employee,

@@ -69,6 +69,14 @@ class OnDutyRequestStatus(models.TextChoices):
     WITHDRAWN = 'WITHDRAWN', 'Withdrawn'
 
 
+class LeaveEncashmentStatus(models.TextChoices):
+    PENDING = 'PENDING', 'Pending Approval'
+    APPROVED = 'APPROVED', 'Approved'
+    REJECTED = 'REJECTED', 'Rejected'
+    PAID = 'PAID', 'Paid'
+    CANCELLED = 'CANCELLED', 'Cancelled'
+
+
 class OnDutyDurationType(models.TextChoices):
     FULL_DAY = 'FULL_DAY', 'Full Day'
     FIRST_HALF = 'FIRST_HALF', 'First Half'
@@ -298,6 +306,8 @@ class LeaveType(AuditedBaseModel):
     carry_forward_mode = models.CharField(max_length=20, choices=CarryForwardMode.choices, default=CarryForwardMode.NONE)
     carry_forward_cap = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
     max_balance = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
+    allows_encashment = models.BooleanField(default=False)
+    max_encashment_days_per_year = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     allows_half_day = models.BooleanField(default=True)
     requires_attachment = models.BooleanField(default=False)
     attachment_after_days = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
@@ -476,3 +486,50 @@ class OnDutyRequest(AuditedBaseModel):
             models.Index(fields=['employee', 'status']),
             models.Index(fields=['employee', 'start_date', 'end_date']),
         ]
+
+
+class LeaveEncashmentRequest(AuditedBaseModel):
+    employee = models.ForeignKey(
+        'employees.Employee',
+        on_delete=models.CASCADE,
+        related_name='leave_encashment_requests',
+    )
+    leave_type = models.ForeignKey(
+        LeaveType,
+        on_delete=models.PROTECT,
+        related_name='encashment_requests',
+    )
+    cycle_start = models.DateField()
+    cycle_end = models.DateField()
+    days_to_encash = models.DecimalField(max_digits=5, decimal_places=2)
+    encashment_amount = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    status = models.CharField(max_length=20, choices=LeaveEncashmentStatus.choices, default=LeaveEncashmentStatus.PENDING)
+    approval_run = models.ForeignKey(
+        'approvals.ApprovalRun',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='leave_encashment_requests',
+    )
+    rejection_reason = models.TextField(blank=True)
+    paid_in_pay_run = models.ForeignKey(
+        'payroll.PayrollRun',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='leave_encashments',
+    )
+
+    class Meta:
+        db_table = 'leave_encashment_requests'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['employee', 'status']),
+            models.Index(fields=['employee', 'cycle_start', 'cycle_end']),
+        ]
+
+    def handle_approval_status_change(self, new_status: str, rejection_reason=''):
+        if new_status == LeaveEncashmentStatus.APPROVED:
+            from apps.timeoff.services import finalize_leave_encashment
+
+            finalize_leave_encashment(self)
