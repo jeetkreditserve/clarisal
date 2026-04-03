@@ -1,3 +1,4 @@
+from django.db.models import Count, F, Max, Q
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -17,9 +18,10 @@ from apps.departments.models import Department
 from apps.departments.repositories import list_departments
 from apps.departments.serializers import DepartmentCreateUpdateSerializer, DepartmentSerializer
 from apps.departments.services import create_department, deactivate_department, update_department
+from apps.documents.models import EmployeeDocumentRequest, EmployeeDocumentRequestStatus
 from apps.employees.repositories import get_employee, list_employees
 from apps.employees.serializers import CtEmployeeDetailSerializer, CtEmployeeListSerializer
-from apps.employees.models import Employee
+from apps.employees.models import Employee, EmployeeOnboardingStatus
 from apps.locations.models import OfficeLocation
 from apps.locations.repositories import list_locations
 from apps.locations.serializers import LocationCreateUpdateSerializer, LocationSerializer
@@ -99,6 +101,155 @@ def _resolve_leave_plan_rules(organisation, rules_payload):
         }
         for rule in rules_payload
     ]
+
+
+def _support_diagnostic(*, code, severity, title, detail, action):
+    return {
+        'code': code,
+        'severity': severity,
+        'title': title,
+        'detail': detail,
+        'action': action,
+    }
+
+
+def _build_ct_payroll_diagnostics(
+    *,
+    active_employee_count,
+    tax_slab_set_count,
+    compensation_template_count,
+    approved_assignment_count,
+    pending_assignment_count,
+    payroll_runs,
+):
+    diagnostics = []
+    if tax_slab_set_count == 0:
+        diagnostics.append(
+            _support_diagnostic(
+                code='MISSING_TAX_SLAB_SET',
+                severity='critical',
+                title='Payroll tax slab set missing',
+                detail='No organisation payroll tax slab set is configured, so statutory payroll deductions cannot be validated.',
+                action='Create or derive an org tax slab set before running payroll.',
+            )
+        )
+    if compensation_template_count == 0:
+        diagnostics.append(
+            _support_diagnostic(
+                code='NO_COMPENSATION_TEMPLATES',
+                severity='critical',
+                title='No compensation templates configured',
+                detail='The organisation has no reusable salary structures configured for payroll setup.',
+                action='Create and approve at least one compensation template.',
+            )
+        )
+    if active_employee_count > 0 and approved_assignment_count == 0:
+        diagnostics.append(
+            _support_diagnostic(
+                code='NO_APPROVED_ASSIGNMENTS',
+                severity='critical',
+                title='No approved employee compensation assignments',
+                detail=f'{active_employee_count} active employees exist, but none have an approved compensation assignment for payroll processing.',
+                action='Approve employee compensation assignments before calculating payroll.',
+            )
+        )
+    if pending_assignment_count > 0:
+        diagnostics.append(
+            _support_diagnostic(
+                code='PENDING_ASSIGNMENTS',
+                severity='warning',
+                title='Compensation assignments still pending approval',
+                detail=f'{pending_assignment_count} employee assignment(s) are waiting on approval and may block payroll readiness.',
+                action='Review pending assignment approvals and finalize the intended effective versions.',
+            )
+        )
+    exception_runs = [run for run in payroll_runs if run['exception_count'] > 0]
+    if exception_runs:
+        latest_exception_run = exception_runs[0]
+        diagnostics.append(
+            _support_diagnostic(
+                code='RUN_EXCEPTIONS_PRESENT',
+                severity='warning',
+                title='Payroll run exceptions need investigation',
+                detail=f"{latest_exception_run['name']} currently has {latest_exception_run['exception_count']} exception item(s).",
+                action='Inspect the latest run exception messages before submission or finalization.',
+            )
+        )
+    return diagnostics
+
+
+def _build_ct_attendance_diagnostics(
+    *,
+    policy_count,
+    active_source_count,
+    pending_regularizations,
+    incomplete_count,
+    recent_imports,
+):
+    diagnostics = []
+    if policy_count == 0:
+        diagnostics.append(
+            _support_diagnostic(
+                code='NO_ATTENDANCE_POLICY',
+                severity='critical',
+                title='No default attendance policy configured',
+                detail='Attendance calculations and punch interpretation have no configured default policy for this organisation.',
+                action='Create and activate a default attendance policy before relying on attendance summaries.',
+            )
+        )
+    if active_source_count == 0:
+        diagnostics.append(
+            _support_diagnostic(
+                code='NO_ACTIVE_ATTENDANCE_SOURCE',
+                severity='warning',
+                title='No active attendance source connected',
+                detail='The organisation has no active attendance source, so attendance capture depends on manual or import-driven workflows.',
+                action='Configure and activate an attendance source or confirm the intended manual operating model.',
+            )
+        )
+    if pending_regularizations > 0:
+        diagnostics.append(
+            _support_diagnostic(
+                code='PENDING_REGULARIZATIONS',
+                severity='warning',
+                title='Attendance regularizations are waiting on review',
+                detail=f'{pending_regularizations} attendance correction request(s) are still pending approval.',
+                action='Review the regularization queue before attendance data is used for payroll.',
+            )
+        )
+    failed_imports = [job for job in recent_imports if job.status == 'FAILED']
+    if failed_imports:
+        diagnostics.append(
+            _support_diagnostic(
+                code='FAILED_IMPORTS',
+                severity='warning',
+                title='Recent attendance import failures detected',
+                detail=f'{len(failed_imports)} recent attendance import job(s) failed validation or posting.',
+                action='Inspect the most recent failed import and correct workbook errors before retrying.',
+            )
+        )
+    review_imports = [job for job in recent_imports if job.status == 'READY_FOR_REVIEW']
+    if review_imports:
+        diagnostics.append(
+            _support_diagnostic(
+                code='IMPORTS_NEED_REVIEW',
+                severity='warning',
+                title='Attendance imports need review before posting',
+                detail=f'{len(review_imports)} import job(s) are waiting for review and posting.',
+                action='Review incomplete or normalized punch rows before attendance is treated as final.',
+            )
+        )
+    if incomplete_count > 0:
+        diagnostics.append(
+            _support_diagnostic(
+                code='INCOMPLETE_ATTENDANCE_TODAY',
+                severity='info',
+                title='Incomplete punches present in today attendance',
+                detail=f'{incomplete_count} employees currently have incomplete attendance for today.',
+                action='Guide the org admin to review missed punch or regularization cases.',
+            )
+        )
+    return diagnostics
 
 
 class OrganisationListCreateView(APIView):
@@ -377,20 +528,33 @@ class CtOrganisationPayrollSummaryView(APIView):
                     },
                 }
             )
+        active_employee_count = Employee.objects.filter(organisation=organisation, status='ACTIVE').count()
+        tax_slab_set_count = PayrollTaxSlabSet.objects.filter(organisation=organisation).count()
+        compensation_template_count = CompensationTemplate.objects.filter(organisation=organisation).count()
+        approved_assignment_count = CompensationAssignment.objects.filter(
+            employee__organisation=organisation,
+            status=CompensationAssignmentStatus.APPROVED,
+        ).count()
+        pending_assignment_count = CompensationAssignment.objects.filter(
+            employee__organisation=organisation,
+            status=CompensationAssignmentStatus.PENDING_APPROVAL,
+        ).count()
 
         return Response(
             {
-                'tax_slab_set_count': PayrollTaxSlabSet.objects.filter(organisation=organisation).count(),
-                'compensation_template_count': CompensationTemplate.objects.filter(organisation=organisation).count(),
-                'approved_assignment_count': CompensationAssignment.objects.filter(
-                    employee__organisation=organisation,
-                    status=CompensationAssignmentStatus.APPROVED,
-                ).count(),
-                'pending_assignment_count': CompensationAssignment.objects.filter(
-                    employee__organisation=organisation,
-                    status=CompensationAssignmentStatus.PENDING_APPROVAL,
-                ).count(),
+                'tax_slab_set_count': tax_slab_set_count,
+                'compensation_template_count': compensation_template_count,
+                'approved_assignment_count': approved_assignment_count,
+                'pending_assignment_count': pending_assignment_count,
                 'payslip_count': Payslip.objects.filter(organisation=organisation).count(),
+                'diagnostics': _build_ct_payroll_diagnostics(
+                    active_employee_count=active_employee_count,
+                    tax_slab_set_count=tax_slab_set_count,
+                    compensation_template_count=compensation_template_count,
+                    approved_assignment_count=approved_assignment_count,
+                    pending_assignment_count=pending_assignment_count,
+                    payroll_runs=runs_payload,
+                ),
                 'payroll_runs': runs_payload,
             }
         )
@@ -403,15 +567,19 @@ class CtOrganisationAttendanceSupportView(APIView):
         organisation = get_object_or_404(Organisation, id=pk)
         dashboard = get_org_attendance_dashboard(organisation)
         recent_imports = AttendanceImportJob.objects.filter(organisation=organisation).order_by('-created_at')[:5]
+        policy_count = AttendancePolicy.objects.filter(organisation=organisation).count()
+        source_count = AttendanceSourceConfig.objects.filter(organisation=organisation).count()
+        active_source_count = AttendanceSourceConfig.objects.filter(organisation=organisation, is_active=True).count()
+        pending_regularizations = AttendanceRegularizationRequest.objects.filter(
+            organisation=organisation,
+            status=AttendanceRegularizationStatus.PENDING,
+        ).count()
         return Response(
             {
-                'policy_count': AttendancePolicy.objects.filter(organisation=organisation).count(),
-                'source_count': AttendanceSourceConfig.objects.filter(organisation=organisation).count(),
-                'active_source_count': AttendanceSourceConfig.objects.filter(organisation=organisation, is_active=True).count(),
-                'pending_regularizations': AttendanceRegularizationRequest.objects.filter(
-                    organisation=organisation,
-                    status=AttendanceRegularizationStatus.PENDING,
-                ).count(),
+                'policy_count': policy_count,
+                'source_count': source_count,
+                'active_source_count': active_source_count,
+                'pending_regularizations': pending_regularizations,
                 'today_summary': {
                     'date': dashboard['date'],
                     'total_employees': dashboard['total_employees'],
@@ -435,6 +603,89 @@ class CtOrganisationAttendanceSupportView(APIView):
                     }
                     for job in recent_imports
                 ],
+                'diagnostics': _build_ct_attendance_diagnostics(
+                    policy_count=policy_count,
+                    active_source_count=active_source_count,
+                    pending_regularizations=pending_regularizations,
+                    incomplete_count=dashboard['incomplete_count'],
+                    recent_imports=recent_imports,
+                ),
+            }
+        )
+
+
+class CtOrganisationOnboardingSupportView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def get(self, request, pk):
+        organisation = get_object_or_404(Organisation, id=pk)
+        onboarding_status_counts = {
+            status_value: Employee.objects.filter(organisation=organisation, onboarding_status=status_value).count()
+            for status_value in EmployeeOnboardingStatus.values
+        }
+        document_request_status_counts = {
+            status_value: EmployeeDocumentRequest.objects.filter(
+                employee__organisation=organisation,
+                status=status_value,
+            ).count()
+            for status_value in EmployeeDocumentRequestStatus.values
+        }
+        blocked_request_statuses = [
+            EmployeeDocumentRequestStatus.REQUESTED,
+            EmployeeDocumentRequestStatus.SUBMITTED,
+            EmployeeDocumentRequestStatus.REJECTED,
+        ]
+        blocked_employees = (
+            Employee.objects.filter(organisation=organisation)
+            .select_related('user')
+            .annotate(
+                pending_document_requests=Count(
+                    'document_requests',
+                    filter=Q(document_requests__status__in=blocked_request_statuses),
+                    distinct=True,
+                ),
+                latest_document_activity_at=Max('documents__created_at'),
+            )
+            .filter(
+                Q(onboarding_status__in=[
+                    EmployeeOnboardingStatus.NOT_STARTED,
+                    EmployeeOnboardingStatus.BASIC_DETAILS_PENDING,
+                    EmployeeOnboardingStatus.DOCUMENTS_PENDING,
+                ])
+                | Q(pending_document_requests__gt=0)
+            )
+            .order_by('-pending_document_requests', 'user__first_name', 'user__last_name')[:12]
+        )
+        top_blocker_types = (
+            EmployeeDocumentRequest.objects.filter(
+                employee__organisation=organisation,
+                status__in=blocked_request_statuses,
+            )
+            .values(
+                document_type_code=F('document_type_ref__code'),
+                document_type_name=F('document_type_ref__name'),
+            )
+            .annotate(blocked_employee_count=Count('employee_id', distinct=True))
+            .order_by('-blocked_employee_count', 'document_type_name')[:5]
+        )
+        return Response(
+            {
+                'onboarding_status_counts': onboarding_status_counts,
+                'document_request_status_counts': document_request_status_counts,
+                'blocked_employees': [
+                    {
+                        'id': str(employee.id),
+                        'employee_code': employee.employee_code,
+                        'full_name': employee.user.full_name,
+                        'designation': employee.designation,
+                        'status': employee.status,
+                        'onboarding_status': employee.onboarding_status,
+                        'pending_document_requests': employee.pending_document_requests,
+                        'latest_document_activity_at': employee.latest_document_activity_at,
+                    }
+                    for employee in blocked_employees
+                ],
+                'top_blocker_types': list(top_blocker_types),
             }
         )
 

@@ -25,7 +25,15 @@ from apps.organisations.models import (
 )
 from apps.approvals.models import ApprovalRun, ApprovalWorkflow
 from apps.attendance.models import AttendanceImportJob, AttendanceImportStatus, AttendancePolicy, AttendanceRegularizationRequest, AttendanceRegularizationStatus, AttendanceSourceConfig
-from apps.payroll.models import PayrollRun, PayrollRunItem
+from apps.documents.models import Document, EmployeeDocumentRequest, OnboardingDocumentType
+from apps.payroll.models import (
+    CompensationAssignment,
+    CompensationAssignmentStatus,
+    CompensationTemplate,
+    PayrollRun,
+    PayrollRunItem,
+    PayrollTaxSlabSet,
+)
 
 
 def organisation_create_payload(name='New Org'):
@@ -617,9 +625,64 @@ class TestCtOrganisationDetailTabsSupport:
                 'total_overtime_minutes': 0,
             },
         }
+        assert {item['code'] for item in response.data['diagnostics']} == {
+            'MISSING_TAX_SLAB_SET',
+            'NO_COMPENSATION_TEMPLATES',
+            'NO_APPROVED_ASSIGNMENTS',
+            'RUN_EXCEPTIONS_PRESENT',
+        }
         assert 'items' not in response.data['payroll_runs'][0]
         assert 'gross_pay' not in response.data['payroll_runs'][0]
         assert 'net_pay' not in response.data['payroll_runs'][0]
+
+    def test_ct_payroll_support_summary_surfaces_pending_assignment_gaps(self, ct_client, org):
+        client, _ = ct_client
+        workforce_user = User.objects.create_user(
+            email='pending.payroll.employee@test.com',
+            password='pass123!',
+            account_type=AccountType.WORKFORCE,
+            role=UserRole.EMPLOYEE,
+            is_active=True,
+            first_name='Riya',
+            last_name='Das',
+        )
+        employee = Employee.objects.create(
+            organisation=org,
+            user=workforce_user,
+            employee_code='EMP902',
+            designation='Analyst',
+            employment_type='FULL_TIME',
+            status='ACTIVE',
+        )
+        slab_set = PayrollTaxSlabSet.objects.create(
+            organisation=org,
+            name='FY 2026-27',
+            fiscal_year='2026-27',
+            country_code='IN',
+            is_active=True,
+        )
+        template = CompensationTemplate.objects.create(
+            organisation=org,
+            name='Analyst template',
+            status='APPROVED',
+        )
+        CompensationAssignment.objects.create(
+            employee=employee,
+            template=template,
+            effective_from='2026-04-01',
+            status=CompensationAssignmentStatus.PENDING_APPROVAL,
+        )
+
+        response = client.get(f'/api/ct/organisations/{org.id}/payroll/')
+
+        assert response.status_code == 200
+        assert response.data['tax_slab_set_count'] == 1
+        assert response.data['compensation_template_count'] == 1
+        assert response.data['pending_assignment_count'] == 1
+        assert {item['code'] for item in response.data['diagnostics']} == {
+            'NO_APPROVED_ASSIGNMENTS',
+            'PENDING_ASSIGNMENTS',
+        }
 
     def test_ct_approval_support_summary_exposes_run_state_without_inline_actions(self, ct_client, org):
         client, _ = ct_client
@@ -705,8 +768,92 @@ class TestCtOrganisationDetailTabsSupport:
         assert response.data['source_count'] == 1
         assert response.data['active_source_count'] == 1
         assert response.data['pending_regularizations'] == 1
+        assert {item['code'] for item in response.data['diagnostics']} == {'PENDING_REGULARIZATIONS'}
         assert response.data['recent_imports'][0]['original_filename'] == 'attendance.xlsx'
         assert 'days' not in response.data
+
+    def test_ct_attendance_support_summary_surfaces_setup_gaps(self, ct_client, org):
+        client, _ = ct_client
+
+        response = client.get(f'/api/ct/organisations/{org.id}/attendance/')
+
+        assert response.status_code == 200
+        assert 'NO_ACTIVE_ATTENDANCE_SOURCE' in {item['code'] for item in response.data['diagnostics']}
+
+    def test_ct_onboarding_support_summary_is_sanitized(self, ct_client, org):
+        client, _ = ct_client
+        document_type = OnboardingDocumentType.objects.create(
+            code='BANK_PASSBOOK_AUDIT',
+            name='Bank Passbook',
+            category='BANKING_PAYROLL',
+        )
+        employee_user = User.objects.create_user(
+            email='doc.employee@test.com',
+            password='pass123!',
+            account_type=AccountType.WORKFORCE,
+            role=UserRole.EMPLOYEE,
+            is_active=True,
+            first_name='Nisha',
+            last_name='Patel',
+        )
+        employee = Employee.objects.create(
+            organisation=org,
+            user=employee_user,
+            employee_code='EMP777',
+            designation='Coordinator',
+            employment_type='FULL_TIME',
+            status='ACTIVE',
+            onboarding_status='DOCUMENTS_PENDING',
+        )
+        request = EmployeeDocumentRequest.objects.create(
+            employee=employee,
+            document_type_ref=document_type,
+            is_required=True,
+            status='REJECTED',
+            rejection_note='Unreadable copy',
+        )
+        Document.objects.create(
+            employee=employee,
+            document_request=request,
+            document_type='BANK_PASSBOOK_AUDIT',
+            file_key='organisations/test/employees/EMP777/bank-passbook/test.pdf',
+            file_name='passbook.pdf',
+            file_size=128,
+            mime_type='application/pdf',
+            status='REJECTED',
+            metadata={'rejection_note': 'Unreadable copy'},
+        )
+
+        response = client.get(f'/api/ct/organisations/{org.id}/onboarding-support/')
+
+        assert response.status_code == 200
+        assert response.data['onboarding_status_counts'] == {
+            'NOT_STARTED': 0,
+            'BASIC_DETAILS_PENDING': 0,
+            'DOCUMENTS_PENDING': 1,
+            'COMPLETE': 0,
+        }
+        assert response.data['document_request_status_counts'] == {
+            'REQUESTED': 0,
+            'SUBMITTED': 0,
+            'VERIFIED': 0,
+            'REJECTED': 1,
+            'WAIVED': 0,
+        }
+        assert response.data['blocked_employees'][0] == {
+            'id': str(employee.id),
+            'employee_code': 'EMP777',
+            'full_name': 'Nisha Patel',
+            'designation': 'Coordinator',
+            'status': 'ACTIVE',
+            'onboarding_status': 'DOCUMENTS_PENDING',
+            'pending_document_requests': 1,
+            'latest_document_activity_at': response.data['blocked_employees'][0]['latest_document_activity_at'],
+        }
+        assert response.data['top_blocker_types'][0]['document_type_name'] == 'Bank Passbook'
+        assert response.data['top_blocker_types'][0]['blocked_employee_count'] == 1
+        assert 'rejection_note' not in response.data['blocked_employees'][0]
+        assert 'metadata' not in response.data['blocked_employees'][0]
 
 
 @pytest.mark.django_db

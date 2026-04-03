@@ -13,6 +13,7 @@ import type {
 import type {
   CtOrganisationAttendanceSupportSummary,
   ApprovalWorkflowConfig,
+  CtOrganisationOnboardingSupportSummary,
   CtOrganisationApprovalSupportSummary,
   CtOrganisationPayrollSupportSummary,
   CtEmployeeDetail,
@@ -229,6 +230,11 @@ export async function fetchCtOrgPayrollSummary(id: string): Promise<CtOrganisati
 
 export async function fetchCtOrgAttendanceSummary(id: string): Promise<CtOrganisationAttendanceSupportSummary> {
   const { data } = await api.get(`/ct/organisations/${id}/attendance/`)
+  return data
+}
+
+export async function fetchCtOrgOnboardingSummary(id: string): Promise<CtOrganisationOnboardingSupportSummary> {
+  const { data } = await api.get(`/ct/organisations/${id}/onboarding-support/`)
   return data
 }
 

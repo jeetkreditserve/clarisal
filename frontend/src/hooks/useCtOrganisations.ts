@@ -5,6 +5,7 @@ import {
   fetchCtOrgAttendanceSummary,
   createCtPayrollTaxSlabSet,
   fetchCtOrgApprovalSummary,
+  fetchCtOrgOnboardingSummary,
   createCtHolidayCalendar,
   createCtLeaveCycle,
   createCtLeavePlan,
@@ -236,6 +237,14 @@ export function useCtOrgAttendanceSummary(orgId: string, enabled = true) {
   return useQuery({
     queryKey: ['ct', 'organisations', orgId, 'attendance-support'],
     queryFn: () => fetchCtOrgAttendanceSummary(orgId),
+    enabled: Boolean(orgId && enabled),
+  })
+}
+
+export function useCtOrgOnboardingSummary(orgId: string, enabled = true) {
+  return useQuery({
+    queryKey: ['ct', 'organisations', orgId, 'onboarding-support'],
+    queryFn: () => fetchCtOrgOnboardingSummary(orgId),
     enabled: Boolean(orgId && enabled),
   })
 }

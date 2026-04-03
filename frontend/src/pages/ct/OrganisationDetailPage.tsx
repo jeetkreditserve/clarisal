@@ -51,6 +51,7 @@ import {
   useCtOrgConfiguration,
   useCtOrgEmployeeDetail,
   useCtOrgEmployees,
+  useCtOrgOnboardingSummary,
   useCtOrgNotes,
   useCtOrgPayrollSummary,
   useDeactivateCtDepartment,
@@ -114,7 +115,7 @@ import {
   validatePhoneForCountry,
 } from '@/lib/organisationMetadata'
 import { ORG_ONBOARDING_STEPS } from '@/lib/status'
-import type { ApprovalRequestKind, ApprovalWorkflowConfig, CtOrganisationApprovalSupportSummary, CtOrganisationAttendanceSupportSummary, CtOrganisationPayrollSupportSummary, Department, HolidayCalendar, LeaveCycle, LeavePlan, Location, NoticeItem, OnDutyPolicy } from '@/types/hr'
+import type { ApprovalRequestKind, ApprovalWorkflowConfig, CtOrganisationApprovalSupportSummary, CtOrganisationAttendanceSupportSummary, CtOrganisationOnboardingSupportSummary, CtOrganisationPayrollSupportSummary, Department, HolidayCalendar, LeaveCycle, LeavePlan, Location, NoticeItem, OnDutyPolicy } from '@/types/hr'
 import type { LicenceBatch, OrganisationAddress, OrganisationAddressType, OrganisationDetail, OrganisationEntityType } from '@/types/organisation'
 
 type DetailTabKey =
@@ -123,6 +124,7 @@ type DetailTabKey =
   | 'licences'
   | 'admins'
   | 'employees'
+  | 'onboarding'
   | 'attendance'
   | 'approvals'
   | 'payroll'
@@ -274,6 +276,7 @@ const TAB_OPTIONS: Array<{
   { key: 'licences', label: 'Org Licences', icon: CreditCard },
   { key: 'admins', label: 'Org Admins', icon: Users },
   { key: 'employees', label: 'Employees', icon: Users },
+  { key: 'onboarding', label: 'Onboarding Support', icon: UserPlus },
   { key: 'attendance', label: 'Attendance Support', icon: Clock3 },
   { key: 'approvals', label: 'Approval Support', icon: FileText },
   { key: 'payroll', label: 'Payroll Support', icon: BadgeDollarSign },
@@ -582,6 +585,46 @@ function DetailListCard({
   )
 }
 
+function diagnosticTone(severity: 'critical' | 'warning' | 'info') {
+  if (severity === 'critical') return 'danger'
+  if (severity === 'warning') return 'warning'
+  return 'info'
+}
+
+function SupportDiagnostics({
+  diagnostics,
+}: {
+  diagnostics: Array<{
+    code: string
+    severity: 'critical' | 'warning' | 'info'
+    title: string
+    detail: string
+    action: string
+  }>
+}) {
+  if (!diagnostics.length) return null
+
+  return (
+    <SectionCard
+      title="Needs CT attention"
+      description="These diagnostics turn zero-value summaries into actionable support guidance so Control Tower can explain what is misconfigured or blocked."
+    >
+      <div className="space-y-3">
+        {diagnostics.map((diagnostic) => (
+          <div key={diagnostic.code} className="surface-muted rounded-[22px] p-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="font-semibold text-[hsl(var(--foreground-strong))]">{diagnostic.title}</p>
+              <StatusBadge tone={diagnosticTone(diagnostic.severity)}>{startCase(diagnostic.severity)}</StatusBadge>
+            </div>
+            <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">{diagnostic.detail}</p>
+            <p className="mt-2 text-sm font-medium text-[hsl(var(--foreground-strong))]">{diagnostic.action}</p>
+          </div>
+        ))}
+      </div>
+    </SectionCard>
+  )
+}
+
 function InfoStack({
   items,
 }: {
@@ -696,6 +739,10 @@ export function OrganisationDetailPage() {
   const { data: configuration, isLoading: configurationLoading } = useCtOrgConfiguration(
     organisationId,
     Boolean(organisationId),
+  )
+  const { data: onboardingSummary, isLoading: onboardingSummaryLoading } = useCtOrgOnboardingSummary(
+    organisationId,
+    activeTab === 'onboarding',
   )
   const { data: attendanceSummary, isLoading: attendanceSummaryLoading } = useCtOrgAttendanceSummary(organisationId, activeTab === 'attendance')
   const { data: approvalSummary, isLoading: approvalSummaryLoading } = useCtOrgApprovalSummary(organisationId, activeTab === 'approvals')
@@ -1950,6 +1997,8 @@ export function OrganisationDetailPage() {
           <DetailMetric label="Payslips" value={String(summary.payslip_count)} helper="Generated preview slips" />
         </div>
 
+        <SupportDiagnostics diagnostics={summary.diagnostics} />
+
         <SectionCard
           title="Payroll run history"
           description="Sanitized payroll support visibility for Control Tower. Run state and exception counts are visible here, while employee-level pay remains hidden."
@@ -2009,6 +2058,125 @@ export function OrganisationDetailPage() {
     )
   }
 
+  const renderOnboardingTab = () => {
+    if (onboardingSummaryLoading) {
+      return <SkeletonTable rows={5} />
+    }
+
+    const summary = onboardingSummary as CtOrganisationOnboardingSupportSummary | undefined
+    if (!summary) {
+      return (
+        <EmptyState
+          title="Onboarding support data unavailable"
+          description="This tab will show Control Tower blocker visibility for invites, profile completion, and document follow-up."
+          icon={UserPlus}
+        />
+      )
+    }
+
+    const openDocumentBlockers =
+      (summary.document_request_status_counts.REQUESTED ?? 0)
+      + (summary.document_request_status_counts.SUBMITTED ?? 0)
+      + (summary.document_request_status_counts.REJECTED ?? 0)
+
+    return (
+      <div className="space-y-6">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+          <DetailMetric label="Not started" value={String(summary.onboarding_status_counts.NOT_STARTED ?? 0)} helper="Invite accepted or pending action missing" />
+          <DetailMetric label="Basic details pending" value={String(summary.onboarding_status_counts.BASIC_DETAILS_PENDING ?? 0)} helper="Employee still has profile setup to finish" />
+          <DetailMetric label="Documents pending" value={String(summary.onboarding_status_counts.DOCUMENTS_PENDING ?? 0)} helper="Operational follow-up still required" />
+          <DetailMetric label="Open document blockers" value={String(openDocumentBlockers)} helper={`${summary.document_request_status_counts.REJECTED ?? 0} rejected submissions`} />
+          <DetailMetric label="Blocked employees" value={String(summary.blocked_employees.length)} helper="Highest-friction onboarding cases" />
+        </div>
+
+        <SectionCard
+          title="Onboarding blockers"
+          description="Control Tower can inspect who is blocked and why, without opening employee PII or the underlying document contents."
+        >
+          {summary.blocked_employees.length ? (
+            <div className="space-y-3">
+              {summary.blocked_employees.map((employee) => (
+                <div key={employee.id} className="surface-muted rounded-[24px] p-4">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold text-[hsl(var(--foreground-strong))]">{employee.full_name}</p>
+                        <StatusBadge tone={employee.status === 'ACTIVE' ? 'success' : employee.status === 'PENDING' ? 'warning' : 'info'}>
+                          {employee.status}
+                        </StatusBadge>
+                        <StatusBadge tone={employee.onboarding_status === 'COMPLETE' ? 'success' : 'warning'}>
+                          {startCase(employee.onboarding_status)}
+                        </StatusBadge>
+                        {employee.pending_document_requests > 0 ? (
+                          <StatusBadge tone="warning">{employee.pending_document_requests} open document blocker{employee.pending_document_requests === 1 ? '' : 's'}</StatusBadge>
+                        ) : null}
+                      </div>
+                      <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
+                        {[employee.employee_code || 'No employee code', employee.designation || 'No designation'].filter(Boolean).join(' • ')}
+                      </p>
+                    </div>
+                    <div className="text-right text-sm text-[hsl(var(--muted-foreground))]">
+                      <p>{employee.latest_document_activity_at ? `Last document activity ${formatDateTime(employee.latest_document_activity_at)}` : 'No document upload yet'}</p>
+                      <p>CT view is limited to blocker metadata only</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              title="No onboarding blockers"
+              description="This organisation currently has no employees stalled in onboarding or document verification."
+              icon={UserPlus}
+            />
+          )}
+        </SectionCard>
+
+        <div className="grid gap-6 xl:grid-cols-2">
+          <SectionCard
+            title="Top blocker types"
+            description="Shows which request types are creating the largest onboarding queue without exposing submitted files."
+          >
+            {summary.top_blocker_types.length ? (
+              <div className="space-y-3">
+                {summary.top_blocker_types.map((blocker) => (
+                  <div key={blocker.document_type_code} className="surface-muted flex flex-wrap items-center justify-between gap-3 rounded-[22px] p-4">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold text-[hsl(var(--foreground-strong))]">{blocker.document_type_name}</p>
+                        <StatusBadge tone="info">{blocker.document_type_code}</StatusBadge>
+                      </div>
+                      <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">{blocker.blocked_employee_count} employees currently blocked</p>
+                    </div>
+                    <p className="text-sm font-medium text-[hsl(var(--foreground-strong))]">{blocker.blocked_employee_count}</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <EmptyState
+                title="No document blocker types"
+                description="Document request blockers will appear here when onboarding tasks need org admin follow-up."
+                icon={FileText}
+              />
+            )}
+          </SectionCard>
+
+          <SectionCard
+            title="Document request queue"
+            description="This queue view helps CT tell whether the organisation is waiting on employee submission, admin review, or completed verification."
+          >
+            <div className="grid gap-4 sm:grid-cols-2">
+              <DetailMetric label="Requested" value={String(summary.document_request_status_counts.REQUESTED ?? 0)} helper="Waiting on employee submission" />
+              <DetailMetric label="Submitted" value={String(summary.document_request_status_counts.SUBMITTED ?? 0)} helper="Waiting on admin review" />
+              <DetailMetric label="Rejected" value={String(summary.document_request_status_counts.REJECTED ?? 0)} helper="Employee needs resubmission" />
+              <DetailMetric label="Verified" value={String(summary.document_request_status_counts.VERIFIED ?? 0)} helper="Cleared requests" />
+            </div>
+          </SectionCard>
+        </div>
+      </div>
+    )
+  }
+
   const renderAttendanceTab = () => {
     if (attendanceSummaryLoading) {
       return <SkeletonTable rows={5} />
@@ -2033,6 +2201,8 @@ export function OrganisationDetailPage() {
           <DetailMetric label="Pending regularizations" value={String(summary.pending_regularizations)} helper="Corrections still awaiting approval" />
           <DetailMetric label="Today's incomplete" value={String(summary.today_summary.incomplete_count)} helper={`${summary.today_summary.absent_count} absent today`} />
         </div>
+
+        <SupportDiagnostics diagnostics={summary.diagnostics} />
 
         <SectionCard
           title="Today attendance health"
@@ -2615,6 +2785,7 @@ export function OrganisationDetailPage() {
       {activeTab === 'licences' ? renderLicencesTab() : null}
       {activeTab === 'admins' ? renderAdminsTab() : null}
       {activeTab === 'employees' ? renderEmployeesTab() : null}
+      {activeTab === 'onboarding' ? renderOnboardingTab() : null}
       {activeTab === 'attendance' ? renderAttendanceTab() : null}
       {activeTab === 'approvals' ? renderApprovalsTab() : null}
       {activeTab === 'payroll' ? renderPayrollTab() : null}

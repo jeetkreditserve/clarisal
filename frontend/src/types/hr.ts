@@ -296,6 +296,14 @@ export interface CtEmployeeDetail {
   reporting_to_name: string | null
 }
 
+export interface CtSupportDiagnostic {
+  code: string
+  severity: 'critical' | 'warning' | 'info'
+  title: string
+  detail: string
+  action: string
+}
+
 export interface CtOrganisationPayrollRunSummary {
   id: string
   name: string
@@ -330,6 +338,7 @@ export interface CtOrganisationPayrollSupportSummary {
   approved_assignment_count: number
   pending_assignment_count: number
   payslip_count: number
+  diagnostics: CtSupportDiagnostic[]
   payroll_runs: CtOrganisationPayrollRunSummary[]
 }
 
@@ -362,6 +371,7 @@ export interface CtOrganisationAttendanceSupportSummary {
   source_count: number
   active_source_count: number
   pending_regularizations: number
+  diagnostics: CtSupportDiagnostic[]
   today_summary: {
     date: string
     total_employees: number
@@ -382,6 +392,30 @@ export interface CtOrganisationAttendanceSupportSummary {
     posted_rows: number
     created_at: string
   }>
+}
+
+export interface CtOrganisationOnboardingBlockedEmployee {
+  id: string
+  employee_code: string | null
+  full_name: string
+  designation: string
+  status: EmployeeStatus
+  onboarding_status: EmployeeOnboardingStatus
+  pending_document_requests: number
+  latest_document_activity_at: string | null
+}
+
+export interface CtOrganisationOnboardingBlockerType {
+  document_type_code: string
+  document_type_name: string
+  blocked_employee_count: number
+}
+
+export interface CtOrganisationOnboardingSupportSummary {
+  onboarding_status_counts: Record<EmployeeOnboardingStatus, number>
+  document_request_status_counts: Record<EmployeeDocumentRequestStatus, number>
+  blocked_employees: CtOrganisationOnboardingBlockedEmployee[]
+  top_blocker_types: CtOrganisationOnboardingBlockerType[]
 }
 
 export interface ProfileCompletion {

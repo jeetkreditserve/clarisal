@@ -28,5 +28,5 @@ class AuditLogListView(APIView):
 
         paginator = PageNumberPagination()
         page = paginator.paginate_queryset(queryset, request)
-        serializer = AuditLogSerializer(page, many=True)
+        serializer = AuditLogSerializer(page, many=True, context={'request': request})
         return paginator.get_paginated_response(serializer.data)

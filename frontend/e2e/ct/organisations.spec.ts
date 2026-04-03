@@ -93,6 +93,59 @@ test.describe('CT Organisations', () => {
     await expect(page.getByText('Email')).toBeVisible({ timeout: 10000 })
   })
 
+  test('Detail page shows onboarding blockers in the onboarding support tab', async ({ page }) => {
+    await page.goto('/ct/organisations')
+    await expect(page.locator('tbody tr').first()).toBeVisible({ timeout: 10000 })
+
+    const acmeRow = page.locator('tbody tr').filter({ hasText: 'Acme Workforce Pvt Ltd' })
+    await acmeRow.locator('a:has-text("Open")').click()
+    await expect(page.getByRole('heading', { name: 'Acme Workforce Pvt Ltd' })).toBeVisible({ timeout: 10000 })
+
+    await page.getByRole('button', { name: 'Onboarding Support' }).click()
+    await expect(page.getByText('Onboarding blockers')).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText('Meera Singh')).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText('PASSPORT_PHOTO')).toBeVisible({ timeout: 10000 })
+  })
+
+  test('CT audit timeline masks employee actor identity details', async ({ page }) => {
+    await page.goto('/ct/organisations')
+    await expect(page.locator('tbody tr').first()).toBeVisible({ timeout: 10000 })
+
+    const acmeRow = page.locator('tbody tr').filter({ hasText: 'Acme Workforce Pvt Ltd' })
+    await acmeRow.locator('a:has-text("Open")').click()
+    await expect(page.getByRole('heading', { name: 'Acme Workforce Pvt Ltd' })).toBeVisible({ timeout: 10000 })
+
+    await page.getByRole('button', { name: 'Audit Timeline' }).click()
+    await expect(page.getByText('Employee user').first()).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText('karthik.verma@acmeworkforce.com')).toHaveCount(0)
+  })
+
+  test('CT payroll support tab explains missing payroll setup', async ({ page }) => {
+    await page.goto('/ct/organisations')
+    await expect(page.locator('tbody tr').first()).toBeVisible({ timeout: 10000 })
+
+    const acmeRow = page.locator('tbody tr').filter({ hasText: 'Acme Workforce Pvt Ltd' })
+    await acmeRow.locator('a:has-text("Open")').click()
+    await expect(page.getByRole('heading', { name: 'Acme Workforce Pvt Ltd' })).toBeVisible({ timeout: 10000 })
+
+    await page.getByRole('button', { name: 'Payroll Support' }).click()
+    await expect(page.getByText('Needs CT attention')).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText('Payroll tax slab set missing')).toBeVisible({ timeout: 10000 })
+  })
+
+  test('CT attendance support tab explains missing attendance setup', async ({ page }) => {
+    await page.goto('/ct/organisations')
+    await expect(page.locator('tbody tr').first()).toBeVisible({ timeout: 10000 })
+
+    const acmeRow = page.locator('tbody tr').filter({ hasText: 'Acme Workforce Pvt Ltd' })
+    await acmeRow.locator('a:has-text("Open")').click()
+    await expect(page.getByRole('heading', { name: 'Acme Workforce Pvt Ltd' })).toBeVisible({ timeout: 10000 })
+
+    await page.getByRole('button', { name: 'Attendance Support' }).click()
+    await expect(page.getByText('Needs CT attention')).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText('No active attendance source connected')).toBeVisible({ timeout: 10000 })
+  })
+
   test('Suspend and restore Acme from the detail page', async ({ page }) => {
     await page.goto('/ct/organisations')
     await expect(page.locator('tbody tr').first()).toBeVisible({ timeout: 10000 })
