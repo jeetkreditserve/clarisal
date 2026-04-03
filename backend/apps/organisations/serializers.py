@@ -1,25 +1,12 @@
 from decimal import Decimal
 
 from rest_framework import serializers
-from .models import (
-    BootstrapAdminStatus,
-    LicenceBatchLifecycleState,
-    LicenceBatchPaymentStatus,
-    OrgAdminSetupStep,
-    Organisation,
-    OrganisationAddress,
-    OrganisationBootstrapAdmin,
-    OrganisationEntityType,
-    OrganisationLegalIdentifier,
-    OrganisationLegalIdentifierType,
-    OrganisationLicenceBatch,
-    OrganisationLifecycleEvent,
-    OrganisationLicenceLedger,
-    OrganisationMembership,
-    OrganisationNote,
-    OrganisationStateTransition,
-    OrganisationTaxRegistration,
-    OrganisationTaxRegistrationType,
+
+from .address_metadata import (
+    get_country_name,
+    normalize_subdivision,
+    validate_billing_tax_identifier,
+    validate_postal_code,
 )
 from .country_metadata import (
     DEFAULT_COUNTRY_CODE,
@@ -29,11 +16,20 @@ from .country_metadata import (
     resolve_country_code,
     validate_phone_for_country,
 )
-from .address_metadata import (
-    get_country_name,
-    normalize_subdivision,
-    validate_billing_tax_identifier,
-    validate_postal_code,
+from .models import (
+    OrgAdminSetupStep,
+    Organisation,
+    OrganisationAddress,
+    OrganisationBootstrapAdmin,
+    OrganisationEntityType,
+    OrganisationLegalIdentifier,
+    OrganisationLicenceBatch,
+    OrganisationLicenceLedger,
+    OrganisationLifecycleEvent,
+    OrganisationMembership,
+    OrganisationNote,
+    OrganisationStateTransition,
+    OrganisationTaxRegistration,
 )
 from .services import normalize_pan_number
 
@@ -66,8 +62,8 @@ class OrganisationAddressSerializer(serializers.ModelSerializer):
 
 
 class OrganisationAddressWriteSerializer(serializers.Serializer):
-    address_type = serializers.ChoiceField(choices=OrganisationAddress._meta.get_field('address_type').choices)
-    label = serializers.CharField(max_length=255, required=False, allow_blank=True, default='')
+    address_type = serializers.ChoiceField(choices=OrganisationAddress._meta.get_field('address_type').choices)  # type: ignore[arg-type]
+    label = serializers.CharField(max_length=255, required=False, allow_blank=True, default='')  # type: ignore[assignment]
     line1 = serializers.CharField()
     line2 = serializers.CharField(required=False, allow_blank=True, default='')
     city = serializers.CharField(max_length=100)
@@ -306,9 +302,9 @@ class OrganisationConfigurationSummarySerializer(serializers.Serializer):
 
 
 class OrgAdminSetupStateSerializer(serializers.Serializer):
-    required = serializers.BooleanField()
+    required = serializers.BooleanField()  # type: ignore[assignment]
     started_at = serializers.DateTimeField(allow_null=True)
-    current_step = serializers.ChoiceField(choices=OrgAdminSetupStep.choices)
+    current_step = serializers.ChoiceField(choices=OrgAdminSetupStep.choices)  # type: ignore[arg-type]
     current_step_index = serializers.IntegerField()
     total_steps = serializers.IntegerField()
     completed_at = serializers.DateTimeField(allow_null=True)

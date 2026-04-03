@@ -1,6 +1,9 @@
-from .base import *
-from apps.common.security import validate_field_encryption_configuration
+# ruff: noqa: F403, F405
 from django.core.exceptions import ImproperlyConfigured
+
+from apps.common.security import validate_field_encryption_configuration
+
+from .base import *
 
 # In production, ALLOWED_HOSTS MUST be set via environment variable — no fallback
 ALLOWED_HOSTS = env.list('ALLOWED_HOSTS')

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import logging
 from calendar import monthrange
 from datetime import date
 from decimal import Decimal
-import logging
 
 from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
@@ -18,6 +18,7 @@ from apps.notifications.models import NotificationKind
 from apps.notifications.services import create_notification
 
 from .models import (
+    SECTION_LIMITS,
     Arrears,
     CompensationAssignment,
     CompensationAssignmentLine,
@@ -27,6 +28,8 @@ from .models import (
     CompensationTemplateStatus,
     FNFStatus,
     FullAndFinalSettlement,
+    InvestmentDeclaration,
+    InvestmentSection,
     PayrollComponent,
     PayrollComponentType,
     PayrollRun,
@@ -38,9 +41,6 @@ from .models import (
     PayrollTaxSlabSet,
     Payslip,
     TaxRegime,
-    InvestmentDeclaration,
-    InvestmentSection,
-    SECTION_LIMITS,
 )
 
 ZERO = Decimal('0.00')
@@ -170,8 +170,8 @@ def _build_rendered_payslip(snapshot):
     Generate a structured, readable payslip text from the finalized snapshot.
     Mimics the layout of Zoho Payroll / Keka payslips for easy reading.
     """
-    SEP = '─' * 60
-    THIN = '·' * 60
+    separator = '─' * 60
+    thin_separator = '·' * 60
 
     def row(label, amount, indent=2):
         label_str = (' ' * indent) + label
@@ -184,19 +184,19 @@ def _build_rendered_payslip(snapshot):
     total_days = snapshot.get('total_days_in_period', '')
 
     out = [
-        SEP,
+        separator,
         f'{"PAYSLIP":^60}',
         f'{"Period: " + period:^60}',
-        SEP,
+        separator,
         f'  Employee : {emp_name}',
     ]
     if paid_days and total_days and str(paid_days) != str(total_days):
         out.append(f'  Paid Days: {paid_days} of {total_days} days')
-    out.append(THIN)
+    out.append(thin_separator)
 
     # Earnings section
     lines = snapshot.get('lines', [])
-    earnings = [l for l in lines if l.get('component_type') == 'EARNING']
+    earnings = [line for line in lines if line.get('component_type') == 'EARNING']
     if earnings:
         out.append('  EARNINGS')
         for e in earnings:
@@ -205,16 +205,16 @@ def _build_rendered_payslip(snapshot):
     try:
         if Decimal(str(arrears)) > ZERO:
             out.append(row('Arrears', arrears))
-    except Exception:
-        pass
+    except (ArithmeticError, TypeError, ValueError):
+        arrears = ZERO
     out.append(row('Gross Salary', snapshot.get('gross_pay', '0')))
-    out.append(THIN)
+    out.append(thin_separator)
 
     # Deductions section
     emp_deductions = [
-        l for l in lines
-        if l.get('component_type') == 'EMPLOYEE_DEDUCTION'
-        and l.get('component_code') not in ('', None)
+        line for line in lines
+        if line.get('component_type') == 'EMPLOYEE_DEDUCTION'
+        and line.get('component_code') not in ('', None)
     ]
     out.append('  DEDUCTIONS')
     for d in emp_deductions:
@@ -229,19 +229,19 @@ def _build_rendered_payslip(snapshot):
     try:
         if Decimal(str(lop_deduction)) > ZERO:
             out.append(row(f'Loss of Pay ({lop_days} day(s))', lop_deduction))
-    except Exception:
-        pass
+    except (ArithmeticError, TypeError, ValueError):
+        lop_deduction = ZERO
 
     # TDS line
     out.append(row('TDS (Income Tax)', snapshot.get('income_tax', '0')))
     out.append(row('Total Deductions', snapshot.get('total_deductions', '0')))
-    out.append(THIN)
+    out.append(thin_separator)
 
     # Employer contributions
     emp_contributions = [
-        l for l in lines
-        if l.get('component_type') == 'EMPLOYER_CONTRIBUTION'
-        and l.get('component_code') not in ('', None)
+        line for line in lines
+        if line.get('component_type') == 'EMPLOYER_CONTRIBUTION'
+        and line.get('component_code') not in ('', None)
     ]
     if emp_contributions:
         out.append('  EMPLOYER CONTRIBUTIONS  (not deducted from your pay)')
@@ -250,7 +250,7 @@ def _build_rendered_payslip(snapshot):
             if c.get('auto_calculated'):
                 label += ' *'
             out.append(row(label, c.get('monthly_amount', '0')))
-        out.append(THIN)
+        out.append(thin_separator)
 
     # Tax computation detail
     ann_gross = snapshot.get('annual_taxable_gross')
@@ -262,13 +262,13 @@ def _build_rendered_payslip(snapshot):
         out.append(row('  Income Tax (as per slabs)', snapshot.get('annual_tax_before_cess', '0')))
         out.append(row('  Health & Education Cess (4%)', snapshot.get('annual_cess', '0')))
         out.append(row('  Total Annual Tax (TDS)', snapshot.get('annual_tax_total', '0')))
-        out.append(THIN)
+        out.append(thin_separator)
 
     # Net pay — prominent
-    out.append(SEP)
+    out.append(separator)
     net_str = _fmt_inr(snapshot.get('net_pay', '0'))
     out.append(f'  NET PAY (Take-Home){net_str:>40}')
-    out.append(SEP)
+    out.append(separator)
     out.append('  * auto-calculated statutory component')
 
     return '\n'.join(out)
@@ -873,7 +873,7 @@ def calculate_pay_run(pay_run, *, actor=None):
     if pay_run.status == PayrollRunStatus.FINALIZED:
         raise ValueError('Finalized payroll runs cannot be recalculated.')
     if pay_run.approval_run_id and pay_run.approval_run.status == ApprovalRunStatus.PENDING:
-        cancel_approval_run(pay_run.approval_run, actor=actor)
+        cancel_approval_run(pay_run.approval_run, actor=actor, subject_status=None)
         pay_run.approval_run = None
 
     period_start = date(pay_run.period_year, pay_run.period_month, 1)
@@ -1113,14 +1113,9 @@ def calculate_pay_run(pay_run, *, actor=None):
             # ── Step 5: Pro-ration for joining or exit month ─────────────────
             joining = employee.date_of_joining
             exit_date = employee.date_of_exit
-            paid_days = total_days_in_period
-
-            if joining and period_start <= joining <= period_end:
-                # New joiner — pay from joining date to end of month
-                paid_days = (period_end - joining).days + 1
-            elif exit_date and period_start <= exit_date < period_end:
-                # Exiting employee — pay from start of month to exit date
-                paid_days = (exit_date - period_start).days + 1
+            paid_period_start = joining if joining and period_start <= joining <= period_end else period_start
+            paid_period_end = exit_date if exit_date and period_start <= exit_date < period_end else period_end
+            paid_days = max(0, (paid_period_end - paid_period_start).days + 1)
 
             if paid_days < total_days_in_period:
                 prorate_factor = Decimal(paid_days) / Decimal(total_days_in_period)

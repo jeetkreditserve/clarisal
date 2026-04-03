@@ -995,7 +995,7 @@ cd frontend && npx vitest run src/components/ui/ConfirmDialog.test.tsx
 # Check no remaining window.confirm calls
 grep -rn "window.confirm" frontend/src/pages/ && echo "FOUND - fix remaining" || echo "CLEAN"
 
-# Check no icon buttons missing aria-label  
+# Check no icon buttons missing aria-label
 grep -rn 'size="icon"' frontend/src/pages/ | grep -v "aria-label" | wc -l
 # Expected: 0
 ```

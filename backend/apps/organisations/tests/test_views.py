@@ -1,9 +1,19 @@
+
 import pytest
-from decimal import Decimal
 from django.contrib.contenttypes.models import ContentType
-from django.urls import reverse
 from rest_framework.test import APIClient
+
 from apps.accounts.models import AccountType, User, UserRole
+from apps.approvals.models import ApprovalRun, ApprovalWorkflow
+from apps.attendance.models import (
+    AttendanceImportJob,
+    AttendanceImportStatus,
+    AttendancePolicy,
+    AttendanceRegularizationRequest,
+    AttendanceRegularizationStatus,
+    AttendanceSourceConfig,
+)
+from apps.documents.models import Document, EmployeeDocumentRequest, OnboardingDocumentType
 from apps.employees.models import (
     Employee,
     EmployeeBankAccount,
@@ -14,18 +24,15 @@ from apps.employees.models import (
 )
 from apps.organisations.models import (
     Organisation,
+    OrganisationAccessState,
     OrganisationAddress,
     OrganisationAddressType,
-    OrganisationAccessState,
     OrganisationBillingStatus,
     OrganisationMembership,
     OrganisationMembershipStatus,
     OrganisationNote,
     OrganisationStatus,
 )
-from apps.approvals.models import ApprovalRun, ApprovalWorkflow
-from apps.attendance.models import AttendanceImportJob, AttendanceImportStatus, AttendancePolicy, AttendanceRegularizationRequest, AttendanceRegularizationStatus, AttendanceSourceConfig
-from apps.documents.models import Document, EmployeeDocumentRequest, OnboardingDocumentType
 from apps.payroll.models import (
     CompensationAssignment,
     CompensationAssignmentStatus,
@@ -654,7 +661,7 @@ class TestCtOrganisationDetailTabsSupport:
             employment_type='FULL_TIME',
             status='ACTIVE',
         )
-        slab_set = PayrollTaxSlabSet.objects.create(
+        PayrollTaxSlabSet.objects.create(
             organisation=org,
             name='FY 2026-27',
             fiscal_year='2026-27',
@@ -691,7 +698,7 @@ class TestCtOrganisationDetailTabsSupport:
             name='Leave workflow',
             is_active=True,
         )
-        approval_run = ApprovalRun.objects.create(
+        ApprovalRun.objects.create(
             organisation=org,
             workflow=workflow,
             request_kind='LEAVE',

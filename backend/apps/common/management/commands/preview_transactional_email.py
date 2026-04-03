@@ -4,6 +4,7 @@ from django.core.management.base import BaseCommand, CommandParser
 
 from apps.common.transactional_emails import render_invitation_email, render_password_reset_email
 
+
 class Command(BaseCommand):
     help = 'Render a transactional email preview without sending mail.'
 

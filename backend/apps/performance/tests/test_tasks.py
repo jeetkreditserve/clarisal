@@ -1,11 +1,15 @@
 from datetime import date, timedelta
-from unittest.mock import patch
 
 import pytest
 
 from apps.accounts.models import AccountType, User, UserRole
 from apps.employees.models import Employee, EmployeeStatus
-from apps.organisations.models import Organisation, OrganisationAccessState, OrganisationBillingStatus, OrganisationStatus
+from apps.organisations.models import (
+    Organisation,
+    OrganisationAccessState,
+    OrganisationBillingStatus,
+    OrganisationStatus,
+)
 from apps.performance.models import AppraisalCycle, AppraisalReview, ReviewRelationship, ReviewType
 from apps.performance.tasks import auto_schedule_probation_reviews
 

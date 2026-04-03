@@ -1,3 +1,5 @@
+exclude: ^(frontend/coverage/|frontend/dist/|frontend/playwright-report/|frontend/test-results/|backend/htmlcov/|htmlcov/)
+
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.6.0
@@ -6,6 +8,7 @@ repos:
       - id: end-of-file-fixer
       - id: check-yaml
       - id: check-json
+        exclude: ^frontend/tsconfig(\.app|\.node)?\.json$
       - id: check-merge-conflict
       - id: check-added-large-files
         args: ['--maxkb=2048']
@@ -31,4 +34,4 @@ repos:
     hooks:
       - id: detect-secrets
         args: ['--baseline', '.secrets.baseline']
-        exclude: '^(backend/apps/.*/migrations/|.*\.lock$|\.env\.example$)'
+        exclude: '^(backend/apps/.*/migrations/|frontend/coverage/|frontend/dist/|frontend/playwright-report/|frontend/test-results/|backend/htmlcov/|htmlcov/|.*\.lock$|\.env\.example$)'

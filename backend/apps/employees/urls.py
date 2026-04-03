@@ -4,11 +4,11 @@ from .views import (
     EmployeeDeleteView,
     EmployeeDetailView,
     EmployeeEndEmploymentView,
+    EmployeeListInviteView,
+    EmployeeMarkJoinedView,
     EmployeeOffboardingCompleteView,
     EmployeeOffboardingDetailView,
     EmployeeOffboardingTaskDetailView,
-    EmployeeListInviteView,
-    EmployeeMarkJoinedView,
     EmployeeProbationCompleteView,
 )
 

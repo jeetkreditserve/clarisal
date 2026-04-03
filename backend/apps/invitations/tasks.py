@@ -9,8 +9,9 @@ from apps.common.transactional_emails import (
 
 @shared_task(bind=True, autoretry_for=(EmailDeliveryError, OSError), max_retries=3, default_retry_delay=60)
 def send_invite_email(self, invite_id: str, raw_token: str):
-    from apps.invitations.models import Invitation
     from django.db import transaction
+
+    from apps.invitations.models import Invitation
 
     with transaction.atomic():
         try:
@@ -33,8 +34,10 @@ def send_invite_email(self, invite_id: str, raw_token: str):
         invite.email_sent = True
         invite.save(update_fields=['email_sent'])
         if invite.user_id:
-            invite.user.is_onboarding_email_sent = True
-            invite.user.save(update_fields=['is_onboarding_email_sent'])
+            user = invite.user
+            if user is not None:
+                user.is_onboarding_email_sent = True
+                user.save(update_fields=['is_onboarding_email_sent'])
 
 
 @shared_task(bind=True, autoretry_for=(EmailDeliveryError, OSError), max_retries=3, default_retry_delay=60)

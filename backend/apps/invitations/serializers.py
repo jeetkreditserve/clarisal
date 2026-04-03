@@ -23,7 +23,7 @@ class AcceptInviteSerializer(serializers.Serializer):
         confirm_password = data.get('confirm_password', '')
         if password or confirm_password:
             if password != confirm_password:
-                raise serializers.ValidationError({'confirm_password': 'Passwords do not match.'})
+                raise serializers.ValidationError({'confirm_password': 'Passwords do not match.'})  # nosec B105
         elif 'confirm_password' in data and password != confirm_password:
-            raise serializers.ValidationError({'confirm_password': 'Passwords do not match.'})
+            raise serializers.ValidationError({'confirm_password': 'Passwords do not match.'})  # nosec B105
         return data

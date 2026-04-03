@@ -256,7 +256,7 @@ class AttendanceSourceConfigSerializer(serializers.ModelSerializer):
 
 class AttendanceSourceConfigWriteSerializer(serializers.Serializer):
     name = serializers.CharField()
-    kind = serializers.ChoiceField(choices=AttendanceSourceConfig._meta.get_field('kind').choices)
+    kind = serializers.ChoiceField(choices=AttendanceSourceConfig._meta.get_field('kind').choices)  # type: ignore[arg-type]
     configuration = serializers.JSONField(required=False)
     is_active = serializers.BooleanField(required=False, default=True)
     rotate_api_key = serializers.BooleanField(required=False, default=False)

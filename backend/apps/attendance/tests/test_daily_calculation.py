@@ -5,7 +5,6 @@ import pytest
 from apps.attendance.models import AttendanceDayStatus
 from apps.attendance.services import calculate_attendance_day_status
 
-
 SHIFT_START = time(9, 0)
 FULL_DAY_MINUTES = 480
 HALF_DAY_MINUTES = 240
@@ -111,4 +110,3 @@ class TestAttendanceDailyCalculation:
         )
 
         assert result['status'] == AttendanceDayStatus.ON_LEAVE
-

@@ -15,6 +15,7 @@ from apps.approvals.models import (
 )
 from apps.approvals.services import approve_action
 from apps.employees.models import Employee, EmployeeStatus
+from apps.notifications.models import Notification, NotificationKind
 from apps.organisations.models import (
     Organisation,
     OrganisationAccessState,
@@ -24,7 +25,6 @@ from apps.organisations.models import (
     OrganisationStatus,
 )
 from apps.organisations.services import create_licence_batch, mark_licence_batch_paid
-from apps.notifications.models import Notification, NotificationKind
 from apps.payroll.models import (
     CompensationAssignmentStatus,
     PayrollComponentType,

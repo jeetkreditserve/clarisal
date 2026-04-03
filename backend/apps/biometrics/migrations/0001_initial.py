@@ -82,4 +82,3 @@ class Migration(migrations.Migration):
             index=models.Index(fields=['device', 'synced_at'], name='biometrics__device__ad7ec6_idx'),
         ),
     ]
-

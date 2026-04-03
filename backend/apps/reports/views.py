@@ -35,7 +35,7 @@ class OrgReportView(APIView):
         if report_type not in REPORT_REGISTRY:
             return Response({'error': 'Unknown report type.'}, status=status.HTTP_404_NOT_FOUND)
 
-        kwargs = {'organisation': organisation}
+        kwargs: dict[str, object] = {'organisation': organisation}
         if report_type == 'payroll-register':
             pay_run_id = request.query_params.get('pay_run_id')
             if not pay_run_id:

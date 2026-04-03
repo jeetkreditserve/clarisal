@@ -1,7 +1,6 @@
 import base64
 import hashlib
 import secrets
-from typing import Optional
 
 from cryptography.fernet import Fernet, InvalidToken
 from django.conf import settings
@@ -41,13 +40,13 @@ def get_fernet() -> Fernet:
     return Fernet(_derive_fernet_key())
 
 
-def encrypt_value(value: Optional[str]) -> str:
+def encrypt_value(value: str | None) -> str:
     if not value:
         return ''
     return get_fernet().encrypt(value.encode('utf-8')).decode('utf-8')
 
 
-def decrypt_value(value: Optional[str]) -> str:
+def decrypt_value(value: str | None) -> str:
     if not value:
         return ''
     try:

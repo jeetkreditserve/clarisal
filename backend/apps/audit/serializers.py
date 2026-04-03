@@ -2,8 +2,8 @@ from rest_framework import serializers
 
 from apps.accounts.models import UserRole
 
-from .services import sanitize_audit_payload
 from .models import AuditLog
+from .services import sanitize_audit_payload
 
 
 class AuditLogSerializer(serializers.ModelSerializer):

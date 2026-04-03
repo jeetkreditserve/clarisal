@@ -14,7 +14,17 @@ from apps.organisations.models import (
     OrganisationStatus,
 )
 from apps.organisations.services import create_licence_batch, mark_licence_batch_paid
-from apps.performance.models import AppraisalCycle, AppraisalReview, CycleStatus, Goal, GoalCycle, GoalStatus, ReviewRelationship, ReviewStatus, ReviewType
+from apps.performance.models import (
+    AppraisalCycle,
+    AppraisalReview,
+    CycleStatus,
+    Goal,
+    GoalCycle,
+    GoalStatus,
+    ReviewRelationship,
+    ReviewStatus,
+    ReviewType,
+)
 
 
 @pytest.fixture

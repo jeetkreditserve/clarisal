@@ -14,6 +14,7 @@ from apps.organisations.models import (
     OrganisationStatus,
 )
 from apps.organisations.services import create_licence_batch, mark_licence_batch_paid
+from apps.payroll.models import Payslip
 from apps.payroll.services import (
     assign_employee_compensation,
     calculate_pay_run,
@@ -23,7 +24,6 @@ from apps.payroll.services import (
     ensure_org_payroll_setup,
     finalize_pay_run,
 )
-from apps.payroll.models import Payslip
 
 
 @pytest.fixture

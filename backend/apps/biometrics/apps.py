@@ -5,4 +5,3 @@ class BiometricsConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'apps.biometrics'
     label = 'biometrics'
-

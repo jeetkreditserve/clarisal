@@ -1,6 +1,5 @@
 import math
 import re
-from datetime import date
 from decimal import Decimal
 
 from django.conf import settings
@@ -12,6 +11,13 @@ from apps.accounts.contact_services import normalize_email_address, resolve_pers
 from apps.accounts.workspaces import ACTIVE_EMPLOYEE_STATUSES, sync_user_role
 from apps.audit.services import log_audit_event
 from apps.employees.models import Employee, EmployeeStatus
+
+from .address_metadata import (
+    get_country_name,
+    normalize_subdivision,
+    validate_billing_tax_identifier,
+    validate_postal_code,
+)
 from .country_metadata import (
     DEFAULT_COUNTRY_CODE,
     DEFAULT_CURRENCY_CODE,
@@ -20,31 +26,25 @@ from .country_metadata import (
     resolve_country_code,
     validate_phone_for_country,
 )
-from .address_metadata import (
-    get_country_name,
-    normalize_subdivision,
-    validate_billing_tax_identifier,
-    validate_postal_code,
-)
 from .models import (
     BootstrapAdminStatus,
     LicenceBatchLifecycleState,
     LicenceBatchPaymentStatus,
-    LifecycleEventType,
     LicenceLedgerReason,
+    LifecycleEventType,
+    OrgAdminSetupStep,
     Organisation,
+    OrganisationAccessState,
     OrganisationAddress,
     OrganisationAddressType,
-    OrganisationAccessState,
-    OrganisationBootstrapAdmin,
     OrganisationBillingStatus,
+    OrganisationBootstrapAdmin,
     OrganisationEntityType,
     OrganisationLegalIdentifier,
     OrganisationLegalIdentifierType,
-    OrgAdminSetupStep,
-    OrganisationLifecycleEvent,
     OrganisationLicenceBatch,
     OrganisationLicenceLedger,
+    OrganisationLifecycleEvent,
     OrganisationMembership,
     OrganisationMembershipStatus,
     OrganisationNote,

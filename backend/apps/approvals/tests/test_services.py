@@ -6,7 +6,6 @@ from django.contrib.contenttypes.models import ContentType
 from apps.accounts.models import User, UserRole
 from apps.approvals.models import (
     ApprovalAction,
-    ApprovalApproverType,
     ApprovalRequestKind,
     ApprovalRun,
     ApprovalRunStatus,
@@ -19,7 +18,12 @@ from apps.departments.models import Department
 from apps.employees.models import Employee, EmployeeStatus
 from apps.locations.models import OfficeLocation
 from apps.notifications.models import Notification, NotificationKind
-from apps.organisations.models import Organisation, OrganisationAccessState, OrganisationBillingStatus, OrganisationStatus
+from apps.organisations.models import (
+    Organisation,
+    OrganisationAccessState,
+    OrganisationBillingStatus,
+    OrganisationStatus,
+)
 from apps.timeoff.models import LeaveCycle, LeaveCycleType, LeavePlan, LeaveType
 
 

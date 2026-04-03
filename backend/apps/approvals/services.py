@@ -15,12 +15,10 @@ from .models import (
     ApprovalRequestKind,
     ApprovalRun,
     ApprovalRunStatus,
-    ApprovalStage,
     ApprovalStageMode,
     ApprovalWorkflow,
     ApprovalWorkflowRule,
 )
-
 
 DEFAULT_APPROVAL_REQUEST_KINDS = [
     ApprovalRequestKind.LEAVE,
@@ -408,7 +406,7 @@ def reject_action(action, actor, comment=''):
     return action
 
 
-def cancel_approval_run(approval_run, actor=None):
+def cancel_approval_run(approval_run, actor=None, *, subject_status='CANCELLED'):
     if approval_run.status != ApprovalRunStatus.PENDING:
         return approval_run
     with transaction.atomic():
@@ -419,6 +417,7 @@ def cancel_approval_run(approval_run, actor=None):
             acted_at=timezone.now(),
             modified_at=timezone.now(),
         )
-        _apply_subject_status(approval_run, 'CANCELLED')
+        if subject_status is not None:
+            _apply_subject_status(approval_run, subject_status)
     log_audit_event(actor, 'approval.run.cancelled', organisation=approval_run.organisation, target=approval_run)
     return approval_run

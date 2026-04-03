@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from typing import cast
 
 from django.utils import timezone
 
 from apps.attendance.services import create_punch_from_source
-from apps.biometrics.http import post as http_post, get as http_get
+from apps.biometrics.http import get as http_get
+from apps.biometrics.http import post as http_post
 
 _SESSION_CACHE: dict[tuple[str, str], str] = {}
 
@@ -30,7 +32,7 @@ def _get_session_id(server_url: str, login_id: str, password: str, timeout: int 
     if not session_id:
         raise ValueError('Suprema login succeeded but no session id was returned.')
     _SESSION_CACHE[cache_key] = session_id
-    return session_id
+    return cast(str, session_id)
 
 
 def fetch_biostar_attendance(

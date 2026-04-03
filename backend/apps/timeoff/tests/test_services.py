@@ -4,13 +4,6 @@ from decimal import Decimal
 import pytest
 
 from apps.accounts.models import AccountType, User, UserRole
-from apps.employees.models import Employee, EmployeeStatus
-from apps.organisations.models import (
-    Organisation,
-    OrganisationAccessState,
-    OrganisationBillingStatus,
-    OrganisationStatus,
-)
 from apps.approvals.models import (
     ApprovalApproverType,
     ApprovalRequestKind,
@@ -18,6 +11,13 @@ from apps.approvals.models import (
     ApprovalStageApprover,
     ApprovalWorkflow,
     ApprovalWorkflowRule,
+)
+from apps.employees.models import Employee, EmployeeStatus
+from apps.organisations.models import (
+    Organisation,
+    OrganisationAccessState,
+    OrganisationBillingStatus,
+    OrganisationStatus,
 )
 from apps.timeoff.models import (
     CarryForwardMode,

@@ -1,20 +1,21 @@
 from django.urls import path
 from rest_framework_simplejwt.views import TokenRefreshView
 
+from apps.invitations.views import AcceptInviteView, ValidateInviteTokenView
+
 from .jwt_views import EmailTokenObtainPairView
 from .views import (
-    CsrfTokenView,
-    WorkforceLoginView,
     ControlTowerLoginView,
+    ControlTowerPasswordResetRequestView,
+    CsrfTokenView,
     LogoutView,
     MeView,
-    PasswordResetRequestView,
-    ControlTowerPasswordResetRequestView,
-    PasswordResetValidateView,
     PasswordResetConfirmView,
+    PasswordResetRequestView,
+    PasswordResetValidateView,
+    WorkforceLoginView,
     WorkspaceSelectionView,
 )
-from apps.invitations.views import ValidateInviteTokenView, AcceptInviteView
 
 urlpatterns = [
     path('csrf/', CsrfTokenView.as_view(), name='auth-csrf'),

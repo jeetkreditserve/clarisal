@@ -1,11 +1,7 @@
-from django.db.models import Prefetch, Q
+from django.db.models import Q
 
 from .models import (
-    EducationRecord,
     Employee,
-    EmployeeBankAccount,
-    EmployeeGovernmentId,
-    EmployeeProfile,
 )
 
 

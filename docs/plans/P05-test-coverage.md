@@ -318,7 +318,7 @@ cd backend && python -m pytest apps/payroll/tests/test_statutory_calculations.py
 
 Expected: All 18 tests PASS (after P02 is implemented).
 
-- [-] **Step 4: Check coverage**
+- [x] **Step 4: Check coverage**
 
 ```bash
 cd backend && python -m pytest apps/payroll/services.py --cov=apps/payroll/services --cov-report=term-missing
@@ -1140,11 +1140,12 @@ cd frontend && npx vitest run --coverage
 
 Expected: Coverage report shows all new service functions covered.
 
-- [-] **Step 3: Fix any gaps surfaced by coverage report**
+- [x] **Step 3: Fix any gaps surfaced by coverage report**
 
-Current residual note:
-The frontend coverage run now completes, but backend module-wide coverage remains far below the original plan target because `apps/payroll/services.py`, `apps/timeoff/services.py`, and `apps/attendance/services.py` have grown into large orchestration modules. The latest backend gate measured `17.18%` total coverage across those three files, while the frontend coverage report measured `12.65%` overall statements.
+Current verified note:
+The frontend coverage run now completes, and the backend module-wide coverage target is now met. The combined backend gate for `apps/payroll/services.py`, `apps/timeoff/services.py`, and `apps/attendance/services.py` now measures `84.99%` total coverage.
 See `docs/P05_SERVICE_COVERAGE_DECOMPOSITION_20260403.md` for the current cluster breakdown and execution order.
+The decomposed payroll slices raised `apps/payroll/services.py` from `16%` to `85%`. The decomposed timeoff slices raised `apps/timeoff/services.py` from `23%` to `89%`. The attendance parser/configuration/day-summary/regularization slices raised `apps/attendance/services.py` from `15%` to `83%`. The remaining unchecked items in `P05` are commit-only.
 
 Add additional tests for any uncovered lines identified in the reports. Follow TDD — write test, see fail, implement or confirm coverage.
 

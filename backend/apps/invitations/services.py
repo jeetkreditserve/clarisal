@@ -5,7 +5,7 @@ from rest_framework import serializers as drf_serializers
 from rest_framework.exceptions import NotFound
 
 from apps.accounts.models import AccountType, User
-from apps.accounts.workspaces import initialize_workforce_workspace, sync_user_role
+from apps.accounts.workspaces import sync_user_role
 from apps.audit.services import log_audit_event
 from apps.common.security import generate_secure_token, hash_token
 from apps.employees.models import Employee, EmployeeOnboardingStatus, EmployeeStatus
@@ -122,21 +122,21 @@ def validate_invite_token(token):
 
     if not invite.is_valid:
         if invite.is_expired:
-            raise drf_serializers.ValidationError({'token': 'This invitation has expired.'})
+            raise drf_serializers.ValidationError({'token': 'This invitation has expired.'})  # nosec B105
         raise drf_serializers.ValidationError({'token': f'This invitation is {invite.status}.'})
 
     return invite
 
 
-def accept_invitation(token, password='', request=None):
+def accept_invitation(token, password=None, request=None):
     invite = validate_invite_token(token)
     user = invite.user
     if user is None:
-        raise drf_serializers.ValidationError({'token': 'Invitation has no associated user.'})
+        raise drf_serializers.ValidationError({'token': 'Invitation has no associated user.'})  # nosec B105
 
     password_set_for_inactive_user = not user.is_active
     if not user.is_active and not password:
-        raise drf_serializers.ValidationError({'password': 'Password is required to activate this account.'})
+        raise drf_serializers.ValidationError({'password': 'Password is required to activate this account.'})  # nosec B105
 
     with transaction.atomic():
         if not user.is_active:

@@ -7,6 +7,7 @@ from http.cookies import SimpleCookie
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import (
+    BaseHandler,
     HTTPDigestAuthHandler,
     HTTPPasswordMgrWithDefaultRealm,
     HTTPSHandler,
@@ -15,7 +16,7 @@ from urllib.request import (
 )
 
 
-class RequestException(Exception):
+class RequestError(Exception):
     pass
 
 
@@ -47,16 +48,16 @@ class Response:
 
     def raise_for_status(self):
         if self.status_code >= 400:
-            raise RequestException(f'HTTP {self.status_code}')
+            raise RequestError(f'HTTP {self.status_code}')
 
 
 def _build_opener(*, auth: HTTPDigestAuth | None = None, verify: bool = True):
-    handlers = []
-    context = ssl.create_default_context() if verify else ssl._create_unverified_context()  # noqa: SLF001
+    handlers: list[BaseHandler] = []
+    context = ssl.create_default_context() if verify else ssl._create_unverified_context()  # noqa: SLF001  # nosec B323
     handlers.append(HTTPSHandler(context=context))
     if auth is not None:
         password_mgr = HTTPPasswordMgrWithDefaultRealm()
-        password_mgr.add_password(None, uri=None, user=auth.username, passwd=auth.password)
+        password_mgr.add_password(None, uri=(), user=auth.username, passwd=auth.password)
         handlers.append(HTTPDigestAuthHandler(password_mgr))
     return build_opener(*handlers)
 
@@ -78,7 +79,7 @@ def get(url: str, *, headers: dict | None = None, params: dict | None = None, ti
     except HTTPError as exc:
         return Response(status_code=exc.code, headers=exc.headers, body=exc.read())
     except URLError as exc:
-        raise RequestException(str(exc)) from exc
+        raise RequestError(str(exc)) from exc
 
 
 def post(url: str, *, headers: dict | None = None, data: dict | None = None, json_body: dict | None = None, timeout: int = 15, verify: bool = True):
@@ -98,5 +99,4 @@ def post(url: str, *, headers: dict | None = None, data: dict | None = None, jso
     except HTTPError as exc:
         return Response(status_code=exc.code, headers=exc.headers, body=exc.read())
     except URLError as exc:
-        raise RequestException(str(exc)) from exc
-
+        raise RequestError(str(exc)) from exc

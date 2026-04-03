@@ -17,4 +17,3 @@ def sync_device(device) -> dict:
     if handler is None:
         raise ValueError(f'No pull sync handler registered for protocol {device.protocol}.')
     return handler(device, str(device.organisation_id))
-

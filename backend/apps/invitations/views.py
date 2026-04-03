@@ -8,10 +8,8 @@ from rest_framework.views import APIView
 from apps.accounts.permissions import IsControlTowerUser
 from apps.accounts.serializers import UserSerializer
 from apps.accounts.workspaces import initialize_workforce_workspace
-from apps.organisations.models import Organisation, OrganisationMembership
-from apps.organisations.repositories import get_org_admins
-from apps.organisations.serializers import OrgAdminSerializer
 from apps.common.transactional_emails import build_frontend_url
+from apps.organisations.models import Organisation, OrganisationMembership
 
 from .serializers import AcceptInviteSerializer, InviteOrgAdminSerializer
 from .services import accept_invitation, create_org_admin_invitation, validate_invite_token

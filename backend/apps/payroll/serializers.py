@@ -6,6 +6,7 @@ from .models import (
     CompensationTemplate,
     CompensationTemplateLine,
     FullAndFinalSettlement,
+    InvestmentDeclaration,
     PayrollComponent,
     PayrollRun,
     PayrollRunItem,
@@ -13,7 +14,6 @@ from .models import (
     PayrollTaxSlabSet,
     Payslip,
     TaxRegime,
-    InvestmentDeclaration,
 )
 
 
@@ -302,7 +302,7 @@ class FullAndFinalSettlementSerializer(serializers.ModelSerializer):
 
 class InvestmentDeclarationWriteSerializer(serializers.Serializer):
     fiscal_year = serializers.CharField(max_length=16)
-    section = serializers.ChoiceField(choices=InvestmentDeclaration._meta.get_field('section').choices)
+    section = serializers.ChoiceField(choices=InvestmentDeclaration._meta.get_field('section').choices)  # type: ignore[arg-type]
     description = serializers.CharField(max_length=200)
     declared_amount = serializers.DecimalField(max_digits=12, decimal_places=2)
     proof_file_key = serializers.CharField(required=False, allow_blank=True, allow_null=True, default='')

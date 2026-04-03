@@ -4,7 +4,12 @@ import pytest
 from django.contrib.sessions.middleware import SessionMiddleware
 
 from apps.accounts.models import AccountType, User, UserRole
-from apps.accounts.workspaces import get_default_route, get_workspace_state, set_active_admin_organisation, sync_user_role
+from apps.accounts.workspaces import (
+    get_default_route,
+    get_workspace_state,
+    set_active_admin_organisation,
+    sync_user_role,
+)
 from apps.employees.models import Employee, EmployeeOnboardingStatus, EmployeeStatus
 from apps.organisations.models import (
     Organisation,

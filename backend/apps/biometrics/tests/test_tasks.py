@@ -1,8 +1,6 @@
-from datetime import datetime
 from unittest.mock import patch
 
 import pytest
-from django.utils import timezone
 
 
 @pytest.mark.django_db

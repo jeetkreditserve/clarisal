@@ -1,8 +1,5 @@
-from datetime import datetime
-from zoneinfo import ZoneInfo
 
 import pytest
-from django.utils import timezone
 
 
 @pytest.mark.django_db

@@ -1,5 +1,4 @@
 import re
-from datetime import date
 
 from django.db import transaction
 from django.utils import timezone
@@ -16,28 +15,26 @@ from apps.documents.services import assign_document_requests
 from apps.invitations.models import InvitationRole, InvitationStatus
 from apps.invitations.services import create_employee_invitation
 from apps.locations.models import OfficeLocation
-from apps.organisations.services import get_org_licence_summary, mark_employee_invited
 from apps.organisations.address_metadata import (
     get_country_name,
     normalize_subdivision,
     validate_postal_code,
 )
 from apps.organisations.country_metadata import resolve_country_code
+from apps.organisations.services import get_org_licence_summary, mark_employee_invited
 
 from .models import (
-    BloodTypeChoice,
     EducationRecord,
     Employee,
     EmployeeBankAccount,
     EmployeeEmergencyContact,
     EmployeeFamilyMember,
     EmployeeGovernmentId,
-    EmployeeOnboardingStatus,
     EmployeeOffboardingProcess,
     EmployeeOffboardingTask,
+    EmployeeOnboardingStatus,
     EmployeeProfile,
     EmployeeStatus,
-    FamilyRelationChoice,
     GovernmentIdType,
     OffboardingProcessStatus,
     OffboardingTaskOwner,
@@ -991,7 +988,11 @@ def get_employee_dashboard(employee, calendar_month=None):
         leave_balances = get_employee_leave_balances(employee)
         calendar = get_employee_calendar_month(employee, calendar_month=calendar_month)
     except Exception:  # noqa: BLE001
-        pass
+        approvals_summary = {'count': 0, 'items': []}
+        notices = []
+        events = []
+        leave_balances = []
+        calendar = {'month': None, 'days': []}
 
     serialized_notices = [
         {

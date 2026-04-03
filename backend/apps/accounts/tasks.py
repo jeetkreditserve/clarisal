@@ -1,4 +1,5 @@
 from celery import shared_task
+
 from apps.common.email_service import EmailDeliveryError, send_transactional_email
 from apps.common.transactional_emails import render_password_reset_email
 

@@ -4,7 +4,11 @@ import pytest
 from django.test import override_settings
 
 from apps.accounts.models import AccountType
-from apps.common.transactional_emails import render_invitation_email, render_notification_email, render_password_reset_email
+from apps.common.transactional_emails import (
+    render_invitation_email,
+    render_notification_email,
+    render_password_reset_email,
+)
 from apps.invitations.models import InvitationRole
 
 

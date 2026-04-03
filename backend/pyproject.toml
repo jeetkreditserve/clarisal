@@ -19,6 +19,9 @@ ignore = [
     "B904",
 ]
 
+[tool.ruff.lint.per-file-ignores]
+"backend/clarisal/settings/*.py" = ["F403", "F405"]
+
 [tool.bandit]
 exclude_dirs = ["tests", "migrations"]
 skips = ["B101"]

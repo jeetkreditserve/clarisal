@@ -84,4 +84,3 @@ def biometric_setup(db):
         'client': client,
         'anonymous_client': anonymous_client,
     }
-

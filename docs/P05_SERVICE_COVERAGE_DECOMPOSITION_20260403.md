@@ -16,6 +16,64 @@ Current measured backend gate:
 
 These files are now orchestration modules spanning setup, CRUD, approvals, imports, reporting, notifications, and calculation paths. The coverage gap needs to be decomposed by behavior cluster, not attacked as one monolithic “add tests” item.
 
+## Execution Progress
+
+- [x] `P5-PAY-1` helper slice implemented in `backend/apps/payroll/tests/test_service_helpers.py`
+- [x] `P5-PAY-2` setup/approval slice implemented in `backend/apps/payroll/tests/test_service_setup.py`
+- [x] `P5-PAY-3` payroll run orchestration slice implemented in `backend/apps/payroll/tests/test_service_run_calculation.py`
+- [x] `P5-PAY-4` finalization and rerun slice implemented in `backend/apps/payroll/tests/test_service_run_finalization.py`
+- [x] `P5-TO-1` cycle and plan configuration implemented in `backend/apps/timeoff/tests/test_service_configuration.py`
+- [x] `P5-TO-2` accrual and balances implemented in `backend/apps/timeoff/tests/test_service_balances.py`
+- [x] `P5-TO-3` encashment and request lifecycle implemented in `backend/apps/timeoff/tests/test_service_requests.py`
+- [x] `P5-TO-4` holiday and calendar rendering implemented in `backend/apps/timeoff/tests/test_service_calendar.py`
+- [x] `P5-AT-1` workbook parsing and sample generation implemented in `backend/apps/attendance/tests/test_service_parsers.py`
+- [x] `P5-AT-2` policy, source config, and shift management implemented in `backend/apps/attendance/tests/test_service_configuration.py`
+- [x] `P5-AT-3` day summarization core implemented in `backend/apps/attendance/tests/test_service_day_summary.py`
+- [ ] `P5-AT-4` employee punch and source ingestion
+- [x] `P5-AT-5` regularization and org summaries implemented in `backend/apps/attendance/tests/test_service_regularization_and_reports.py`
+- [ ] `P5-AT-6` attendance and punch imports
+
+Latest payroll-only measurement after `P5-PAY-1` to `P5-PAY-4`:
+
+- `apps/payroll/services.py` -> `85%`
+- command:
+  `docker compose exec backend /bin/sh -lc "export HOME=/tmp PYTHONPATH=/tmp/.local/lib/python3.11/site-packages PATH=/tmp/.local/bin:$PATH COVERAGE_FILE=/tmp/.coverage; python -m pytest apps/payroll/tests/test_service_helpers.py apps/payroll/tests/test_service_setup.py apps/payroll/tests/test_service_run_calculation.py apps/payroll/tests/test_service_run_finalization.py --cov=apps.payroll.services --cov-report=term-missing --cov-fail-under=80 -q --tb=short --reuse-db"`
+
+Bug found and fixed during this slice:
+
+- exit-month payroll proration in `calculate_pay_run()` was wrong when an employee joined on the first day of the month and exited mid-month. The service now computes paid days from both start and end bounds instead of treating join and exit as mutually exclusive.
+
+Latest timeoff-only measurement after `P5-TO-1` to `P5-TO-4` plus the existing timeoff suites:
+
+- `apps/timeoff/services.py` -> `89%`
+- command:
+  `docker compose exec backend /bin/sh -lc "export HOME=/tmp PYTHONPATH=/tmp/.local/lib/python3.11/site-packages PATH=/tmp/.local/bin:$PATH COVERAGE_FILE=/tmp/.coverage; python -m pytest apps/timeoff/tests/test_services.py apps/timeoff/tests/test_views.py apps/timeoff/tests/test_serializers.py apps/timeoff/tests/test_service_configuration.py apps/timeoff/tests/test_service_balances.py apps/timeoff/tests/test_service_requests.py apps/timeoff/tests/test_service_calendar.py --cov=apps.timeoff.services --cov-report=term-missing --cov-fail-under=80 -q --tb=short --reuse-db"`
+
+Bugs found and fixed during this slice:
+
+- leave-cycle, leave-plan, holiday-calendar, and on-duty-policy default switching saved the new default before clearing the old one, which violated the underlying unique constraints for default records.
+- leave request, on-duty request, and attendance regularization withdrawal flows were setting `WITHDRAWN` and then immediately overwriting the subject back to `CANCELLED` when the linked approval run was cancelled.
+- payroll run recalculation now cancels the linked approval run without mutating the payroll run subject status.
+
+Latest attendance-only measurement after `P5-AT-1`, `P5-AT-2`, `P5-AT-3`, and `P5-AT-5` plus the existing attendance suites:
+
+- `apps/attendance/services.py` -> `83%`
+- command:
+  `docker compose exec backend /bin/sh -lc "export HOME=/tmp PYTHONPATH=/tmp/.local/lib/python3.11/site-packages PATH=/tmp/.local/bin:$PATH COVERAGE_FILE=/tmp/.coverage; python -m pytest apps/attendance/tests/test_daily_calculation.py apps/attendance/tests/test_views.py apps/attendance/tests/test_service_parsers.py apps/attendance/tests/test_service_configuration.py apps/attendance/tests/test_service_day_summary.py apps/attendance/tests/test_service_regularization_and_reports.py --cov=apps.attendance.services --cov-report=term-missing --cov-fail-under=80 -q --tb=short --reuse-db"`
+
+Bug found and fixed during this slice:
+
+- attendance policy default switching saved the new default before clearing the old one, which violated the unique default-policy constraint for the organisation.
+
+Combined backend gate after the verified payroll, timeoff, and attendance slices:
+
+- `apps/payroll/services.py` -> `85%`
+- `apps/timeoff/services.py` -> `89%`
+- `apps/attendance/services.py` -> `83%`
+- combined gate -> `85%`
+- command:
+  `docker compose exec backend /bin/sh -lc "export HOME=/tmp PYTHONPATH=/tmp/.local/lib/python3.11/site-packages PATH=/tmp/.local/bin:$PATH COVERAGE_FILE=/tmp/.coverage; python -m pytest apps/payroll/tests/test_service_helpers.py apps/payroll/tests/test_service_setup.py apps/payroll/tests/test_service_run_calculation.py apps/payroll/tests/test_service_run_finalization.py apps/timeoff/tests/test_services.py apps/timeoff/tests/test_views.py apps/timeoff/tests/test_serializers.py apps/timeoff/tests/test_service_configuration.py apps/timeoff/tests/test_service_balances.py apps/timeoff/tests/test_service_requests.py apps/timeoff/tests/test_service_calendar.py apps/attendance/tests/test_daily_calculation.py apps/attendance/tests/test_views.py apps/attendance/tests/test_service_parsers.py apps/attendance/tests/test_service_configuration.py apps/attendance/tests/test_service_day_summary.py apps/attendance/tests/test_service_regularization_and_reports.py --cov=apps.payroll.services --cov=apps.timeoff.services --cov=apps.attendance.services --cov-report=term-missing --cov-fail-under=80 -q --tb=short --reuse-db"`
+
 ## Existing Useful Coverage
 
 Already covered enough to avoid redoing first:

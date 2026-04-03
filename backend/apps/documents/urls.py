@@ -2,10 +2,10 @@ from django.urls import path
 
 from .views import (
     DocumentTypeListView,
-    EmployeeDocumentListView,
-    EmployeeDocumentRequestListCreateView,
     EmployeeDocumentDownloadView,
+    EmployeeDocumentListView,
     EmployeeDocumentRejectView,
+    EmployeeDocumentRequestListCreateView,
     EmployeeDocumentVerifyView,
 )
 

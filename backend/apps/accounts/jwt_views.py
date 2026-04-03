@@ -4,4 +4,4 @@ from .jwt_serializers import EmailTokenObtainPairSerializer
 
 
 class EmailTokenObtainPairView(TokenObtainPairView):
-    serializer_class = EmailTokenObtainPairSerializer
+    serializer_class = EmailTokenObtainPairSerializer  # type: ignore[assignment]

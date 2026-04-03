@@ -7,7 +7,14 @@ from rest_framework.test import APIClient
 
 from apps.accounts.models import User, UserRole
 from apps.approvals.models import ApprovalRequestKind
-from apps.organisations.models import Organisation, OrganisationAccessState, OrganisationBillingStatus, OrganisationMembership, OrganisationMembershipStatus, OrganisationStatus
+from apps.organisations.models import (
+    Organisation,
+    OrganisationAccessState,
+    OrganisationBillingStatus,
+    OrganisationMembership,
+    OrganisationMembershipStatus,
+    OrganisationStatus,
+)
 from apps.organisations.services import create_licence_batch, mark_licence_batch_paid
 
 
@@ -56,7 +63,7 @@ class TestApprovalWorkflowApi:
         client, organisation = org_admin_client
 
         response = client.post(
-            f'/api/org/approvals/workflows/',
+            '/api/org/approvals/workflows/',
             {
                 'name': 'Attendance Regularization Workflow',
                 'description': '',
@@ -91,7 +98,7 @@ class TestApprovalWorkflowApi:
         client, organisation = org_admin_client
 
         response = client.post(
-            f'/api/org/approvals/workflows/',
+            '/api/org/approvals/workflows/',
             {
                 'name': 'Payroll Workflow',
                 'description': '',

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+
 from django.utils import timezone
 
 from apps.attendance.services import create_punch_from_source
-from apps.biometrics.http import RequestException, get as http_get
+from apps.biometrics.http import RequestError
+from apps.biometrics.http import get as http_get
 
 
 def fetch_cosec_attendance(
@@ -28,7 +30,7 @@ def fetch_cosec_attendance(
             timeout=timeout,
         )
         response.raise_for_status()
-    except RequestException as exc:
+    except RequestError as exc:
         raise ConnectionError(f'COSEC device unreachable at {device_ip}:{port}: {exc}') from exc
 
     records = []

@@ -115,8 +115,8 @@ class TestLeaveEncashmentViews:
         assert list_response.data[0]['days_to_encash'] == '5.00'
 
     def test_org_admin_can_list_leave_encashments(self, timeoff_view_setup):
-        from apps.timeoff.services import create_leave_encashment_request
         from apps.timeoff.models import LeaveBalance
+        from apps.timeoff.services import create_leave_encashment_request
 
         employee = timeoff_view_setup['employee']
         org_admin_client = timeoff_view_setup['org_admin_client']

@@ -1,10 +1,13 @@
 import pytest
+
 from apps.accounts.models import User, UserRole
 from apps.audit.models import AuditLog
 from apps.organisations.models import Organisation, OrganisationStateTransition, OrganisationStatus
 from apps.organisations.services import (
-    create_organisation, transition_organisation_state,
-    update_licence_count, get_ct_dashboard_stats,
+    create_organisation,
+    get_ct_dashboard_stats,
+    transition_organisation_state,
+    update_licence_count,
 )
 
 

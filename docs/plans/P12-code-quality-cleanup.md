@@ -292,7 +292,7 @@ git commit -m "fix(e2e): implement date picker interaction, remove test.skip fro
 - Create: `.pre-commit-config.yaml`
 - Create/Modify: `.gitignore` (add detect-secrets baseline)
 
-- [ ] **Step 1: Install pre-commit**
+- [x] **Step 1: Install pre-commit**
 
 ```bash
 pip install pre-commit
@@ -377,7 +377,7 @@ exclude_dirs = ["tests", "migrations"]
 skips = ["B101"]  # assert statements in tests
 ```
 
-- [ ] **Step 4: Generate detect-secrets baseline**
+- [x] **Step 4: Generate detect-secrets baseline**
 
 ```bash
 cd /home/jeet-padhya/PycharmProjects/clarisal
@@ -389,21 +389,21 @@ detect-secrets scan \
   > .secrets.baseline
 ```
 
-- [ ] **Step 5: Install hooks**
+- [x] **Step 5: Install hooks**
 
 ```bash
 pre-commit install
 pre-commit install --hook-type commit-msg
 ```
 
-- [ ] **Step 6: Run hooks on all files to check baseline**
+- [x] **Step 6: Run hooks on all files to check baseline**
 
 ```bash
 pre-commit run --all-files
 ```
 
 Fix any issues flagged by ruff or bandit. Common fixes:
-- `bare except:` → `except Exception:` 
+- `bare except:` → `except Exception:`
 - Remove unused imports
 - Fix `B006` mutable default args
 
@@ -484,7 +484,7 @@ Install:
 cd backend && pip install -r requirements-dev.txt
 ```
 
-- [-] **Step 4: Run coverage and verify it passes 80%**
+- [x] **Step 4: Run coverage and verify it passes 80%**
 
 ```bash
 cd backend && python -m pytest --cov=apps --cov-report=term-missing --cov-fail-under=80
@@ -541,13 +541,13 @@ exclude = migrations
 ignore_errors = True
 ```
 
-- [-] **Step 3: Run mypy and note errors**
+- [x] **Step 3: Run mypy and note errors**
 
 ```bash
 cd backend && python -m mypy apps/ --ignore-missing-imports 2>&1 | head -50
 ```
 
-- [ ] **Step 4: Fix critical mypy errors**
+- [x] **Step 4: Fix critical mypy errors**
 
 Fix `error:` level issues in new code (services, models). Ignore existing legacy type errors by adding `# type: ignore` where fixing would be too invasive. Do not add type annotations to functions you didn't write.
 
@@ -623,7 +623,7 @@ check: lint typecheck test
 	@echo "All checks passed"
 ```
 
-- [ ] **Step 2: Verify Makefile targets work**
+- [x] **Step 2: Verify Makefile targets work**
 
 ```bash
 make lint
@@ -732,7 +732,7 @@ git commit -m "docs: add CONTRIBUTING.md documenting service/repository/view arc
 
 ## Task 8 — Final Cleanup Pass
 
-- [ ] **Step 1: Remove any remaining dead code**
+- [x] **Step 1: Remove any remaining dead code**
 
 Search for unused imports:
 ```bash
@@ -746,7 +746,7 @@ grep -rn "TODO\|FIXME\|HACK\|XXX" backend/apps/ --include="*.py" | grep -v "migr
 
 Address any low-hanging TODO items (remove, implement, or convert to GitHub issues).
 
-- [ ] **Step 2: Ensure all new apps have migrations**
+- [-] **Step 2: Ensure all new apps have migrations**
 
 ```bash
 cd backend && python manage.py makemigrations --check
@@ -754,7 +754,7 @@ cd backend && python manage.py makemigrations --check
 
 Expected: `No changes detected` (all migrations already generated).
 
-- [ ] **Step 3: Run full test suite one final time**
+- [x] **Step 3: Run full test suite one final time**
 
 ```bash
 cd backend && python -m pytest -v --tb=short 2>&1 | tail -20

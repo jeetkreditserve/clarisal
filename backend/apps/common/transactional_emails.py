@@ -3,7 +3,6 @@ from dataclasses import dataclass
 from django.conf import settings
 from django.template.loader import render_to_string
 
-
 APP_NAME = 'Clarisal'
 
 

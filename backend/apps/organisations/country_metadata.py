@@ -1,6 +1,5 @@
 import re
 
-
 DEFAULT_COUNTRY_CODE = 'IN'
 DEFAULT_CURRENCY_CODE = 'INR'
 

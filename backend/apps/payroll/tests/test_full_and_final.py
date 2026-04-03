@@ -40,8 +40,8 @@ def _create_employee():
 @pytest.mark.django_db
 class TestFullAndFinalSettlement:
     def test_fnf_created_on_offboarding_initiation(self):
-        from apps.payroll.services import create_full_and_final_settlement
         from apps.payroll.models import FNFStatus
+        from apps.payroll.services import create_full_and_final_settlement
 
         employee = _create_employee()
         fnf = create_full_and_final_settlement(

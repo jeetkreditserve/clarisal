@@ -90,7 +90,7 @@ class BiometricDeviceWriteSerializer(serializers.ModelSerializer):
             if not oauth_client_id:
                 raise serializers.ValidationError({'oauth_client_id': 'Suprema requires a login id.'})
             if not (oauth_client_secret or existing_oauth_secret):
-                raise serializers.ValidationError({'oauth_client_secret': 'Suprema requires a password.'})
+                raise serializers.ValidationError({'oauth_client_secret': 'Suprema requires a password.'})  # nosec B105
         return attrs
 
     def create(self, validated_data):

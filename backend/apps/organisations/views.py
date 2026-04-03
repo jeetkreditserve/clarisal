@@ -1,15 +1,22 @@
 from django.db.models import Count, F, Max, Q
-from rest_framework import status
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework.pagination import PageNumberPagination
 from django.shortcuts import get_object_or_404
+from rest_framework import status
+from rest_framework.pagination import PageNumberPagination
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
 from apps.accounts.permissions import BelongsToActiveOrg, IsControlTowerUser, IsOrgAdmin, OrgAdminMutationAllowed
 from apps.accounts.workspaces import get_active_admin_organisation
 from apps.approvals.models import ApprovalAction, ApprovalActionStatus, ApprovalRun, ApprovalRunStatus, ApprovalWorkflow
 from apps.approvals.serializers import ApprovalWorkflowSerializer, ApprovalWorkflowWriteSerializer
 from apps.approvals.views import _upsert_workflow as upsert_approval_workflow
-from apps.attendance.models import AttendanceImportJob, AttendancePolicy, AttendanceRegularizationRequest, AttendanceRegularizationStatus, AttendanceSourceConfig
+from apps.attendance.models import (
+    AttendanceImportJob,
+    AttendancePolicy,
+    AttendanceRegularizationRequest,
+    AttendanceRegularizationStatus,
+    AttendanceSourceConfig,
+)
 from apps.attendance.services import get_org_attendance_dashboard
 from apps.communications.models import Notice
 from apps.communications.serializers import NoticeSerializer, NoticeWriteSerializer
@@ -19,9 +26,9 @@ from apps.departments.repositories import list_departments
 from apps.departments.serializers import DepartmentCreateUpdateSerializer, DepartmentSerializer
 from apps.departments.services import create_department, deactivate_department, update_department
 from apps.documents.models import EmployeeDocumentRequest, EmployeeDocumentRequestStatus
+from apps.employees.models import Employee, EmployeeOnboardingStatus
 from apps.employees.repositories import get_employee, list_employees
 from apps.employees.serializers import CtEmployeeDetailSerializer, CtEmployeeListSerializer
-from apps.employees.models import Employee, EmployeeOnboardingStatus
 from apps.locations.models import OfficeLocation
 from apps.locations.repositories import list_locations
 from apps.locations.serializers import LocationCreateUpdateSerializer, LocationSerializer
@@ -46,40 +53,57 @@ from apps.timeoff.serializers import (
     OnDutyPolicySerializer,
     OnDutyPolicyWriteSerializer,
 )
-from apps.timeoff.services import create_holiday_calendar, publish_holiday_calendar, update_holiday_calendar
+from apps.timeoff.services import (
+    create_holiday_calendar,
+    create_leave_plan,
+    publish_holiday_calendar,
+    update_holiday_calendar,
+    update_leave_plan,
+    upsert_leave_cycle,
+    upsert_on_duty_policy,
+)
+
 from .models import Organisation, OrganisationAddress, OrganisationLicenceBatch, OrganisationNote, OrganisationStatus
-from .repositories import get_organisations, get_organisation_by_id, get_org_admins
+from .repositories import get_org_admins, get_organisations
 from .serializers import (
-    OrganisationListSerializer, OrganisationDetailSerializer,
-    OrganisationAddressSerializer,
-    OrganisationAddressWriteSerializer,
-    CreateOrganisationSerializer, UpdateOrganisationSerializer,
+    CreateOrganisationSerializer,
+    CTDashboardStatsSerializer,
     LicenceBatchMarkPaidSerializer,
     LicenceBatchSerializer,
     LicenceBatchUpdateSerializer,
     LicenceBatchWriteSerializer,
-    OrgAdminSerializer, CTDashboardStatsSerializer, OrgDashboardStatsSerializer,
-    OrganisationNoteSerializer, OrganisationNoteWriteSerializer,
-    OrgAdminSetupStateSerializer, OrgAdminSetupUpdateSerializer,
+    OrgAdminSerializer,
+    OrgAdminSetupStateSerializer,
+    OrgAdminSetupUpdateSerializer,
+    OrganisationAddressSerializer,
+    OrganisationAddressWriteSerializer,
+    OrganisationDetailSerializer,
+    OrganisationListSerializer,
+    OrganisationNoteSerializer,
+    OrganisationNoteWriteSerializer,
+    OrgDashboardStatsSerializer,
+    UpdateOrganisationSerializer,
 )
 from .services import (
-    create_organisation_address,
     create_licence_batch,
+    create_organisation,
+    create_organisation_address,
     create_organisation_note,
-    create_organisation, transition_organisation_state,
-    deactivate_organisation_address,
-    get_ct_dashboard_stats, get_org_dashboard_stats, get_org_licence_summary,
-    mark_licence_batch_paid,
     deactivate_org_admin_membership,
+    deactivate_organisation_address,
+    get_ct_dashboard_stats,
+    get_org_admin_setup_state,
+    get_org_dashboard_stats,
+    get_org_licence_summary,
+    mark_licence_batch_paid,
     reactivate_org_admin_membership,
     revoke_org_admin_membership_invitation,
-    get_org_admin_setup_state,
+    transition_organisation_state,
+    update_licence_batch,
     update_org_admin_setup_state,
     update_organisation_address,
-    update_licence_batch,
     update_organisation_profile,
 )
-from apps.timeoff.services import create_leave_plan, update_leave_plan, upsert_leave_cycle, upsert_on_duty_policy
 
 
 def _get_ct_organisation(pk):

@@ -73,7 +73,7 @@ def parse_essl_ebioserver_payload(payload) -> list[dict]:
         return []
 
     normalized = []
-    for item in event_items:
+    for item in event_items or []:
         if not isinstance(item, dict):
             continue
         employee_code = _first_value(item, POSSIBLE_EMPLOYEE_KEYS)

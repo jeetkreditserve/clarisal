@@ -4,8 +4,21 @@ import pytest
 
 from apps.accounts.models import AccountType, User, UserRole
 from apps.employees.models import Employee, EmployeeStatus
-from apps.organisations.models import Organisation, OrganisationAccessState, OrganisationBillingStatus, OrganisationStatus
-from apps.performance.models import AppraisalCycle, CycleStatus, Goal, GoalCycle, GoalStatus, ReviewRelationship, ReviewType
+from apps.organisations.models import (
+    Organisation,
+    OrganisationAccessState,
+    OrganisationBillingStatus,
+    OrganisationStatus,
+)
+from apps.performance.models import (
+    AppraisalCycle,
+    CycleStatus,
+    Goal,
+    GoalCycle,
+    GoalStatus,
+    ReviewRelationship,
+    ReviewType,
+)
 
 
 def _create_organisation(name='Performance Org'):

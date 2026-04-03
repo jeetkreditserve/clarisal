@@ -27,7 +27,7 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
 
     def validate(self, data):
         if data['password'] != data['confirm_password']:
-            raise serializers.ValidationError({'confirm_password': 'Passwords do not match.'})
+            raise serializers.ValidationError({'confirm_password': 'Passwords do not match.'})  # nosec B105
         return data
 
 

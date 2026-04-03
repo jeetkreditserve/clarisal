@@ -14,7 +14,6 @@ from apps.organisations.models import (
     OrganisationStatus,
 )
 from apps.organisations.services import create_licence_batch, mark_licence_batch_paid
-from apps.payroll.models import PayrollRunStatus
 from apps.payroll.services import create_payroll_run
 
 

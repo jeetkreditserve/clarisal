@@ -1,17 +1,30 @@
 import json
 
+from celery.result import AsyncResult
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
-from celery.result import AsyncResult
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.accounts.permissions import BelongsToActiveOrg, IsControlTowerUser, IsEmployee, IsOrgAdmin, OrgAdminMutationAllowed
+from apps.accounts.permissions import (
+    BelongsToActiveOrg,
+    IsControlTowerUser,
+    IsEmployee,
+    IsOrgAdmin,
+    OrgAdminMutationAllowed,
+)
 from apps.accounts.workspaces import get_active_admin_organisation, get_active_employee
 from apps.employees.models import Employee, EmployeeStatus
 
-from .models import CompensationAssignment, CompensationTemplate, FullAndFinalSettlement, PayrollRun, PayrollTaxSlabSet, Payslip
+from .models import (
+    CompensationAssignment,
+    CompensationTemplate,
+    FullAndFinalSettlement,
+    PayrollRun,
+    PayrollTaxSlabSet,
+    Payslip,
+)
 from .serializers import (
     CompensationAssignmentSerializer,
     CompensationAssignmentWriteSerializer,
@@ -30,7 +43,6 @@ from .serializers import (
 )
 from .services import (
     assign_employee_compensation,
-    calculate_pay_run,
     create_compensation_template,
     create_payroll_run,
     create_tax_slab_set,

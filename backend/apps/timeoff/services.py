@@ -1,6 +1,6 @@
 import calendar
 import math
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 
 from django.db import transaction
@@ -22,17 +22,16 @@ from .models import (
     LeaveBalanceLedgerEntry,
     LeaveCreditFrequency,
     LeaveCycle,
+    LeaveCycleType,
     LeaveEncashmentRequest,
     LeaveEncashmentStatus,
-    LeaveCycleType,
     LeavePlan,
-    LeavePlanEmployeeAssignment,
     LeavePlanRule,
     LeaveRequest,
     LeaveRequestStatus,
     LeaveType,
-    OnDutyPolicy,
     OnDutyDurationType,
+    OnDutyPolicy,
     OnDutyRequest,
     OnDutyRequestStatus,
 )
@@ -91,6 +90,9 @@ def get_default_leave_cycle(organisation):
 
 def upsert_leave_cycle(organisation, actor=None, cycle=None, **fields):
     with transaction.atomic():
+        target_is_default = fields.get('is_default', cycle.is_default if cycle is not None else False)
+        if target_is_default:
+            LeaveCycle.objects.filter(organisation=organisation).exclude(id=getattr(cycle, 'id', None)).update(is_default=False)
         if cycle is None:
             cycle = LeaveCycle.objects.create(
                 organisation=organisation,
@@ -101,9 +103,6 @@ def upsert_leave_cycle(organisation, actor=None, cycle=None, **fields):
             for attr, value in fields.items():
                 setattr(cycle, attr, value)
             cycle.save()
-
-        if cycle.is_default:
-            LeaveCycle.objects.filter(organisation=organisation).exclude(id=cycle.id).update(is_default=False)
 
     log_audit_event(actor, 'leave_cycle.upserted', organisation=organisation, target=cycle)
     return cycle
@@ -148,9 +147,9 @@ def _upsert_leave_plan_relations(leave_plan, leave_types=None, rules=None):
 
 def create_leave_plan(organisation, actor=None, leave_types=None, rules=None, **fields):
     with transaction.atomic():
+        if fields.get('is_default'):
+            LeavePlan.objects.filter(organisation=organisation).update(is_default=False)
         leave_plan = LeavePlan.objects.create(organisation=organisation, created_by=actor, **fields)
-        if leave_plan.is_default:
-            LeavePlan.objects.filter(organisation=organisation).exclude(id=leave_plan.id).update(is_default=False)
         _upsert_leave_plan_relations(leave_plan, leave_types=leave_types or [], rules=rules or [])
     log_audit_event(actor, 'leave_plan.created', organisation=organisation, target=leave_plan)
     return leave_plan
@@ -158,11 +157,12 @@ def create_leave_plan(organisation, actor=None, leave_types=None, rules=None, **
 
 def update_leave_plan(leave_plan, actor=None, leave_types=None, rules=None, **fields):
     with transaction.atomic():
+        target_is_default = fields.get('is_default', leave_plan.is_default)
+        if target_is_default:
+            LeavePlan.objects.filter(organisation=leave_plan.organisation).exclude(id=leave_plan.id).update(is_default=False)
         for attr, value in fields.items():
             setattr(leave_plan, attr, value)
         leave_plan.save()
-        if leave_plan.is_default:
-            LeavePlan.objects.filter(organisation=leave_plan.organisation).exclude(id=leave_plan.id).update(is_default=False)
         _upsert_leave_plan_relations(leave_plan, leave_types=leave_types, rules=rules)
     log_audit_event(actor, 'leave_plan.updated', organisation=leave_plan.organisation, target=leave_plan)
     return leave_plan
@@ -650,7 +650,7 @@ def withdraw_leave_request(leave_request, actor=None):
         object_id=leave_request.id,
     ).first()
     if approval_run:
-        cancel_approval_run(approval_run, actor=actor)
+        cancel_approval_run(approval_run, actor=actor, subject_status=LeaveRequestStatus.WITHDRAWN)
     get_or_create_leave_balance(leave_request.employee, leave_request.leave_type)
     log_audit_event(actor, 'leave.request.withdrawn', organisation=leave_request.employee.organisation, target=leave_request)
     return leave_request
@@ -658,14 +658,15 @@ def withdraw_leave_request(leave_request, actor=None):
 
 def upsert_on_duty_policy(organisation, actor=None, policy=None, **fields):
     with transaction.atomic():
+        target_is_default = fields.get('is_default', policy.is_default if policy is not None else False)
+        if target_is_default:
+            OnDutyPolicy.objects.filter(organisation=organisation).exclude(id=getattr(policy, 'id', None)).update(is_default=False)
         if policy is None:
             policy = OnDutyPolicy.objects.create(organisation=organisation, created_by=actor, **fields)
         else:
             for attr, value in fields.items():
                 setattr(policy, attr, value)
             policy.save()
-        if policy.is_default:
-            OnDutyPolicy.objects.filter(organisation=organisation).exclude(id=policy.id).update(is_default=False)
     log_audit_event(actor, 'on_duty_policy.upserted', organisation=organisation, target=policy)
     return policy
 
@@ -720,16 +721,16 @@ def withdraw_on_duty_request(on_duty_request, actor=None):
         object_id=on_duty_request.id,
     ).first()
     if approval_run:
-        cancel_approval_run(approval_run, actor=actor)
+        cancel_approval_run(approval_run, actor=actor, subject_status=OnDutyRequestStatus.WITHDRAWN)
     log_audit_event(actor, 'on_duty.request.withdrawn', organisation=on_duty_request.employee.organisation, target=on_duty_request)
     return on_duty_request
 
 
 def create_holiday_calendar(organisation, actor=None, holidays=None, location_ids=None, **fields):
     with transaction.atomic():
+        if fields.get('is_default'):
+            HolidayCalendar.objects.filter(organisation=organisation, year=fields['year']).update(is_default=False)
         calendar_obj = HolidayCalendar.objects.create(organisation=organisation, created_by=actor, **fields)
-        if calendar_obj.is_default:
-            HolidayCalendar.objects.filter(organisation=organisation, year=calendar_obj.year).exclude(id=calendar_obj.id).update(is_default=False)
         for holiday in holidays or []:
             Holiday.objects.create(holiday_calendar=calendar_obj, **holiday)
         for location_id in location_ids or []:
@@ -740,11 +741,13 @@ def create_holiday_calendar(organisation, actor=None, holidays=None, location_id
 
 def update_holiday_calendar(calendar_obj, actor=None, holidays=None, location_ids=None, **fields):
     with transaction.atomic():
+        target_is_default = fields.get('is_default', calendar_obj.is_default)
+        target_year = fields.get('year', calendar_obj.year)
+        if target_is_default:
+            HolidayCalendar.objects.filter(organisation=calendar_obj.organisation, year=target_year).exclude(id=calendar_obj.id).update(is_default=False)
         for attr, value in fields.items():
             setattr(calendar_obj, attr, value)
         calendar_obj.save()
-        if calendar_obj.is_default:
-            HolidayCalendar.objects.filter(organisation=calendar_obj.organisation, year=calendar_obj.year).exclude(id=calendar_obj.id).update(is_default=False)
         if holidays is not None:
             keep_ids = []
             for holiday_payload in holidays:

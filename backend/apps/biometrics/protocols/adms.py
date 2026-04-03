@@ -64,4 +64,3 @@ def handle_adms_push(body: str, organisation_id: str, device_serial: str) -> dic
             skipped += 1
 
     return {'processed': processed, 'skipped': skipped, 'errors': errors}
-

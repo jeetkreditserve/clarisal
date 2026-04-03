@@ -1,5 +1,7 @@
-from .base import *
+# ruff: noqa: F403, F405
 import warnings
+
+from .base import *
 
 INSTALLED_APPS += ['django_extensions']
 

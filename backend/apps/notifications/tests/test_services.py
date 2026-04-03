@@ -1,9 +1,14 @@
 import pytest
 
 from apps.accounts.models import AccountType, User, UserRole
-from apps.organisations.models import Organisation, OrganisationAccessState, OrganisationBillingStatus, OrganisationStatus
 from apps.notifications.models import Notification, NotificationKind
 from apps.notifications.services import create_notification, mark_all_read, mark_notification_read
+from apps.organisations.models import (
+    Organisation,
+    OrganisationAccessState,
+    OrganisationBillingStatus,
+    OrganisationStatus,
+)
 
 
 def make_user(email: str, *, organisation=None):

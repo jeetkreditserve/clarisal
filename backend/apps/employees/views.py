@@ -10,12 +10,21 @@ from apps.audit.services import log_audit_event
 from apps.departments.models import Department
 from apps.locations.models import OfficeLocation
 
-from .models import EducationRecord, Employee, EmployeeBankAccount, EmployeeEmergencyContact, EmployeeFamilyMember, EmployeeOffboardingProcess, EmployeeOffboardingTask
+from .models import (
+    EducationRecord,
+    Employee,
+    EmployeeBankAccount,
+    EmployeeEmergencyContact,
+    EmployeeFamilyMember,
+    EmployeeOffboardingProcess,
+    EmployeeOffboardingTask,
+)
 from .repositories import list_employees
 from .serializers import (
     BankAccountSerializer,
     BankAccountWriteSerializer,
     EducationRecordSerializer,
+    EmergencyContactSerializer,
     EmployeeDetailSerializer,
     EmployeeEndEmploymentSerializer,
     EmployeeInviteSerializer,
@@ -23,7 +32,6 @@ from .serializers import (
     EmployeeMarkJoinedSerializer,
     EmployeeProfileSerializer,
     EmployeeUpdateSerializer,
-    EmergencyContactSerializer,
     FamilyMemberSerializer,
     GovernmentIdSerializer,
     GovernmentIdWriteSerializer,
@@ -49,12 +57,12 @@ from .services import (
     invite_employee,
     mark_employee_joined,
     refresh_employee_onboarding_status,
-    update_offboarding_process,
-    update_offboarding_task,
     update_bank_account,
     update_education_record,
     update_employee,
     update_employee_profile,
+    update_offboarding_process,
+    update_offboarding_task,
     update_onboarding_basics,
     upsert_government_id,
 )

@@ -7,4 +7,3 @@ urlpatterns = [
     path('biometrics/devices/<uuid:pk>/', BiometricDeviceDetailView.as_view(), name='org-biometric-device-detail'),
     path('biometrics/devices/<uuid:pk>/sync-logs/', BiometricSyncLogListView.as_view(), name='org-biometric-device-sync-logs'),
 ]
-

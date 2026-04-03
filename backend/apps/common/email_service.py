@@ -85,7 +85,7 @@ def _send_via_zeptomail(*, subject, recipient_email, text_body, html_body=''):
         method='POST',
     )
     try:
-        with urllib_request.urlopen(req, timeout=15) as response:
+        with urllib_request.urlopen(req, timeout=15) as response:  # nosec B310
             status = getattr(response, 'status', response.getcode())
             if status >= 400:
                 raise EmailDeliveryError(f'ZeptoMail returned HTTP {status}.')

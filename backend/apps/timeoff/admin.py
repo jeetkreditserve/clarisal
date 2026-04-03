@@ -16,7 +16,6 @@ from .models import (
     OnDutyRequest,
 )
 
-
 admin.site.register(HolidayCalendar)
 admin.site.register(HolidayCalendarLocation)
 admin.site.register(Holiday)
@@ -30,4 +29,3 @@ admin.site.register(LeaveBalanceLedgerEntry)
 admin.site.register(LeaveRequest)
 admin.site.register(OnDutyPolicy)
 admin.site.register(OnDutyRequest)
-

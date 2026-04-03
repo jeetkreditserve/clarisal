@@ -122,9 +122,9 @@ def sync_user_role(user: User):
 
 def initialize_workforce_workspace(request, user: User):
     state = get_workspace_state(user, request)
-    if state.admin_memberships:
+    if state.admin_memberships and state.active_admin_membership is not None:
         set_active_admin_organisation(request, user, state.active_admin_membership.organisation_id)
-    elif state.employee_records:
+    elif state.employee_records and state.active_employee is not None:
         set_active_employee_workspace(request, user, state.active_employee.organisation_id)
     else:
         request.session.pop('active_workspace_kind', None)

@@ -41,9 +41,9 @@ class NoticeSerializer(serializers.ModelSerializer):
 class NoticeWriteSerializer(serializers.Serializer):
     title = serializers.CharField(max_length=255)
     body = serializers.CharField()
-    category = serializers.ChoiceField(choices=Notice._meta.get_field('category').choices, required=False, default='GENERAL')
-    audience_type = serializers.ChoiceField(choices=Notice._meta.get_field('audience_type').choices)
-    status = serializers.ChoiceField(choices=Notice._meta.get_field('status').choices, required=False, default='DRAFT')
+    category = serializers.ChoiceField(choices=Notice._meta.get_field('category').choices, required=False, default='GENERAL')  # type: ignore[arg-type]
+    audience_type = serializers.ChoiceField(choices=Notice._meta.get_field('audience_type').choices)  # type: ignore[arg-type]
+    status = serializers.ChoiceField(choices=Notice._meta.get_field('status').choices, required=False, default='DRAFT')  # type: ignore[arg-type]
     is_sticky = serializers.BooleanField(required=False, default=False)
     scheduled_for = serializers.DateTimeField(required=False, allow_null=True)
     expires_at = serializers.DateTimeField(required=False, allow_null=True)

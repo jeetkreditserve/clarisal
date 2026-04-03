@@ -9,14 +9,23 @@ from apps.departments.models import Department
 from apps.employees.models import Employee
 from apps.locations.models import OfficeLocation
 
-from .models import HolidayCalendar, LeaveCycle, LeaveEncashmentRequest, LeavePlan, LeaveRequest, LeaveType, OnDutyPolicy, OnDutyRequest
+from .models import (
+    HolidayCalendar,
+    LeaveCycle,
+    LeaveEncashmentRequest,
+    LeavePlan,
+    LeaveRequest,
+    LeaveType,
+    OnDutyPolicy,
+    OnDutyRequest,
+)
 from .serializers import (
     HolidayCalendarSerializer,
     HolidayCalendarWriteSerializer,
     LeaveCycleSerializer,
+    LeaveCycleWriteSerializer,
     LeaveEncashmentRequestCreateSerializer,
     LeaveEncashmentRequestSerializer,
-    LeaveCycleWriteSerializer,
     LeavePlanSerializer,
     LeavePlanWriteSerializer,
     LeaveRequestCreateSerializer,
@@ -32,7 +41,6 @@ from .services import (
     create_leave_plan,
     create_leave_request,
     create_on_duty_request,
-    get_default_leave_cycle,
     get_employee_calendar_month,
     get_employee_leave_balances,
     publish_holiday_calendar,

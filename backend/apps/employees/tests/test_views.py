@@ -5,8 +5,21 @@ from rest_framework.test import APIClient
 
 from apps.accounts.models import User, UserRole
 from apps.approvals.models import ApprovalRequestKind, ApprovalWorkflow
-from apps.employees.models import Employee, EmployeeOffboardingProcess, EmployeeStatus, OffboardingProcessStatus, OffboardingTaskStatus
-from apps.organisations.models import Organisation, OrganisationAccessState, OrganisationBillingStatus, OrganisationMembership, OrganisationMembershipStatus, OrganisationStatus
+from apps.employees.models import (
+    Employee,
+    EmployeeOffboardingProcess,
+    EmployeeStatus,
+    OffboardingProcessStatus,
+    OffboardingTaskStatus,
+)
+from apps.organisations.models import (
+    Organisation,
+    OrganisationAccessState,
+    OrganisationBillingStatus,
+    OrganisationMembership,
+    OrganisationMembershipStatus,
+    OrganisationStatus,
+)
 from apps.organisations.services import create_licence_batch, mark_licence_batch_paid
 
 

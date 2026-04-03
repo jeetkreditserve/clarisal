@@ -13,14 +13,13 @@ from django.db.models import Q
 from django.utils import timezone
 from openpyxl import Workbook, load_workbook
 
-from apps.common.security import decrypt_value, encrypt_value, generate_secure_token, hash_token, mask_value
-from apps.approvals.models import ApprovalRequestKind, ApprovalRun
+from apps.approvals.models import ApprovalRequestKind
 from apps.approvals.services import cancel_approval_run, create_approval_run
 from apps.audit.services import log_audit_event
+from apps.common.security import decrypt_value, encrypt_value, generate_secure_token, hash_token, mask_value
 from apps.employees.models import Employee, EmployeeStatus
 from apps.timeoff.models import (
     DaySession,
-    Holiday,
     HolidayCalendar,
     HolidayCalendarStatus,
     LeaveRequest,
@@ -330,6 +329,9 @@ def get_default_attendance_policy(organisation):
 
 
 def upsert_attendance_policy(organisation, *, actor=None, policy=None, **fields):
+    target_is_default = fields.get('is_default', policy.is_default if policy is not None else False)
+    if target_is_default:
+        AttendancePolicy.objects.filter(organisation=organisation).exclude(id=getattr(policy, 'id', None)).update(is_default=False)
     if policy is None:
         policy = AttendancePolicy.objects.create(
             organisation=organisation,
@@ -342,9 +344,6 @@ def upsert_attendance_policy(organisation, *, actor=None, policy=None, **fields)
         if not policy.week_off_days:
             policy.week_off_days = DEFAULT_WEEK_OFF_DAYS
         policy.save()
-
-    if policy.is_default:
-        AttendancePolicy.objects.filter(organisation=organisation).exclude(id=policy.id).update(is_default=False)
     log_audit_event(actor, 'attendance.policy.upserted', organisation=organisation, target=policy)
     return policy
 
@@ -819,12 +818,14 @@ def _validate_geo(policy, latitude, longitude):
     if latitude is None or longitude is None:
         raise ValueError('This attendance policy requires a location-enabled punch.')
     for site in policy.allowed_geo_sites:
+        distance = None
         try:
             distance = _haversine_distance_meters(latitude, longitude, site['latitude'], site['longitude'])
-            if distance <= float(site.get('radius_meters', 250)):
-                return
+            radius_meters = float(site.get('radius_meters', 250))
         except Exception:  # noqa: BLE001
-            continue
+            distance = None
+        if distance is not None and distance <= radius_meters:
+            return
     raise ValueError('You are outside the approved attendance location.')
 
 
@@ -1107,7 +1108,11 @@ def withdraw_regularization_request(regularization, *, actor=None):
     regularization.status = AttendanceRegularizationStatus.WITHDRAWN
     regularization.save(update_fields=['status', 'modified_at'])
     if regularization.approval_run_id:
-        cancel_approval_run(regularization.approval_run, actor=actor)
+        cancel_approval_run(
+            regularization.approval_run,
+            actor=actor,
+            subject_status=AttendanceRegularizationStatus.WITHDRAWN,
+        )
     log_audit_event(actor, 'attendance.regularization.withdrawn', organisation=regularization.organisation, target=regularization)
     return regularization
 
