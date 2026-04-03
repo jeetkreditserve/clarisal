@@ -828,6 +828,75 @@ def _validate_geo(policy, latitude, longitude):
     raise ValueError('You are outside the approved attendance location.')
 
 
+def calculate_attendance_day_status(
+    punches: list,
+    shift_start,
+    full_day_minutes: int = 480,
+    half_day_minutes: int = 240,
+    grace_minutes: int = 15,
+    leave_override: str | None = None,
+) -> dict:
+    if leave_override == AttendanceDayStatus.ON_LEAVE:
+        return {
+            'status': AttendanceDayStatus.ON_LEAVE,
+            'is_late': False,
+            'worked_minutes': 0,
+            'overtime_minutes': 0,
+        }
+
+    if leave_override == AttendanceDayStatus.ON_DUTY:
+        return {
+            'status': AttendanceDayStatus.ON_DUTY,
+            'is_late': False,
+            'worked_minutes': full_day_minutes,
+            'overtime_minutes': 0,
+        }
+
+    ins = sorted(
+        [punch['punch_time'] for punch in punches if punch.get('direction', 'IN') == 'IN']
+    )
+    outs = sorted(
+        [punch['punch_time'] for punch in punches if punch.get('direction') == 'OUT']
+    )
+
+    if not ins:
+        return {
+            'status': AttendanceDayStatus.ABSENT,
+            'is_late': False,
+            'worked_minutes': 0,
+            'overtime_minutes': 0,
+        }
+
+    if not outs:
+        return {
+            'status': AttendanceDayStatus.INCOMPLETE,
+            'is_late': False,
+            'worked_minutes': 0,
+            'overtime_minutes': 0,
+        }
+
+    first_in = ins[0]
+    last_out = outs[-1]
+    worked_minutes = max(0, int((last_out - first_in).total_seconds() // 60))
+    overtime_minutes = max(0, worked_minutes - full_day_minutes)
+    grace_cutoff = datetime.combine(first_in.date(), shift_start) + timedelta(minutes=grace_minutes)
+    is_late = first_in > grace_cutoff
+
+    if worked_minutes >= full_day_minutes:
+        status = AttendanceDayStatus.PRESENT
+    elif worked_minutes >= half_day_minutes:
+        status = AttendanceDayStatus.HALF_DAY
+    else:
+        status = AttendanceDayStatus.ABSENT
+
+    return {
+        'status': status,
+        'is_late': is_late,
+        'worked_minutes': worked_minutes,
+        'overtime_minutes': overtime_minutes,
+    }
+
+
 def record_employee_punch(employee, *, action_type, actor=None, remote_ip='', latitude=None, longitude=None, source=AttendancePunchSource.WEB):
     policy = get_default_attendance_policy(employee.organisation)
     if source == AttendancePunchSource.WEB and not policy.allow_web_punch:

@@ -13,34 +13,34 @@ interface AuthShellProps {
 
 const contentByVariant = {
   workforce: {
-    eyebrow: 'Workforce access',
-    headline: 'Organisation admins and employees sign in here.',
-    body: 'Use this access point for day-to-day HR, leave, documents, approvals, payroll preview, and employee self-service inside the organisations you belong to.',
-    chips: ['Org admin', 'Employee self-service'],
-    panelTitle: 'Use this login for',
+    eyebrow: 'HR & Payroll platform',
+    headline: 'Run payroll, leave, and attendance — and put self-service in every employee\'s hands.',
+    body: 'Clarisal handles India-statutory payroll (PF, ESI, PT, TDS), policy-based leave management, attendance tracking, and multi-step approval workflows — for org admins and employees alike.',
+    chips: ['Org Admin', 'Employee Self-Service'],
+    panelTitle: 'What you can do here',
     panelItems: [
-      'Managing employees, departments, and office locations inside your organisations.',
-      'Completing employee profile, identity, education, and document tasks.',
-      'Entering the correct workforce workspace when you belong to multiple organisations.',
+      'Process monthly payroll with automatic PF, ESI, professional tax, and TDS calculations.',
+      'Manage leave plans, attendance sources, compensation, and approval workflows.',
+      'View payslips, apply for leave, regularise attendance, and keep your profile current.',
     ],
-    noteLabel: 'Separate access',
-    noteTitle: 'Platform operations use a different login.',
-    noteBody: 'If you manage organisation activation, licences, payment confirmation, or platform troubleshooting, switch to Control Tower.',
+    noteLabel: '',
+    noteTitle: '',
+    noteBody: '',
   },
   'control-tower': {
     eyebrow: 'Platform operations',
-    headline: 'Control Tower access is reserved for Clarisal operators.',
-    body: 'Use this sign-in for tenant provisioning, licence management, organisation activation, and platform-level administration.',
-    chips: ['Platform operator', 'Django admin'],
+    headline: 'Provision, activate, and manage Clarisal organisations.',
+    body: 'Control Tower is for Clarisal operators — create new tenants, confirm onboarding, manage licences, and access platform-level controls that sit above individual organisations.',
+    chips: ['Tenant management', 'Platform admin'],
     panelTitle: 'Use this login for',
     panelItems: [
-      'Creating and activating organisations after commercial confirmation is complete.',
-      'Managing licence allocation, onboarding state, and primary admin invitation flows.',
-      'Accessing platform-only controls that must stay separate from workforce accounts.',
+      'Creating and activating new organisations after commercial confirmation.',
+      'Managing licence tiers, onboarding state, and primary admin invitation flows.',
+      'Platform-level troubleshooting and audit controls separate from workforce data.',
     ],
-    noteLabel: 'Boundary',
-    noteTitle: 'This is not the employee or org-admin portal.',
-    noteBody: 'Organisation admins and employees should use the workforce sign-in so tenant routing and data boundaries stay correct.',
+    noteLabel: '',
+    noteTitle: '',
+    noteBody: '',
   },
   setup: {
     eyebrow: 'Secure setup',
@@ -138,22 +138,24 @@ export function AuthShell({
               </ul>
             </motion.div>
 
-            <motion.div
-              initial={reduceMotion ? false : { opacity: 0, y: 16 }}
-              animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
-              transition={{ duration: 0.24, delay: 0.12, ease: 'easeOut' }}
-              className="auth-shell-hero-secondary auth-hero-panel-soft rounded-[26px] p-4"
-            >
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[hsl(var(--auth-hero-foreground)_/_0.7)]">
-                {content.noteLabel}
-              </p>
-              <p className="mt-2 text-sm font-semibold text-[hsl(var(--auth-hero-foreground))]">
-                {content.noteTitle}
-              </p>
-              <p className="mt-2 text-sm leading-6 text-[hsl(var(--auth-hero-muted))]">
-                {content.noteBody}
-              </p>
-            </motion.div>
+            {content.noteLabel && (
+              <motion.div
+                initial={reduceMotion ? false : { opacity: 0, y: 16 }}
+                animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
+                transition={{ duration: 0.24, delay: 0.12, ease: 'easeOut' }}
+                className="auth-shell-hero-secondary auth-hero-panel-soft rounded-[26px] p-4"
+              >
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[hsl(var(--auth-hero-foreground)_/_0.7)]">
+                  {content.noteLabel}
+                </p>
+                <p className="mt-2 text-sm font-semibold text-[hsl(var(--auth-hero-foreground))]">
+                  {content.noteTitle}
+                </p>
+                <p className="mt-2 text-sm leading-6 text-[hsl(var(--auth-hero-muted))]">
+                  {content.noteBody}
+                </p>
+              </motion.div>
+            )}
           </div>
         </section>
 

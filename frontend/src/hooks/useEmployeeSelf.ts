@@ -14,6 +14,7 @@ import {
   deleteEmergencyContact,
   deleteEducation,
   deleteFamilyMember,
+  downloadMyPayslip,
   fetchBankAccounts,
   fetchEducation,
   fetchGovernmentIds,
@@ -313,6 +314,12 @@ export function useMyPayslip(id: string) {
     queryKey: ['me', organisationId, 'payslips', id],
     queryFn: () => fetchMyPayslip(id),
     enabled: Boolean(id),
+  })
+}
+
+export function useDownloadMyPayslip() {
+  return useMutation({
+    mutationFn: downloadMyPayslip,
   })
 }
 

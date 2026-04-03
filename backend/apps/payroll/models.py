@@ -416,6 +416,10 @@ class PayrollRunItem(AuditedBaseModel):
         constraints = [
             models.UniqueConstraint(fields=['pay_run', 'employee'], name='unique_payroll_run_item_per_employee'),
         ]
+        indexes = [
+            models.Index(fields=['pay_run', 'employee'], name='payrunitem_run_emp_idx'),
+            models.Index(fields=['employee', 'pay_run'], name='payrunitem_emp_run_idx'),
+        ]
 
 
 class Payslip(AuditedBaseModel):

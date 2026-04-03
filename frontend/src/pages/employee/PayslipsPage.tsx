@@ -1,14 +1,18 @@
 import { useState } from 'react'
+import { Download } from 'lucide-react'
+import { toast } from 'sonner'
 
 import { EmptyState } from '@/components/ui/EmptyState'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { SkeletonPageHeader, SkeletonTable } from '@/components/ui/Skeleton'
 import { StatusBadge } from '@/components/ui/StatusBadge'
-import { useMyPayslips } from '@/hooks/useEmployeeSelf'
+import { useDownloadMyPayslip, useMyPayslips } from '@/hooks/useEmployeeSelf'
+import { getErrorMessage } from '@/lib/errors'
 
 export function PayslipsPage() {
   const { data, isLoading } = useMyPayslips()
+  const downloadPayslipMutation = useDownloadMyPayslip()
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
   const selectedPayslip = data?.find((item) => item.id === selectedId) ?? data?.[0] ?? null
@@ -21,6 +25,20 @@ export function PayslipsPage() {
   })
   const deductionLines = lines.filter((line) => String(line.component_type ?? '') === 'EMPLOYEE_DEDUCTION')
   const employerLines = lines.filter((line) => String(line.component_type ?? '') === 'EMPLOYER_CONTRIBUTION')
+
+  const handleDownload = async (payslipId: string, slipNumber: string) => {
+    try {
+      const blob = await downloadPayslipMutation.mutateAsync(payslipId)
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `${slipNumber.replace(/\//g, '-')}.txt`
+      link.click()
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to download the payslip.'))
+    }
+  }
 
   if (isLoading) {
     return (
@@ -83,7 +101,19 @@ export function PayslipsPage() {
                       </p>
                       <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">Slip number {selectedPayslip.slip_number}</p>
                     </div>
-                    <StatusBadge tone="success">Finalized snapshot</StatusBadge>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <StatusBadge tone="success">Finalized snapshot</StatusBadge>
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        aria-label={`Download payslip ${selectedPayslip.slip_number}`}
+                        disabled={downloadPayslipMutation.isPending}
+                        onClick={() => void handleDownload(selectedPayslip.id, selectedPayslip.slip_number)}
+                      >
+                        <Download className="h-4 w-4" />
+                        {downloadPayslipMutation.isPending ? 'Downloading...' : 'Download'}
+                      </button>
+                    </div>
                   </div>
                 </div>
                 <div className="grid gap-4 md:grid-cols-3">

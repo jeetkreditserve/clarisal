@@ -23,6 +23,7 @@ from apps.payroll.services import (
     ensure_org_payroll_setup,
     finalize_pay_run,
 )
+from apps.payroll.models import Payslip
 
 
 @pytest.fixture
@@ -203,6 +204,64 @@ class TestPayrollViews:
         assert summary_response.status_code == 403
         assert payslip_response.status_code == 403
         assert payslip_detail_response.status_code == 403
+
+    def test_employee_can_download_payslip_rendered_text(self, payroll_setup):
+        employee_client = payroll_setup['employee_client']
+        organisation = payroll_setup['organisation']
+        org_admin_user = payroll_setup['org_admin_user']
+        employee = payroll_setup['employee']
+
+        create_tax_slab_set(
+            country_code='IN',
+            fiscal_year='2026-27',
+            name='FY 2026-27',
+            slabs=[
+                {'min_income': '0', 'max_income': '300000', 'rate_percent': '0'},
+                {'min_income': '300000', 'max_income': '700000', 'rate_percent': '10'},
+                {'min_income': '700000', 'max_income': None, 'rate_percent': '20'},
+            ],
+            actor=org_admin_user,
+        )
+        ensure_org_payroll_setup(organisation, actor=org_admin_user)
+        template = create_compensation_template(
+            organisation,
+            name='Downloadable Template',
+            description='Download flow',
+            lines=[
+                {
+                    'component_code': 'BASIC',
+                    'name': 'Basic Pay',
+                    'component_type': 'EARNING',
+                    'monthly_amount': '40000',
+                    'is_taxable': True,
+                }
+            ],
+            actor=org_admin_user,
+        )
+        assign_employee_compensation(
+            employee,
+            template,
+            effective_from=date(2026, 4, 1),
+            actor=org_admin_user,
+            auto_approve=True,
+        )
+        pay_run = create_payroll_run(
+            organisation,
+            period_year=2026,
+            period_month=4,
+            actor=org_admin_user,
+            requester_user=org_admin_user,
+        )
+        calculate_pay_run(pay_run, actor=org_admin_user)
+        finalize_pay_run(pay_run, actor=org_admin_user, skip_approval=True)
+        payslip = Payslip.objects.get(employee=employee, pay_run=pay_run)
+
+        response = employee_client.get(f'/api/me/payroll/payslips/{payslip.id}/download/')
+
+        assert response.status_code == 200
+        assert response['Content-Type'].startswith('text/plain')
+        assert payslip.slip_number.replace('/', '-') in response['Content-Disposition']
+        assert payslip.rendered_text in response.content.decode('utf-8')
 
     def test_employee_can_create_and_list_investment_declarations(self, payroll_setup):
         employee_client = payroll_setup['employee_client']

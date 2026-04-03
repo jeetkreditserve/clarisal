@@ -161,6 +161,11 @@ class Employee(SoftDeleteModel):
         related_name='direct_reports',
     )
     date_of_joining = models.DateField(null=True, blank=True)
+    probation_end_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text='Date on which the employee completes their probation period.',
+    )
     date_of_exit = models.DateField(null=True, blank=True)
     employment_type = models.CharField(
         max_length=20,

@@ -35,6 +35,7 @@ import {
 } from '@/hooks/useOrgAdmin'
 import { getErrorMessage } from '@/lib/errors'
 import { formatDateTime } from '@/lib/format'
+import { getAttendanceDayStatusTone, getAttendanceImportTone } from '@/lib/status'
 import type { AttendanceDayRecord, AttendancePolicy } from '@/types/hr'
 
 function triggerDownload(blob: Blob, filename: string) {
@@ -44,19 +45,6 @@ function triggerDownload(blob: Blob, filename: string) {
   link.download = filename
   link.click()
   URL.revokeObjectURL(url)
-}
-
-function getImportTone(status: string) {
-  if (status === 'POSTED') return 'success'
-  if (status === 'READY_FOR_REVIEW') return 'info'
-  return 'danger'
-}
-
-function getAttendanceTone(status: string) {
-  if (status === 'PRESENT' || status === 'ON_DUTY') return 'success'
-  if (status === 'HALF_DAY' || status === 'HOLIDAY' || status === 'WEEK_OFF') return 'info'
-  if (status === 'INCOMPLETE') return 'warning'
-  return 'danger'
 }
 
 function getRegularizationTone(status: string) {
@@ -520,7 +508,7 @@ export function AttendanceImportsPage() {
                           {day.employee_code || 'Unassigned code'} • Worked {day.worked_minutes} mins • OT {day.overtime_minutes} mins
                         </p>
                       </div>
-                      <StatusBadge tone={getAttendanceTone(day.status)}>{day.status}</StatusBadge>
+                      <StatusBadge tone={getAttendanceDayStatusTone(day.status)}>{day.status}</StatusBadge>
                     </div>
                     <div className="mt-4 grid gap-3 md:grid-cols-3">
                       <input
@@ -671,7 +659,7 @@ export function AttendanceImportsPage() {
                       </p>
                     </div>
                     <div className="flex items-center gap-3">
-                      <StatusBadge tone={getAttendanceTone(day.status)}>{day.status}</StatusBadge>
+                      <StatusBadge tone={getAttendanceDayStatusTone(day.status)}>{day.status}</StatusBadge>
                       {day.is_late ? <StatusBadge tone="warning">Late</StatusBadge> : null}
                     </div>
                   </div>
@@ -715,7 +703,7 @@ export function AttendanceImportsPage() {
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="font-semibold text-[hsl(var(--foreground-strong))]">{job.original_filename}</p>
-                    <StatusBadge tone={getImportTone(job.status)}>{job.status}</StatusBadge>
+                    <StatusBadge tone={getAttendanceImportTone(job.status)}>{job.status}</StatusBadge>
                   </div>
                   <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
                     {job.mode.replace(/_/g, ' ')} • Uploaded {formatDateTime(job.created_at)} • Valid {job.valid_rows} • Errors {job.error_rows}

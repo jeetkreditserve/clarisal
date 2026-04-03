@@ -55,7 +55,6 @@ describe('DepartmentsPage', () => {
     useCreateDepartment.mockReturnValue({ isPending: false, mutateAsync: vi.fn().mockResolvedValue(undefined) })
     useUpdateDepartment.mockReturnValue({ isPending: false, mutateAsync: vi.fn().mockResolvedValue(undefined) })
     useDeactivateDepartment.mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue(undefined) })
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
   })
 
   it('creates a department from the add modal', async () => {
@@ -112,8 +111,9 @@ describe('DepartmentsPage', () => {
     renderPage()
 
     await user.click(screen.getByRole('button', { name: 'Deactivate' }))
+    expect(screen.getByText('Deactivate department?')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Deactivate' }))
 
-    expect(window.confirm).toHaveBeenCalledWith('Deactivate this department?')
     expect(deactivateMutation).toHaveBeenCalledWith('dept-1')
     expect(toastSuccess).toHaveBeenCalledWith('Department deactivated.')
   })

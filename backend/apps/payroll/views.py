@@ -1,4 +1,8 @@
+import json
+
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
+from celery.result import AsyncResult
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -17,6 +21,7 @@ from .serializers import (
     InvestmentDeclarationSerializer,
     InvestmentDeclarationWriteSerializer,
     PayrollComponentSerializer,
+    PayrollRunCalculationStatusSerializer,
     PayrollRunSerializer,
     PayrollRunWriteSerializer,
     PayrollTaxSlabSetSerializer,
@@ -262,11 +267,33 @@ class OrgPayrollRunCalculateView(APIView):
     def post(self, request, pk):
         organisation = _get_admin_organisation(request)
         pay_run = get_object_or_404(PayrollRun, organisation=organisation, id=pk)
-        try:
-            pay_run = calculate_pay_run(pay_run, actor=request.user)
-        except ValueError as exc:
-            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-        return Response(PayrollRunSerializer(pay_run).data)
+        from .tasks import calculate_pay_run_task
+
+        result = calculate_pay_run_task.delay(str(pay_run.id), str(request.user.id))
+        return Response(
+            {'task_id': result.id, 'pay_run_id': str(pay_run.id)},
+            status=status.HTTP_202_ACCEPTED,
+        )
+
+
+class OrgPayrollRunCalculationStatusView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+
+    def get(self, request, pk):
+        organisation = _get_admin_organisation(request)
+        get_object_or_404(PayrollRun, organisation=organisation, id=pk)
+        task_id = request.query_params.get('task_id')
+        if not task_id:
+            return Response({'error': 'task_id query param required'}, status=status.HTTP_400_BAD_REQUEST)
+        result = AsyncResult(task_id)
+        payload = {
+            'task_id': task_id,
+            'state': result.state,
+            'result': result.result if result.successful() else None,
+            'error': str(result.result) if result.failed() else None,
+        }
+        serializer = PayrollRunCalculationStatusSerializer(payload)
+        return Response(serializer.data)
 
 
 class OrgPayrollRunSubmitView(APIView):
@@ -351,6 +378,19 @@ class MyPayslipDetailView(APIView):
         employee = _get_employee(request)
         payslip = get_object_or_404(Payslip, employee=employee, id=pk)
         return Response(PayslipSerializer(payslip).data)
+
+
+class MyPayslipDownloadView(APIView):
+    permission_classes = [IsEmployee, BelongsToActiveOrg]
+
+    def get(self, request, pk):
+        employee = _get_employee(request)
+        payslip = get_object_or_404(Payslip, employee=employee, id=pk)
+        filename = f"{payslip.slip_number.replace('/', '-')}.txt"
+        payload = payslip.rendered_text or json.dumps(payslip.snapshot, indent=2, sort_keys=True)
+        response = HttpResponse(payload, content_type='text/plain; charset=utf-8')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
 
 
 class MyInvestmentDeclarationListCreateView(APIView):

@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
+import { AppDatePicker } from '@/components/ui/AppDatePicker'
 import { AppSelect } from '@/components/ui/AppSelect'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
@@ -23,6 +25,7 @@ import {
 } from '@/hooks/useOrgAdmin'
 import { getErrorMessage } from '@/lib/errors'
 import { formatDateTime } from '@/lib/format'
+import { getCompensationStatusTone, getPayrollRunStatusTone } from '@/lib/status'
 
 const currentYear = new Date().getFullYear()
 const PAYROLL_SECTION_OPTIONS = [
@@ -197,10 +200,13 @@ export function PayrollPage() {
   }
 
   const handleCalculateRun = async (runId: string) => {
+    const toastId = toast.loading('Calculating payroll run...')
     try {
       await calculateRunMutation.mutateAsync(runId)
+      toast.dismiss(toastId)
       toast.success('Payroll run calculated.')
     } catch (error) {
+      toast.dismiss(toastId)
       toast.error(getErrorMessage(error, 'Unable to calculate this payroll run. Check salary assignments and payroll inputs, then try again.'))
     }
   }
@@ -215,21 +221,18 @@ export function PayrollPage() {
   }
 
   const handleFinalizeRun = async (runId: string) => {
-    if (!window.confirm('Finalize this payroll run? This will publish payslips from the current limited-scope payroll snapshot.')) {
-      return
-    }
+    const toastId = toast.loading('Finalizing payroll run...')
     try {
       await finalizeRunMutation.mutateAsync(runId)
+      toast.dismiss(toastId)
       toast.success('Payroll run finalized.')
     } catch (error) {
+      toast.dismiss(toastId)
       toast.error(getErrorMessage(error, 'Unable to finalize this payroll run.'))
     }
   }
 
   const handleRerun = async (runId: string) => {
-    if (!window.confirm('Create a rerun for this payroll period? Use this only for correction testing while payroll remains in preview scope.')) {
-      return
-    }
     try {
       await rerunMutation.mutateAsync(runId)
       toast.success('Payroll rerun created.')
@@ -310,12 +313,30 @@ export function PayrollPage() {
         <div className="grid gap-6 xl:grid-cols-2">
           <SectionCard title="Org tax slabs" description="Create org-specific preview copies of the active tax master or additional slab sets for alternate payroll scenarios.">
             <form onSubmit={handleCreateTaxSet} className="grid gap-4 md:grid-cols-2">
-              <input className="field-input" value={taxForm.name} onChange={(event) => setTaxForm((current) => ({ ...current, name: event.target.value }))} placeholder="Slab set name" />
-              <input className="field-input" value={taxForm.fiscal_year} onChange={(event) => setTaxForm((current) => ({ ...current, fiscal_year: event.target.value }))} placeholder="2026-2027" />
-              <input className="field-input" value={taxForm.slab_one_limit} onChange={(event) => setTaxForm((current) => ({ ...current, slab_one_limit: event.target.value }))} placeholder="First slab upper limit" />
-              <input className="field-input" value={taxForm.slab_two_limit} onChange={(event) => setTaxForm((current) => ({ ...current, slab_two_limit: event.target.value }))} placeholder="Second slab upper limit" />
-              <input className="field-input" value={taxForm.slab_two_rate} onChange={(event) => setTaxForm((current) => ({ ...current, slab_two_rate: event.target.value }))} placeholder="Second slab rate" />
-              <input className="field-input" value={taxForm.slab_three_rate} onChange={(event) => setTaxForm((current) => ({ ...current, slab_three_rate: event.target.value }))} placeholder="Top slab rate" />
+              <div>
+                <label className="field-label" htmlFor="payroll-tax-set-name">Slab set name</label>
+                <input id="payroll-tax-set-name" className="field-input" value={taxForm.name} onChange={(event) => setTaxForm((current) => ({ ...current, name: event.target.value }))} placeholder="Slab set name" />
+              </div>
+              <div>
+                <label className="field-label" htmlFor="payroll-tax-fiscal-year">Fiscal year</label>
+                <input id="payroll-tax-fiscal-year" className="field-input" value={taxForm.fiscal_year} onChange={(event) => setTaxForm((current) => ({ ...current, fiscal_year: event.target.value }))} placeholder="2026-2027" />
+              </div>
+              <div>
+                <label className="field-label" htmlFor="payroll-tax-slab-one-limit">First slab upper limit</label>
+                <input id="payroll-tax-slab-one-limit" className="field-input" value={taxForm.slab_one_limit} onChange={(event) => setTaxForm((current) => ({ ...current, slab_one_limit: event.target.value }))} placeholder="First slab upper limit" />
+              </div>
+              <div>
+                <label className="field-label" htmlFor="payroll-tax-slab-two-limit">Second slab upper limit</label>
+                <input id="payroll-tax-slab-two-limit" className="field-input" value={taxForm.slab_two_limit} onChange={(event) => setTaxForm((current) => ({ ...current, slab_two_limit: event.target.value }))} placeholder="Second slab upper limit" />
+              </div>
+              <div>
+                <label className="field-label" htmlFor="payroll-tax-slab-two-rate">Second slab rate (%)</label>
+                <input id="payroll-tax-slab-two-rate" className="field-input" value={taxForm.slab_two_rate} onChange={(event) => setTaxForm((current) => ({ ...current, slab_two_rate: event.target.value }))} placeholder="Second slab rate" />
+              </div>
+              <div>
+                <label className="field-label" htmlFor="payroll-tax-slab-three-rate">Top slab rate (%)</label>
+                <input id="payroll-tax-slab-three-rate" className="field-input" value={taxForm.slab_three_rate} onChange={(event) => setTaxForm((current) => ({ ...current, slab_three_rate: event.target.value }))} placeholder="Top slab rate" />
+              </div>
               <div className="md:col-span-2">
                 <button type="submit" className="btn-primary" disabled={createTaxSetMutation.isPending}>
                   Save tax slab set
@@ -355,10 +376,22 @@ export function PayrollPage() {
               </p>
             </div>
             <form onSubmit={handleCreateTemplate} className="grid gap-4 md:grid-cols-2">
-              <input className="field-input" value={templateForm.name} onChange={(event) => setTemplateForm((current) => ({ ...current, name: event.target.value }))} placeholder="Template name" />
-              <input className="field-input" value={templateForm.description} onChange={(event) => setTemplateForm((current) => ({ ...current, description: event.target.value }))} placeholder="Description" />
-              <input className="field-input" value={templateForm.basic_pay} onChange={(event) => setTemplateForm((current) => ({ ...current, basic_pay: event.target.value }))} placeholder="Basic pay" />
-              <input className="field-input" value={templateForm.employee_deduction} onChange={(event) => setTemplateForm((current) => ({ ...current, employee_deduction: event.target.value }))} placeholder="Employee deduction" />
+              <div>
+                <label className="field-label" htmlFor="payroll-template-name">Template name</label>
+                <input id="payroll-template-name" className="field-input" value={templateForm.name} onChange={(event) => setTemplateForm((current) => ({ ...current, name: event.target.value }))} placeholder="Template name" />
+              </div>
+              <div>
+                <label className="field-label" htmlFor="payroll-template-description">Description</label>
+                <input id="payroll-template-description" className="field-input" value={templateForm.description} onChange={(event) => setTemplateForm((current) => ({ ...current, description: event.target.value }))} placeholder="Description" />
+              </div>
+              <div>
+                <label className="field-label" htmlFor="payroll-template-basic-pay">Basic pay</label>
+                <input id="payroll-template-basic-pay" className="field-input" value={templateForm.basic_pay} onChange={(event) => setTemplateForm((current) => ({ ...current, basic_pay: event.target.value }))} placeholder="Basic pay" />
+              </div>
+              <div>
+                <label className="field-label" htmlFor="payroll-template-employee-deduction">Employee deduction</label>
+                <input id="payroll-template-employee-deduction" className="field-input" value={templateForm.employee_deduction} onChange={(event) => setTemplateForm((current) => ({ ...current, employee_deduction: event.target.value }))} placeholder="Employee deduction" />
+              </div>
               <div className="md:col-span-2">
                 <button type="submit" className="btn-primary" disabled={createTemplateMutation.isPending}>
                   Create template
@@ -372,7 +405,7 @@ export function PayrollPage() {
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="font-semibold text-[hsl(var(--foreground-strong))]">{template.name}</p>
-                        <StatusBadge tone={template.status === 'APPROVED' ? 'success' : template.status === 'REJECTED' ? 'danger' : 'warning'}>
+                        <StatusBadge tone={getCompensationStatusTone(template.status)}>
                           {template.status}
                         </StatusBadge>
                       </div>
@@ -391,9 +424,18 @@ export function PayrollPage() {
 
           <SectionCard title="Salary assignments" description="Assign approved structures to employees with an effective date, then submit salary revisions into the approval queue. Review carefully because downstream payroll remains limited-scope.">
             <form onSubmit={handleCreateAssignment} className="grid gap-4">
-              <AppSelect value={assignmentForm.employee_id} onValueChange={(value) => setAssignmentForm((current) => ({ ...current, employee_id: value }))} options={employeeOptions} placeholder="Select employee" />
-              <AppSelect value={assignmentForm.template_id} onValueChange={(value) => setAssignmentForm((current) => ({ ...current, template_id: value }))} options={templateOptions} placeholder="Select template" />
-              <input className="field-input" type="date" value={assignmentForm.effective_from} onChange={(event) => setAssignmentForm((current) => ({ ...current, effective_from: event.target.value }))} />
+              <div>
+                <label className="field-label" htmlFor="payroll-assignment-employee">Employee</label>
+                <AppSelect id="payroll-assignment-employee" value={assignmentForm.employee_id} onValueChange={(value) => setAssignmentForm((current) => ({ ...current, employee_id: value }))} options={employeeOptions} placeholder="Select employee" />
+              </div>
+              <div>
+                <label className="field-label" htmlFor="payroll-assignment-template">Template</label>
+                <AppSelect id="payroll-assignment-template" value={assignmentForm.template_id} onValueChange={(value) => setAssignmentForm((current) => ({ ...current, template_id: value }))} options={templateOptions} placeholder="Select template" />
+              </div>
+              <div>
+                <label className="field-label" htmlFor="payroll-assignment-effective-from">Effective from</label>
+                <AppDatePicker id="payroll-assignment-effective-from" value={assignmentForm.effective_from} onValueChange={(value) => setAssignmentForm((current) => ({ ...current, effective_from: value }))} placeholder="Select effective date" />
+              </div>
               <button type="submit" className="btn-primary" disabled={createAssignmentMutation.isPending}>
                 Create assignment
               </button>
@@ -405,7 +447,7 @@ export function PayrollPage() {
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="font-semibold text-[hsl(var(--foreground-strong))]">{assignment.employee_name}</p>
-                        <StatusBadge tone={assignment.status === 'APPROVED' ? 'success' : assignment.status === 'REJECTED' ? 'danger' : 'warning'}>
+                        <StatusBadge tone={getCompensationStatusTone(assignment.status)}>
                           {assignment.status}
                         </StatusBadge>
                       </div>
@@ -441,8 +483,14 @@ export function PayrollPage() {
 
           <SectionCard title="Payroll processing" description="Create a run, calculate results, submit for approval, finalize, and trigger reruns when corrections are needed. Do not treat this as full statutory payroll sign-off yet.">
             <form onSubmit={handleCreateRun} className="grid gap-4 md:grid-cols-2">
-              <input className="field-input" value={runForm.period_year} onChange={(event) => setRunForm((current) => ({ ...current, period_year: event.target.value }))} placeholder="Year" />
-              <input className="field-input" value={runForm.period_month} onChange={(event) => setRunForm((current) => ({ ...current, period_month: event.target.value }))} placeholder="Month" />
+              <div>
+                <label className="field-label" htmlFor="payroll-run-year">Period year</label>
+                <input id="payroll-run-year" className="field-input" value={runForm.period_year} onChange={(event) => setRunForm((current) => ({ ...current, period_year: event.target.value }))} placeholder="Year" />
+              </div>
+              <div>
+                <label className="field-label" htmlFor="payroll-run-month">Period month</label>
+                <input id="payroll-run-month" className="field-input" value={runForm.period_month} onChange={(event) => setRunForm((current) => ({ ...current, period_month: event.target.value }))} placeholder="Month" />
+              </div>
               <label className="md:col-span-2 flex items-start gap-3 rounded-[18px] border border-[hsl(var(--border)_/_0.84)] bg-[hsl(var(--surface-subtle))] px-4 py-3 text-sm text-[hsl(var(--foreground-strong))]">
                 <input
                   type="checkbox"
@@ -474,7 +522,7 @@ export function PayrollPage() {
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="font-semibold text-[hsl(var(--foreground-strong))]">{run.name}</p>
-                          <StatusBadge tone={run.status === 'FINALIZED' ? 'success' : run.status === 'REJECTED' ? 'danger' : 'info'}>
+                          <StatusBadge tone={getPayrollRunStatusTone(run.status)}>
                             {run.status}
                           </StatusBadge>
                           {exceptionSummary.count ? <StatusBadge tone="warning">{exceptionSummary.count} exceptions</StatusBadge> : null}
@@ -503,14 +551,32 @@ export function PayrollPage() {
                           </button>
                         ) : null}
                         {run.status === 'APPROVED' ? (
-                          <button type="button" className="btn-secondary" onClick={() => void handleFinalizeRun(run.id)}>
-                            Finalize
-                          </button>
+                          <ConfirmDialog
+                            trigger={
+                              <button type="button" className="btn-secondary">
+                                Finalize
+                              </button>
+                            }
+                            title="Finalize payroll run?"
+                            description="This will publish payslips from the current limited-scope payroll snapshot."
+                            confirmLabel="Finalize"
+                            variant="primary"
+                            onConfirm={() => handleFinalizeRun(run.id)}
+                          />
                         ) : null}
                         {run.status === 'FINALIZED' ? (
-                          <button type="button" className="btn-secondary" onClick={() => void handleRerun(run.id)}>
-                            Rerun
-                          </button>
+                          <ConfirmDialog
+                            trigger={
+                              <button type="button" className="btn-secondary">
+                                Rerun
+                              </button>
+                            }
+                            title="Create payroll rerun?"
+                            description="Use this only for correction testing while payroll remains in preview scope."
+                            confirmLabel="Create rerun"
+                            variant="primary"
+                            onConfirm={() => handleRerun(run.id)}
+                          />
                         ) : null}
                       </div>
                     </div>

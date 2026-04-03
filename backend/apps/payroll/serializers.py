@@ -222,6 +222,13 @@ class PayrollRunWriteSerializer(serializers.Serializer):
     use_attendance_inputs = serializers.BooleanField(required=False, default=False)
 
 
+class PayrollRunCalculationStatusSerializer(serializers.Serializer):
+    task_id = serializers.CharField()
+    state = serializers.CharField()
+    result = serializers.JSONField(required=False, allow_null=True)
+    error = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+
+
 class PayslipSerializer(serializers.ModelSerializer):
     employee_id = serializers.UUIDField(source='employee.id', read_only=True)
     pay_run_id = serializers.UUIDField(source='pay_run.id', read_only=True)

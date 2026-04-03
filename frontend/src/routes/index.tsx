@@ -1,8 +1,10 @@
+import type { ReactNode } from 'react'
 import { createBrowserRouter, Navigate } from 'react-router-dom'
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute'
 import { CTLayout } from '@/components/layouts/CTLayout'
 import { OrgLayout } from '@/components/layouts/OrgLayout'
 import { EmployeeLayout } from '@/components/layouts/EmployeeLayout'
+import { AppErrorBoundary } from '@/components/ui/AppErrorBoundary'
 import { LoginPage } from '@/pages/auth/LoginPage'
 import { ControlTowerLoginPage } from '@/pages/auth/ControlTowerLoginPage'
 import { InviteAcceptPage } from '@/pages/auth/InviteAcceptPage'
@@ -46,43 +48,47 @@ import { NoticesPage } from '@/pages/org/NoticesPage'
 import { NoticeEditorPage } from '@/pages/org/NoticeEditorPage'
 import { PayrollMastersPage } from '@/pages/ct/PayrollMastersPage'
 
+function withErrorBoundary(element: ReactNode) {
+  return <AppErrorBoundary>{element}</AppErrorBoundary>
+}
+
 export const router = createBrowserRouter([
   // Public auth routes
   {
     path: '/auth/login',
-    element: <LoginPage />,
+    element: withErrorBoundary(<LoginPage />),
   },
   {
     path: '/ct/login',
-    element: <ControlTowerLoginPage />,
+    element: withErrorBoundary(<ControlTowerLoginPage />),
   },
   {
     path: '/auth/invite/:token',
-    element: <InviteAcceptPage />,
+    element: withErrorBoundary(<InviteAcceptPage />),
   },
   {
     path: '/auth/reset-password',
-    element: <RequestPasswordResetPage />,
+    element: withErrorBoundary(<RequestPasswordResetPage />),
   },
   {
     path: '/ct/reset-password',
-    element: <ControlTowerRequestPasswordResetPage />,
+    element: withErrorBoundary(<ControlTowerRequestPasswordResetPage />),
   },
   {
     path: '/auth/reset-password/:token',
-    element: <ResetPasswordPage />,
+    element: withErrorBoundary(<ResetPasswordPage />),
   },
   {
     path: '/ct/reset-password/:token',
-    element: <ResetPasswordPage />,
+    element: withErrorBoundary(<ResetPasswordPage />),
   },
 
   // Control Tower routes
   {
-    element: <ProtectedRoute requiredAccess="CONTROL_TOWER" />,
+    element: withErrorBoundary(<ProtectedRoute requiredAccess="CONTROL_TOWER" />),
     children: [
       {
-        element: <CTLayout />,
+        element: withErrorBoundary(<CTLayout />),
         children: [
           { path: '/ct/dashboard', element: <CTDashboardPage /> },
           { path: '/ct/payroll', element: <PayrollMastersPage /> },
@@ -111,10 +117,10 @@ export const router = createBrowserRouter([
 
   // Organisation Admin routes
   {
-    element: <ProtectedRoute requiredAccess="ORG_ADMIN" />,
+    element: withErrorBoundary(<ProtectedRoute requiredAccess="ORG_ADMIN" />),
     children: [
       {
-        element: <OrgLayout />,
+        element: withErrorBoundary(<OrgLayout />),
         children: [
           { path: '/org/setup', element: <OrgSetupPage /> },
           { path: '/org/dashboard', element: <OrgDashboardPage /> },
@@ -147,10 +153,10 @@ export const router = createBrowserRouter([
 
   // Employee routes
   {
-    element: <ProtectedRoute requiredAccess="EMPLOYEE" />,
+    element: withErrorBoundary(<ProtectedRoute requiredAccess="EMPLOYEE" />),
     children: [
       {
-        element: <EmployeeLayout />,
+        element: withErrorBoundary(<EmployeeLayout />),
         children: [
           { path: '/me/onboarding', element: <OnboardingPage /> },
           { path: '/me/dashboard', element: <EmployeeDashboardPage /> },
@@ -168,6 +174,6 @@ export const router = createBrowserRouter([
   },
 
   // Root redirect
-  { path: '/', element: <Navigate to="/auth/login" replace /> },
-  { path: '*', element: <Navigate to="/auth/login" replace /> },
+  { path: '/', element: withErrorBoundary(<Navigate to="/auth/login" replace />) },
+  { path: '*', element: withErrorBoundary(<Navigate to="/auth/login" replace />) },
 ])

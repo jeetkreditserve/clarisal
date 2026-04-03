@@ -3,6 +3,7 @@ import { CreditCard, IdCard } from 'lucide-react'
 import { toast } from 'sonner'
 import { AppCheckbox } from '@/components/ui/AppCheckbox'
 import { AppDatePicker } from '@/components/ui/AppDatePicker'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { AppSelect } from '@/components/ui/AppSelect'
 import {
   useBankAccounts,
@@ -161,7 +162,6 @@ export function ProfilePage() {
   }
 
   const handleDeleteBank = async (bankId: string) => {
-    if (!window.confirm('Remove this bank account?')) return
     try {
       await deleteBankAccountMutation.mutateAsync(bankId)
       toast.success('Bank account removed.')
@@ -464,9 +464,17 @@ export function ProfilePage() {
                         <button type="button" className="btn-secondary" onClick={() => handleEditBank(account.id)}>
                           Edit
                         </button>
-                        <button type="button" className="btn-danger" onClick={() => handleDeleteBank(account.id)}>
-                          Remove
-                        </button>
+                        <ConfirmDialog
+                          trigger={
+                            <button type="button" className="btn-danger">
+                              Remove
+                            </button>
+                          }
+                          title="Remove bank account?"
+                          description="This bank account will be removed from your profile and payroll setup."
+                          confirmLabel="Remove"
+                          onConfirm={() => handleDeleteBank(account.id)}
+                        />
                       </div>
                     </div>
                     <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">

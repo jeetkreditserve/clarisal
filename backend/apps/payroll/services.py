@@ -881,9 +881,22 @@ def calculate_pay_run(pay_run, *, actor=None):
             organisation=pay_run.organisation,
             status=EmployeeStatus.ACTIVE,
         ).select_related('user', 'office_location')
+        assignments_by_employee = {}
+        assignments = (
+            CompensationAssignment.objects.filter(
+                employee__organisation=pay_run.organisation,
+                status=CompensationAssignmentStatus.APPROVED,
+                effective_from__lte=period_end,
+            )
+            .select_related('employee', 'template')
+            .prefetch_related('lines__component')
+            .order_by('employee_id', '-effective_from', '-version', '-created_at')
+        )
+        for assignment in assignments:
+            assignments_by_employee.setdefault(assignment.employee_id, assignment)
         for employee in employees:
             run_attendance_snapshot['employee_count'] += 1
-            assignment = get_effective_compensation_assignment(employee, period_end)
+            assignment = assignments_by_employee.get(employee.id)
             if assignment is None:
                 PayrollRunItem.objects.create(
                     pay_run=pay_run,
@@ -939,7 +952,7 @@ def calculate_pay_run(pay_run, *, actor=None):
             has_pf_employer_line = False
             lines_snapshot = []
 
-            for line in assignment.lines.select_related('component').order_by('sequence', 'created_at'):
+            for line in assignment.lines.all().order_by('sequence', 'created_at'):
                 amount = _normalize_decimal(line.monthly_amount)
                 comp_code = line.component.code if line.component_id else ''
 

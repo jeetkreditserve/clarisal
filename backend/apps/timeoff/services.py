@@ -36,6 +36,13 @@ from .models import (
     OnDutyRequest,
     OnDutyRequestStatus,
 )
+from .repositories import (
+    get_leave_balance_record,
+    get_leave_request_total_units,
+    get_total_days_to_encash,
+    list_leave_requests_in_range,
+    list_overlapping_leave_requests,
+)
 
 ZERO = Decimal('0.00')
 
@@ -300,22 +307,21 @@ def get_or_create_leave_balance(employee, leave_type, as_of=None):
         },
     )
 
-    from django.db.models import Sum as _Sum
     credited = _compute_credit_for_period(employee, leave_type, cycle_start, cycle_end)
-    used_total = LeaveRequest.objects.filter(
-        employee=employee,
-        leave_type=leave_type,
+    used_total = get_leave_request_total_units(
+        employee_id=employee.id,
+        leave_type_id=leave_type.id,
         status=LeaveRequestStatus.APPROVED,
-        start_date__gte=cycle_start,
-        end_date__lte=cycle_end,
-    ).aggregate(total=_Sum('total_units'))['total']
-    pending_total = LeaveRequest.objects.filter(
-        employee=employee,
-        leave_type=leave_type,
+        cycle_start=cycle_start,
+        cycle_end=cycle_end,
+    )
+    pending_total = get_leave_request_total_units(
+        employee_id=employee.id,
+        leave_type_id=leave_type.id,
         status=LeaveRequestStatus.PENDING,
-        start_date__gte=cycle_start,
-        end_date__lte=cycle_end,
-    ).aggregate(total=_Sum('total_units'))['total']
+        cycle_start=cycle_start,
+        cycle_end=cycle_end,
+    )
     used = _decimal(used_total or Decimal('0.00'))
     pending = _decimal(pending_total or Decimal('0.00'))
     capped_credited = _decimal(credited)
@@ -421,12 +427,12 @@ def process_cycle_end_carry_forward(
     new_cycle_end,
     actor=None,
 ):
-    old_balance = LeaveBalance.objects.filter(
-        employee=employee,
-        leave_type=leave_type,
+    old_balance = get_leave_balance_record(
+        employee_id=employee.id,
+        leave_type_id=leave_type.id,
         cycle_start=old_cycle_start,
         cycle_end=old_cycle_end,
-    ).first()
+    )
     available_to_carry = ZERO
     if old_balance is not None:
         available_to_carry = max(
@@ -479,12 +485,12 @@ def validate_leave_balance(*, employee, leave_type, requested_units, cycle_start
         return
 
     if cycle_start is not None and cycle_end is not None:
-        balance = LeaveBalance.objects.filter(
-            employee=employee,
-            leave_type=leave_type,
+        balance = get_leave_balance_record(
+            employee_id=employee.id,
+            leave_type_id=leave_type.id,
             cycle_start=cycle_start,
             cycle_end=cycle_end,
-        ).first()
+        )
     else:
         balance = get_or_create_leave_balance(employee, leave_type, as_of=as_of)
 
@@ -510,12 +516,12 @@ def create_leave_encashment_request(*, employee, leave_type, cycle_start, cycle_
     if not leave_type.allows_encashment:
         raise ValueError(f"Leave type '{leave_type.name}' does not allow encashment.")
 
-    balance = LeaveBalance.objects.filter(
-        employee=employee,
-        leave_type=leave_type,
+    balance = get_leave_balance_record(
+        employee_id=employee.id,
+        leave_type_id=leave_type.id,
         cycle_start=cycle_start,
         cycle_end=cycle_end,
-    ).first()
+    )
     available = ZERO
     if balance is not None:
         available = (
@@ -531,19 +537,16 @@ def create_leave_encashment_request(*, employee, leave_type, cycle_start, cycle_
         )
 
     if leave_type.max_encashment_days_per_year is not None:
-        already_encashed = (
-            LeaveEncashmentRequest.objects.filter(
-                employee=employee,
-                leave_type=leave_type,
-                cycle_start=cycle_start,
-                cycle_end=cycle_end,
-                status__in=[
-                    LeaveEncashmentStatus.PENDING,
-                    LeaveEncashmentStatus.APPROVED,
-                    LeaveEncashmentStatus.PAID,
-                ],
-            ).aggregate(total=Sum('days_to_encash'))['total']
-            or ZERO
+        already_encashed = get_total_days_to_encash(
+            employee_id=employee.id,
+            leave_type_id=leave_type.id,
+            cycle_start=cycle_start,
+            cycle_end=cycle_end,
+            statuses=[
+                LeaveEncashmentStatus.PENDING,
+                LeaveEncashmentStatus.APPROVED,
+                LeaveEncashmentStatus.PAID,
+            ],
         )
         if _decimal(already_encashed) + _decimal(days_to_encash) > _decimal(leave_type.max_encashment_days_per_year):
             raise ValueError(f'Exceeds annual encashment limit of {leave_type.max_encashment_days_per_year} days.')
@@ -599,11 +602,10 @@ def finalize_leave_encashment(encashment_request):
 def create_leave_request(employee, leave_type, start_date, end_date, start_session, end_session, reason='', actor=None):
     if end_date < start_date:
         raise ValueError('End date cannot be before start date.')
-    overlapping_requests = LeaveRequest.objects.filter(
-        employee=employee,
-        status__in=[LeaveRequestStatus.PENDING, LeaveRequestStatus.APPROVED],
-        start_date__lte=end_date,
-        end_date__gte=start_date,
+    overlapping_requests = list_overlapping_leave_requests(
+        employee_id=employee.id,
+        start_date=start_date,
+        end_date=end_date,
     )
     for existing_request in overlapping_requests:
         if _leave_requests_overlap(existing_request, start_date, end_date, start_session, end_session):
@@ -823,11 +825,11 @@ def get_employee_calendar_month(employee, calendar_month=None):
     for holiday in get_employee_holiday_entries(employee, year, month):
         day_map[int(holiday['date'].split('-')[2])].append(holiday)
 
-    leave_requests = LeaveRequest.objects.filter(
-        employee=employee,
-        start_date__lte=last_day,
-        end_date__gte=first_day,
-    ).select_related('leave_type')
+    leave_requests = list_leave_requests_in_range(
+        employee_id=employee.id,
+        start_date=first_day,
+        end_date=last_day,
+    )
     for request in leave_requests:
         current = request.start_date
         while current <= request.end_date:

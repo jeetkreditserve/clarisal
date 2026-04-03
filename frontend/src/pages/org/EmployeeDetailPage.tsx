@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 
 import { EmptyState } from '@/components/ui/EmptyState'
 import { AppDatePicker } from '@/components/ui/AppDatePicker'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { AppSelect } from '@/components/ui/AppSelect'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
@@ -232,7 +233,6 @@ export function EmployeeDetailPage() {
   }
 
   const handleDelete = async () => {
-    if (!window.confirm('Delete this invited or pending employee record?')) return
     try {
       await deleteEmployeeMutation.mutateAsync()
       toast.success('Employee deleted.')
@@ -549,9 +549,17 @@ export function EmployeeDetailPage() {
               <div className="surface-muted rounded-[24px] p-5">
                 <p className="font-semibold text-[hsl(var(--foreground-strong))]">Delete employee record</p>
                 <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">Invited and pending employees can be deleted to release the consumed licence seat.</p>
-                <button onClick={handleDelete} className="btn-danger mt-4" disabled={deleteEmployeeMutation.isPending}>
-                  Delete employee
-                </button>
+                <ConfirmDialog
+                  trigger={
+                    <button type="button" className="btn-danger mt-4" disabled={deleteEmployeeMutation.isPending}>
+                      Delete employee
+                    </button>
+                  }
+                  title="Delete employee record?"
+                  description="This permanently removes the invited or pending employee record and cannot be undone."
+                  confirmLabel="Delete employee"
+                  onConfirm={handleDelete}
+                />
               </div>
             ) : null}
           </div>

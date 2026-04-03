@@ -18,13 +18,7 @@ import {
   useWithdrawMyAttendanceRegularization,
 } from '@/hooks/useEmployeeSelf'
 import { getErrorMessage } from '@/lib/errors'
-
-function getAttendanceTone(status: string) {
-  if (status === 'PRESENT' || status === 'ON_DUTY') return 'success'
-  if (status === 'HALF_DAY' || status === 'HOLIDAY' || status === 'WEEK_OFF') return 'info'
-  if (status === 'INCOMPLETE') return 'warning'
-  return 'danger'
-}
+import { getAttendanceDayStatusTone } from '@/lib/status'
 
 function getRegularizationTone(status: string) {
   if (status === 'APPROVED') return 'success'
@@ -132,7 +126,7 @@ export function AttendancePage() {
           <p className="text-sm text-[hsl(var(--muted-foreground))]">Today</p>
           <div className="mt-3 flex items-center gap-3">
             <p className="text-2xl font-semibold text-[hsl(var(--foreground-strong))]">{summary.today.status}</p>
-            <StatusBadge tone={getAttendanceTone(summary.today.status)}>{summary.today.status}</StatusBadge>
+            <StatusBadge tone={getAttendanceDayStatusTone(summary.today.status)}>{summary.today.status}</StatusBadge>
           </div>
           <p className="mt-2 text-xs text-[hsl(var(--muted-foreground))]">{summary.today.attendance_date}</p>
         </div>
@@ -243,7 +237,7 @@ export function AttendancePage() {
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
-                  <StatusBadge tone={getAttendanceTone(day.status)}>{day.status}</StatusBadge>
+                  <StatusBadge tone={getAttendanceDayStatusTone(day.status)}>{day.status}</StatusBadge>
                   {day.needs_regularization ? <StatusBadge tone="warning">Needs regularization</StatusBadge> : null}
                 </div>
               </div>

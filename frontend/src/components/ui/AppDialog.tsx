@@ -29,6 +29,7 @@ export function AppDialog({
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-40 bg-[hsl(var(--background)_/_0.62)] backdrop-blur-sm" />
         <Dialog.Content
+          aria-describedby={description ? undefined : undefined}
           className={cn(
             'fixed inset-x-3 bottom-3 top-3 z-50 flex max-h-[calc(100svh-1.5rem)] flex-col overflow-hidden rounded-[28px] border border-[hsl(var(--border)_/_0.85)] bg-[hsl(var(--surface))] shadow-[var(--shadow-strong)] sm:left-1/2 sm:top-1/2 sm:bottom-auto sm:max-h-[min(86svh,56rem)] sm:w-[min(92vw,42rem)] sm:-translate-x-1/2 sm:-translate-y-1/2',
             contentClassName,

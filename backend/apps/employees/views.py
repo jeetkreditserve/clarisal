@@ -6,6 +6,7 @@ from rest_framework.views import APIView
 
 from apps.accounts.permissions import BelongsToActiveOrg, IsEmployee, IsOrgAdmin, OrgAdminMutationAllowed
 from apps.accounts.workspaces import get_active_admin_organisation, get_active_employee
+from apps.audit.services import log_audit_event
 from apps.departments.models import Department
 from apps.locations.models import OfficeLocation
 
@@ -175,6 +176,23 @@ class EmployeeEndEmploymentView(APIView):
             )
         except ValueError as exc:
             return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(EmployeeDetailSerializer(employee).data)
+
+
+class EmployeeProbationCompleteView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
+
+    def post(self, request, pk):
+        organisation = _get_admin_organisation(request)
+        employee = get_object_or_404(Employee, organisation=organisation, id=pk)
+        employee.probation_end_date = None
+        employee.save(update_fields=['probation_end_date', 'modified_at'])
+        log_audit_event(
+            request.user,
+            'employee.probation.completed',
+            organisation=organisation,
+            target=employee,
+        )
         return Response(EmployeeDetailSerializer(employee).data)
 
 

@@ -541,7 +541,7 @@ git commit -m "test(timeoff): 9 service unit tests for accrual, carry-forward, m
 **Files:**
 - Create: `backend/apps/attendance/tests/test_daily_calculation.py`
 
-- [ ] **Step 1: Write the tests**
+- [x] **Step 1: Write the tests**
 
 ```python
 """
@@ -639,7 +639,7 @@ class TestAttendanceDailyCalculation(TestCase):
         self.assertEqual(result['status'], AttendanceDayStatus.ON_LEAVE)
 ```
 
-- [ ] **Step 2: Run tests**
+- [x] **Step 2: Run tests**
 
 ```bash
 cd backend && python -m pytest apps/attendance/tests/test_daily_calculation.py -v
@@ -647,7 +647,7 @@ cd backend && python -m pytest apps/attendance/tests/test_daily_calculation.py -
 
 Expected: All 9 tests PASS (requires `calculate_attendance_day_status` to exist in `services.py` with the correct signature).
 
-- [ ] **Step 3: If `calculate_attendance_day_status` does not exist, create it in `backend/apps/attendance/services.py`**
+- [x] **Step 3: If `calculate_attendance_day_status` does not exist, create it in `backend/apps/attendance/services.py`**
 
 Add the function (does not replace existing functions):
 
@@ -737,7 +737,7 @@ git commit -m "test(attendance): 9 daily calculation unit tests + calculate_atte
 **Files:**
 - Create: `frontend/e2e/org/payroll.spec.ts`
 
-- [ ] **Step 1: Write the spec**
+- [x] **Step 1: Write the spec**
 
 ```typescript
 // frontend/e2e/org/payroll.spec.ts
@@ -789,7 +789,7 @@ test.describe('Org Admin — Payroll Run Lifecycle', () => {
 });
 ```
 
-- [ ] **Step 2: Ensure helpers file exists**
+- [x] **Step 2: Ensure helpers file exists**
 
 Create `frontend/e2e/helpers/auth.ts` if not present:
 
@@ -836,7 +836,7 @@ git commit -m "test(e2e): payroll run lifecycle E2E spec"
 **Files:**
 - Create: `frontend/e2e/org/attendance-regularization.spec.ts`
 
-- [ ] **Step 1: Write the spec**
+- [x] **Step 1: Write the spec**
 
 ```typescript
 // frontend/e2e/org/attendance-regularization.spec.ts
@@ -880,7 +880,7 @@ git commit -m "test(e2e): attendance regularization approval flow E2E spec"
 **Files:**
 - Create: `frontend/e2e/employee/leave-approval.spec.ts`
 
-- [ ] **Step 1: Write the spec**
+- [x] **Step 1: Write the spec**
 
 ```typescript
 // frontend/e2e/employee/leave-approval.spec.ts
@@ -939,7 +939,7 @@ git commit -m "test(e2e): employee leave request + approval balance update E2E s
 **Files:**
 - Create: `frontend/e2e/employee/payslips.spec.ts`
 
-- [ ] **Step 1: Write the spec**
+- [x] **Step 1: Write the spec**
 
 ```typescript
 // frontend/e2e/employee/payslips.spec.ts
@@ -987,7 +987,7 @@ git commit -m "test(e2e): employee payslip view and PDF download E2E spec"
 - Create: `frontend/src/pages/employee/LeavePage.test.tsx`
 - Create: `frontend/src/pages/employee/AttendancePage.test.tsx`
 
-- [ ] **Step 1: Write `PayrollPage.test.tsx`**
+- [x] **Step 1: Write `PayrollPage.test.tsx`**
 
 ```tsx
 // frontend/src/pages/org/PayrollPage.test.tsx
@@ -1029,7 +1029,7 @@ describe('PayrollPage', () => {
 });
 ```
 
-- [ ] **Step 2: Write `LeavePage.test.tsx`**
+- [x] **Step 2: Write `LeavePage.test.tsx`**
 
 ```tsx
 // frontend/src/pages/employee/LeavePage.test.tsx
@@ -1071,7 +1071,7 @@ describe('LeavePage', () => {
 });
 ```
 
-- [ ] **Step 3: Write `AttendancePage.test.tsx`**
+- [x] **Step 3: Write `AttendancePage.test.tsx`**
 
 ```tsx
 // frontend/src/pages/employee/AttendancePage.test.tsx
@@ -1105,7 +1105,7 @@ describe('AttendancePage', () => {
 });
 ```
 
-- [ ] **Step 4: Run Vitest**
+- [x] **Step 4: Run Vitest**
 
 ```bash
 cd frontend && npx vitest run src/pages/org/PayrollPage.test.tsx src/pages/employee/LeavePage.test.tsx src/pages/employee/AttendancePage.test.tsx

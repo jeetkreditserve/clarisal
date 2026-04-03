@@ -45,7 +45,7 @@
 
 `OrgPayrollRunCalculateView.post()` currently calls `calculate_pay_run()` synchronously inside the HTTP request. For runs with 500+ employees this can time out. The fix: dispatch a Celery task immediately and return HTTP 202.
 
-- [ ] **Step 1: Write the failing test for async dispatch**
+- [-] **Step 1: Write the failing test for async dispatch**
 
 Create `backend/apps/payroll/tests/test_tasks.py`:
 
@@ -93,7 +93,7 @@ class TestOrgPayrollRunCalculateViewAsync(TestCase):
         self.assertIn('state', response.data)
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 ```bash
 cd backend && python -m pytest apps/payroll/tests/test_tasks.py -v
@@ -101,7 +101,7 @@ cd backend && python -m pytest apps/payroll/tests/test_tasks.py -v
 
 Expected: `FAIL` — `calculate_pay_run_task` not found, 404 or AttributeError.
 
-- [ ] **Step 3: Create `backend/apps/payroll/tasks.py`**
+- [x] **Step 3: Create `backend/apps/payroll/tasks.py`**
 
 ```python
 from __future__ import annotations
@@ -130,7 +130,7 @@ def calculate_pay_run_task(self, pay_run_id: str, actor_user_id: str) -> dict:
         raise self.retry(exc=exc, countdown=30, max_retries=2)
 ```
 
-- [ ] **Step 4: Modify `OrgPayrollRunCalculateView` in `backend/apps/payroll/views.py`**
+- [x] **Step 4: Modify `OrgPayrollRunCalculateView` in `backend/apps/payroll/views.py`**
 
 Replace the existing `OrgPayrollRunCalculateView` class (lines 240-250):
 
@@ -171,7 +171,7 @@ class OrgPayrollRunCalculationStatusView(APIView):
         return Response(data)
 ```
 
-- [ ] **Step 5: Register new URL in `backend/apps/payroll/org_urls.py`**
+- [x] **Step 5: Register new URL in `backend/apps/payroll/org_urls.py`**
 
 Add import and URL pattern. Open the file, locate the runs detail patterns, add:
 
@@ -182,7 +182,7 @@ from .views import OrgPayrollRunCalculationStatusView
 path('payroll/runs/<uuid:pk>/calculation-status/', OrgPayrollRunCalculationStatusView.as_view()),
 ```
 
-- [ ] **Step 6: Run tests**
+- [x] **Step 6: Run tests**
 
 ```bash
 cd backend && python -m pytest apps/payroll/tests/test_tasks.py -v
@@ -208,7 +208,7 @@ git commit -m "feat(payroll): async calculation via Celery task, return 202 + po
 
 All current routes use `/api/auth/`, `/api/org/`, `/api/me/`, `/api/ct/`. Adding a `/v1/` layer enables future breaking changes without disrupting existing clients. Strategy: add versioned routes alongside legacy routes (both work) so frontend migration is not required immediately.
 
-- [ ] **Step 1: Add versioned URL includes to `backend/clarisal/urls.py`**
+- [-] **Step 1: Add versioned URL includes to `backend/clarisal/urls.py`**
 
 Open the file. After the existing `urlpatterns` list, append:
 
@@ -288,14 +288,14 @@ urlpatterns = [
 ]
 ```
 
-- [ ] **Step 2: Verify server starts**
+- [x] **Step 2: Verify server starts**
 
 ```bash
 cd backend && python manage.py check --deploy 2>&1 | head -30
 # Expected: no URL errors
 ```
 
-- [ ] **Step 3: Verify a versioned route resolves**
+- [x] **Step 3: Verify a versioned route resolves**
 
 ```bash
 cd backend && python -c "
@@ -325,11 +325,11 @@ git commit -m "feat(api): add /v1/ versioned URL prefix alongside legacy routes"
 
 `calculate_pay_run()` iterates over employees and for each one loads their `CompensationAssignment` → template → lines → component in a loop. This creates N×4 queries for N employees. Fix: one `prefetch_related` call before the loop.
 
-- [ ] **Step 1: Locate the loop in `services.py`**
+- [x] **Step 1: Locate the loop in `services.py`**
 
 Search for `calculate_pay_run` function. Find the line that builds the employee/assignment queryset inside the function body.
 
-- [ ] **Step 2: Add prefetch before the loop**
+- [x] **Step 2: Add prefetch before the loop**
 
 Find the queryset that fetches employees or assignments inside `calculate_pay_run`. It will look similar to:
 
@@ -364,7 +364,7 @@ for assignment in CompensationAssignment.objects.filter(
 
 Then replace per-employee DB hits inside the loop with `assignments_by_employee.get(emp.id)`.
 
-- [ ] **Step 3: Run existing payroll tests to confirm no regression**
+- [x] **Step 3: Run existing payroll tests to confirm no regression**
 
 ```bash
 cd backend && python -m pytest apps/payroll/ -v --tb=short
@@ -390,7 +390,7 @@ git commit -m "perf(payroll): prefetch compensation assignments to eliminate N+1
 
 `PayrollRunItem` is queried in two hot paths: (1) load all items for a run, (2) load all items for an employee across runs. Without composite indexes, these are sequential scans on large tables.
 
-- [ ] **Step 1: Add `Meta.indexes` to `PayrollRunItem` model in `backend/apps/payroll/models.py`**
+- [x] **Step 1: Add `Meta.indexes` to `PayrollRunItem` model in `backend/apps/payroll/models.py`**
 
 Locate `class PayrollRunItem(AuditedBaseModel)`. Add or extend its `Meta` class:
 
@@ -402,7 +402,7 @@ class Meta:
     ]
 ```
 
-- [ ] **Step 2: Generate migration**
+- [x] **Step 2: Generate migration**
 
 ```bash
 cd backend && python manage.py makemigrations payroll --name payrollrunitem_indexes
@@ -410,7 +410,7 @@ cd backend && python manage.py makemigrations payroll --name payrollrunitem_inde
 
 Expected: New migration file created.
 
-- [ ] **Step 3: Apply migration**
+- [x] **Step 3: Apply migration**
 
 ```bash
 cd backend && python manage.py migrate
@@ -437,7 +437,7 @@ git commit -m "perf(payroll): add composite DB indexes on PayrollRunItem for run
 
 `timeoff/services.py` contains raw ORM expressions for leave balance calculation scattered across multiple functions. Centralising them into a repository makes unit testing (mock at repo boundary) and future query optimisation straightforward.
 
-- [ ] **Step 1: Create `backend/apps/timeoff/repositories.py`**
+- [x] **Step 1: Create `backend/apps/timeoff/repositories.py`**
 
 ```python
 from __future__ import annotations
@@ -517,7 +517,7 @@ def get_leave_balance_snapshot(employee_id, leave_type_id) -> dict:
     }
 ```
 
-- [ ] **Step 2: Update `timeoff/services.py` to use repository functions**
+- [x] **Step 2: Update `timeoff/services.py` to use repository functions**
 
 Find all direct `LeaveLedgerEntry.objects.filter(...).aggregate(Sum(...))` calls in `services.py`. Replace each with the matching repository function. Example replacement:
 
@@ -533,7 +533,7 @@ from .repositories import get_available_balance
 available = get_available_balance(employee.id, leave_type.id)
 ```
 
-- [ ] **Step 3: Run timeoff tests**
+- [x] **Step 3: Run timeoff tests**
 
 ```bash
 cd backend && python -m pytest apps/timeoff/ -v --tb=short
@@ -555,7 +555,7 @@ git commit -m "refactor(timeoff): extract leave balance queries into repository 
 **Files:**
 - Create: `backend/apps/attendance/repositories.py`
 
-- [ ] **Step 1: Create `backend/apps/attendance/repositories.py`**
+- [x] **Step 1: Create `backend/apps/attendance/repositories.py`**
 
 ```python
 from __future__ import annotations
@@ -630,7 +630,7 @@ git commit -m "refactor(attendance): create repository layer for attendance day 
 - Modify: `backend/apps/employees/urls.py` — register endpoint
 - Create: `backend/apps/employees/tests/test_probation.py`
 
-- [ ] **Step 1: Write failing test**
+- [x] **Step 1: Write failing test**
 
 Create `backend/apps/employees/tests/test_probation.py`:
 
@@ -686,7 +686,7 @@ class TestOrgEmployeeProbationCompleteView(TestCase):
         self.assertEqual(response.status_code, 404)
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 ```bash
 cd backend && python -m pytest apps/employees/tests/test_probation.py -v
@@ -694,7 +694,7 @@ cd backend && python -m pytest apps/employees/tests/test_probation.py -v
 
 Expected: `FAIL` — `Employee` has no `probation_end_date`, URL not found.
 
-- [ ] **Step 3: Add field to `Employee` model**
+- [x] **Step 3: Add field to `Employee` model**
 
 In `backend/apps/employees/models.py`, locate the `Employee` model class. Add the field after `date_of_joining`:
 
@@ -706,14 +706,14 @@ probation_end_date = models.DateField(
 )
 ```
 
-- [ ] **Step 4: Generate and apply migration**
+- [x] **Step 4: Generate and apply migration**
 
 ```bash
 cd backend && python manage.py makemigrations employees --name add_probation_end_date
 cd backend && python manage.py migrate
 ```
 
-- [ ] **Step 5: Add `OrgEmployeeProbationCompleteView` to `views.py`**
+- [x] **Step 5: Add `OrgEmployeeProbationCompleteView` to `views.py`**
 
 In `backend/apps/employees/views.py`, add:
 
@@ -736,7 +736,7 @@ class OrgEmployeeProbationCompleteView(APIView):
         return Response(EmployeeSerializer(employee).data)
 ```
 
-- [ ] **Step 6: Register URL**
+- [x] **Step 6: Register URL**
 
 In `backend/apps/employees/urls.py`, add:
 
@@ -747,7 +747,7 @@ from .views import OrgEmployeeProbationCompleteView
 path('employees/<uuid:pk>/probation-complete/', OrgEmployeeProbationCompleteView.as_view()),
 ```
 
-- [ ] **Step 7: Run tests**
+- [x] **Step 7: Run tests**
 
 ```bash
 cd backend && python -m pytest apps/employees/tests/test_probation.py -v

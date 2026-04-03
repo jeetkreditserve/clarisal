@@ -1,6 +1,6 @@
 import { Outlet, useNavigate } from 'react-router-dom'
 import { Bell, Building, Building2, CalendarDays, ClipboardCheck, Clock3, Landmark, LayoutDashboard, LogOut, MapPin, PlaneTakeoff, Repeat, ScrollText, Users } from 'lucide-react'
-import { SidebarNav, type NavItem } from './SidebarNav'
+import { SidebarNav, type NavGroup } from './SidebarNav'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
 import { useAuth } from '@/hooks/useAuth'
 import { StatusBadge } from '@/components/ui/StatusBadge'
@@ -8,21 +8,41 @@ import { ThemeToggle } from '@/components/ui/ThemeToggle'
 import { getAccessStateTone } from '@/lib/status'
 import { OrgSetupBanner } from '@/components/org/OrgSetupBanner'
 
-const navItems: NavItem[] = [
-  { label: 'Dashboard', href: '/org/dashboard', icon: LayoutDashboard },
-  { label: 'Organisation', href: '/org/profile', icon: Building2 },
-  { label: 'Attendance', href: '/org/attendance', icon: Clock3 },
-  { label: 'Payroll Preview', href: '/org/payroll', icon: Landmark },
-  { label: 'Locations', href: '/org/locations', icon: MapPin },
-  { label: 'Departments', href: '/org/departments', icon: Building },
-  { label: 'Employees', href: '/org/employees', icon: Users },
-  { label: 'Holidays', href: '/org/holidays', icon: CalendarDays },
-  { label: 'Leave cycles', href: '/org/leave-cycles', icon: Repeat },
-  { label: 'Leave plans', href: '/org/leave-plans', icon: ClipboardCheck },
-  { label: 'OD policies', href: '/org/on-duty-policies', icon: PlaneTakeoff },
-  { label: 'Approvals', href: '/org/approval-workflows', icon: ClipboardCheck },
-  { label: 'Notices', href: '/org/notices', icon: Bell },
-  { label: 'Audit Timeline', href: '/org/audit', icon: ScrollText },
+const navGroups: NavGroup[] = [
+  {
+    label: 'Workspace',
+    items: [
+      { label: 'Dashboard', href: '/org/dashboard', icon: LayoutDashboard },
+      { label: 'Organisation', href: '/org/profile', icon: Building2 },
+    ],
+  },
+  {
+    label: 'People',
+    items: [
+      { label: 'Employees', href: '/org/employees', icon: Users },
+      { label: 'Departments', href: '/org/departments', icon: Building },
+      { label: 'Locations', href: '/org/locations', icon: MapPin },
+    ],
+  },
+  {
+    label: 'Time & Leave',
+    items: [
+      { label: 'Attendance', href: '/org/attendance', icon: Clock3 },
+      { label: 'Holidays', href: '/org/holidays', icon: CalendarDays },
+      { label: 'Leave cycles', href: '/org/leave-cycles', icon: Repeat },
+      { label: 'Leave plans', href: '/org/leave-plans', icon: ClipboardCheck },
+      { label: 'OD policies', href: '/org/on-duty-policies', icon: PlaneTakeoff },
+    ],
+  },
+  {
+    label: 'Operations',
+    items: [
+      { label: 'Payroll Preview', href: '/org/payroll', icon: Landmark },
+      { label: 'Approvals', href: '/org/approval-workflows', icon: ClipboardCheck },
+      { label: 'Notices', href: '/org/notices', icon: Bell },
+      { label: 'Audit Timeline', href: '/org/audit', icon: ScrollText },
+    ],
+  },
 ]
 
 export function OrgLayout() {
@@ -36,7 +56,7 @@ export function OrgLayout() {
 
   return (
     <div className="min-h-screen lg:flex">
-      <SidebarNav items={navItems} title="Clarisal" subtitle="Organisation Console" />
+      <SidebarNav groups={navGroups} title="Clarisal" subtitle="Organisation Console" />
       <div className="flex min-w-0 flex-1 flex-col px-4 pb-6 lg:pl-0 lg:pr-6">
         <header className="shell-topbar sticky top-4 z-20 mt-0 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>

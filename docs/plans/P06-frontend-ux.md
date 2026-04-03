@@ -35,7 +35,7 @@
 - Create: `frontend/src/components/ui/ConfirmDialog.tsx`
 - Create: `frontend/src/components/ui/ConfirmDialog.test.tsx`
 
-- [ ] **Step 1: Write the test**
+- [x] **Step 1: Write the test**
 
 ```tsx
 // frontend/src/components/ui/ConfirmDialog.test.tsx
@@ -90,7 +90,7 @@ describe('ConfirmDialog', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 ```bash
 cd frontend && npx vitest run src/components/ui/ConfirmDialog.test.tsx
@@ -98,7 +98,7 @@ cd frontend && npx vitest run src/components/ui/ConfirmDialog.test.tsx
 
 Expected: `FAIL` — module not found.
 
-- [ ] **Step 3: Create `ConfirmDialog.tsx`**
+- [x] **Step 3: Create `ConfirmDialog.tsx`**
 
 ```tsx
 // frontend/src/components/ui/ConfirmDialog.tsx
@@ -175,7 +175,7 @@ export function ConfirmDialog({
 }
 ```
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 ```bash
 cd frontend && npx vitest run src/components/ui/ConfirmDialog.test.tsx
@@ -197,7 +197,7 @@ git commit -m "feat(ui): ConfirmDialog component replacing window.confirm"
 **Files:**
 - Modify: `frontend/src/pages/org/PayrollPage.tsx`
 
-- [ ] **Step 1: Find all `window.confirm` calls**
+- [x] **Step 1: Find all `window.confirm` calls**
 
 ```bash
 grep -n "window.confirm" frontend/src/pages/org/PayrollPage.tsx
@@ -205,7 +205,7 @@ grep -n "window.confirm" frontend/src/pages/org/PayrollPage.tsx
 
 Note each line number and the action it guards.
 
-- [ ] **Step 2: Replace each `window.confirm` call with `ConfirmDialog`**
+- [x] **Step 2: Replace each `window.confirm` call with `ConfirmDialog`**
 
 For each confirm pattern like:
 ```tsx
@@ -233,7 +233,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 
 Apply the same replacement for all other `window.confirm` calls in the file (delete template, delete tax slab, rerun payroll, etc.).
 
-- [ ] **Step 3: Replace `window.confirm` across all other org pages**
+- [x] **Step 3: Replace `window.confirm` across all other org pages**
 
 ```bash
 grep -rn "window.confirm" frontend/src/pages/
@@ -255,7 +255,7 @@ git commit -m "fix(ux): replace all window.confirm() calls with accessible Confi
 **Files:**
 - Modify: multiple page files across `frontend/src/pages/`
 
-- [ ] **Step 1: Find all icon-only buttons without aria-label**
+- [x] **Step 1: Find all icon-only buttons without aria-label**
 
 ```bash
 grep -rn "<AppButton\|<button" frontend/src/pages/ | grep -v "aria-label" | grep -i "icon\|<.*Icon\|svg"
@@ -266,7 +266,7 @@ Also search for icon button patterns:
 grep -rn "IconButton\|icon.*button\|<button.*>\s*<" frontend/src/pages/ --include="*.tsx"
 ```
 
-- [ ] **Step 2: Add `aria-label` to every icon-only button found**
+- [x] **Step 2: Add `aria-label` to every icon-only button found**
 
 Pattern to apply for each icon button:
 ```tsx
@@ -283,7 +283,7 @@ Pattern to apply for each icon button:
 
 Apply descriptive, action-specific labels: "Edit [resource]", "Delete [resource]", "Download payslip", "View details", etc.
 
-- [ ] **Step 3: Verify no remaining unlabelled icon buttons**
+- [x] **Step 3: Verify no remaining unlabelled icon buttons**
 
 ```bash
 grep -rn "size=\"icon\"\|size='icon'" frontend/src/pages/ | grep -v "aria-label"
@@ -305,7 +305,7 @@ git commit -m "fix(a11y): add aria-label to all icon-only buttons across all pag
 **Files:**
 - Modify: `frontend/src/pages/employee/PayslipsPage.tsx`
 
-- [ ] **Step 1: Check existing download hook**
+- [x] **Step 1: Check existing download hook**
 
 ```bash
 grep -rn "useDownloadMyPayslip\|downloadPayslip" frontend/src/lib/api/ frontend/src/hooks/
@@ -313,7 +313,7 @@ grep -rn "useDownloadMyPayslip\|downloadPayslip" frontend/src/lib/api/ frontend/
 
 Note the hook name and signature.
 
-- [ ] **Step 2: Wire the download button in `PayslipsPage.tsx`**
+- [x] **Step 2: Wire the download button in `PayslipsPage.tsx`**
 
 In `PayslipsPage.tsx`, locate the payslip detail view or list row. Add a download button connected to the hook:
 
@@ -395,13 +395,13 @@ git commit -m "feat(payslips): wire payslip download button for employees"
 **Files:**
 - Modify: `frontend/src/pages/org/PayrollPage.tsx`
 
-- [ ] **Step 1: Find all bare `<input>` elements without associated `<label>`**
+- [x] **Step 1: Find all bare `<input>` elements without associated `<label>`**
 
 ```bash
 grep -n "<input\|<select\|<textarea" frontend/src/pages/org/PayrollPage.tsx | head -40
 ```
 
-- [ ] **Step 2: Fix each unlabelled input**
+- [x] **Step 2: Fix each unlabelled input**
 
 For each bare input:
 ```tsx
@@ -425,7 +425,7 @@ For each bare input:
 
 Apply to all inputs: tax slab rates, income range inputs, compensation template line amounts, etc.
 
-- [ ] **Step 3: Replace native date inputs with `AppDatePicker`**
+- [x] **Step 3: Replace native date inputs with `AppDatePicker`**
 
 Find all `<input type="date"` in `PayrollPage.tsx`:
 ```bash
@@ -456,13 +456,13 @@ git commit -m "fix(a11y): add form labels and replace native date inputs in Payr
 **Files:**
 - Modify: `frontend/src/pages/org/PayrollPage.tsx` and all other pages with `<table>` elements
 
-- [ ] **Step 1: Find all bare `<table>` elements**
+- [x] **Step 1: Find all bare `<table>` elements**
 
 ```bash
 grep -rn "<table" frontend/src/pages/ --include="*.tsx" | grep -v "overflow-x-auto"
 ```
 
-- [ ] **Step 2: Wrap each table in `<div className="overflow-x-auto">`**
+- [x] **Step 2: Wrap each table in `<div className="overflow-x-auto">`**
 
 ```tsx
 // Before:
@@ -494,11 +494,11 @@ git commit -m "fix(ux): wrap all tables in overflow-x-auto for horizontal scroll
 **Files:**
 - Modify: `frontend/src/lib/status.ts`
 
-- [ ] **Step 1: Read the existing `status.ts`**
+- [x] **Step 1: Read the existing `status.ts`**
 
 Open the file and identify the existing tone functions (e.g., `getLeaveStatusTone`, `getApprovalStatusTone`).
 
-- [ ] **Step 2: Add new tone functions**
+- [x] **Step 2: Add new tone functions**
 
 Append to `frontend/src/lib/status.ts`:
 
@@ -558,7 +558,7 @@ export function getAttendanceDayStatusTone(status: string): string {
 }
 ```
 
-- [ ] **Step 3: Apply new tone functions in relevant pages**
+- [x] **Step 3: Apply new tone functions in relevant pages**
 
 In `PayrollPage.tsx`, replace hardcoded status badge colours with `getPayrollRunStatusTone`:
 ```tsx
@@ -585,11 +585,11 @@ git commit -m "feat(ui): add payroll/compensation/attendance status tone functio
 **Files:**
 - Modify: `frontend/src/components/layouts/OrgLayout.tsx`
 
-- [ ] **Step 1: Read existing nav structure**
+- [x] **Step 1: Read existing nav structure**
 
 Open `OrgLayout.tsx` and identify the navigation items list. Note existing structure (flat list vs grouped).
 
-- [ ] **Step 2: Add collapsible group state and rendering**
+- [x] **Step 2: Add collapsible group state and rendering**
 
 ```tsx
 // Add state for collapsed groups
@@ -675,7 +675,7 @@ git commit -m "feat(nav): collapsible nav group sections in OrgLayout"
 **Files:**
 - Modify: `frontend/src/pages/employee/LeavePage.tsx`
 
-- [ ] **Step 1: Add live balance preview to leave request form**
+- [x] **Step 1: Add live balance preview to leave request form**
 
 When the user selects a leave type and enters dates, show a preview of how many days will be deducted and the remaining balance:
 
@@ -737,7 +737,7 @@ git commit -m "feat(leave): real-time balance preview in leave request form"
 **Files:**
 - Modify: `frontend/src/pages/org/PayrollPage.tsx`
 
-- [ ] **Step 1: Add `toast.loading()` to long-running mutations**
+- [x] **Step 1: Add `toast.loading()` to long-running mutations**
 
 Identify the mutations in `PayrollPage.tsx` for payroll calculation, finalization, and calculation polling. Add loading toasts:
 
@@ -795,7 +795,7 @@ git commit -m "feat(ux): toast.loading feedback for payroll calculate and finali
 - Create: `frontend/src/components/ui/AppErrorBoundary.tsx`
 - Modify: `frontend/src/routes/index.tsx`
 
-- [ ] **Step 1: Create `AppErrorBoundary.tsx`**
+- [x] **Step 1: Create `AppErrorBoundary.tsx`**
 
 ```tsx
 // frontend/src/components/ui/AppErrorBoundary.tsx
@@ -846,7 +846,7 @@ export class AppErrorBoundary extends React.Component<
 }
 ```
 
-- [ ] **Step 2: Wrap routes in `AppErrorBoundary`**
+- [x] **Step 2: Wrap routes in `AppErrorBoundary`**
 
 In `frontend/src/routes/index.tsx`, find the route definitions. Wrap each top-level route element:
 
@@ -895,7 +895,7 @@ git commit -m "feat(ui): AppErrorBoundary wrapping all routes to prevent blank s
 **Files:**
 - Modify: `frontend/src/pages/org/LeavePlanBuilderPage.tsx`
 
-- [ ] **Step 1: Add wizard step state**
+- [x] **Step 1: Add wizard step state**
 
 ```tsx
 // Steps: 1 = Basic Info, 2 = Leave Types, 3 = Assignment Rules
@@ -904,7 +904,7 @@ const TOTAL_STEPS = 3;
 const STEP_LABELS = ['Basic Info', 'Leave Types', 'Assignment Rules'];
 ```
 
-- [ ] **Step 2: Add progress bar component inline**
+- [x] **Step 2: Add progress bar component inline**
 
 ```tsx
 function WizardProgressBar({ currentStep, totalSteps, labels }: {
@@ -940,7 +940,7 @@ function WizardProgressBar({ currentStep, totalSteps, labels }: {
 }
 ```
 
-- [ ] **Step 3: Split form content into step sections**
+- [x] **Step 3: Split form content into step sections**
 
 ```tsx
 return (

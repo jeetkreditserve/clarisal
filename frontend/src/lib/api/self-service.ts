@@ -281,6 +281,13 @@ export async function fetchMyPayslip(id: string) {
   return data
 }
 
+export async function downloadMyPayslip(id: string) {
+  const response = await api.get<Blob>(`/me/payroll/payslips/${id}/download/`, {
+    responseType: 'blob',
+  })
+  return response.data
+}
+
 export async function createMyOnDutyRequest(payload: Record<string, unknown>) {
   const { data } = await api.post<OnDutyRequestRecord>('/me/on-duty/requests/', payload)
   return data

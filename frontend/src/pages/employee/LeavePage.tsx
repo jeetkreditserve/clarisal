@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
 import { AppDatePicker } from '@/components/ui/AppDatePicker'
@@ -30,6 +30,26 @@ export function LeavePage() {
   const withdrawMutation = useWithdrawMyLeaveRequest()
   const [form, setForm] = useState(emptyLeaveForm)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+  const selectedBalance = data?.balances.find((balance) => balance.leave_type_id === form.leave_type_id) ?? null
+  const requestedUnits = useMemo(() => {
+    if (!form.start_date || !form.end_date) return 0
+
+    const start = new Date(form.start_date)
+    const end = new Date(form.end_date)
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) return 0
+
+    const dayCount = Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1
+    let units = dayCount
+    if (form.start_session !== 'FULL_DAY') units -= 0.5
+    if (form.end_session !== 'FULL_DAY' && form.end_date !== form.start_date) units -= 0.5
+    if (form.end_date === form.start_date && form.start_session !== 'FULL_DAY' && form.end_session !== 'FULL_DAY') {
+      units = 0.5
+    }
+
+    return Math.max(units, 0)
+  }, [form.end_date, form.end_session, form.start_date, form.start_session])
+  const currentBalance = Number(selectedBalance?.available ?? 0)
+  const remainingBalance = currentBalance - requestedUnits
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -101,6 +121,29 @@ export function LeavePage() {
                 />
                 <FieldErrorText message={fieldErrors.leave_type_id} />
               </div>
+              {selectedBalance && requestedUnits > 0 ? (
+                <div className="rounded-[20px] border border-[hsl(var(--info)_/_0.22)] bg-[hsl(var(--info)_/_0.1)] px-4 py-4 text-sm">
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="text-[hsl(var(--muted-foreground))]">Requested days</span>
+                    <span className="font-semibold text-[hsl(var(--foreground-strong))]">{requestedUnits.toFixed(2)}</span>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between gap-4">
+                    <span className="text-[hsl(var(--muted-foreground))]">Current balance</span>
+                    <span className="font-semibold text-[hsl(var(--foreground-strong))]">{currentBalance.toFixed(2)}</span>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between gap-4">
+                    <span className="text-[hsl(var(--muted-foreground))]">Remaining after request</span>
+                    <span className={remainingBalance < 0 ? 'font-semibold text-[hsl(var(--danger))]' : 'font-semibold text-[hsl(var(--success))]'}>
+                      {remainingBalance.toFixed(2)}
+                    </span>
+                  </div>
+                  {remainingBalance < 0 ? (
+                    <p className="mt-3 text-xs text-[hsl(var(--danger))]">
+                      This request exceeds the current balance and may be converted to LOP depending on your leave rules.
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
               <div className="grid gap-4 md:grid-cols-2">
                 <div>
                   <AppDatePicker

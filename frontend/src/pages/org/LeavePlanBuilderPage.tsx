@@ -80,6 +80,8 @@ interface LeavePlanForm {
   rules: LeavePlanRuleForm[]
 }
 
+const LEAVE_PLAN_STEP_LABELS = ['Plan basics', 'Leave types', 'Applicability'] as const
+
 function createEmptyLeaveType() {
   return {
     id: undefined as string | undefined,
@@ -209,6 +211,7 @@ export function LeavePlanBuilderPage() {
   const updateCtMutation = useUpdateCtLeavePlan(organisationId ?? '')
   const [form, setForm] = useState<LeavePlanForm>(createDefaultLeavePlanForm())
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+  const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1)
   const plan = isCtMode ? configuration?.leave_plans.find((item) => item.id === id) : orgPlan
   const resolvedLeaveCycles = isCtMode ? configuration?.leave_cycles : leaveCycles
   const resolvedDepartments = isCtMode ? configuration?.departments : departments
@@ -268,6 +271,11 @@ export function LeavePlanBuilderPage() {
   const isLoading = isCtMode
     ? isCtLoading
     : isCyclesLoading || (isEditing && isOrgPlanLoading)
+  const isSaving =
+    createMutation.isPending ||
+    updateMutation.isPending ||
+    createCtMutation.isPending ||
+    updateCtMutation.isPending
 
   const savePlan = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -319,28 +327,47 @@ export function LeavePlanBuilderPage() {
       <PageHeader
         eyebrow={isCtMode ? 'Control Tower • Leave configuration' : 'Leave configuration'}
         title={isEditing ? 'Edit leave plan' : 'Create leave plan'}
-        description="Build a real leave policy with multiple leave types, accrual behavior, carry-forward rules, and applicability filters."
+        description="Build the plan step by step: define the policy, configure leave types, then validate applicability before saving."
         actions={
-          <>
-            <button type="button" className="btn-secondary" onClick={() => navigate(`${basePath}/leave-plans`)}>
-              Back to plans
-            </button>
-            <button
-              type="submit"
-              className="btn-primary"
-              disabled={
-                createMutation.isPending ||
-                updateMutation.isPending ||
-                createCtMutation.isPending ||
-                updateCtMutation.isPending
-              }
-            >
-              {isEditing ? 'Save changes' : 'Create leave plan'}
-            </button>
-          </>
+          <button type="button" className="btn-secondary" onClick={() => navigate(`${basePath}/leave-plans`)}>
+            Back to plans
+          </button>
         }
       />
 
+      <nav aria-label="Leave plan progress" className="rounded-[24px] border border-[hsl(var(--border)_/_0.84)] bg-[hsl(var(--surface))] px-5 py-4">
+        <ol className="grid gap-3 md:grid-cols-3">
+          {LEAVE_PLAN_STEP_LABELS.map((label, index) => {
+            const step = (index + 1) as 1 | 2 | 3
+            const isComplete = step < currentStep
+            const isCurrent = step === currentStep
+            return (
+              <li key={label} className="flex items-center gap-3">
+                <div
+                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-sm font-semibold ${
+                    isComplete
+                      ? 'border-[hsl(var(--brand))] bg-[hsl(var(--brand))] text-[hsl(var(--brand-foreground))]'
+                      : isCurrent
+                        ? 'border-[hsl(var(--brand))] text-[hsl(var(--brand))]'
+                        : 'border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))]'
+                  }`}
+                  aria-current={isCurrent ? 'step' : undefined}
+                >
+                  {isComplete ? '✓' : step}
+                </div>
+                <div>
+                  <p className={`text-sm font-semibold ${isCurrent ? 'text-[hsl(var(--foreground-strong))]' : 'text-[hsl(var(--muted-foreground))]'}`}>
+                    {label}
+                  </p>
+                  <p className="text-xs text-[hsl(var(--muted-foreground))]">Step {step} of {LEAVE_PLAN_STEP_LABELS.length}</p>
+                </div>
+              </li>
+            )
+          })}
+        </ol>
+      </nav>
+
+      {currentStep === 1 ? (
       <SectionCard title="Plan basics" description="Anchor the plan to a leave cycle and define whether it is the default active policy.">
         <div className="grid gap-4 lg:grid-cols-2">
           <div>
@@ -410,7 +437,9 @@ export function LeavePlanBuilderPage() {
           />
         </div>
       </SectionCard>
+      ) : null}
 
+      {currentStep === 2 ? (
       <SectionCard
         title="Leave types"
         description="Bundle multiple leave types into one policy and define accrual, balance, attachment, and request constraints for each one."
@@ -816,7 +845,10 @@ export function LeavePlanBuilderPage() {
           ))}
         </div>
       </SectionCard>
+      ) : null}
 
+      {currentStep === 3 ? (
+      <>
       <SectionCard
         title="Applicability rules"
         description="Prioritise targeted rules by department, location, employee, or workforce attributes. Empty filters behave as catch-all criteria."
@@ -1020,6 +1052,32 @@ export function LeavePlanBuilderPage() {
           </div>
         </div>
       </SectionCard>
+      </>
+      ) : null}
+
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-[24px] border border-[hsl(var(--border)_/_0.84)] bg-[hsl(var(--surface))] px-5 py-4">
+        <button
+          type="button"
+          className="btn-secondary"
+          onClick={() => setCurrentStep((step) => Math.max(1, step - 1) as 1 | 2 | 3)}
+          disabled={currentStep === 1}
+        >
+          Back
+        </button>
+        {currentStep < 3 ? (
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => setCurrentStep((step) => Math.min(3, step + 1) as 1 | 2 | 3)}
+          >
+            Next
+          </button>
+        ) : (
+          <button type="submit" className="btn-primary" disabled={isSaving}>
+            {isSaving ? 'Saving...' : isEditing ? 'Save changes' : 'Create leave plan'}
+          </button>
+        )}
+      </div>
     </form>
   )
 }
