@@ -14,14 +14,14 @@ interface AuthShellProps {
 const contentByVariant = {
   workforce: {
     eyebrow: 'HR & Payroll platform',
-    headline: 'Run payroll, leave, and attendance — and put self-service in every employee\'s hands.',
-    body: 'Clarisal handles India-statutory payroll (PF, ESI, PT, TDS), policy-based leave management, attendance tracking, and multi-step approval workflows — for org admins and employees alike.',
+    headline: 'One login for HR teams and the employees they support.',
+    body: 'Org admins run payroll, leave, attendance, and approvals. Employees access their payslips, apply for leave, regularise attendance, and manage their own profile — all through the same portal.',
     chips: ['Org Admin', 'Employee Self-Service'],
-    panelTitle: 'What you can do here',
+    panelTitle: 'Who signs in here',
     panelItems: [
-      'Process monthly payroll with automatic PF, ESI, professional tax, and TDS calculations.',
-      'Manage leave plans, attendance sources, compensation, and approval workflows.',
-      'View payslips, apply for leave, regularise attendance, and keep your profile current.',
+      'Org admins — process payroll, manage leave plans, run approval workflows, and oversee attendance.',
+      'Employees — view payslips, apply for leave, regularise attendance, and update your profile.',
+      'Both roles share the same login; your workspace determines what you see after signing in.',
     ],
     noteLabel: '',
     noteTitle: '',
