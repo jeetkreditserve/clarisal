@@ -13,7 +13,7 @@ export function LeavePlansPage() {
   const { organisationId } = useParams()
   const isCtMode = Boolean(organisationId)
   const basePath = isCtMode ? `/ct/organisations/${organisationId}` : '/org'
-  const { data: plans, isLoading } = useLeavePlans()
+  const { data: plans, isLoading } = useLeavePlans(!isCtMode)
   const { data: configuration, isLoading: isCtLoading } = useCtOrgConfiguration(organisationId ?? '', isCtMode)
   const resolvedPlans = isCtMode ? configuration?.leave_plans : plans
   const pageLoading = isCtMode ? isCtLoading : isLoading

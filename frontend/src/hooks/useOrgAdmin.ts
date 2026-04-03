@@ -915,20 +915,21 @@ export function useUpdateLeavePlan(id: string) {
   })
 }
 
-export function useOnDutyPolicies() {
+export function useOnDutyPolicies(enabled = true) {
   const organisationId = useOrgScope()
   return useQuery({
     queryKey: ['org', organisationId, 'on-duty-policies'],
     queryFn: fetchOnDutyPolicies,
+    enabled,
   })
 }
 
-export function useOnDutyPolicy(id: string) {
+export function useOnDutyPolicy(id: string, enabled = true) {
   const organisationId = useOrgScope()
   return useQuery({
     queryKey: ['org', organisationId, 'on-duty-policies', id],
     queryFn: () => fetchOnDutyPolicy(id),
-    enabled: Boolean(id),
+    enabled: enabled && Boolean(id),
   })
 }
 
@@ -960,19 +961,21 @@ export function useOrgLeaveRequests() {
   })
 }
 
-export function useOrgOnDutyRequests() {
+export function useOrgOnDutyRequests(enabled = true) {
   const organisationId = useOrgScope()
   return useQuery({
     queryKey: ['org', organisationId, 'on-duty-requests'],
     queryFn: fetchOrgOnDutyRequests,
+    enabled,
   })
 }
 
-export function useNotices(params?: Parameters<typeof fetchNotices>[0]) {
+export function useNotices(params?: Parameters<typeof fetchNotices>[0], enabled = true) {
   const organisationId = useOrgScope()
   return useQuery({
     queryKey: ['org', organisationId, 'notices', params],
     queryFn: () => fetchNotices(params),
+    enabled,
   })
 }
 

@@ -24,7 +24,7 @@ export function NoticesPage() {
     status: statusFilter || undefined,
     audience_type: audienceFilter || undefined,
     search: search || undefined,
-  })
+  }, !isCtMode)
   const { data: configuration, isLoading: isCtLoading } = useCtOrgConfiguration(organisationId ?? '', isCtMode)
   const publishMutation = usePublishNotice()
   const publishCtMutation = usePublishCtNotice(organisationId ?? '')
