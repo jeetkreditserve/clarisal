@@ -20,6 +20,7 @@ import { OrgDashboardPage } from '@/pages/org/DashboardPage'
 import { OrgSetupPage } from '@/pages/org/SetupPage'
 import { OrgProfilePage } from '@/pages/org/ProfilePage'
 import { PayrollPage } from '@/pages/org/PayrollPage'
+import { ReportsPage } from '@/pages/org/ReportsPage'
 import { OrgAuditPage } from '@/pages/org/AuditPage'
 import { LocationsPage } from '@/pages/org/LocationsPage'
 import { DepartmentsPage } from '@/pages/org/DepartmentsPage'
@@ -127,6 +128,7 @@ export const router = createBrowserRouter([
           { path: '/org/profile', element: <OrgProfilePage /> },
           { path: '/org/attendance', element: <AttendanceImportsPage /> },
           { path: '/org/payroll', element: <PayrollPage /> },
+          { path: '/org/reports', element: <ReportsPage /> },
           { path: '/org/locations', element: <LocationsPage /> },
           { path: '/org/departments', element: <DepartmentsPage /> },
           { path: '/org/employees', element: <EmployeesPage /> },

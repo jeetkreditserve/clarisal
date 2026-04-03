@@ -1,5 +1,5 @@
 import { Outlet, useNavigate } from 'react-router-dom'
-import { Bell, Building, Building2, CalendarDays, ClipboardCheck, Clock3, Landmark, LayoutDashboard, LogOut, MapPin, PlaneTakeoff, Repeat, ScrollText, Users } from 'lucide-react'
+import { BarChart3, Bell, Building, Building2, CalendarDays, ClipboardCheck, Clock3, Landmark, LayoutDashboard, LogOut, MapPin, PlaneTakeoff, Repeat, ScrollText, Users } from 'lucide-react'
 import { SidebarNav, type NavGroup } from './SidebarNav'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
 import { useAuth } from '@/hooks/useAuth'
@@ -39,6 +39,7 @@ const navGroups: NavGroup[] = [
     label: 'Operations',
     items: [
       { label: 'Payroll Preview', href: '/org/payroll', icon: Landmark },
+      { label: 'Reports', href: '/org/reports', icon: BarChart3 },
       { label: 'Approvals', href: '/org/approval-workflows', icon: ClipboardCheck },
       { label: 'Notices', href: '/org/notices', icon: Bell },
       { label: 'Audit Timeline', href: '/org/audit', icon: ScrollText },

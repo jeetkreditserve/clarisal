@@ -40,13 +40,13 @@
 - Create: `backend/apps/reports/apps.py`
 - Create: `backend/apps/reports/base.py`
 
-- [ ] **Step 1: Create app**
+- [x] **Step 1: Create app**
 
 ```bash
 cd backend && python manage.py startapp reports apps/reports
 ```
 
-- [ ] **Step 2: Update `apps.py`**
+- [x] **Step 2: Update `apps.py`**
 
 ```python
 # backend/apps/reports/apps.py
@@ -59,7 +59,7 @@ class ReportsConfig(AppConfig):
     label = 'reports'
 ```
 
-- [ ] **Step 3: Add to `INSTALLED_APPS` and install `openpyxl`**
+- [x] **Step 3: Add to `INSTALLED_APPS` and install `openpyxl`**
 
 Add `'apps.reports'` to `LOCAL_APPS` in `backend/clarisal/settings/base.py`.
 
@@ -69,7 +69,7 @@ Add `openpyxl>=3.1.0` to `backend/requirements.txt`.
 pip install openpyxl
 ```
 
-- [ ] **Step 4: Create `base.py`**
+- [x] **Step 4: Create `base.py`**
 
 ```python
 # backend/apps/reports/base.py
@@ -161,7 +161,7 @@ git commit -m "feat(reports): create reports app with BaseReport abstract class 
 **Files:**
 - Create: `backend/apps/reports/payroll_register.py`
 
-- [ ] **Step 1: Write the failing test first**
+- [x] **Step 1: Write the failing test first**
 
 Create `backend/apps/reports/tests/__init__.py` and `backend/apps/reports/tests/test_reports.py`:
 
@@ -194,7 +194,7 @@ class TestPayrollRegisterReport(TestCase):
             self.assertIn(field, row)
 ```
 
-- [ ] **Step 2: Implement `payroll_register.py`**
+- [x] **Step 2: Implement `payroll_register.py`**
 
 ```python
 # backend/apps/reports/payroll_register.py
@@ -240,7 +240,7 @@ class PayrollRegisterReport(BaseReport):
         return rows
 ```
 
-- [ ] **Step 3: Run test**
+- [x] **Step 3: Run test**
 
 ```bash
 cd backend && python -m pytest apps/reports/tests/test_reports.py::TestPayrollRegisterReport -v
@@ -262,7 +262,7 @@ git commit -m "feat(reports): PayrollRegisterReport with all statutory deduction
 **Files:**
 - Create: `backend/apps/reports/headcount.py`
 
-- [ ] **Step 1: Implement `headcount.py`**
+- [x] **Step 1: Implement `headcount.py`**
 
 ```python
 # backend/apps/reports/headcount.py
@@ -345,7 +345,7 @@ git commit -m "feat(reports): HeadcountReport and AttritionReport"
 **Files:**
 - Create: `backend/apps/reports/leave_utilization.py`
 
-- [ ] **Step 1: Implement**
+- [x] **Step 1: Implement**
 
 ```python
 # backend/apps/reports/leave_utilization.py
@@ -399,7 +399,7 @@ git commit -m "feat(reports): LeaveUtilizationReport using repository layer"
 - Create: `backend/apps/reports/attendance_summary.py`
 - Create: `backend/apps/reports/tax_summary.py`
 
-- [ ] **Step 1: Create `attendance_summary.py`**
+- [x] **Step 1: Create `attendance_summary.py`**
 
 ```python
 # backend/apps/reports/attendance_summary.py
@@ -451,7 +451,7 @@ class AttendanceSummaryReport(BaseReport):
         return rows
 ```
 
-- [ ] **Step 2: Create `tax_summary.py`**
+- [x] **Step 2: Create `tax_summary.py`**
 
 ```python
 # backend/apps/reports/tax_summary.py
@@ -523,7 +523,7 @@ git commit -m "feat(reports): AttendanceSummaryReport and TaxSummaryReport"
 - Create: `backend/apps/reports/urls.py`
 - Modify: `backend/clarisal/urls.py`
 
-- [ ] **Step 1: Create `views.py`**
+- [x] **Step 1: Create `views.py`**
 
 ```python
 # backend/apps/reports/views.py
@@ -599,7 +599,7 @@ class OrgReportView(APIView):
             return Response(report.to_json())
 ```
 
-- [ ] **Step 2: Create `urls.py`**
+- [x] **Step 2: Create `urls.py`**
 
 ```python
 # backend/apps/reports/urls.py
@@ -611,7 +611,7 @@ urlpatterns = [
 ]
 ```
 
-- [ ] **Step 3: Register in `clarisal/urls.py`**
+- [x] **Step 3: Register in `clarisal/urls.py`**
 
 Add `path('org/', include('apps.reports.urls'))` to both the legacy and versioned URL includes.
 
@@ -632,7 +632,7 @@ git commit -m "feat(reports): OrgReportView dispatcher with JSON/CSV/Excel forma
 - Modify: `frontend/src/components/layouts/OrgLayout.tsx` (add Reports to nav)
 - Modify: `frontend/src/routes/index.tsx` (add /org/reports route)
 
-- [ ] **Step 1: Add API functions**
+- [x] **Step 1: Add API functions**
 
 In `frontend/src/lib/api/org-admin.ts`, add:
 
@@ -650,7 +650,7 @@ export async function downloadReport(
 }
 ```
 
-- [ ] **Step 2: Create `ReportsPage.tsx`**
+- [x] **Step 2: Create `ReportsPage.tsx`**
 
 ```tsx
 // frontend/src/pages/org/ReportsPage.tsx
@@ -775,7 +775,7 @@ export default function ReportsPage() {
 }
 ```
 
-- [ ] **Step 3: Add route and nav item**
+- [x] **Step 3: Add route and nav item**
 
 In `frontend/src/routes/index.tsx`:
 ```tsx

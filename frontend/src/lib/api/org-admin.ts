@@ -591,6 +591,28 @@ export async function fetchPayrollSummary() {
   return data
 }
 
+export type OrgReportFormat = 'json' | 'csv' | 'xlsx'
+
+export async function downloadOrgReport(
+  reportType: string,
+  params: Record<string, string> = {},
+  fileFormat: OrgReportFormat = 'xlsx',
+) {
+  const response = await api.get<Blob | Record<string, unknown>>(`/org/reports/${reportType}/`, {
+    params: { ...params, file_format: fileFormat },
+    responseType: fileFormat === 'json' ? 'json' : 'blob',
+  })
+
+  if (fileFormat === 'json') {
+    return response.data
+  }
+
+  return {
+    blob: response.data as Blob,
+    filename: response.headers['content-disposition']?.match(/filename=\"?([^"]+)\"?/)?.[1] || `${reportType}.${fileFormat}`,
+  }
+}
+
 export async function createPayrollTaxSlabSet(payload: Record<string, unknown>) {
   const { data } = await api.post<PayrollTaxSlabSet>('/org/payroll/tax-slab-sets/', payload)
   return data
