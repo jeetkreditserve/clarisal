@@ -1403,3 +1403,56 @@ export interface OrgPayrollSummary {
   tds_challans: PayrollTdsChallan[]
   payslip_count: number
 }
+
+export interface CtPayrollStatutoryMasterSlab {
+  gender: string
+  min_income: string
+  max_income: string | null
+  deduction_amount: string
+  applicable_months: number[] | null
+}
+
+export interface CtPayrollStatutoryMasterContribution {
+  min_wage: string
+  max_wage: string | null
+  employee_amount: string
+  employer_amount: string
+  applicable_months: number[] | null
+}
+
+export interface CtPayrollStatutoryMaster {
+  id: number
+  state_code: string
+  state_name: string
+  income_basis?: string
+  wage_basis?: string
+  deduction_frequency: string
+  effective_from: string
+  slabs?: CtPayrollStatutoryMasterSlab[]
+  contributions?: CtPayrollStatutoryMasterContribution[]
+}
+
+export interface CtPayrollStatutoryMastersResponse {
+  professional_tax_rules: CtPayrollStatutoryMaster[]
+  labour_welfare_fund_rules: CtPayrollStatutoryMaster[]
+}
+
+export interface CtOnboardingChecklistItem {
+  label: string
+  is_complete: boolean
+  action: string | null
+}
+
+export interface CtOnboardingChecklistStage {
+  id: string
+  label: string
+  is_complete: boolean
+  items: CtOnboardingChecklistItem[]
+}
+
+export interface CtOnboardingChecklist {
+  current_stage: string
+  stages: CtOnboardingChecklistStage[]
+  can_activate: boolean
+  activation_blockers: string[]
+}

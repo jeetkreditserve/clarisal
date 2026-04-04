@@ -164,6 +164,31 @@
     background: hsl(var(--brand) / 0.24);
     color: hsl(var(--foreground-strong));
   }
+
+  /* Glass scrollbar — invisible track, translucent thumb */
+  ::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--border-strong) / 0.45);
+    border-radius: 99px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--border-strong) / 0.72);
+  }
+
+  /* Firefox */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border-strong) / 0.45) transparent;
+  }
 }
 
 @layer components {

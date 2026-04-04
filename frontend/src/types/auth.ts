@@ -38,6 +38,24 @@ export interface OrgOperationsGuard {
   summary: LicenceSummary
 }
 
+export interface ImpersonationTargetOrgAdmin {
+  id: string
+  full_name: string
+  email: string
+}
+
+export interface ImpersonationSession {
+  session_id: string
+  organisation_id: string
+  organisation_name: string
+  reason: string
+  started_at: string
+  refreshed_at: string
+  is_active: boolean
+  return_path: string
+  target_org_admin: ImpersonationTargetOrgAdmin | null
+}
+
 export interface AuthUser {
   id: string
   email: string
@@ -64,6 +82,8 @@ export interface AuthUser {
   org_setup_required?: boolean
   org_setup_current_step?: string | null
   org_setup_completed_at?: string | null
+  impersonation?: ImpersonationSession | null
+  feature_flags?: Record<string, boolean>
   is_active: boolean
 }
 

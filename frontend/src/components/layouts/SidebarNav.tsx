@@ -52,7 +52,7 @@ export function SidebarNav({ items = [], groups = [], title, subtitle }: Sidebar
         </p>
       </motion.div>
 
-      <nav className="mt-4 grid gap-3 sm:grid-cols-2 lg:flex lg:flex-1 lg:flex-col">
+      <nav className="mt-4 grid gap-3 overflow-y-auto sm:grid-cols-2 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
         {groups.length ? groups.map((group, groupIndex) => {
           const isCollapsed = collapsedGroups[group.label] ?? false
           return (

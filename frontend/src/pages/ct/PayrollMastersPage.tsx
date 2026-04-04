@@ -5,7 +5,7 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { SkeletonPageHeader, SkeletonTable } from '@/components/ui/Skeleton'
 import { StatusBadge } from '@/components/ui/StatusBadge'
-import { useCreateCtPayrollTaxSlabSet, useCtPayrollTaxSlabSets } from '@/hooks/useCtOrganisations'
+import { useCreateCtPayrollTaxSlabSet, useCtPayrollTaxSlabSets, useCtPayrollStatutoryMasters } from '@/hooks/useCtOrganisations'
 import { getErrorMessage } from '@/lib/errors'
 
 const currentYear = new Date().getFullYear()
@@ -13,6 +13,7 @@ const currentYear = new Date().getFullYear()
 export function PayrollMastersPage() {
   const { data, isLoading } = useCtPayrollTaxSlabSets()
   const createMutation = useCreateCtPayrollTaxSlabSet()
+  const { data: statutoryMasters } = useCtPayrollStatutoryMasters()
   const [form, setForm] = useState({
     name: 'Default India Master',
     fiscal_year: `${currentYear}-${currentYear + 1}`,
@@ -95,6 +96,56 @@ export function PayrollMastersPage() {
           </div>
         </SectionCard>
       </div>
+
+      {statutoryMasters && (
+        <div className="space-y-4">
+          <SectionCard
+            title="Professional Tax rules"
+            description="State-wise PT deduction schedules seeded from statutory data. Read-only — update via seed_statutory_masters management command."
+          >
+            {statutoryMasters.professional_tax_rules.length === 0 ? (
+              <p className="text-sm text-[hsl(var(--muted-foreground))]">No rules seeded. Run seed_statutory_masters.</p>
+            ) : (
+              <div className="space-y-2">
+                {statutoryMasters.professional_tax_rules.map((rule) => (
+                  <div key={rule.id} className="surface-shell flex flex-wrap items-center justify-between gap-2 rounded-[18px] px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-semibold text-[hsl(var(--foreground-strong))]">{rule.state_name}</p>
+                      <StatusBadge tone="info">{rule.state_code}</StatusBadge>
+                    </div>
+                    <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                      {rule.deduction_frequency} • {rule.slabs?.length ?? 0} slabs • from {rule.effective_from}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </SectionCard>
+
+          <SectionCard
+            title="Labour Welfare Fund rules"
+            description="State-wise LWF contribution schedules. Read-only — update via seed_statutory_masters management command."
+          >
+            {statutoryMasters.labour_welfare_fund_rules.length === 0 ? (
+              <p className="text-sm text-[hsl(var(--muted-foreground))]">No rules seeded. Run seed_statutory_masters.</p>
+            ) : (
+              <div className="space-y-2">
+                {statutoryMasters.labour_welfare_fund_rules.map((rule) => (
+                  <div key={rule.id} className="surface-shell flex flex-wrap items-center justify-between gap-2 rounded-[18px] px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-semibold text-[hsl(var(--foreground-strong))]">{rule.state_name}</p>
+                      <StatusBadge tone="info">{rule.state_code}</StatusBadge>
+                    </div>
+                    <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                      {rule.deduction_frequency} • {rule.contributions?.length ?? 0} contribution tiers • from {rule.effective_from}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </SectionCard>
+        </div>
+      )}
     </div>
   )
 }

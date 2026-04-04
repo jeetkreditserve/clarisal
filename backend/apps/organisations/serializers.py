@@ -17,11 +17,13 @@ from .country_metadata import (
     validate_phone_for_country,
 )
 from .models import (
+    ActAsSession,
     OrgAdminSetupStep,
     Organisation,
     OrganisationAddress,
     OrganisationBootstrapAdmin,
     OrganisationEntityType,
+    OrganisationFeatureCode,
     OrganisationLegalIdentifier,
     OrganisationLicenceBatch,
     OrganisationLicenceLedger,
@@ -327,6 +329,55 @@ class OrgAdminSetupUpdateSerializer(serializers.Serializer):
     completed = serializers.BooleanField(required=False, default=False)
 
 
+class ActAsSessionSerializer(serializers.ModelSerializer):
+    organisation_id = serializers.UUIDField(source='organisation.id', read_only=True)
+    organisation_name = serializers.CharField(source='organisation.name', read_only=True)
+    target_org_admin = serializers.SerializerMethodField()
+    is_active = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = ActAsSession
+        fields = [
+            'id',
+            'organisation_id',
+            'organisation_name',
+            'reason',
+            'started_at',
+            'refreshed_at',
+            'ended_at',
+            'revoked_at',
+            'revoked_reason',
+            'target_org_admin',
+            'is_active',
+        ]
+
+    def get_target_org_admin(self, obj):
+        if obj.target_org_admin is None:
+            return None
+        return {
+            'id': str(obj.target_org_admin.id),
+            'full_name': obj.target_org_admin.full_name,
+            'email': obj.target_org_admin.email,
+        }
+
+
+class ActAsSessionStartSerializer(serializers.Serializer):
+    reason = serializers.CharField(max_length=1000)
+    target_org_admin_id = serializers.UUIDField(required=False, allow_null=True)
+
+
+class OrganisationFeatureFlagSerializer(serializers.Serializer):
+    feature_code = serializers.ChoiceField(choices=OrganisationFeatureCode.choices)  # type: ignore[arg-type]
+    label = serializers.CharField()  # type: ignore[assignment]
+    is_enabled = serializers.BooleanField()
+    is_default = serializers.BooleanField()
+
+
+class OrganisationFeatureFlagWriteSerializer(serializers.Serializer):
+    feature_code = serializers.ChoiceField(choices=OrganisationFeatureCode.choices)  # type: ignore[arg-type]
+    is_enabled = serializers.BooleanField()
+
+
 class OrganisationDetailSerializer(serializers.ModelSerializer):
     created_by_email = serializers.EmailField(source='created_by.email', read_only=True)
     primary_admin_email = serializers.EmailField(source='primary_admin_user.email', read_only=True)
@@ -349,6 +400,7 @@ class OrganisationDetailSerializer(serializers.ModelSerializer):
     note_count = serializers.SerializerMethodField()
     configuration_summary = serializers.SerializerMethodField()
     operations_guard = serializers.SerializerMethodField()
+    feature_flags = serializers.SerializerMethodField()
 
     class Meta:
         model = Organisation
@@ -359,7 +411,7 @@ class OrganisationDetailSerializer(serializers.ModelSerializer):
             'primary_admin_email', 'primary_admin', 'bootstrap_admin', 'paid_marked_at', 'activated_at', 'suspended_at',
             'created_by_email', 'created_at', 'modified_at',
             'admin_count', 'employee_count', 'holiday_calendar_count', 'note_count', 'configuration_summary',
-            'operations_guard',
+            'operations_guard', 'feature_flags',
             'addresses', 'legal_identifiers', 'tax_registrations',
             'state_transitions', 'lifecycle_events', 'licence_ledger_entries', 'licence_summary',
             'licence_batches', 'batch_defaults',
@@ -419,6 +471,11 @@ class OrganisationDetailSerializer(serializers.ModelSerializer):
         from .services import get_org_operations_guard
 
         return get_org_operations_guard(obj)
+
+    def get_feature_flags(self, obj):
+        from .services import list_org_feature_flags
+
+        return OrganisationFeatureFlagSerializer(list_org_feature_flags(obj), many=True).data
 
 
 class CreateOrganisationSerializer(serializers.Serializer):

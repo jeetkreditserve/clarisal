@@ -52,6 +52,7 @@ import {
   useCtOrgEmployeeDetail,
   useCtOrgEmployees,
   useCtOrgOnboardingSummary,
+  useCtOrgOnboardingChecklist,
   useCtOrgNotes,
   useDeactivateCtDepartment,
   useDeactivateCtLocation,
@@ -68,6 +69,8 @@ import {
   useResendOrgAdminInvite,
   useRestoreOrganisation,
   useSuspendOrganisation,
+  useStartCtImpersonation,
+  useUpdateCtOrganisationFeatureFlags,
   useUpdateCtApprovalWorkflow,
   useUpdateCtBootstrapAdmin,
   useUpdateCtDepartment,
@@ -81,6 +84,7 @@ import {
   useUpdateOrganisation,
   useUpdateOrganisationAddress,
 } from '@/hooks/useCtOrganisations'
+import { useAuth } from '@/hooks/useAuth'
 import {
   APPROVAL_REQUEST_KIND_OPTIONS,
   createDefaultApprovalWorkflow,
@@ -238,6 +242,12 @@ type NoticeFormState = ReturnType<typeof createDefaultNoticeForm>
 type ActionDialogState = {
   open: boolean
   note: string
+}
+
+type ActAsDialogState = {
+  open: boolean
+  reason: string
+  target_org_admin_id: string
 }
 
 const mandatoryAddressTypes: OrganisationAddressType[] = ['REGISTERED', 'BILLING']
@@ -666,6 +676,7 @@ function createHolidayFormState(calendar?: HolidayCalendar) {
 
 export function OrganisationDetailPage() {
   const navigate = useNavigate()
+  const { user, refreshUser } = useAuth()
   const { id } = useParams<{ id: string }>()
   const organisationId = id ?? ''
   const [searchParams, setSearchParams] = useSearchParams()
@@ -689,6 +700,11 @@ export function OrganisationDetailPage() {
   const [noticeDialogOpen, setNoticeDialogOpen] = useState(false)
   const [suspendDialog, setSuspendDialog] = useState<ActionDialogState>({ open: false, note: '' })
   const [restoreDialog, setRestoreDialog] = useState<ActionDialogState>({ open: false, note: '' })
+  const [actAsDialog, setActAsDialog] = useState<ActAsDialogState>({
+    open: false,
+    reason: '',
+    target_org_admin_id: '',
+  })
   const [inviteForm, setInviteForm] = useState({ email: '', first_name: '', last_name: '' })
   const [noteBody, setNoteBody] = useState('')
   const [employeesPage, setEmployeesPage] = useState(1)
@@ -722,7 +738,7 @@ export function OrganisationDetailPage() {
   const [hasProfileCurrencyManualOverride, setHasProfileCurrencyManualOverride] = useState(false)
 
   const { data: organisation, isLoading } = useOrganisation(organisationId)
-  const { data: admins } = useOrgAdmins(organisationId, activeTab === 'admins')
+  const { data: admins } = useOrgAdmins(organisationId, activeTab === 'admins' || actAsDialog.open)
   const { data: employees, isLoading: employeesLoading } = useCtOrgEmployees(
     organisationId,
     { page: employeesPage, search: employeeSearch || undefined, status: employeeStatusFilter || undefined },
@@ -745,6 +761,7 @@ export function OrganisationDetailPage() {
     organisationId,
     activeTab === 'onboarding',
   )
+  const { data: onboardingChecklist } = useCtOrgOnboardingChecklist(organisationId)
   const { data: attendanceSummary, isLoading: attendanceSummaryLoading } = useCtOrgAttendanceSummary(organisationId, activeTab === 'attendance')
   const { data: approvalSummary, isLoading: approvalSummaryLoading } = useCtOrgApprovalSummary(organisationId, activeTab === 'approvals')
   const { data: auditLogs } = useCtAuditLogs(organisationId, activeTab === 'audit')
@@ -756,6 +773,8 @@ export function OrganisationDetailPage() {
   const deactivateAddressMutation = useDeactivateOrganisationAddress(organisationId)
   const suspendMutation = useSuspendOrganisation()
   const restoreMutation = useRestoreOrganisation()
+  const startImpersonationMutation = useStartCtImpersonation(organisationId)
+  const updateFeatureFlagsMutation = useUpdateCtOrganisationFeatureFlags(organisationId)
   const inviteAdminMutation = useInviteOrgAdmin(organisationId)
   const resendInviteMutation = useResendOrgAdminInvite(organisationId)
   const deactivateAdminMutation = useDeactivateCtOrgAdmin(organisationId)
@@ -1400,6 +1419,38 @@ export function OrganisationDetailPage() {
     }
   }
 
+  const openActAsDialog = () => {
+    setActAsDialog({
+      open: true,
+      reason: `Control Tower support review for ${organisation?.name ?? 'this organisation'}`,
+      target_org_admin_id: '',
+    })
+  }
+
+  const handleStartImpersonation = async () => {
+    try {
+      await startImpersonationMutation.mutateAsync({
+        reason: actAsDialog.reason.trim(),
+        target_org_admin_id: actAsDialog.target_org_admin_id || null,
+      })
+      await refreshUser()
+      toast.success('Read-only organisation workspace opened.')
+      setActAsDialog((current) => ({ ...current, open: false }))
+      navigate('/org/dashboard')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to start Control Tower impersonation.'))
+    }
+  }
+
+  const handleToggleFeatureFlag = async (featureCode: string, nextValue: boolean) => {
+    try {
+      await updateFeatureFlagsMutation.mutateAsync([{ feature_code: featureCode, is_enabled: nextValue }])
+      toast.success(`Updated ${startCase(featureCode)} access.`)
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to update feature flag.'))
+    }
+  }
+
   if (isLoading || !organisation) {
     return (
       <div className="space-y-5">
@@ -1500,6 +1551,55 @@ export function OrganisationDetailPage() {
           <DetailMetric label="Notes" value={String(organisation.note_count)} helper="Control Tower internal notes" />
         </div>
       </SectionCard>
+
+      {onboardingChecklist && (
+        <SectionCard
+          title="Setup checklist"
+          description="Specific actions required to complete this organisation's onboarding."
+        >
+          <div className="space-y-3">
+            {onboardingChecklist.stages.map((stage) => (
+              <div
+                key={stage.id}
+                className={`rounded-[18px] border px-4 py-4 ${stage.is_complete ? 'border-[hsl(var(--success)_/_0.28)] bg-[hsl(var(--success)_/_0.06)]' : 'border-[hsl(var(--border))] bg-[hsl(var(--surface-subtle))]'}`}
+              >
+                <div className="flex items-center gap-2">
+                  <span className={`h-2 w-2 flex-shrink-0 rounded-full ${stage.is_complete ? 'bg-[hsl(var(--success))]' : 'bg-[hsl(var(--border-strong))]'}`} />
+                  <p className={`text-sm font-semibold ${stage.is_complete ? 'text-[hsl(var(--success))]' : 'text-[hsl(var(--foreground-strong))]'}`}>{stage.label}</p>
+                </div>
+                {!stage.is_complete && (
+                  <div className="mt-3 space-y-2 pl-4">
+                    {stage.items.filter((item) => !item.is_complete).map((item) => (
+                      <div key={item.label} className="flex items-center justify-between gap-2">
+                        <p className="text-xs text-[hsl(var(--muted-foreground))]">{item.label}</p>
+                        {item.action && (
+                          <button
+                            type="button"
+                            className="text-xs font-semibold text-[hsl(var(--brand))] hover:underline"
+                            onClick={() => setActiveTab(item.action as DetailTabKey)}
+                          >
+                            Go →
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          {onboardingChecklist.activation_blockers.length > 0 && (
+            <div className="mt-4 rounded-[14px] border border-[hsl(var(--destructive)_/_0.25)] bg-[hsl(var(--destructive)_/_0.07)] px-4 py-3">
+              <p className="text-xs font-semibold text-[hsl(var(--destructive))]">Activation blocked</p>
+              <ul className="mt-1.5 space-y-1">
+                {onboardingChecklist.activation_blockers.map((blocker) => (
+                  <li key={blocker} className="text-xs text-[hsl(var(--muted-foreground))]">• {blocker}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </SectionCard>
+      )}
     </div>
   )
 
@@ -2307,6 +2407,35 @@ export function OrganisationDetailPage() {
   const renderConfigurationTab = () => (
     <div className="space-y-6">
       <SectionCard
+        title="Tenant feature flags"
+        description="Control module rollout centrally for this organisation. Disabled modules disappear from the org navigation and return 403 from protected APIs."
+      >
+        <div className="grid gap-3 md:grid-cols-2">
+          {organisation.feature_flags.map((flag) => (
+            <div key={flag.feature_code} className="rounded-[20px] border border-[hsl(var(--border)_/_0.78)] px-4 py-4">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="font-semibold text-[hsl(var(--foreground-strong))]">{flag.label}</p>
+                  <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
+                    Code: {flag.feature_code}
+                    {flag.is_default ? ' • default rollout' : ' • tenant override'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className={flag.is_enabled ? 'btn-secondary' : 'btn-primary'}
+                  disabled={updateFeatureFlagsMutation.isPending}
+                  onClick={() => void handleToggleFeatureFlag(flag.feature_code, !flag.is_enabled)}
+                >
+                  {flag.is_enabled ? 'Disable' : 'Enable'}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </SectionCard>
+
+      <SectionCard
         title="Workplace structure"
         description="Locations and departments configured for this tenant."
         action={
@@ -2634,6 +2763,15 @@ export function OrganisationDetailPage() {
         description={`Tenant ${organisation.slug} is ${startCase(organisation.status)} with ${organisation.licence_summary.allocated} allocated employees against ${organisation.licence_summary.active_paid_quantity} active paid seats.`}
         actions={
           <>
+            {user?.impersonation?.organisation_id === organisation.id ? (
+              <button type="button" className="btn-primary" onClick={() => navigate('/org/dashboard')}>
+                Open org workspace
+              </button>
+            ) : (
+              <button type="button" className="btn-secondary" onClick={openActAsDialog}>
+                Open read-only org view
+              </button>
+            )}
             {onlyDraftBatch ? (
               <button type="button" className="btn-primary" onClick={() => openMarkPaidDialog(onlyDraftBatch.id)}>
                 Mark paid & send onboarding
@@ -2704,6 +2842,60 @@ export function OrganisationDetailPage() {
       {activeTab === 'configuration' ? renderConfigurationTab() : null}
       {activeTab === 'audit' ? renderAuditTab() : null}
       {activeTab === 'notes' ? renderNotesTab() : null}
+
+      <AppDialog
+        open={actAsDialog.open}
+        onOpenChange={(open) => setActAsDialog((current) => ({ ...current, open }))}
+        title="Start Control Tower impersonation"
+        description="This opens the organisation admin workspace in read-only mode. Every start, refresh, and stop action is audit logged."
+        footer={
+          <div className="flex flex-wrap justify-end gap-3">
+            <button type="button" className="btn-secondary" onClick={() => setActAsDialog((current) => ({ ...current, open: false }))}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={() => void handleStartImpersonation()}
+              disabled={startImpersonationMutation.isPending || !actAsDialog.reason.trim()}
+            >
+              Start read-only session
+            </button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <label className="space-y-2 text-sm">
+            <span className="font-medium text-[hsl(var(--foreground-strong))]">Reason</span>
+            <textarea
+              value={actAsDialog.reason}
+              onChange={(event) => setActAsDialog((current) => ({ ...current, reason: event.target.value }))}
+              rows={4}
+              className="min-h-[7rem] w-full rounded-[20px] border border-[hsl(var(--border)_/_0.84)] bg-[hsl(var(--surface))] px-4 py-3 text-sm outline-none transition focus:border-[hsl(var(--brand)_/_0.45)]"
+              placeholder="Describe why this support session is required"
+            />
+          </label>
+          <label className="space-y-2 text-sm">
+            <span className="font-medium text-[hsl(var(--foreground-strong))]">Target org admin</span>
+            <AppSelect
+              value={actAsDialog.target_org_admin_id}
+              onValueChange={(value) => setActAsDialog((current) => ({ ...current, target_org_admin_id: value }))}
+              options={[
+                { value: '', label: 'Auto-select active admin context' },
+                ...(admins ?? []).map((admin) => ({
+                  value: admin.id,
+                  label: `${admin.full_name} (${admin.email})`,
+                })),
+              ]}
+              placeholder="Select a target admin"
+            />
+          </label>
+          <div className="rounded-[20px] border border-[hsl(var(--warning)_/_0.32)] bg-[hsl(var(--warning)_/_0.12)] px-4 py-3 text-sm text-[hsl(var(--foreground-strong))]">
+            <p className="font-semibold">Writes stay blocked while this session is active.</p>
+            <p className="mt-1 text-[hsl(var(--muted-foreground))]">Use this mode to inspect org configuration safely, then stop the session to return to Control Tower.</p>
+          </div>
+        </div>
+      </AppDialog>
 
       <AppDialog
         open={profileDialogOpen}

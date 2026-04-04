@@ -8,6 +8,7 @@ from django.db.models import Count, F, Q, Sum
 from django.utils import timezone
 
 from apps.accounts.contact_services import normalize_email_address, resolve_person_contacts
+from apps.accounts.models import AccountType
 from apps.accounts.workspaces import ACTIVE_EMPLOYEE_STATUSES, sync_user_role
 from apps.audit.services import log_audit_event
 from apps.employees.models import Employee, EmployeeStatus
@@ -27,6 +28,7 @@ from .country_metadata import (
     validate_phone_for_country,
 )
 from .models import (
+    ActAsSession,
     BootstrapAdminStatus,
     LicenceBatchLifecycleState,
     LicenceBatchPaymentStatus,
@@ -40,6 +42,8 @@ from .models import (
     OrganisationBillingStatus,
     OrganisationBootstrapAdmin,
     OrganisationEntityType,
+    OrganisationFeatureCode,
+    OrganisationFeatureFlag,
     OrganisationLegalIdentifier,
     OrganisationLegalIdentifierType,
     OrganisationLicenceBatch,
@@ -73,6 +77,18 @@ ORG_ADMIN_SETUP_SEQUENCE = [
     OrgAdminSetupStep.POLICIES,
     OrgAdminSetupStep.EMPLOYEES,
 ]
+
+ORG_FEATURE_FLAG_DEFAULTS = {
+    OrganisationFeatureCode.ATTENDANCE: True,
+    OrganisationFeatureCode.APPROVALS: True,
+    OrganisationFeatureCode.BIOMETRICS: True,
+    OrganisationFeatureCode.NOTICES: True,
+    OrganisationFeatureCode.PAYROLL: True,
+    OrganisationFeatureCode.PERFORMANCE: True,
+    OrganisationFeatureCode.RECRUITMENT: True,
+    OrganisationFeatureCode.REPORTS: True,
+    OrganisationFeatureCode.TIMEOFF: True,
+}
 
 
 def normalize_pan_number(value):
@@ -697,6 +713,182 @@ def create_lifecycle_event(organisation, event_type, actor=None, payload=None):
         actor=actor,
         payload=payload or {},
     )
+
+
+def _resolve_act_as_target_org_admin(organisation, target_org_admin=None):
+    if target_org_admin is not None:
+        membership_exists = OrganisationMembership.objects.filter(
+            organisation=organisation,
+            user=target_org_admin,
+            is_org_admin=True,
+            status=OrganisationMembershipStatus.ACTIVE,
+        ).exists()
+        if not membership_exists:
+            raise ValueError('Selected target admin does not have active org admin access to this organisation.')
+        return target_org_admin
+
+    if organisation.primary_admin_user_id:
+        return organisation.primary_admin_user
+
+    membership = (
+        OrganisationMembership.objects.select_related('user')
+        .filter(
+            organisation=organisation,
+            is_org_admin=True,
+            status=OrganisationMembershipStatus.ACTIVE,
+        )
+        .order_by('created_at')
+        .first()
+    )
+    return membership.user if membership is not None else None
+
+
+def get_org_feature_flags_map(organisation):
+    stored_flags = {
+        feature_flag.feature_code: feature_flag.is_enabled
+        for feature_flag in OrganisationFeatureFlag.objects.filter(organisation=organisation)
+    }
+    return {
+        feature_code: stored_flags.get(feature_code, default_value)
+        for feature_code, default_value in ORG_FEATURE_FLAG_DEFAULTS.items()
+    }
+
+
+def list_org_feature_flags(organisation):
+    stored_flags = {
+        feature_flag.feature_code: feature_flag
+        for feature_flag in OrganisationFeatureFlag.objects.filter(organisation=organisation)
+    }
+    return [
+        {
+            'feature_code': feature_code,
+            'label': OrganisationFeatureCode(feature_code).label,
+            'is_enabled': stored_flags.get(feature_code).is_enabled if stored_flags.get(feature_code) else default_value,
+            'is_default': feature_code not in stored_flags,
+        }
+        for feature_code, default_value in ORG_FEATURE_FLAG_DEFAULTS.items()
+    ]
+
+
+def is_org_feature_enabled(organisation, feature_code):
+    if feature_code not in ORG_FEATURE_FLAG_DEFAULTS:
+        raise ValueError(f'Unknown organisation feature code: {feature_code}')
+    return get_org_feature_flags_map(organisation)[feature_code]
+
+
+def set_org_feature_flag(organisation, *, feature_code, is_enabled, actor=None):
+    if feature_code not in ORG_FEATURE_FLAG_DEFAULTS:
+        raise ValueError(f'Unknown organisation feature code: {feature_code}')
+    feature_flag, _ = OrganisationFeatureFlag.objects.update_or_create(
+        organisation=organisation,
+        feature_code=feature_code,
+        defaults={'is_enabled': is_enabled},
+    )
+    log_audit_event(
+        actor,
+        'organisation.feature_flag.updated',
+        organisation=organisation,
+        target=feature_flag,
+        payload={'feature_code': feature_code, 'is_enabled': is_enabled},
+    )
+    return feature_flag
+
+
+@transaction.atomic
+def stop_act_as_session(session, *, actor, request=None, reason=''):
+    if not session.is_active:
+        return session
+
+    now = timezone.now()
+    session.ended_at = now
+    session.ended_by = actor
+    session.save(update_fields=['ended_at', 'ended_by', 'modified_at'])
+
+    create_lifecycle_event(
+        session.organisation,
+        LifecycleEventType.ACT_AS_STOPPED,
+        actor,
+        payload={'session_id': str(session.id), 'reason': reason},
+    )
+    log_audit_event(
+        actor,
+        'organisation.act_as.stopped',
+        organisation=session.organisation,
+        target=session,
+        payload={'reason': reason, 'target_org_admin_id': str(session.target_org_admin_id) if session.target_org_admin_id else None},
+        request=request,
+    )
+    return session
+
+
+@transaction.atomic
+def start_act_as_session(organisation, *, actor, reason, request=None, target_org_admin=None):
+    if actor.account_type != AccountType.CONTROL_TOWER:
+        raise ValueError('Only Control Tower users can start impersonation sessions.')
+
+    now = timezone.now()
+    active_sessions = list(
+        ActAsSession.objects.select_for_update()
+        .filter(actor=actor, ended_at__isnull=True, revoked_at__isnull=True)
+    )
+    for active_session in active_sessions:
+        active_session.ended_at = now
+        active_session.ended_by = actor
+        active_session.save(update_fields=['ended_at', 'ended_by', 'modified_at'])
+
+    resolved_target_org_admin = _resolve_act_as_target_org_admin(organisation, target_org_admin=target_org_admin)
+    session = ActAsSession.objects.create(
+        actor=actor,
+        organisation=organisation,
+        target_org_admin=resolved_target_org_admin,
+        reason=reason.strip(),
+        started_at=now,
+        refreshed_at=now,
+    )
+    create_lifecycle_event(
+        organisation,
+        LifecycleEventType.ACT_AS_STARTED,
+        actor,
+        payload={
+            'session_id': str(session.id),
+            'reason': session.reason,
+            'target_org_admin_id': str(session.target_org_admin_id) if session.target_org_admin_id else None,
+        },
+    )
+    log_audit_event(
+        actor,
+        'organisation.act_as.started',
+        organisation=organisation,
+        target=session,
+        payload={
+            'reason': session.reason,
+            'target_org_admin_id': str(session.target_org_admin_id) if session.target_org_admin_id else None,
+        },
+        request=request,
+    )
+    return session
+
+
+def refresh_act_as_session(session, *, actor, request=None):
+    if not session.is_active:
+        raise ValueError('This impersonation session is no longer active.')
+    session.refreshed_at = timezone.now()
+    session.save(update_fields=['refreshed_at', 'modified_at'])
+    create_lifecycle_event(
+        session.organisation,
+        LifecycleEventType.ACT_AS_REFRESHED,
+        actor,
+        payload={'session_id': str(session.id)},
+    )
+    log_audit_event(
+        actor,
+        'organisation.act_as.refreshed',
+        organisation=session.organisation,
+        target=session,
+        payload={},
+        request=request,
+    )
+    return session
 
 
 def _next_year(input_date):
@@ -1437,3 +1629,122 @@ def create_organisation_note(organisation, body, created_by):
         payload={'body_preview': note.body[:120]},
     )
     return note
+
+
+def get_ct_onboarding_checklist(organisation):
+    """Return a structured CT onboarding checklist derived from organisation state."""
+    from apps.approvals.models import ApprovalWorkflow
+    from apps.departments.models import Department
+    from apps.locations.models import OfficeLocation
+    from apps.payroll.models import PayrollTaxSlabSet
+    from apps.timeoff.models import HolidayCalendar, LeaveCycle, LeavePlan
+
+    has_name = bool(organisation.name and organisation.pan_number and organisation.entity_type)
+    addresses = list(organisation.addresses.filter(is_active=True).values_list('address_type', flat=True))
+    has_registered_address = OrganisationAddressType.REGISTERED in addresses
+    has_billing_address = OrganisationAddressType.BILLING in addresses
+    has_any_batch = organisation.licence_batches.exists()
+    has_paid_batch = organisation.licence_batches.filter(
+        payment_status=LicenceBatchPaymentStatus.PAID,
+    ).exists()
+    has_bootstrap_admin = OrganisationBootstrapAdmin.objects.filter(organisation=organisation).exists()
+    has_active_admin = OrganisationMembership.objects.filter(
+        organisation=organisation,
+        is_org_admin=True,
+        status=OrganisationMembershipStatus.ACTIVE,
+    ).exists()
+    has_locations = OfficeLocation.objects.filter(organisation=organisation, is_active=True).exists()
+    has_departments = Department.objects.filter(organisation=organisation, is_active=True).exists()
+    has_holidays = HolidayCalendar.objects.filter(organisation=organisation).exists()
+    has_leave_policy = (
+        LeaveCycle.objects.filter(organisation=organisation).exists()
+        or LeavePlan.objects.filter(organisation=organisation).exists()
+    )
+    has_approvals = ApprovalWorkflow.objects.filter(organisation=organisation).exists()
+    has_tax_slabs = PayrollTaxSlabSet.objects.filter(organisation=organisation, is_active=True).exists()
+    has_employees = Employee.objects.filter(organisation=organisation).exists()
+
+    stages = [
+        {
+            'id': 'ORG_CREATED',
+            'label': 'Organisation created',
+            'is_complete': has_name and has_registered_address and has_billing_address,
+            'items': [
+                {'label': 'Legal details (name, PAN, entity type)', 'is_complete': has_name, 'action': 'details'},
+                {'label': 'Registered address', 'is_complete': has_registered_address, 'action': 'details'},
+                {'label': 'Billing address', 'is_complete': has_billing_address, 'action': 'details'},
+            ],
+        },
+        {
+            'id': 'LICENCES_ASSIGNED',
+            'label': 'Licences assigned',
+            'is_complete': has_any_batch,
+            'items': [
+                {'label': 'At least one licence batch created', 'is_complete': has_any_batch, 'action': 'licences'},
+            ],
+        },
+        {
+            'id': 'PAYMENT_CONFIRMED',
+            'label': 'Payment confirmed',
+            'is_complete': has_paid_batch,
+            'items': [
+                {'label': 'First licence batch marked as paid', 'is_complete': has_paid_batch, 'action': 'licences'},
+            ],
+        },
+        {
+            'id': 'ADMIN_INVITED',
+            'label': 'Primary admin invited',
+            'is_complete': has_bootstrap_admin,
+            'items': [
+                {'label': 'Bootstrap admin configured', 'is_complete': has_bootstrap_admin, 'action': 'details'},
+            ],
+        },
+        {
+            'id': 'ADMIN_ACTIVATED',
+            'label': 'Admin activated',
+            'is_complete': has_active_admin,
+            'items': [
+                {'label': 'At least one active org admin', 'is_complete': has_active_admin, 'action': 'admins'},
+            ],
+        },
+        {
+            'id': 'MASTER_DATA_CONFIGURED',
+            'label': 'Master data configured',
+            'is_complete': has_locations and has_departments and has_holidays and has_leave_policy and has_approvals,
+            'items': [
+                {'label': 'Office location', 'is_complete': has_locations, 'action': 'configuration'},
+                {'label': 'Department', 'is_complete': has_departments, 'action': 'configuration'},
+                {'label': 'Holiday calendar', 'is_complete': has_holidays, 'action': 'holidays'},
+                {'label': 'Leave cycle or leave plan', 'is_complete': has_leave_policy, 'action': 'configuration'},
+                {'label': 'Approval workflow', 'is_complete': has_approvals, 'action': 'approvals'},
+                {'label': 'Payroll tax slab set (optional)', 'is_complete': has_tax_slabs, 'action': 'configuration'},
+            ],
+        },
+        {
+            'id': 'EMPLOYEES_INVITED',
+            'label': 'Employees invited',
+            'is_complete': has_employees,
+            'items': [
+                {'label': 'At least one employee invited', 'is_complete': has_employees, 'action': 'employees'},
+            ],
+        },
+    ]
+
+    mandatory_blockers = []
+    if not has_paid_batch:
+        mandatory_blockers.append('Licence payment not confirmed')
+    if not has_active_admin:
+        mandatory_blockers.append('No active organisation admin')
+    if not has_locations:
+        mandatory_blockers.append('No office location configured')
+    if not has_departments:
+        mandatory_blockers.append('No department configured')
+    if not has_holidays:
+        mandatory_blockers.append('No holiday calendar configured')
+
+    return {
+        'current_stage': organisation.onboarding_stage,
+        'stages': stages,
+        'can_activate': len(mandatory_blockers) == 0,
+        'activation_blockers': mandatory_blockers,
+    }

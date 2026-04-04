@@ -12,6 +12,7 @@ from apps.accounts.workspaces import (
 )
 from apps.employees.models import Employee, EmployeeOnboardingStatus, EmployeeStatus
 from apps.organisations.models import (
+    ActAsSession,
     Organisation,
     OrganisationAccessState,
     OrganisationBillingStatus,
@@ -156,3 +157,32 @@ class TestWorkspaceHelpers:
         user.refresh_from_db()
 
         assert user.role == UserRole.ORG_ADMIN
+
+    def test_control_tower_act_as_session_sets_admin_context(self, rf, ct_user, organisation):
+        act_as_session = ActAsSession.objects.create(
+            actor=ct_user,
+            organisation=organisation,
+            reason='Investigating setup issue',
+        )
+        request = _request_with_session(rf, ct_act_as_session_id=str(act_as_session.id))
+
+        state = get_workspace_state(ct_user, request)
+
+        assert state.active_kind == 'ADMIN'
+        assert state.active_admin_membership is None
+        assert state.impersonation_session is not None
+        assert state.impersonation_session.id == act_as_session.id
+        assert state.impersonated_organisation is not None
+        assert state.impersonated_organisation.id == organisation.id
+
+    def test_control_tower_impersonation_changes_default_route_to_org_dashboard(self, rf, ct_user, organisation):
+        act_as_session = ActAsSession.objects.create(
+            actor=ct_user,
+            organisation=organisation,
+            reason='Helping org admin reproduce issue',
+        )
+        request = _request_with_session(rf, ct_act_as_session_id=str(act_as_session.id))
+
+        route = get_default_route(ct_user, request)
+
+        assert route == '/org/dashboard'

@@ -5,8 +5,13 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.accounts.permissions import BelongsToActiveOrg, IsControlTowerUser, IsOrgAdmin, OrgAdminMutationAllowed
-from apps.accounts.workspaces import get_active_admin_organisation
+from apps.accounts.permissions import (
+    BelongsToActiveOrg,
+    IsControlTowerUser,
+    IsOrgAdmin,
+    OrgAdminMutationAllowed,
+)
+from apps.accounts.workspaces import get_active_admin_organisation, get_active_impersonation_session
 from apps.approvals.models import ApprovalAction, ApprovalActionStatus, ApprovalRun, ApprovalRunStatus, ApprovalWorkflow
 from apps.approvals.serializers import ApprovalWorkflowSerializer, ApprovalWorkflowWriteSerializer
 from apps.approvals.views import _upsert_workflow as upsert_approval_workflow
@@ -63,9 +68,17 @@ from apps.timeoff.services import (
     upsert_on_duty_policy,
 )
 
-from .models import Organisation, OrganisationAddress, OrganisationLicenceBatch, OrganisationNote, OrganisationStatus
+from .models import (
+    Organisation,
+    OrganisationAddress,
+    OrganisationLicenceBatch,
+    OrganisationNote,
+    OrganisationStatus,
+)
 from .repositories import get_org_admins, get_organisations
 from .serializers import (
+    ActAsSessionSerializer,
+    ActAsSessionStartSerializer,
     CreateOrganisationSerializer,
     CTDashboardStatsSerializer,
     LicenceBatchMarkPaidSerializer,
@@ -78,6 +91,8 @@ from .serializers import (
     OrganisationAddressSerializer,
     OrganisationAddressWriteSerializer,
     OrganisationDetailSerializer,
+    OrganisationFeatureFlagSerializer,
+    OrganisationFeatureFlagWriteSerializer,
     OrganisationListSerializer,
     OrganisationNoteSerializer,
     OrganisationNoteWriteSerializer,
@@ -92,12 +107,18 @@ from .services import (
     deactivate_org_admin_membership,
     deactivate_organisation_address,
     get_ct_dashboard_stats,
+    get_ct_onboarding_checklist,
     get_org_admin_setup_state,
     get_org_dashboard_stats,
     get_org_licence_summary,
+    list_org_feature_flags,
     mark_licence_batch_paid,
     reactivate_org_admin_membership,
+    refresh_act_as_session,
     revoke_org_admin_membership_invitation,
+    set_org_feature_flag,
+    start_act_as_session,
+    stop_act_as_session,
     transition_organisation_state,
     update_licence_batch,
     update_org_admin_setup_state,
@@ -108,6 +129,16 @@ from .services import (
 
 def _get_ct_organisation(pk):
     return get_object_or_404(Organisation, id=pk)
+
+
+def _set_impersonation_session(request, session):
+    request.session['ct_act_as_session_id'] = str(session.id)
+    request.session.modified = True
+
+
+def _clear_impersonation_session(request):
+    request.session.pop('ct_act_as_session_id', None)
+    request.session.modified = True
 
 
 def _resolve_leave_plan_rules(organisation, rules_payload):
@@ -319,6 +350,89 @@ class OrganisationDetailView(APIView):
         except ValueError as exc:
             return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(OrganisationDetailSerializer(org).data)
+
+
+class CtOrganisationActAsStartView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def post(self, request, pk):
+        organisation = _get_ct_organisation(pk)
+        serializer = ActAsSessionStartSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        target_org_admin = None
+        if serializer.validated_data.get('target_org_admin_id'):
+            from apps.accounts.models import User
+
+            target_org_admin = get_object_or_404(User, id=serializer.validated_data['target_org_admin_id'])
+        try:
+            session = start_act_as_session(
+                organisation,
+                actor=request.user,
+                reason=serializer.validated_data['reason'],
+                target_org_admin=target_org_admin,
+                request=request,
+            )
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        _set_impersonation_session(request, session)
+        return Response(ActAsSessionSerializer(session).data, status=status.HTTP_201_CREATED)
+
+
+class CtActAsCurrentView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def get(self, request):
+        session = get_active_impersonation_session(request, request.user)
+        if session is None:
+            return Response({'impersonation': None})
+        return Response(ActAsSessionSerializer(session).data)
+
+
+class CtActAsRefreshView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def post(self, request):
+        session = get_active_impersonation_session(request, request.user)
+        if session is None:
+            return Response({'error': 'No active impersonation session.'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            session = refresh_act_as_session(session, actor=request.user, request=request)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(ActAsSessionSerializer(session).data)
+
+
+class CtActAsStopView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def post(self, request):
+        session = get_active_impersonation_session(request, request.user)
+        if session is None:
+            return Response({'error': 'No active impersonation session.'}, status=status.HTTP_400_BAD_REQUEST)
+        session = stop_act_as_session(session, actor=request.user, request=request)
+        _clear_impersonation_session(request)
+        return Response(ActAsSessionSerializer(session).data)
+
+
+class CtOrganisationFeatureFlagsView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def get(self, request, pk):
+        organisation = _get_ct_organisation(pk)
+        return Response(OrganisationFeatureFlagSerializer(list_org_feature_flags(organisation), many=True).data)
+
+    def patch(self, request, pk):
+        organisation = _get_ct_organisation(pk)
+        serializer = OrganisationFeatureFlagWriteSerializer(data=request.data, many=True)
+        serializer.is_valid(raise_exception=True)
+        for item in serializer.validated_data:
+            set_org_feature_flag(
+                organisation,
+                feature_code=item['feature_code'],
+                is_enabled=item['is_enabled'],
+                actor=request.user,
+            )
+        return Response(OrganisationFeatureFlagSerializer(list_org_feature_flags(organisation), many=True).data)
 
 
 class OrganisationActivateView(APIView):
@@ -712,6 +826,14 @@ class CtOrganisationOnboardingSupportView(APIView):
                 'top_blocker_types': list(top_blocker_types),
             }
         )
+
+
+class CtOrganisationOnboardingChecklistView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def get(self, request, pk):
+        org = get_object_or_404(Organisation, id=pk)
+        return Response(get_ct_onboarding_checklist(org))
 
 
 class CtOrganisationApprovalSupportView(APIView):

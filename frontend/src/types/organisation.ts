@@ -165,6 +165,13 @@ export interface LicenceBatchDefaults {
   total_amount: string
 }
 
+export interface OrganisationFeatureFlag {
+  feature_code: string
+  label: string
+  is_enabled: boolean
+  is_default: boolean
+}
+
 export interface OrganisationDetail {
   id: string
   name: string
@@ -213,6 +220,7 @@ export interface OrganisationDetail {
     reason: string
     summary: LicenceSummary
   }
+  feature_flags: OrganisationFeatureFlag[]
   addresses: OrganisationAddress[]
   legal_identifiers: Array<{
     id: string

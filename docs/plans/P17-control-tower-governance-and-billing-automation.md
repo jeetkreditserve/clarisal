@@ -34,7 +34,7 @@
 | `backend/apps/accounts/workspaces.py` | Modify | Workspace context for act-as sessions |
 | `backend/apps/audit/services.py` | Modify | Explicit impersonation start/end logging if required |
 | `frontend/src/pages/ct/OrganisationDetailPage.tsx` | Modify | Feature flags, act-as, analytics panels |
-| `frontend/src/pages/ct/NewOrganisationPage.tsx` | Modify | Guided onboarding wizard |
+| `frontend/src/pages/ct/NewOrganiCSRF Failed: CSRF token from the 'X-Csrftoken' HTTP header incorrect.sationPage.tsx` | Modify | Guided onboarding wizard |
 | `frontend/src/pages/ct/OrganisationsPage.tsx` | Modify | CT operational visibility |
 | `frontend/src/lib/api/organisations.ts` | Modify | Governance API client |
 
@@ -42,17 +42,17 @@
 
 ## Task 1: Implement CT Impersonation Safely
 
-- [ ] Add an `ActAsSession` model with CT actor, target organisation, target org-admin, reason, start time, end time, and revocation fields.
-- [ ] Update workspace-resolution logic so act-as sessions are explicit, reversible, and visible in request context.
-- [ ] Add clear UI banners and audit events for impersonation start, refresh, and stop actions.
-- [ ] Block destructive CT actions while impersonating unless explicitly allowed and logged.
+- [x] Add an `ActAsSession` model with CT actor, target organisation, target org-admin, reason, start time, end time, and revocation fields.
+- [x] Update workspace-resolution logic so act-as sessions are explicit, reversible, and visible in request context.
+- [x] Add clear UI banners and audit events for impersonation start, refresh, and stop actions.
+- [x] Block destructive CT actions while impersonating unless explicitly allowed and logged.
 
 ## Task 2: Add Per-Organisation Feature Flags
 
-- [ ] Add an `OrganisationFeatureFlag` model keyed by organisation and feature code.
-- [ ] Resolve feature access centrally in permissions or workspace gating instead of sprinkling `if` statements across views.
-- [ ] Add CT UI to enable or disable modules and rollout flags per tenant.
-- [ ] Cover both backend authorization and frontend navigation hiding with tests.
+- [x] Add an `OrganisationFeatureFlag` model keyed by organisation and feature code.
+- [x] Resolve feature access centrally in permissions or workspace gating instead of sprinkling `if` statements across views.
+- [x] Add CT UI to enable or disable modules and rollout flags per tenant.
+- [x] Cover both backend authorization and frontend navigation hiding with tests.
 
 ## Task 3: Add Guided New-Organisation Onboarding
 

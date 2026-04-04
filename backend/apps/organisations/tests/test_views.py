@@ -23,11 +23,13 @@ from apps.employees.models import (
     EmployeeProfile,
 )
 from apps.organisations.models import (
+    ActAsSession,
     Organisation,
     OrganisationAccessState,
     OrganisationAddress,
     OrganisationAddressType,
     OrganisationBillingStatus,
+    OrganisationFeatureFlag,
     OrganisationMembership,
     OrganisationMembershipStatus,
     OrganisationNote,
@@ -306,6 +308,140 @@ class TestLicenceBatchViews:
         assert pay_response.status_code == 200
         assert pay_response.data['payment_status'] == 'PAID'
         assert pay_response.data['lifecycle_state'] in ['ACTIVE', 'PAID_PENDING_START']
+
+
+@pytest.mark.django_db
+class TestCtImpersonationViews:
+    def test_start_refresh_and_stop_impersonation(self, ct_client, org):
+        client, _ = ct_client
+
+        start_response = client.post(
+            f'/api/ct/organisations/{org.id}/act-as/',
+            {'reason': 'Investigating payroll setup'},
+            format='json',
+        )
+
+        assert start_response.status_code == 201
+        assert start_response.data['organisation_id'] == str(org.id)
+        assert start_response.data['reason'] == 'Investigating payroll setup'
+        assert start_response.data['is_active'] is True
+
+        me_response = client.get('/api/auth/me/')
+        assert me_response.status_code == 200
+        assert me_response.data['active_workspace_kind'] == 'ADMIN'
+        assert me_response.data['has_org_admin_access'] is True
+        assert me_response.data['default_route'] == '/org/dashboard'
+        assert me_response.data['impersonation']['organisation_id'] == str(org.id)
+
+        refresh_response = client.post('/api/ct/act-as/refresh/', {}, format='json')
+        assert refresh_response.status_code == 200
+        assert refresh_response.data['organisation_id'] == str(org.id)
+
+        stop_response = client.post('/api/ct/act-as/stop/', {}, format='json')
+        assert stop_response.status_code == 200
+        assert stop_response.data['is_active'] is False
+
+        me_after_stop = client.get('/api/auth/me/')
+        assert me_after_stop.status_code == 200
+        assert me_after_stop.data['active_workspace_kind'] == 'CONTROL_TOWER'
+        assert me_after_stop.data['impersonation'] is None
+
+    def test_impersonating_control_tower_can_read_org_profile_but_cannot_mutate_it(self, ct_client, org):
+        client, _ = ct_client
+        start_response = client.post(
+            f'/api/ct/organisations/{org.id}/act-as/',
+            {'reason': 'Reviewing org profile'},
+            format='json',
+        )
+        assert start_response.status_code == 201
+
+        read_response = client.get('/api/org/profile/')
+        assert read_response.status_code == 200
+        assert read_response.data['id'] == str(org.id)
+
+        write_response = client.patch('/api/org/profile/', {'name': 'Mutated Name'}, format='json')
+        assert write_response.status_code == 403
+
+    def test_start_impersonation_replaces_existing_active_session(self, ct_client, org):
+        client, ct_user = ct_client
+        second_org = Organisation.objects.create(
+            name='Second Org',
+            created_by=ct_user,
+            status=OrganisationStatus.ACTIVE,
+            billing_status=OrganisationBillingStatus.PAID,
+            access_state=OrganisationAccessState.ACTIVE,
+        )
+        first_response = client.post(
+            f'/api/ct/organisations/{org.id}/act-as/',
+            {'reason': 'Initial support session'},
+            format='json',
+        )
+        assert first_response.status_code == 201
+
+        second_response = client.post(
+            f'/api/ct/organisations/{second_org.id}/act-as/',
+            {'reason': 'Switching tenants'},
+            format='json',
+        )
+
+        assert second_response.status_code == 201
+        assert second_response.data['organisation_id'] == str(second_org.id)
+        assert ActAsSession.objects.filter(actor=ct_user, ended_at__isnull=True).count() == 1
+
+
+@pytest.mark.django_db
+class TestOrganisationFeatureFlags:
+    def test_control_tower_can_update_feature_flags(self, ct_client, org):
+        client, _ = ct_client
+
+        response = client.patch(
+            f'/api/ct/organisations/{org.id}/feature-flags/',
+            [{'feature_code': 'REPORTS', 'is_enabled': False}],
+            format='json',
+        )
+
+        assert response.status_code == 200
+        reports_flag = next(item for item in response.data if item['feature_code'] == 'REPORTS')
+        assert reports_flag['is_enabled'] is False
+        assert OrganisationFeatureFlag.objects.get(organisation=org, feature_code='REPORTS').is_enabled is False
+
+    def test_disabled_feature_flag_blocks_org_access_and_surfaces_in_auth_me(self, db, ct_client, org):
+        _, ct_user = ct_client
+        org.status = OrganisationStatus.ACTIVE
+        org.billing_status = OrganisationBillingStatus.PAID
+        org.access_state = OrganisationAccessState.ACTIVE
+        org.save(update_fields=['status', 'billing_status', 'access_state', 'modified_at'])
+        workforce_user = User.objects.create_user(
+            email='flag-admin@test.com',
+            password='pass123!',
+            role=UserRole.ORG_ADMIN,
+            account_type=AccountType.WORKFORCE,
+            is_active=True,
+        )
+        OrganisationMembership.objects.create(
+            user=workforce_user,
+            organisation=org,
+            is_org_admin=True,
+            status=OrganisationMembershipStatus.ACTIVE,
+        )
+        OrganisationFeatureFlag.objects.create(
+            organisation=org,
+            feature_code='NOTICES',
+            is_enabled=False,
+            created_by=ct_user,
+            modified_by=ct_user,
+        )
+
+        client = APIClient()
+        login_response = client.post('/api/auth/login/', {'email': 'flag-admin@test.com', 'password': 'pass123!'}, format='json')
+        assert login_response.status_code == 200
+
+        me_response = client.get('/api/auth/me/')
+        assert me_response.status_code == 200
+        assert me_response.data['feature_flags']['NOTICES'] is False
+
+        notice_response = client.get('/api/org/notices/')
+        assert notice_response.status_code == 403
 
 
 @pytest.mark.django_db
