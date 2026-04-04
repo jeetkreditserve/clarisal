@@ -15,6 +15,7 @@ import {
   downloadNormalizedAttendanceFile,
   downloadPayrollFiling,
   createApprovalWorkflow,
+  createApprovalDelegation,
   createCompensationAssignment,
   createCompensationTemplate,
   createDepartment,
@@ -57,6 +58,7 @@ import {
   fetchOrgProfile,
   fetchPayrollSummary,
   fetchApprovalInbox,
+  fetchApprovalDelegations,
   fetchAttendanceDashboard,
   fetchAttendanceDays,
   fetchAttendanceImports,
@@ -96,6 +98,7 @@ import {
   updatePayrollTdsChallan,
   updateOrgSetup,
   updateApprovalWorkflow,
+  updateApprovalDelegation,
   updateDepartment,
   updateEmployee,
   updateEmployeeOffboarding,
@@ -486,6 +489,35 @@ export function useApprovalInbox(enabled = true) {
     queryKey: ['org', organisationId, 'approval-inbox'],
     queryFn: fetchApprovalInbox,
     enabled,
+  })
+}
+
+export function useApprovalDelegations(enabled = true) {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'approval-delegations'],
+    queryFn: fetchApprovalDelegations,
+    enabled,
+  })
+}
+
+export function useCreateApprovalDelegation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: createApprovalDelegation,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useUpdateApprovalDelegation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Record<string, unknown> }) => updateApprovalDelegation(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
   })
 }
 

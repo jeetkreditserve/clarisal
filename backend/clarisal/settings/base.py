@@ -222,6 +222,22 @@ CACHES = {
 
 CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
 CELERY_BEAT_SCHEDULE = {
+    'publish-scheduled-notices-every-5-min': {
+        'task': 'communications.publish_scheduled_notices',
+        'schedule': 300,
+    },
+    'expire-stale-notices-every-5-min': {
+        'task': 'communications.expire_stale_notices',
+        'schedule': 300,
+    },
+    'send-approval-reminders-every-10-min': {
+        'task': 'approvals.send_pending_action_reminders',
+        'schedule': 600,
+    },
+    'process-approval-escalations-every-10-min': {
+        'task': 'approvals.process_pending_action_escalations',
+        'schedule': 600,
+    },
     'sync-biometric-devices-every-5-min': {
         'task': 'biometrics.sync_pull_devices',
         'schedule': 300,

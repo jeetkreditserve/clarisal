@@ -1,8 +1,13 @@
+from datetime import timedelta
+
+from django.utils import timezone
 from rest_framework import serializers
 
 from .models import (
     ApprovalAction,
+    ApprovalActionAssignmentSource,
     ApprovalApproverType,
+    ApprovalDelegation,
     ApprovalFallbackType,
     ApprovalRequestKind,
     ApprovalStage,
@@ -37,6 +42,11 @@ class ApprovalStageSerializer(serializers.ModelSerializer):
     approvers = ApprovalStageApproverSerializer(many=True, read_only=True)
     fallback_employee_id = serializers.UUIDField(source='fallback_employee.id', read_only=True)
     fallback_employee_name = serializers.CharField(source='fallback_employee.user.full_name', read_only=True)
+    reminder_after_hours = serializers.IntegerField(source='sla_policy.reminder_after_hours', read_only=True, allow_null=True)
+    escalate_after_hours = serializers.IntegerField(source='sla_policy.escalate_after_hours', read_only=True, allow_null=True)
+    escalation_target_type = serializers.CharField(source='sla_policy.escalation_target_type', read_only=True)
+    escalation_employee_id = serializers.UUIDField(source='sla_policy.escalation_employee.id', read_only=True, allow_null=True)
+    escalation_employee_name = serializers.CharField(source='sla_policy.escalation_employee.user.full_name', read_only=True, allow_null=True)
 
     class Meta:
         model = ApprovalStage
@@ -48,6 +58,11 @@ class ApprovalStageSerializer(serializers.ModelSerializer):
             'fallback_type',
             'fallback_employee_id',
             'fallback_employee_name',
+            'reminder_after_hours',
+            'escalate_after_hours',
+            'escalation_target_type',
+            'escalation_employee_id',
+            'escalation_employee_name',
             'approvers',
         ]
 
@@ -59,7 +74,24 @@ class ApprovalStageWriteSerializer(serializers.Serializer):
     mode = serializers.ChoiceField(choices=ApprovalStageMode.choices, default=ApprovalStageMode.ALL)
     fallback_type = serializers.ChoiceField(choices=ApprovalFallbackType.choices, default=ApprovalFallbackType.NONE)
     fallback_employee_id = serializers.UUIDField(required=False, allow_null=True)
+    reminder_after_hours = serializers.IntegerField(required=False, allow_null=True, min_value=1)
+    escalate_after_hours = serializers.IntegerField(required=False, allow_null=True, min_value=1)
+    escalation_target_type = serializers.ChoiceField(choices=ApprovalFallbackType.choices, default=ApprovalFallbackType.NONE)
+    escalation_employee_id = serializers.UUIDField(required=False, allow_null=True)
     approvers = ApprovalStageApproverWriteSerializer(many=True)
+
+    def validate(self, attrs):
+        reminder_after = attrs.get('reminder_after_hours')
+        escalate_after = attrs.get('escalate_after_hours')
+        target_type = attrs.get('escalation_target_type', ApprovalFallbackType.NONE)
+        target_employee_id = attrs.get('escalation_employee_id')
+        if reminder_after and escalate_after and reminder_after >= escalate_after:
+            raise serializers.ValidationError({'reminder_after_hours': 'Reminder must be scheduled before escalation.'})
+        if escalate_after and target_type == ApprovalFallbackType.NONE:
+            raise serializers.ValidationError({'escalation_target_type': 'Select an escalation target when an SLA escalation is configured.'})
+        if target_type == ApprovalFallbackType.SPECIFIC_EMPLOYEE and not target_employee_id:
+            raise serializers.ValidationError({'escalation_employee_id': 'Select an escalation employee for specific-employee escalation.'})
+        return attrs
 
 
 class ApprovalWorkflowRuleSerializer(serializers.ModelSerializer):
@@ -163,6 +195,12 @@ class ApprovalActionSerializer(serializers.ModelSerializer):
     requester_employee_id = serializers.UUIDField(source='approval_run.requested_by.id', read_only=True, allow_null=True)
     stage_name = serializers.CharField(source='stage.name', read_only=True)
     organisation_id = serializers.UUIDField(source='approval_run.organisation.id', read_only=True)
+    owner_name = serializers.CharField(source='approver_user.full_name', read_only=True)
+    assignment_source = serializers.ChoiceField(choices=ApprovalActionAssignmentSource.choices, read_only=True)
+    original_approver_name = serializers.SerializerMethodField()
+    due_at = serializers.SerializerMethodField()
+    is_overdue = serializers.SerializerMethodField()
+    escalated_from_action_id = serializers.UUIDField(source='escalated_from_action.id', read_only=True, allow_null=True)
 
     class Meta:
         model = ApprovalAction
@@ -177,9 +215,69 @@ class ApprovalActionSerializer(serializers.ModelSerializer):
             'requester_employee_id',
             'stage_name',
             'organisation_id',
+            'owner_name',
+            'assignment_source',
+            'original_approver_name',
+            'due_at',
+            'is_overdue',
+            'escalated_from_action_id',
             'created_at',
             'modified_at',
         ]
+
+    def get_original_approver_name(self, obj):
+        user = obj.original_approver_user
+        return user.full_name if user else None
+
+    def get_due_at(self, obj):
+        policy = getattr(obj.stage, 'sla_policy', None)
+        if policy is None or not policy.is_active or not policy.escalate_after_hours:
+            return None
+        return obj.created_at + timedelta(hours=policy.escalate_after_hours)
+
+    def get_is_overdue(self, obj):
+        due_at = self.get_due_at(obj)
+        if due_at is None or obj.status != 'PENDING':
+            return False
+        return due_at <= timezone.now()
+
+
+class ApprovalDelegationSerializer(serializers.ModelSerializer):
+    delegator_employee_name = serializers.CharField(source='delegator_employee.user.full_name', read_only=True)
+    delegate_employee_name = serializers.CharField(source='delegate_employee.user.full_name', read_only=True)
+
+    class Meta:
+        model = ApprovalDelegation
+        fields = [
+            'id',
+            'delegator_employee',
+            'delegator_employee_name',
+            'delegate_employee',
+            'delegate_employee_name',
+            'request_kinds',
+            'start_date',
+            'end_date',
+            'is_active',
+            'created_at',
+            'modified_at',
+        ]
+
+
+class ApprovalDelegationWriteSerializer(serializers.Serializer):
+    delegator_employee_id = serializers.UUIDField()
+    delegate_employee_id = serializers.UUIDField()
+    request_kinds = serializers.ListField(
+        child=serializers.ChoiceField(choices=ApprovalRequestKind.choices),
+        allow_empty=False,
+    )
+    start_date = serializers.DateField()
+    end_date = serializers.DateField(required=False, allow_null=True)
+    is_active = serializers.BooleanField(required=False, default=True)
+
+    def validate(self, attrs):
+        if attrs.get('end_date') and attrs['end_date'] < attrs['start_date']:
+            raise serializers.ValidationError({'end_date': 'End date must be on or after the start date.'})
+        return attrs
 
 
 class ApprovalActionDecisionSerializer(serializers.Serializer):

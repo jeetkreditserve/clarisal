@@ -43,42 +43,42 @@
 
 ## Task 1: Add the Missing Communications Test Suite
 
-- [ ] Create `backend/apps/communications/tests/` and cover `create_notice()`, `update_notice()`, `publish_notice()`, and `get_visible_notices()`.
-- [ ] Add scenarios for audience targeting, scheduled visibility, expiry cutoffs, sticky ordering, and CT/org-admin authoring paths.
-- [ ] Freeze time in tests so publish and expiry boundaries are deterministic.
+- [x] Create `backend/apps/communications/tests/` and cover `create_notice()`, `update_notice()`, `publish_notice()`, and `get_visible_notices()`.
+- [x] Add scenarios for audience targeting, scheduled visibility, expiry cutoffs, sticky ordering, and CT/org-admin authoring paths.
+- [x] Freeze time in tests so publish and expiry boundaries are deterministic.
 
 ## Task 2: Refactor Notice Lifecycle Out of Read Paths
 
-- [ ] Remove implicit expiry writes from `get_visible_notices()`.
-- [ ] Add explicit service functions for `publish_scheduled_notices()` and `expire_stale_notices()`.
-- [ ] Keep `get_visible_notices()` as a pure visibility query plus ordering helper.
+- [x] Remove implicit expiry writes from `get_visible_notices()`.
+- [x] Add explicit service functions for `publish_scheduled_notices()` and `expire_stale_notices()`.
+- [x] Keep `get_visible_notices()` as a pure visibility query plus ordering helper.
 
 ## Task 3: Add Notice Automation With Celery
 
-- [ ] Create `backend/apps/communications/tasks.py` with idempotent scheduled-publish and auto-expiry workers.
-- [ ] Register Celery beat entries in settings with safe frequencies and locking/overlap protection.
-- [ ] Add audit events for automatic publish and expiry so time-based state changes remain traceable.
+- [x] Create `backend/apps/communications/tasks.py` with idempotent scheduled-publish and auto-expiry workers.
+- [x] Register Celery beat entries in settings with safe frequencies and locking/overlap protection.
+- [x] Add audit events for automatic publish and expiry so time-based state changes remain traceable.
 
 ## Task 4: Add Approval Delegation
 
-- [ ] Add delegation models capturing delegator, delegate, request kinds, start/end dates, and active status.
-- [ ] Update approver resolution so delegated approvers receive actions without losing the original approver identity.
-- [ ] Prevent invalid delegation loops and self-delegation.
+- [x] Add delegation models capturing delegator, delegate, request kinds, start/end dates, and active status.
+- [x] Update approver resolution so delegated approvers receive actions without losing the original approver identity.
+- [x] Prevent invalid delegation loops and self-delegation.
 
 ## Task 5: Add SLA-Based Escalation
 
-- [ ] Add per-stage SLA fields or a separate escalation policy model to `approvals`.
-- [ ] Create reminder and escalation tasks that run against pending approval actions.
-- [ ] Reassign or notify escalation targets explicitly instead of relying on silent fallback rules.
+- [x] Add per-stage SLA fields or a separate escalation policy model to `approvals`.
+- [x] Create reminder and escalation tasks that run against pending approval actions.
+- [x] Reassign or notify escalation targets explicitly instead of relying on silent fallback rules.
 
 ## Task 6: Update Admin and Employee UI
 
-- [ ] Surface notice automation states in org notices pages and editors.
-- [ ] Add delegation and escalation management screens or panels for org admins.
-- [ ] Show employees who currently owns a delegated approval and which actions are overdue or escalated.
+- [x] Surface notice automation states in org notices pages and editors.
+- [x] Add delegation and escalation management screens or panels for org admins.
+- [x] Show employees who currently owns a delegated approval and which actions are overdue or escalated.
 
 ## Task 7: Cleanup and Verification
 
-- [ ] Delete stale notice-side-effect branches and any temporary fallback logic made obsolete by explicit delegation/escalation.
-- [ ] Raise changed communications and approvals modules to full exercised coverage.
-- [ ] Run backend task tests plus targeted UI tests around notice scheduling and delegated approvals.
+- [x] Delete stale notice-side-effect branches and any temporary fallback logic made obsolete by explicit delegation/escalation.
+- [-] Raise changed communications and approvals modules to full exercised coverage.
+- [x] Run backend task tests plus targeted UI tests around notice scheduling and delegated approvals.

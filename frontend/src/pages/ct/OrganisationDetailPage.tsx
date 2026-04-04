@@ -520,6 +520,10 @@ function createWorkflowDialogForm(workflow?: ApprovalWorkflowConfig): WorkflowFo
       mode: stage.mode,
       fallback_type: stage.fallback_type,
       fallback_employee_id: stage.fallback_employee_id,
+      reminder_after_hours: stage.reminder_after_hours,
+      escalate_after_hours: stage.escalate_after_hours,
+      escalation_target_type: stage.escalation_target_type,
+      escalation_employee_id: stage.escalation_employee_id,
       approvers: stage.approvers.map((approver) => ({
         id: approver.id,
         approver_type: approver.approver_type,

@@ -48,6 +48,7 @@ export type ApprovalRequestKind =
   | 'SALARY_REVISION'
   | 'COMPENSATION_TEMPLATE_CHANGE'
 export type ApprovalActionStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'SKIPPED' | 'CANCELLED'
+export type ApprovalActionAssignmentSource = 'DIRECT' | 'DELEGATED' | 'ESCALATED'
 export type HolidayCalendarStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED'
 export type HolidayClassification = 'PUBLIC' | 'RESTRICTED' | 'COMPANY'
 export type LeaveCycleType = 'CALENDAR_YEAR' | 'FINANCIAL_YEAR' | 'CUSTOM_FIXED_START' | 'EMPLOYEE_JOINING_DATE'
@@ -568,6 +569,12 @@ export interface ApprovalActionItem {
   requester_employee_id: string
   stage_name: string
   organisation_id: string
+  owner_name: string
+  assignment_source: ApprovalActionAssignmentSource
+  original_approver_name: string | null
+  due_at: string | null
+  is_overdue: boolean
+  escalated_from_action_id: string | null
   created_at: string
   modified_at: string
 }
@@ -596,6 +603,8 @@ export interface NoticeItem {
   department_ids: string[]
   office_location_ids: string[]
   employee_ids: string[]
+  automation_state: 'MANUAL' | 'WAITING_TO_PUBLISH' | 'PUBLISH_OVERDUE' | 'LIVE' | 'EXPIRY_OVERDUE' | 'EXPIRED'
+  is_automation_blocked: boolean
   created_at: string
   modified_at: string
 }
@@ -1129,7 +1138,26 @@ export interface ApprovalStageConfig {
   fallback_type: ApprovalFallbackType
   fallback_employee_id: string | null
   fallback_employee_name: string | null
+  reminder_after_hours: number | null
+  escalate_after_hours: number | null
+  escalation_target_type: ApprovalFallbackType
+  escalation_employee_id: string | null
+  escalation_employee_name: string | null
   approvers: ApprovalStageApproverConfig[]
+}
+
+export interface ApprovalDelegation {
+  id: string
+  delegator_employee: string
+  delegator_employee_name: string
+  delegate_employee: string
+  delegate_employee_name: string
+  request_kinds: ApprovalRequestKind[]
+  start_date: string
+  end_date: string | null
+  is_active: boolean
+  created_at: string
+  modified_at: string
 }
 
 export interface ApprovalWorkflowRuleConfig {

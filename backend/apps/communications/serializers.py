@@ -1,3 +1,4 @@
+from django.utils import timezone
 from rest_framework import serializers
 
 from .models import Notice, NoticeAudienceType, NoticeStatus
@@ -7,6 +8,8 @@ class NoticeSerializer(serializers.ModelSerializer):
     department_ids = serializers.SerializerMethodField()
     office_location_ids = serializers.SerializerMethodField()
     employee_ids = serializers.SerializerMethodField()
+    automation_state = serializers.SerializerMethodField()
+    is_automation_blocked = serializers.SerializerMethodField()
 
     class Meta:
         model = Notice
@@ -24,6 +27,8 @@ class NoticeSerializer(serializers.ModelSerializer):
             'department_ids',
             'office_location_ids',
             'employee_ids',
+            'automation_state',
+            'is_automation_blocked',
             'created_at',
             'modified_at',
         ]
@@ -36,6 +41,23 @@ class NoticeSerializer(serializers.ModelSerializer):
 
     def get_employee_ids(self, obj):
         return [str(item.id) for item in obj.employees.all()]
+
+    def get_automation_state(self, obj):
+        now = timezone.now()
+        if obj.status == NoticeStatus.EXPIRED:
+            return 'EXPIRED'
+        if obj.status == NoticeStatus.SCHEDULED:
+            if obj.scheduled_for and obj.scheduled_for <= now:
+                return 'PUBLISH_OVERDUE'
+            return 'WAITING_TO_PUBLISH'
+        if obj.status == NoticeStatus.PUBLISHED:
+            if obj.expires_at and obj.expires_at <= now:
+                return 'EXPIRY_OVERDUE'
+            return 'LIVE'
+        return 'MANUAL'
+
+    def get_is_automation_blocked(self, obj):
+        return self.get_automation_state(obj) in {'PUBLISH_OVERDUE', 'EXPIRY_OVERDUE'}
 
 
 class NoticeWriteSerializer(serializers.Serializer):

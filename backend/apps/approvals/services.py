@@ -1,5 +1,7 @@
+from datetime import timedelta
+
 from django.contrib.contenttypes.models import ContentType
-from django.db import transaction
+from django.db import models, transaction
 from django.utils import timezone
 
 from apps.audit.services import log_audit_event
@@ -9,8 +11,10 @@ from apps.organisations.services import get_org_operations_guard
 
 from .models import (
     ApprovalAction,
+    ApprovalActionAssignmentSource,
     ApprovalActionStatus,
     ApprovalApproverType,
+    ApprovalDelegation,
     ApprovalFallbackType,
     ApprovalRequestKind,
     ApprovalRun,
@@ -118,6 +122,96 @@ def resolve_workflow(employee, request_kind, leave_type=None):
     return workflow
 
 
+def get_active_approval_delegation(approver_employee, request_kind, on_date=None):
+    effective_date = on_date or timezone.localdate()
+    candidates = ApprovalDelegation.objects.select_related(
+        'delegate_employee__user',
+        'delegator_employee__user',
+    ).filter(
+        organisation=approver_employee.organisation,
+        delegator_employee=approver_employee,
+        is_active=True,
+        start_date__lte=effective_date,
+    )
+    candidates = candidates.filter(models.Q(end_date__isnull=True) | models.Q(end_date__gte=effective_date))
+    for delegation in candidates.order_by('-start_date', '-created_at'):
+        if request_kind in delegation.request_kinds:
+            return delegation
+    return None
+
+
+def _validate_delegation_loop(organisation, delegator_employee, delegate_employee, *, exclude_id=None):
+    if delegator_employee.id == delegate_employee.id:
+        raise ValueError('An employee cannot delegate approval authority to themselves.')
+
+    edges = {}
+    queryset = ApprovalDelegation.objects.filter(organisation=organisation, is_active=True)
+    if exclude_id is not None:
+        queryset = queryset.exclude(id=exclude_id)
+    for delegation in queryset.values('delegator_employee_id', 'delegate_employee_id'):
+        edges.setdefault(delegation['delegator_employee_id'], set()).add(delegation['delegate_employee_id'])
+    edges.setdefault(delegator_employee.id, set()).add(delegate_employee.id)
+
+    stack = [delegate_employee.id]
+    seen = set()
+    while stack:
+        current = stack.pop()
+        if current == delegator_employee.id:
+            raise ValueError('This delegation would create a delegation loop.')
+        if current in seen:
+            continue
+        seen.add(current)
+        stack.extend(edges.get(current, set()))
+
+
+def upsert_approval_delegation(
+    organisation,
+    *,
+    delegator_employee,
+    delegate_employee,
+    request_kinds,
+    start_date,
+    end_date=None,
+    is_active=True,
+    actor=None,
+    delegation=None,
+):
+    if delegator_employee.organisation_id != organisation.id or delegate_employee.organisation_id != organisation.id:
+        raise ValueError('Delegation employees must belong to the active organisation.')
+    _validate_delegation_loop(
+        organisation,
+        delegator_employee,
+        delegate_employee,
+        exclude_id=delegation.id if delegation else None,
+    )
+    if end_date is not None and end_date < start_date:
+        raise ValueError('Delegation end date must be on or after the start date.')
+
+    payload = {
+        'delegator_employee': delegator_employee,
+        'delegate_employee': delegate_employee,
+        'request_kinds': request_kinds,
+        'start_date': start_date,
+        'end_date': end_date,
+        'is_active': is_active,
+    }
+    if delegation is None:
+        delegation = ApprovalDelegation.objects.create(
+            organisation=organisation,
+            created_by=actor,
+            **payload,
+        )
+        event_name = 'approval.delegation.created'
+    else:
+        for attr, value in payload.items():
+            setattr(delegation, attr, value)
+        delegation.save()
+        event_name = 'approval.delegation.updated'
+
+    log_audit_event(actor, event_name, organisation=organisation, target=delegation)
+    return delegation
+
+
 def _resolve_stage_fallback(stage, organisation):
     if stage.fallback_type == ApprovalFallbackType.NONE:
         return None
@@ -126,6 +220,33 @@ def _resolve_stage_fallback(stage, organisation):
     if stage.fallback_type == ApprovalFallbackType.PRIMARY_ORG_ADMIN and organisation.primary_admin_user:
         return organisation.primary_admin_user, None
     return None
+
+
+def _resolve_assignment_with_delegation(approver_user, approver_employee, organisation, request_kind):
+    assignment = {
+        'approver_user': approver_user,
+        'approver_employee': approver_employee,
+        'assignment_source': ApprovalActionAssignmentSource.DIRECT,
+        'original_approver_user': None,
+        'original_approver_employee': None,
+    }
+    if approver_employee is None:
+        return assignment
+
+    delegation = get_active_approval_delegation(approver_employee, request_kind)
+    if delegation is None:
+        return assignment
+
+    assignment.update(
+        {
+            'approver_user': delegation.delegate_employee.user,
+            'approver_employee': delegation.delegate_employee,
+            'assignment_source': ApprovalActionAssignmentSource.DELEGATED,
+            'original_approver_user': approver_user,
+            'original_approver_employee': approver_employee,
+        }
+    )
+    return assignment
 
 
 def _resolve_stage_approvers(stage, requester, organisation, request_kind):
@@ -162,15 +283,16 @@ def _resolve_stage_approvers(stage, requester, organisation, request_kind):
                 approver_user, approver_employee = fallback
             else:
                 continue
-        resolved.append((approver_user, approver_employee))
+        resolved.append(_resolve_assignment_with_delegation(approver_user, approver_employee, organisation, request_kind))
 
     deduped = []
     seen = set()
-    for user, employee in resolved:
+    for assignment in resolved:
+        user = assignment['approver_user']
         if user.id in seen:
             continue
         seen.add(user.id)
-        deduped.append((user, employee))
+        deduped.append(assignment)
     if not deduped:
         raise ValueError(f'No approvers could be resolved for stage "{stage.name}".')
     return deduped
@@ -195,7 +317,7 @@ def _apply_subject_status(approval_run, new_status, rejection_reason=''):
 def _create_stage_actions(approval_run, stage):
     actions = []
     requester = approval_run.requested_by
-    for approver_user, approver_employee in _resolve_stage_approvers(
+    for assignment in _resolve_stage_approvers(
         stage,
         requester,
         approval_run.organisation,
@@ -205,8 +327,11 @@ def _create_stage_actions(approval_run, stage):
             ApprovalAction.objects.create(
                 approval_run=approval_run,
                 stage=stage,
-                approver_user=approver_user,
-                approver_employee=approver_employee,
+                approver_user=assignment['approver_user'],
+                approver_employee=assignment['approver_employee'],
+                assignment_source=assignment['assignment_source'],
+                original_approver_user=assignment['original_approver_user'],
+                original_approver_employee=assignment['original_approver_employee'],
             )
         )
     return actions
@@ -247,9 +372,12 @@ def get_pending_approval_actions_for_user(user, organisation=None):
     queryset = ApprovalAction.objects.select_related(
         'approval_run',
         'stage',
+        'stage__sla_policy',
         'approval_run__requested_by__user',
         'approval_run__requested_by_user',
         'approval_run__organisation',
+        'approver_user',
+        'original_approver_user',
     ).filter(
         approver_user=user,
         status=ApprovalActionStatus.PENDING,
@@ -404,6 +532,153 @@ def reject_action(action, actor, comment=''):
         payload={'comment': comment},
     )
     return action
+
+
+def _get_stage_sla_policy(stage):
+    policy = getattr(stage, 'sla_policy', None)
+    if policy is None or not policy.is_active:
+        return None
+    return policy
+
+
+def _resolve_escalation_target(action):
+    policy = _get_stage_sla_policy(action.stage)
+    if policy is None:
+        return None, None
+    if policy.escalation_target_type == ApprovalFallbackType.SPECIFIC_EMPLOYEE and policy.escalation_employee:
+        return policy.escalation_employee.user, policy.escalation_employee
+    if (
+        policy.escalation_target_type == ApprovalFallbackType.PRIMARY_ORG_ADMIN
+        and action.approval_run.organisation.primary_admin_user
+    ):
+        return action.approval_run.organisation.primary_admin_user, None
+    return None, None
+
+
+def send_pending_action_reminders(now=None):
+    current_time = now or timezone.now()
+    reminder_count = 0
+    queryset = ApprovalAction.objects.select_related(
+        'approval_run',
+        'approver_user',
+        'stage__sla_policy',
+    ).filter(
+        status=ApprovalActionStatus.PENDING,
+        approval_run__status=ApprovalRunStatus.PENDING,
+    )
+    for action in queryset.iterator():
+        policy = _get_stage_sla_policy(action.stage)
+        if policy is None or not policy.reminder_after_hours or action.reminder_sent_at is not None:
+            continue
+        if action.created_at + timedelta(hours=policy.reminder_after_hours) > current_time:
+            continue
+        updated = ApprovalAction.objects.filter(
+            id=action.id,
+            reminder_sent_at__isnull=True,
+            status=ApprovalActionStatus.PENDING,
+        ).update(
+            reminder_sent_at=current_time,
+            modified_at=current_time,
+        )
+        if not updated:
+            continue
+        create_notification(
+            recipient=action.approver_user,
+            kind=NotificationKind.GENERAL,
+            title=f'Approval reminder: {action.approval_run.subject_label}',
+            body=f'This approval has been pending since {action.created_at.isoformat()}. Please review it.',
+            organisation=action.approval_run.organisation,
+            related_object=action.approval_run,
+        )
+        log_audit_event(
+            None,
+            'approval.action.reminder_sent',
+            organisation=action.approval_run.organisation,
+            target=action,
+        )
+        reminder_count += 1
+    return reminder_count
+
+
+def process_pending_action_escalations(now=None):
+    current_time = now or timezone.now()
+    escalation_count = 0
+    queryset = ApprovalAction.objects.select_related(
+        'approval_run',
+        'approver_user',
+        'approver_employee__user',
+        'original_approver_user',
+        'original_approver_employee__user',
+        'stage',
+        'stage__sla_policy',
+        'stage__sla_policy__escalation_employee__user',
+        'approval_run__organisation',
+    ).filter(
+        status=ApprovalActionStatus.PENDING,
+        approval_run__status=ApprovalRunStatus.PENDING,
+    )
+    for action in queryset.iterator():
+        policy = _get_stage_sla_policy(action.stage)
+        if policy is None or not policy.escalate_after_hours or action.escalated_at is not None:
+            continue
+        if action.created_at + timedelta(hours=policy.escalate_after_hours) > current_time:
+            continue
+        target_user, target_employee = _resolve_escalation_target(action)
+        if target_user is None or target_user.id == action.approver_user_id:
+            continue
+
+        with transaction.atomic():
+            locked_action = ApprovalAction.objects.select_for_update(of=('self',)).select_related(
+                'approval_run',
+                'stage',
+                'approval_run__organisation',
+                'approver_user',
+                'approver_employee',
+                'original_approver_user',
+                'original_approver_employee',
+            ).get(id=action.id)
+            if locked_action.status != ApprovalActionStatus.PENDING or locked_action.escalated_at is not None:
+                continue
+
+            existing_pending = locked_action.approval_run.actions.filter(
+                stage=locked_action.stage,
+                approver_user=target_user,
+                status=ApprovalActionStatus.PENDING,
+            ).exists()
+            if not existing_pending:
+                ApprovalAction.objects.create(
+                    approval_run=locked_action.approval_run,
+                    stage=locked_action.stage,
+                    approver_user=target_user,
+                    approver_employee=target_employee,
+                    assignment_source=ApprovalActionAssignmentSource.ESCALATED,
+                    original_approver_user=locked_action.original_approver_user or locked_action.approver_user,
+                    original_approver_employee=locked_action.original_approver_employee or locked_action.approver_employee,
+                    escalated_from_action=locked_action,
+                )
+
+            locked_action.status = ApprovalActionStatus.CANCELLED
+            locked_action.acted_at = current_time
+            locked_action.escalated_at = current_time
+            locked_action.save(update_fields=['status', 'acted_at', 'escalated_at', 'modified_at'])
+
+        create_notification(
+            recipient=target_user,
+            kind=NotificationKind.GENERAL,
+            title=f'Escalated approval: {action.approval_run.subject_label}',
+            body='A pending approval has been escalated to you because its SLA was missed.',
+            organisation=action.approval_run.organisation,
+            related_object=action.approval_run,
+        )
+        log_audit_event(
+            None,
+            'approval.action.escalated',
+            organisation=action.approval_run.organisation,
+            target=action.approval_run,
+            payload={'action_id': str(action.id), 'target_user_id': str(target_user.id)},
+        )
+        escalation_count += 1
+    return escalation_count
 
 
 def cancel_approval_run(approval_run, actor=None, *, subject_status='CANCELLED'):

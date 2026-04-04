@@ -48,6 +48,12 @@ class ApprovalActionStatus(models.TextChoices):
     CANCELLED = 'CANCELLED', 'Cancelled'
 
 
+class ApprovalActionAssignmentSource(models.TextChoices):
+    DIRECT = 'DIRECT', 'Direct'
+    DELEGATED = 'DELEGATED', 'Delegated'
+    ESCALATED = 'ESCALATED', 'Escalated'
+
+
 class ApprovalWorkflow(AuditedBaseModel):
     organisation = models.ForeignKey(
         'organisations.Organisation',
@@ -169,6 +175,35 @@ class ApprovalStage(AuditedBaseModel):
         return f'{self.workflow.name} - Stage {self.sequence}'
 
 
+class ApprovalStageEscalationPolicy(AuditedBaseModel):
+    stage = models.OneToOneField(
+        ApprovalStage,
+        on_delete=models.CASCADE,
+        related_name='sla_policy',
+    )
+    reminder_after_hours = models.PositiveIntegerField(null=True, blank=True)
+    escalate_after_hours = models.PositiveIntegerField(null=True, blank=True)
+    escalation_target_type = models.CharField(
+        max_length=24,
+        choices=ApprovalFallbackType.choices,
+        default=ApprovalFallbackType.NONE,
+    )
+    escalation_employee = models.ForeignKey(
+        'employees.Employee',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='approval_stage_escalation_policies',
+    )
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = 'approval_stage_escalation_policies'
+
+    def __str__(self):
+        return f'SLA policy for {self.stage}'
+
+
 class ApprovalStageApprover(AuditedBaseModel):
     stage = models.ForeignKey(
         ApprovalStage,
@@ -266,6 +301,25 @@ class ApprovalAction(AuditedBaseModel):
         on_delete=models.SET_NULL,
         related_name='assigned_approval_actions',
     )
+    assignment_source = models.CharField(
+        max_length=16,
+        choices=ApprovalActionAssignmentSource.choices,
+        default=ApprovalActionAssignmentSource.DIRECT,
+    )
+    original_approver_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='original_approval_actions',
+    )
+    original_approver_employee = models.ForeignKey(
+        'employees.Employee',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='original_assigned_approval_actions',
+    )
     status = models.CharField(
         max_length=20,
         choices=ApprovalActionStatus.choices,
@@ -273,6 +327,15 @@ class ApprovalAction(AuditedBaseModel):
     )
     comment = models.TextField(blank=True)
     acted_at = models.DateTimeField(null=True, blank=True)
+    reminder_sent_at = models.DateTimeField(null=True, blank=True)
+    escalated_at = models.DateTimeField(null=True, blank=True)
+    escalated_from_action = models.ForeignKey(
+        'self',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='escalated_actions',
+    )
 
     class Meta:
         db_table = 'approval_actions'
@@ -290,3 +353,42 @@ class ApprovalAction(AuditedBaseModel):
 
     def __str__(self):
         return f'{self.approver_user.email} - {self.status}'
+
+
+class ApprovalDelegation(AuditedBaseModel):
+    organisation = models.ForeignKey(
+        'organisations.Organisation',
+        on_delete=models.CASCADE,
+        related_name='approval_delegations',
+    )
+    delegator_employee = models.ForeignKey(
+        'employees.Employee',
+        on_delete=models.CASCADE,
+        related_name='outgoing_approval_delegations',
+    )
+    delegate_employee = models.ForeignKey(
+        'employees.Employee',
+        on_delete=models.CASCADE,
+        related_name='incoming_approval_delegations',
+    )
+    request_kinds = models.JSONField(default=list)
+    start_date = models.DateField()
+    end_date = models.DateField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = 'approval_delegations'
+        ordering = ['-start_date', '-created_at']
+        constraints = [
+            models.CheckConstraint(  # type: ignore[call-arg]
+                check=Q(end_date__isnull=True) | Q(end_date__gte=models.F('start_date')),
+                name='approval_delegation_end_date_after_start_date',
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['organisation', 'is_active']),
+            models.Index(fields=['delegator_employee', 'is_active']),
+        ]
+
+    def __str__(self):
+        return f'{self.delegator_employee_id} -> {self.delegate_employee_id}'

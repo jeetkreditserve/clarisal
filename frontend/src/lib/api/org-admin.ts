@@ -9,6 +9,7 @@ import type {
 import type { OrgAdminSetupState } from '@/types/organisation'
 import type {
   ApprovalActionItem,
+  ApprovalDelegation,
   AttendanceDayRecord,
   AttendanceImportJob,
   AttendancePolicy,
@@ -344,6 +345,21 @@ export async function updateApprovalWorkflow(id: string, payload: Record<string,
 
 export async function fetchApprovalInbox() {
   const { data } = await api.get<ApprovalActionItem[]>('/org/approvals/inbox/')
+  return data
+}
+
+export async function fetchApprovalDelegations() {
+  const { data } = await api.get<ApprovalDelegation[]>('/org/approvals/delegations/')
+  return data
+}
+
+export async function createApprovalDelegation(payload: Record<string, unknown>) {
+  const { data } = await api.post<ApprovalDelegation>('/org/approvals/delegations/', payload)
+  return data
+}
+
+export async function updateApprovalDelegation(id: string, payload: Record<string, unknown>) {
+  const { data } = await api.patch<ApprovalDelegation>(`/org/approvals/delegations/${id}/`, payload)
   return data
 }
 
