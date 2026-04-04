@@ -41,6 +41,8 @@ import type {
   OnboardingDocumentType,
   OrgPayrollSummary,
   PayrollRun,
+  PayrollTdsChallan,
+  StatutoryFilingBatch,
   PayrollTaxSlabSet,
 } from '@/types/hr'
 
@@ -685,6 +687,16 @@ export async function createPayrollRun(payload: Record<string, unknown>) {
   return data
 }
 
+export async function createPayrollTdsChallan(payload: Record<string, unknown>) {
+  const { data } = await api.post<PayrollTdsChallan>('/org/payroll/tds-challans/', payload)
+  return data
+}
+
+export async function updatePayrollTdsChallan(id: string, payload: Record<string, unknown>) {
+  const { data } = await api.patch<PayrollTdsChallan>(`/org/payroll/tds-challans/${id}/`, payload)
+  return data
+}
+
 export async function calculatePayrollRun(id: string) {
   const { data } = await api.post<PayrollRun>(`/org/payroll/runs/${id}/calculate/`)
   return data
@@ -703,6 +715,32 @@ export async function finalizePayrollRun(id: string) {
 export async function rerunPayrollRun(id: string) {
   const { data } = await api.post<PayrollRun>(`/org/payroll/runs/${id}/rerun/`)
   return data
+}
+
+export async function generatePayrollFiling(payload: Record<string, unknown>) {
+  const { data } = await api.post<StatutoryFilingBatch>('/org/payroll/filings/', payload)
+  return data
+}
+
+export async function regeneratePayrollFiling(id: string) {
+  const { data } = await api.post<StatutoryFilingBatch>(`/org/payroll/filings/${id}/regenerate/`)
+  return data
+}
+
+export async function cancelPayrollFiling(id: string) {
+  const { data } = await api.post<StatutoryFilingBatch>(`/org/payroll/filings/${id}/cancel/`)
+  return data
+}
+
+export async function downloadPayrollFiling(id: string) {
+  const response = await api.get<Blob>(`/org/payroll/filings/${id}/download/`, {
+    responseType: 'blob',
+  })
+
+  return {
+    blob: response.data as Blob,
+    filename: response.headers['content-disposition']?.match(/filename=\"?([^"]+)\"?/)?.[1] || `statutory-filing-${id}`,
+  }
 }
 
 export async function fetchNotices(params?: { status?: string; audience_type?: string; search?: string }) {

@@ -21,9 +21,14 @@ from .models import (
     CompensationAssignment,
     CompensationTemplate,
     FullAndFinalSettlement,
+    LabourWelfareFundRule,
     PayrollRun,
     PayrollTaxSlabSet,
+    PayrollTDSChallan,
     Payslip,
+    ProfessionalTaxRule,
+    StatutoryFilingBatch,
+    StatutoryFilingStatus,
 )
 from .serializers import (
     CompensationAssignmentSerializer,
@@ -33,22 +38,33 @@ from .serializers import (
     FullAndFinalSettlementSerializer,
     InvestmentDeclarationSerializer,
     InvestmentDeclarationWriteSerializer,
+    LabourWelfareFundRuleSerializer,
     PayrollComponentSerializer,
     PayrollRunCalculationStatusSerializer,
     PayrollRunSerializer,
     PayrollRunWriteSerializer,
     PayrollTaxSlabSetSerializer,
     PayrollTaxSlabSetWriteSerializer,
+    PayrollTDSChallanSerializer,
+    PayrollTDSChallanWriteSerializer,
     PayslipSerializer,
+    ProfessionalTaxRuleSerializer,
+    StatutoryFilingBatchSerializer,
+    StatutoryFilingBatchWriteSerializer,
 )
 from .services import (
     assign_employee_compensation,
+    cancel_statutory_filing_batch,
     create_compensation_template,
     create_payroll_run,
     create_tax_slab_set,
+    download_statutory_filing_batch,
     ensure_org_payroll_setup,
     finalize_pay_run,
     generate_form16_data,
+    generate_statutory_filing_batch,
+    list_statutory_filing_batches,
+    regenerate_statutory_filing_batch,
     rerun_payroll_run,
     submit_compensation_assignment_for_approval,
     submit_compensation_template_for_approval,
@@ -72,6 +88,21 @@ def _get_employee(request):
     return employee
 
 
+def _statutory_master_payload(*, state_code=None):
+    professional_tax_rules = ProfessionalTaxRule.objects.filter(is_active=True)
+    labour_welfare_fund_rules = LabourWelfareFundRule.objects.filter(is_active=True)
+    if state_code:
+        professional_tax_rules = professional_tax_rules.filter(state_code=state_code)
+        labour_welfare_fund_rules = labour_welfare_fund_rules.filter(state_code=state_code)
+    return {
+        'professional_tax_rules': ProfessionalTaxRuleSerializer(professional_tax_rules.prefetch_related('slabs'), many=True).data,
+        'labour_welfare_fund_rules': LabourWelfareFundRuleSerializer(
+            labour_welfare_fund_rules.prefetch_related('contributions'),
+            many=True,
+        ).data,
+    }
+
+
 class CtPayrollTaxSlabSetListCreateView(APIView):
     permission_classes = [IsControlTowerUser]
 
@@ -87,6 +118,14 @@ class CtPayrollTaxSlabSetListCreateView(APIView):
         except ValueError as exc:
             return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(PayrollTaxSlabSetSerializer(tax_slab_set).data, status=status.HTTP_201_CREATED)
+
+
+class CtPayrollStatutoryMasterListView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def get(self, request):
+        state_code = (request.query_params.get('state_code') or '').strip().upper() or None
+        return Response(_statutory_master_payload(state_code=state_code))
 
 
 class OrgPayrollSummaryView(APIView):
@@ -106,9 +145,27 @@ class OrgPayrollSummaryView(APIView):
                 'compensation_templates': CompensationTemplateSerializer(templates, many=True).data,
                 'compensation_assignments': CompensationAssignmentSerializer(assignments, many=True).data,
                 'pay_runs': PayrollRunSerializer(pay_runs, many=True).data,
+                'statutory_filing_batches': StatutoryFilingBatchSerializer(
+                    StatutoryFilingBatch.objects.filter(organisation=organisation).prefetch_related('source_pay_runs'),
+                    many=True,
+                ).data,
+                'tds_challans': PayrollTDSChallanSerializer(
+                    PayrollTDSChallan.objects.filter(organisation=organisation),
+                    many=True,
+                ).data,
                 'payslip_count': Payslip.objects.filter(organisation=organisation).count(),
+                **_statutory_master_payload(),
             }
         )
+
+
+class OrgPayrollStatutoryMasterListView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+
+    def get(self, request):
+        _get_admin_organisation(request)
+        state_code = (request.query_params.get('state_code') or '').strip().upper() or None
+        return Response(_statutory_master_payload(state_code=state_code))
 
 
 class OrgPayrollTaxSlabSetListCreateView(APIView):
@@ -138,6 +195,44 @@ class OrgPayrollTaxSlabSetDetailView(APIView):
         serializer.is_valid(raise_exception=True)
         tax_slab_set = update_tax_slab_set(tax_slab_set, actor=request.user, **serializer.validated_data)
         return Response(PayrollTaxSlabSetSerializer(tax_slab_set).data)
+
+
+class OrgPayrollTDSChallanListCreateView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
+
+    def get(self, request):
+        organisation = _get_admin_organisation(request)
+        queryset = PayrollTDSChallan.objects.filter(organisation=organisation)
+        fiscal_year = (request.query_params.get('fiscal_year') or '').strip()
+        if fiscal_year:
+            queryset = queryset.filter(fiscal_year=fiscal_year)
+        return Response(PayrollTDSChallanSerializer(queryset, many=True).data)
+
+    def post(self, request):
+        organisation = _get_admin_organisation(request)
+        serializer = PayrollTDSChallanWriteSerializer(data=request.data, context={'organisation': organisation})
+        serializer.is_valid(raise_exception=True)
+        challan = PayrollTDSChallan.objects.create(organisation=organisation, **serializer.validated_data)
+        return Response(PayrollTDSChallanSerializer(challan).data, status=status.HTTP_201_CREATED)
+
+
+class OrgPayrollTDSChallanDetailView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
+
+    def patch(self, request, pk):
+        organisation = _get_admin_organisation(request)
+        challan = get_object_or_404(PayrollTDSChallan, organisation=organisation, id=pk)
+        serializer = PayrollTDSChallanWriteSerializer(
+            challan,
+            data=request.data,
+            partial=True,
+            context={'organisation': organisation},
+        )
+        serializer.is_valid(raise_exception=True)
+        for field, value in serializer.validated_data.items():
+            setattr(challan, field, value)
+        challan.save()
+        return Response(PayrollTDSChallanSerializer(challan).data)
 
 
 class OrgCompensationTemplateListCreateView(APIView):
@@ -207,6 +302,8 @@ class OrgCompensationAssignmentListCreateView(APIView):
             actor=request.user,
             auto_approve=serializer.validated_data.get('auto_approve', False),
             tax_regime=serializer.validated_data.get('tax_regime'),
+            is_pf_opted_out=serializer.validated_data.get('is_pf_opted_out', False),
+            vpf_rate_percent=serializer.validated_data.get('vpf_rate_percent'),
         )
         return Response(CompensationAssignmentSerializer(assignment).data, status=status.HTTP_201_CREATED)
 
@@ -350,6 +447,73 @@ class OrgPayrollRunRerunView(APIView):
         except ValueError as exc:
             return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(PayrollRunSerializer(rerun).data, status=status.HTTP_201_CREATED)
+
+
+class OrgStatutoryFilingBatchListCreateView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
+
+    def get(self, request):
+        organisation = _get_admin_organisation(request)
+        queryset = list_statutory_filing_batches(organisation)
+        return Response(StatutoryFilingBatchSerializer(queryset, many=True).data)
+
+    def post(self, request):
+        organisation = _get_admin_organisation(request)
+        serializer = StatutoryFilingBatchWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            batch = generate_statutory_filing_batch(organisation, actor=request.user, **serializer.validated_data)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        status_code = status.HTTP_201_CREATED if batch.status != StatutoryFilingStatus.BLOCKED else status.HTTP_200_OK
+        return Response(StatutoryFilingBatchSerializer(batch).data, status=status_code)
+
+
+class OrgStatutoryFilingBatchDetailView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+
+    def get(self, request, pk):
+        organisation = _get_admin_organisation(request)
+        batch = get_object_or_404(StatutoryFilingBatch.objects.prefetch_related('source_pay_runs'), organisation=organisation, id=pk)
+        return Response(StatutoryFilingBatchSerializer(batch).data)
+
+
+class OrgStatutoryFilingBatchRegenerateView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
+
+    def post(self, request, pk):
+        organisation = _get_admin_organisation(request)
+        batch = get_object_or_404(StatutoryFilingBatch, organisation=organisation, id=pk)
+        try:
+            regenerated = regenerate_statutory_filing_batch(batch, actor=request.user)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(StatutoryFilingBatchSerializer(regenerated).data, status=status.HTTP_201_CREATED)
+
+
+class OrgStatutoryFilingBatchCancelView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
+
+    def post(self, request, pk):
+        organisation = _get_admin_organisation(request)
+        batch = get_object_or_404(StatutoryFilingBatch, organisation=organisation, id=pk)
+        batch = cancel_statutory_filing_batch(batch, actor=request.user)
+        return Response(StatutoryFilingBatchSerializer(batch).data)
+
+
+class OrgStatutoryFilingBatchDownloadView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+
+    def get(self, request, pk):
+        organisation = _get_admin_organisation(request)
+        batch = get_object_or_404(StatutoryFilingBatch, organisation=organisation, id=pk)
+        try:
+            payload, content_type, file_name = download_statutory_filing_batch(batch, actor=request.user)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        response = HttpResponse(payload, content_type=content_type or 'application/octet-stream')
+        response['Content-Disposition'] = f'attachment; filename="{file_name or "statutory-filing"}"'
+        return response
 
 
 class OrgFullAndFinalSettlementListView(APIView):

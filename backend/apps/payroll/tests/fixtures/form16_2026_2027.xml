@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<form16 fiscal_year="2026-2027">
+  <employer>
+    <name>Northstar Labs</name>
+    <pan>AACCN1234F</pan>
+    <tan>BLRN12345A</tan>
+  </employer>
+  <employees>
+    <employee>
+      <employee_code>EMP001</employee_code>
+      <employee_name>Priya Sharma</employee_name>
+      <employee_pan>ABCDE1234F</employee_pan>
+      <tax_regime>NEW</tax_regime>
+      <gross_salary>45000.00</gross_salary>
+      <standard_deduction>75000.00</standard_deduction>
+      <deductions_chapter_via>0.00</deductions_chapter_via>
+      <taxable_income>225000.00</taxable_income>
+      <tax_before_rebate>0.00</tax_before_rebate>
+      <surcharge>0.00</surcharge>
+      <cess>0.00</cess>
+      <tax_deducted>0.00</tax_deducted>
+      <quarter_summaries>
+        <quarter_summary>
+          <quarter>Q1</quarter>
+          <statement_receipt_number></statement_receipt_number>
+          <amount_paid>45000.00</amount_paid>
+          <tax_deducted>0.00</tax_deducted>
+          <tax_deposited>0.00</tax_deposited>
+        </quarter_summary>
+      </quarter_summaries>
+      <challan_details>
+      </challan_details>
+    </employee>
+  </employees>
+</form16>

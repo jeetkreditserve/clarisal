@@ -10,14 +10,18 @@ import { SectionCard } from '@/components/ui/SectionCard'
 import { SkeletonPageHeader, SkeletonTable } from '@/components/ui/Skeleton'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import {
+  useCancelPayrollFiling,
   useCalculatePayrollRun,
   useCreateCompensationAssignment,
   useCreateCompensationTemplate,
   useCreatePayrollRun,
   useCreatePayrollTaxSlabSet,
+  useDownloadPayrollFiling,
   useEmployees,
   useFinalizePayrollRun,
+  useGeneratePayrollFiling,
   usePayrollSummary,
+  useRegeneratePayrollFiling,
   useRerunPayrollRun,
   useSubmitCompensationAssignment,
   useSubmitCompensationTemplate,
@@ -32,7 +36,32 @@ const PAYROLL_SECTION_OPTIONS = [
   { value: 'setup', label: 'Setup' },
   { value: 'compensation', label: 'Compensation' },
   { value: 'runs', label: 'Runs' },
+  { value: 'filings', label: 'Filings' },
 ] as const
+
+function triggerDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
+function getFilingTone(status: string) {
+  switch (status) {
+    case 'GENERATED':
+      return 'success' as const
+    case 'BLOCKED':
+      return 'danger' as const
+    case 'SUPERSEDED':
+      return 'warning' as const
+    case 'CANCELLED':
+      return 'neutral' as const
+    default:
+      return 'info' as const
+  }
+}
 
 export function PayrollPage() {
   const { data, isLoading } = usePayrollSummary()
@@ -47,6 +76,10 @@ export function PayrollPage() {
   const submitRunMutation = useSubmitPayrollRun()
   const finalizeRunMutation = useFinalizePayrollRun()
   const rerunMutation = useRerunPayrollRun()
+  const generateFilingMutation = useGeneratePayrollFiling()
+  const regenerateFilingMutation = useRegeneratePayrollFiling()
+  const cancelFilingMutation = useCancelPayrollFiling()
+  const downloadFilingMutation = useDownloadPayrollFiling()
 
   const [taxForm, setTaxForm] = useState({
     name: '',
@@ -71,6 +104,14 @@ export function PayrollPage() {
     period_year: String(currentYear),
     period_month: String(new Date().getMonth() + 1),
     use_attendance_inputs: false,
+  })
+  const [filingForm, setFilingForm] = useState({
+    filing_type: 'PF_ECR',
+    period_year: String(currentYear),
+    period_month: String(new Date().getMonth() + 1),
+    fiscal_year: `${currentYear}-${currentYear + 1}`,
+    quarter: 'Q1',
+    artifact_format: 'PDF',
   })
   const [activeSection, setActiveSection] = useState<(typeof PAYROLL_SECTION_OPTIONS)[number]['value']>('setup')
 
@@ -241,6 +282,73 @@ export function PayrollPage() {
     }
   }
 
+  const handleGenerateFiling = async (event: React.FormEvent) => {
+    event.preventDefault()
+    const payload: Record<string, unknown> = {
+      filing_type: filingForm.filing_type,
+    }
+
+    if (['PF_ECR', 'ESI_MONTHLY', 'PROFESSIONAL_TAX'].includes(filingForm.filing_type)) {
+      payload.period_year = Number(filingForm.period_year)
+      payload.period_month = Number(filingForm.period_month)
+    }
+
+    if (['FORM24Q', 'FORM16'].includes(filingForm.filing_type)) {
+      payload.fiscal_year = filingForm.fiscal_year
+    }
+
+    if (filingForm.filing_type === 'FORM24Q') {
+      payload.quarter = filingForm.quarter
+    }
+
+    if (filingForm.filing_type === 'FORM16') {
+      payload.artifact_format = filingForm.artifact_format
+    }
+
+    try {
+      const batch = await generateFilingMutation.mutateAsync(payload)
+      if (batch.status === 'BLOCKED') {
+        toast.error(batch.validation_errors[0] || 'The filing batch is blocked by missing statutory metadata.')
+        return
+      }
+      toast.success('Statutory filing generated.')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to generate the statutory filing.'))
+    }
+  }
+
+  const handleDownloadFiling = async (filingId: string) => {
+    try {
+      const result = await downloadFilingMutation.mutateAsync(filingId)
+      triggerDownload(result.blob, result.filename)
+      toast.success('Statutory filing downloaded.')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to download the statutory filing.'))
+    }
+  }
+
+  const handleRegenerateFiling = async (filingId: string) => {
+    try {
+      const batch = await regenerateFilingMutation.mutateAsync(filingId)
+      if (batch.status === 'BLOCKED') {
+        toast.error(batch.validation_errors[0] || 'The regenerated filing is blocked by missing statutory metadata.')
+        return
+      }
+      toast.success('Statutory filing regenerated.')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to regenerate the statutory filing.'))
+    }
+  }
+
+  const handleCancelFiling = async (filingId: string) => {
+    try {
+      await cancelFilingMutation.mutateAsync(filingId)
+      toast.success('Statutory filing cancelled.')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to cancel the statutory filing.'))
+    }
+  }
+
   if (isLoading || !data) {
     return (
       <div className="space-y-5">
@@ -259,13 +367,13 @@ export function PayrollPage() {
       />
 
       <div className="rounded-[24px] border border-[hsl(var(--warning)_/_0.32)] bg-[hsl(var(--warning)_/_0.12)] px-5 py-4 text-sm text-[hsl(var(--foreground-strong))]">
-        <p className="font-semibold">Payroll is currently limited-scope.</p>
+        <p className="font-semibold">Payroll now covers statutory runs and filing exports.</p>
         <p className="mt-1 text-[hsl(var(--muted-foreground))]">
-          Use this workspace for controlled setup and preview flows only. Full India statutory payroll coverage, attendance integration, Form 16, and final settlement are not complete yet.
+          Use this workspace to generate finalized payroll runs, statutory filings, and employee-facing tax documents from the same control room.
         </p>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-4">
+      <div className="grid gap-4 xl:grid-cols-5">
         <div className="surface-muted rounded-[22px] px-5 py-4">
           <p className="text-sm text-[hsl(var(--muted-foreground))]">Tax slab sets</p>
           <p className="mt-2 text-3xl font-semibold text-[hsl(var(--foreground-strong))]">{data.tax_slab_sets.length}</p>
@@ -281,6 +389,10 @@ export function PayrollPage() {
         <div className="surface-muted rounded-[22px] px-5 py-4">
           <p className="text-sm text-[hsl(var(--muted-foreground))]">Payslips</p>
           <p className="mt-2 text-3xl font-semibold text-[hsl(var(--foreground-strong))]">{data.payslip_count}</p>
+        </div>
+        <div className="surface-muted rounded-[22px] px-5 py-4">
+          <p className="text-sm text-[hsl(var(--muted-foreground))]">Filing batches</p>
+          <p className="mt-2 text-3xl font-semibold text-[hsl(var(--foreground-strong))]">{data.statutory_filing_batches.length}</p>
         </div>
       </div>
 
@@ -599,6 +711,167 @@ export function PayrollPage() {
                 )
               }) : (
                 <EmptyState title="No payroll runs yet" description="Create the first pay run once templates and assignments are in place." />
+              )}
+            </div>
+          </SectionCard>
+        </div>
+      ) : null}
+
+      {activeSection === 'filings' ? (
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+          <SectionCard title="Generate statutory filing" description="Create a persisted filing batch from finalized payroll data. Blockers are surfaced immediately so the batch never downloads partial statutory rows.">
+            <form onSubmit={handleGenerateFiling} className="grid gap-4 md:grid-cols-2">
+              <label className="grid gap-2">
+                <span className="field-label">Filing type</span>
+                <select
+                  className="field-input"
+                  value={filingForm.filing_type}
+                  onChange={(event) =>
+                    setFilingForm((current) => ({
+                      ...current,
+                      filing_type: event.target.value,
+                    }))
+                  }
+                >
+                  <option value="PF_ECR">PF ECR</option>
+                  <option value="ESI_MONTHLY">ESI monthly</option>
+                  <option value="PROFESSIONAL_TAX">Professional tax</option>
+                  <option value="FORM24Q">Form 24Q</option>
+                  <option value="FORM16">Form 16</option>
+                </select>
+              </label>
+
+              {['PF_ECR', 'ESI_MONTHLY', 'PROFESSIONAL_TAX'].includes(filingForm.filing_type) ? (
+                <>
+                  <label className="grid gap-2">
+                    <span className="field-label">Period year</span>
+                    <input
+                      className="field-input"
+                      value={filingForm.period_year}
+                      onChange={(event) => setFilingForm((current) => ({ ...current, period_year: event.target.value }))}
+                      placeholder="2026"
+                    />
+                  </label>
+                  <label className="grid gap-2">
+                    <span className="field-label">Period month</span>
+                    <input
+                      className="field-input"
+                      value={filingForm.period_month}
+                      onChange={(event) => setFilingForm((current) => ({ ...current, period_month: event.target.value }))}
+                      placeholder="4"
+                    />
+                  </label>
+                </>
+              ) : null}
+
+              {['FORM24Q', 'FORM16'].includes(filingForm.filing_type) ? (
+                <label className="grid gap-2">
+                  <span className="field-label">Fiscal year</span>
+                  <input
+                    className="field-input"
+                    value={filingForm.fiscal_year}
+                    onChange={(event) => setFilingForm((current) => ({ ...current, fiscal_year: event.target.value }))}
+                    placeholder="2026-2027"
+                  />
+                </label>
+              ) : null}
+
+              {filingForm.filing_type === 'FORM24Q' ? (
+                <label className="grid gap-2">
+                  <span className="field-label">Quarter</span>
+                  <select
+                    className="field-input"
+                    value={filingForm.quarter}
+                    onChange={(event) => setFilingForm((current) => ({ ...current, quarter: event.target.value }))}
+                  >
+                    <option value="Q1">Q1</option>
+                    <option value="Q2">Q2</option>
+                    <option value="Q3">Q3</option>
+                    <option value="Q4">Q4</option>
+                  </select>
+                </label>
+              ) : null}
+
+              {filingForm.filing_type === 'FORM16' ? (
+                <label className="grid gap-2">
+                  <span className="field-label">Artifact format</span>
+                  <select
+                    className="field-input"
+                    value={filingForm.artifact_format}
+                    onChange={(event) => setFilingForm((current) => ({ ...current, artifact_format: event.target.value }))}
+                  >
+                    <option value="PDF">PDF</option>
+                    <option value="XML">XML</option>
+                  </select>
+                </label>
+              ) : null}
+
+              <div className="md:col-span-2">
+                <button type="submit" className="btn-primary" disabled={generateFilingMutation.isPending}>
+                  {generateFilingMutation.isPending ? 'Generating…' : 'Generate filing'}
+                </button>
+              </div>
+            </form>
+          </SectionCard>
+
+          <SectionCard title="Generated batches" description="Reproducible filing batches stay versioned. Regenerating a scope supersedes the older batch instead of silently mutating it.">
+            <div className="space-y-3">
+              {data.statutory_filing_batches.length === 0 ? (
+                <EmptyState
+                  title="No filing batches yet"
+                  description="Generate PF, ESI, PT, 24Q, or Form 16 batches after you finalize the source payroll run or fiscal period."
+                />
+              ) : (
+                data.statutory_filing_batches.map((batch) => (
+                  <div key={batch.id} className="surface-shell rounded-[18px] px-4 py-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-semibold text-[hsl(var(--foreground-strong))]">{batch.filing_type}</p>
+                          <StatusBadge tone={getFilingTone(batch.status)}>{batch.status}</StatusBadge>
+                          <StatusBadge tone="info">{batch.artifact_format}</StatusBadge>
+                        </div>
+                        <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
+                          {batch.period_year && batch.period_month
+                            ? `${batch.period_month}/${batch.period_year}`
+                            : batch.quarter
+                              ? `${batch.quarter} • ${batch.fiscal_year}`
+                              : batch.fiscal_year || 'Ad-hoc scope'}
+                        </p>
+                        <p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">
+                          {batch.generated_at ? `Generated ${formatDateTime(batch.generated_at)}` : 'Not generated yet'}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {batch.status === 'GENERATED' ? (
+                          <button type="button" className="btn-secondary" onClick={() => void handleDownloadFiling(batch.id)}>
+                            Download
+                          </button>
+                        ) : null}
+                        {batch.status !== 'CANCELLED' ? (
+                          <button type="button" className="btn-secondary" onClick={() => void handleRegenerateFiling(batch.id)}>
+                            Regenerate
+                          </button>
+                        ) : null}
+                        {batch.status !== 'CANCELLED' ? (
+                          <button type="button" className="btn-secondary" onClick={() => void handleCancelFiling(batch.id)}>
+                            Cancel
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                    {batch.validation_errors.length > 0 ? (
+                      <div className="mt-3 rounded-[16px] border border-[hsl(var(--danger)_/_0.24)] bg-[hsl(var(--danger)_/_0.08)] px-3 py-3 text-sm text-[hsl(var(--foreground-strong))]">
+                        <p className="font-medium">Validation blockers</p>
+                        <ul className="mt-2 list-disc pl-5 text-[hsl(var(--muted-foreground))]">
+                          {batch.validation_errors.slice(0, 3).map((error) => (
+                            <li key={error}>{error}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                  </div>
+                ))
               )}
             </div>
           </SectionCard>

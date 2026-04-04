@@ -10,8 +10,10 @@ import {
   createAttendanceShiftAssignment,
   assignEmployeeDocumentRequests,
   calculatePayrollRun,
+  cancelPayrollFiling,
   downloadAttendanceTemplate,
   downloadNormalizedAttendanceFile,
+  downloadPayrollFiling,
   createApprovalWorkflow,
   createCompensationAssignment,
   createCompensationTemplate,
@@ -19,6 +21,7 @@ import {
   createHolidayCalendar,
   createOrgAddress,
   createPayrollRun,
+  createPayrollTdsChallan,
   createPayrollTaxSlabSet,
   createLeaveCycle,
   createLeavePlan,
@@ -63,6 +66,7 @@ import {
   fetchApprovalWorkflows,
   fetchLeavePlan,
   finalizePayrollRun,
+  generatePayrollFiling,
   getEmployeeDocumentDownloadUrl,
   inviteEmployee,
   markEmployeeJoined,
@@ -74,6 +78,7 @@ import {
   fetchNotice,
   fetchOnDutyPolicy,
   rerunPayrollRun,
+  regeneratePayrollFiling,
   uploadAttendanceSheet,
   uploadPunchSheet,
   submitCompensationAssignment,
@@ -83,6 +88,7 @@ import {
   updateOrgAddress,
   updateOrgProfile,
   updatePayrollTaxSlabSet,
+  updatePayrollTdsChallan,
   updateOrgSetup,
   updateApprovalWorkflow,
   updateDepartment,
@@ -747,6 +753,27 @@ export function useCreatePayrollRun() {
   })
 }
 
+export function useCreatePayrollTdsChallan() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: createPayrollTdsChallan,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useUpdatePayrollTdsChallan() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Parameters<typeof updatePayrollTdsChallan>[1] }) =>
+      updatePayrollTdsChallan(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
 export function useCalculatePayrollRun() {
   const queryClient = useQueryClient()
   return useMutation({
@@ -786,6 +813,42 @@ export function useRerunPayrollRun() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['org'] })
     },
+  })
+}
+
+export function useGeneratePayrollFiling() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: generatePayrollFiling,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useRegeneratePayrollFiling() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: regeneratePayrollFiling,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useCancelPayrollFiling() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: cancelPayrollFiling,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useDownloadPayrollFiling() {
+  return useMutation({
+    mutationFn: downloadPayrollFiling,
   })
 }
 

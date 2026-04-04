@@ -1,0 +1,33 @@
+{
+  "challans": [],
+  "deductor": {
+    "organisation_name": "Northstar Labs",
+    "pan_number": "AACCN1234F",
+    "tan_number": "BLRN12345A"
+  },
+  "employees": [
+    {
+      "employee_code": "EMP001",
+      "employee_id": "__DYNAMIC__",
+      "employee_name": "Priya Sharma",
+      "employee_pan": "ABCDE1234F",
+      "gross_salary": "45000.00",
+      "health_and_education_cess": "0.00",
+      "pay_periods": [
+        {
+          "month": 4,
+          "year": 2026
+        },
+        {
+          "month": 5,
+          "year": 2026
+        }
+      ],
+      "tax_deducted": "0.00",
+      "taxable_income": "390000.00"
+    }
+  ],
+  "filing_type": "FORM24Q",
+  "fiscal_year": "2026-2027",
+  "quarter": "Q1"
+}

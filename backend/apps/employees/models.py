@@ -321,6 +321,8 @@ class EmployeeProfile(AuditedBaseModel):
     country = models.CharField(max_length=100, blank=True)
     country_code = models.CharField(max_length=2, blank=True, default='')
     pincode = models.CharField(max_length=20, blank=True)
+    uan_number = models.CharField(max_length=12, blank=True)
+    esic_ip_number = models.CharField(max_length=20, blank=True)
 
     class Meta:
         db_table = 'employee_profiles'

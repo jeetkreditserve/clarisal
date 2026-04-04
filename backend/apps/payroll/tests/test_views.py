@@ -1,10 +1,13 @@
 from datetime import date
+from decimal import Decimal
 
 import pytest
+from django.core.management import call_command
 from rest_framework.test import APIClient
 
 from apps.accounts.models import AccountType, User, UserRole
-from apps.employees.models import Employee, EmployeeStatus
+from apps.employees.models import Employee, EmployeeProfile, EmployeeStatus, GenderChoice, GovernmentIdType
+from apps.employees.services import upsert_government_id
 from apps.organisations.models import (
     Organisation,
     OrganisationAccessState,
@@ -19,11 +22,61 @@ from apps.payroll.services import (
     assign_employee_compensation,
     calculate_pay_run,
     create_compensation_template,
+    create_full_and_final_settlement,
     create_payroll_run,
     create_tax_slab_set,
     ensure_org_payroll_setup,
     finalize_pay_run,
 )
+
+from .test_service_setup import _attach_registered_and_billing_addresses
+
+
+def _finalize_basic_pay_run(*, organisation, org_admin_user, employee, monthly_amount, period_year=2026, period_month=4):
+    create_tax_slab_set(
+        fiscal_year='2026-2027',
+        name=f'FY {period_year} Master',
+        country_code='IN',
+        slabs=[
+            {'min_income': '0', 'max_income': '300000', 'rate_percent': '0'},
+            {'min_income': '300000', 'max_income': '700000', 'rate_percent': '10'},
+            {'min_income': '700000', 'max_income': None, 'rate_percent': '20'},
+        ],
+        actor=org_admin_user,
+    )
+    ensure_org_payroll_setup(organisation, actor=org_admin_user)
+    template = create_compensation_template(
+        organisation,
+        name=f'Payroll {period_year}-{period_month:02d}',
+        description='Filing endpoint setup',
+        lines=[
+            {
+                'component_code': 'BASIC',
+                'name': 'Basic Pay',
+                'component_type': 'EARNING',
+                'monthly_amount': str(monthly_amount),
+                'is_taxable': True,
+            }
+        ],
+        actor=org_admin_user,
+    )
+    assign_employee_compensation(
+        employee,
+        template,
+        effective_from=date(period_year, period_month, 1),
+        actor=org_admin_user,
+        auto_approve=True,
+    )
+    pay_run = create_payroll_run(
+        organisation,
+        period_year=period_year,
+        period_month=period_month,
+        actor=org_admin_user,
+        requester_user=org_admin_user,
+    )
+    calculate_pay_run(pay_run, actor=org_admin_user)
+    finalize_pay_run(pay_run, actor=org_admin_user, skip_approval=True)
+    return pay_run
 
 
 @pytest.fixture
@@ -34,6 +87,7 @@ def payroll_setup(db):
         billing_status=OrganisationBillingStatus.PAID,
         access_state=OrganisationAccessState.ACTIVE,
     )
+    _attach_registered_and_billing_addresses(organisation)
     ct_user = User.objects.create_user(
         email='ct-payroll@test.com',
         password='pass123!',
@@ -112,6 +166,7 @@ class TestPayrollViews:
     def test_ct_can_create_master_and_org_summary_sees_seeded_copy(self, payroll_setup):
         ct_client = payroll_setup['ct_client']
         org_admin_client = payroll_setup['org_admin_client']
+        call_command('seed_statutory_masters')
 
         response = ct_client.post(
             '/api/ct/payroll/tax-slab-sets/',
@@ -135,6 +190,21 @@ class TestPayrollViews:
         assert summary_response.status_code == 200
         assert summary_response.data['tax_slab_sets']
         assert summary_response.data['tax_slab_sets'][0]['source_set_id'] == response.data['id']
+        assert summary_response.data['professional_tax_rules']
+        assert summary_response.data['labour_welfare_fund_rules']
+
+    def test_ct_and_org_can_read_seeded_statutory_masters(self, payroll_setup):
+        call_command('seed_statutory_masters')
+        ct_client = payroll_setup['ct_client']
+        org_admin_client = payroll_setup['org_admin_client']
+
+        ct_response = ct_client.get('/api/ct/payroll/statutory-masters/?state_code=KA')
+        org_response = org_admin_client.get('/api/org/payroll/statutory-masters/?state_code=MH')
+
+        assert ct_response.status_code == 200
+        assert org_response.status_code == 200
+        assert [rule['state_code'] for rule in ct_response.data['professional_tax_rules']] == ['KA']
+        assert [rule['state_code'] for rule in org_response.data['labour_welfare_fund_rules']] == ['MH']
 
     def test_employee_can_list_own_payslips(self, payroll_setup):
         organisation = payroll_setup['organisation']
@@ -262,6 +332,179 @@ class TestPayrollViews:
         assert response['Content-Type'].startswith('text/plain')
         assert payslip.slip_number.replace('/', '-') in response['Content-Disposition']
         assert payslip.rendered_text in response.content.decode('utf-8')
+
+    def test_employee_can_download_payslip_rendered_text_with_labour_welfare_fund_lines(self, payroll_setup):
+        employee_client = payroll_setup['employee_client']
+        organisation = payroll_setup['organisation']
+        org_admin_user = payroll_setup['org_admin_user']
+        employee = payroll_setup['employee']
+
+        create_tax_slab_set(
+            country_code='IN',
+            fiscal_year='2026-27',
+            name='FY 2026-27',
+            slabs=[
+                {'min_income': '0', 'max_income': '300000', 'rate_percent': '0'},
+                {'min_income': '300000', 'max_income': '700000', 'rate_percent': '10'},
+                {'min_income': '700000', 'max_income': None, 'rate_percent': '20'},
+            ],
+            actor=org_admin_user,
+        )
+        ensure_org_payroll_setup(organisation, actor=org_admin_user)
+        template = create_compensation_template(
+            organisation,
+            name='LWF Template',
+            description='Rendered LWF flow',
+            lines=[
+                {
+                    'component_code': 'BASIC',
+                    'name': 'Basic Pay',
+                    'component_type': 'EARNING',
+                    'monthly_amount': '4000',
+                    'is_taxable': True,
+                }
+            ],
+            actor=org_admin_user,
+        )
+        assign_employee_compensation(
+            employee,
+            template,
+            effective_from=date(2026, 6, 1),
+            actor=org_admin_user,
+            auto_approve=True,
+        )
+        pay_run = create_payroll_run(
+            organisation,
+            period_year=2026,
+            period_month=6,
+            actor=org_admin_user,
+            requester_user=org_admin_user,
+        )
+        calculate_pay_run(pay_run, actor=org_admin_user)
+        finalize_pay_run(pay_run, actor=org_admin_user, skip_approval=True)
+        payslip = Payslip.objects.get(employee=employee, pay_run=pay_run)
+
+        response = employee_client.get(f'/api/me/payroll/payslips/{payslip.id}/download/')
+        rendered = response.content.decode('utf-8')
+
+        assert response.status_code == 200
+        assert 'Labour Welfare Fund - Employee *' in rendered
+        assert 'Labour Welfare Fund - Employer *' in rendered
+
+    def test_org_admin_can_view_full_and_final_settlement_with_automated_gratuity(self, payroll_setup):
+        organisation = payroll_setup['organisation']
+        org_admin_user = payroll_setup['org_admin_user']
+        org_admin_client = payroll_setup['org_admin_client']
+        employee = payroll_setup['employee']
+        employee.date_of_joining = date(2021, 1, 1)
+        employee.save(update_fields=['date_of_joining'])
+
+        template = create_compensation_template(
+            organisation,
+            name='FNF View Template',
+            description='FNF view flow',
+            lines=[
+                {
+                    'component_code': 'BASIC',
+                    'name': 'Basic Pay',
+                    'component_type': 'EARNING',
+                    'monthly_amount': '26000',
+                    'is_taxable': True,
+                }
+            ],
+            actor=org_admin_user,
+        )
+        assign_employee_compensation(
+            employee,
+            template,
+            effective_from=date(2026, 1, 1),
+            actor=org_admin_user,
+            auto_approve=True,
+        )
+        settlement = create_full_and_final_settlement(
+            employee=employee,
+            last_working_day=date(2026, 1, 31),
+            initiated_by=org_admin_user,
+        )
+
+        response = org_admin_client.get(f'/api/org/payroll/full-and-final-settlements/{settlement.id}/')
+
+        assert response.status_code == 200
+        assert response.data['gratuity'] == '75000.00'
+        assert response.data['gross_payable'] == '101000.00'
+        assert response.data['net_payable'] == '101000.00'
+
+    def test_employee_can_download_payslip_with_pt_pf_esi_and_lwf_combined(self, payroll_setup):
+        employee_client = payroll_setup['employee_client']
+        organisation = payroll_setup['organisation']
+        org_admin_user = payroll_setup['org_admin_user']
+        employee = payroll_setup['employee']
+
+        EmployeeProfile.objects.update_or_create(
+            employee=employee,
+            defaults={'gender': GenderChoice.MALE},
+        )
+        create_tax_slab_set(
+            country_code='IN',
+            fiscal_year='2026-27',
+            name='FY 2026-27',
+            slabs=[
+                {'min_income': '0', 'max_income': '300000', 'rate_percent': '0'},
+                {'min_income': '300000', 'max_income': '700000', 'rate_percent': '10'},
+                {'min_income': '700000', 'max_income': None, 'rate_percent': '20'},
+            ],
+            actor=org_admin_user,
+        )
+        ensure_org_payroll_setup(organisation, actor=org_admin_user)
+        template = create_compensation_template(
+            organisation,
+            name='Combined Statutory Template',
+            description='PT PF ESI LWF flow',
+            lines=[
+                {
+                    'component_code': 'BASIC',
+                    'name': 'Basic Pay',
+                    'component_type': 'EARNING',
+                    'monthly_amount': '20000',
+                    'is_taxable': True,
+                }
+            ],
+            actor=org_admin_user,
+        )
+        assign_employee_compensation(
+            employee,
+            template,
+            effective_from=date(2026, 6, 1),
+            actor=org_admin_user,
+            auto_approve=True,
+        )
+        pay_run = create_payroll_run(
+            organisation,
+            period_year=2026,
+            period_month=6,
+            actor=org_admin_user,
+            requester_user=org_admin_user,
+        )
+        calculate_pay_run(pay_run, actor=org_admin_user)
+        finalize_pay_run(pay_run, actor=org_admin_user, skip_approval=True)
+        payslip = Payslip.objects.get(employee=employee, pay_run=pay_run)
+
+        response = employee_client.get(f'/api/me/payroll/payslips/{payslip.id}/download/')
+        rendered = response.content.decode('utf-8')
+        item = pay_run.items.get(employee=employee)
+
+        assert response.status_code == 200
+        assert Decimal(item.snapshot['pt_monthly']) == Decimal('200.00')
+        assert Decimal(item.snapshot['auto_pf']) == Decimal('1800.00')
+        assert Decimal(item.snapshot['esi_employee']) == Decimal('150.00')
+        assert Decimal(item.snapshot['lwf_employee']) == Decimal('12.00')
+        assert Decimal(item.snapshot['pf_employer']) == Decimal('1800.00')
+        assert Decimal(item.snapshot['esi_employer']) == Decimal('650.00')
+        assert Decimal(item.snapshot['lwf_employer']) == Decimal('36.00')
+        assert 'Professional Tax *' in rendered
+        assert 'Employee PF/VPF (12.00% of PF Wages) *' in rendered
+        assert 'ESI - Employee (0.75%) *' in rendered
+        assert 'Labour Welfare Fund - Employee *' in rendered
 
     def test_employee_can_create_and_list_investment_declarations(self, payroll_setup):
         employee_client = payroll_setup['employee_client']
@@ -404,3 +647,147 @@ class TestPayrollViews:
         assert first_employee['part_a']['employer_pan'] == 'ABCDE1234F'
         assert 'gross_salary' in first_employee['part_b']
         assert 'rebate_87a' in first_employee['part_b']
+
+    def test_org_admin_can_generate_and_download_statutory_filing_batch(self, payroll_setup):
+        organisation = payroll_setup['organisation']
+        organisation.tan_number = 'BLRN12345A'
+        organisation.pan_number = 'AACCN1234F'
+        organisation.save(update_fields=['tan_number', 'pan_number', 'modified_at'])
+
+        employee = payroll_setup['employee']
+        EmployeeProfile.objects.create(
+            employee=employee,
+            gender=GenderChoice.MALE,
+            uan_number='100200300400',
+            esic_ip_number='1234567890',
+        )
+        upsert_government_id(employee, GovernmentIdType.PAN, 'ABCDE1234F', actor=payroll_setup['org_admin_user'], name_on_id='Employee User')
+        _finalize_basic_pay_run(
+            organisation=organisation,
+            org_admin_user=payroll_setup['org_admin_user'],
+            employee=employee,
+            monthly_amount='20000',
+        )
+
+        generate_response = payroll_setup['org_admin_client'].post(
+            '/api/org/payroll/filings/',
+            {
+                'filing_type': 'PF_ECR',
+                'period_year': 2026,
+                'period_month': 4,
+            },
+            format='json',
+        )
+
+        assert generate_response.status_code == 201
+        assert generate_response.data['status'] == 'GENERATED'
+        assert generate_response.data['file_name'].endswith('.csv')
+
+        batch_id = generate_response.data['id']
+        download_response = payroll_setup['org_admin_client'].get(f'/api/org/payroll/filings/{batch_id}/download/')
+
+        assert download_response.status_code == 200
+        assert download_response['Content-Disposition'].endswith('.csv"')
+        assert '100200300400' in download_response.content.decode('utf-8')
+
+    def test_blocked_filing_batch_surfaces_validation_errors(self, payroll_setup):
+        organisation = payroll_setup['organisation']
+        employee = payroll_setup['employee']
+        EmployeeProfile.objects.create(employee=employee, gender=GenderChoice.MALE)
+        _finalize_basic_pay_run(
+            organisation=organisation,
+            org_admin_user=payroll_setup['org_admin_user'],
+            employee=employee,
+            monthly_amount='20000',
+        )
+
+        response = payroll_setup['org_admin_client'].post(
+            '/api/org/payroll/filings/',
+            {
+                'filing_type': 'PF_ECR',
+                'period_year': 2026,
+                'period_month': 4,
+            },
+            format='json',
+        )
+
+        assert response.status_code == 200
+        assert response.data['status'] == 'BLOCKED'
+        assert 'missing UAN number' in response.data['validation_errors'][0]
+
+    def test_filing_batch_can_be_regenerated_and_cancelled(self, payroll_setup):
+        organisation = payroll_setup['organisation']
+        organisation.tan_number = 'BLRN12345A'
+        organisation.pan_number = 'AACCN1234F'
+        organisation.save(update_fields=['tan_number', 'pan_number', 'modified_at'])
+
+        employee = payroll_setup['employee']
+        EmployeeProfile.objects.create(
+            employee=employee,
+            gender=GenderChoice.MALE,
+            uan_number='100200300400',
+            esic_ip_number='1234567890',
+        )
+        upsert_government_id(employee, GovernmentIdType.PAN, 'ABCDE1234F', actor=payroll_setup['org_admin_user'], name_on_id='Employee User')
+        _finalize_basic_pay_run(
+            organisation=organisation,
+            org_admin_user=payroll_setup['org_admin_user'],
+            employee=employee,
+            monthly_amount='20000',
+        )
+
+        create_response = payroll_setup['org_admin_client'].post(
+            '/api/org/payroll/filings/',
+            {
+                'filing_type': 'FORM16',
+                'fiscal_year': '2026-2027',
+                'artifact_format': 'XML',
+            },
+            format='json',
+        )
+        assert create_response.status_code == 201
+
+        batch_id = create_response.data['id']
+        regenerate_response = payroll_setup['org_admin_client'].post(f'/api/org/payroll/filings/{batch_id}/regenerate/')
+
+        assert regenerate_response.status_code == 201
+        assert regenerate_response.data['status'] == 'GENERATED'
+
+        cancel_response = payroll_setup['org_admin_client'].post(f'/api/org/payroll/filings/{batch_id}/cancel/')
+
+        assert cancel_response.status_code == 200
+        assert cancel_response.data['status'] == 'CANCELLED'
+
+    def test_org_admin_can_create_and_update_tds_challan(self, payroll_setup):
+        create_response = payroll_setup['org_admin_client'].post(
+            '/api/org/payroll/tds-challans/',
+            {
+                'fiscal_year': '2026-2027',
+                'period_year': 2026,
+                'period_month': 4,
+                'bsr_code': '0510032',
+                'challan_serial_number': '00004',
+                'deposit_date': '2026-04-07',
+                'tax_deposited': '3500.00',
+                'statement_receipt_number': '123456789012345',
+            },
+            format='json',
+        )
+
+        assert create_response.status_code == 201
+        assert create_response.data['quarter'] == 'Q1'
+        assert create_response.data['tax_deposited'] == '3500.00'
+
+        challan_id = create_response.data['id']
+        update_response = payroll_setup['org_admin_client'].patch(
+            f'/api/org/payroll/tds-challans/{challan_id}/',
+            {
+                'tax_deposited': '3600.00',
+                'notes': 'Adjusted for interest reversal',
+            },
+            format='json',
+        )
+
+        assert update_response.status_code == 200
+        assert update_response.data['tax_deposited'] == '3600.00'
+        assert update_response.data['notes'] == 'Adjusted for interest reversal'

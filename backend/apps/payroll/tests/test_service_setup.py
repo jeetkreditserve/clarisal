@@ -17,6 +17,8 @@ from apps.employees.models import Employee, EmployeeStatus
 from apps.organisations.models import (
     Organisation,
     OrganisationAccessState,
+    OrganisationAddress,
+    OrganisationAddressType,
     OrganisationBillingStatus,
     OrganisationStatus,
 )
@@ -56,6 +58,7 @@ def _create_active_organisation(name='Payroll Setup Org'):
         billing_status=OrganisationBillingStatus.PAID,
         access_state=OrganisationAccessState.ACTIVE,
     )
+    _attach_registered_and_billing_addresses(organisation)
     batch = create_licence_batch(
         organisation,
         quantity=10,
@@ -65,6 +68,36 @@ def _create_active_organisation(name='Payroll Setup Org'):
     )
     mark_licence_batch_paid(batch, paid_at=date(2026, 4, 1))
     return organisation
+
+
+def _attach_registered_and_billing_addresses(organisation, *, state='Maharashtra', state_code='MH'):
+    OrganisationAddress.objects.create(
+        organisation=organisation,
+        address_type=OrganisationAddressType.REGISTERED,
+        label='Registered Office',
+        line1='1 Payroll Street',
+        city='Mumbai',
+        state=state,
+        state_code=state_code,
+        country='India',
+        country_code='IN',
+        pincode='400001',
+        is_active=True,
+    )
+    OrganisationAddress.objects.create(
+        organisation=organisation,
+        address_type=OrganisationAddressType.BILLING,
+        label='Billing Address',
+        line1='2 Payroll Street',
+        city='Mumbai',
+        state=state,
+        state_code=state_code,
+        country='India',
+        country_code='IN',
+        pincode='400001',
+        gstin='27AACCA1234F1Z5',
+        is_active=True,
+    )
 
 
 def _create_user(email, *, organisation=None, role=UserRole.ORG_ADMIN):
@@ -210,6 +243,12 @@ class TestPayrollServiceSetup:
         with pytest.raises(ValueError):
             _resolve_payroll_requester_context(requester_user=None, requester_employee=None, organisation=None)
 
+        assert _resolve_payroll_requester_context(
+            requester_user=requester_user,
+            requester_employee=None,
+            organisation=organisation,
+        ) == (organisation, requester_user, None)
+
     def test_total_80c_deduction_and_old_regime_taxable_income_are_capped(self):
         organisation = _create_active_organisation('Investments Org')
         _user, employee = _create_employee(organisation, 'investments@test.com', employee_code='EMPINV1')
@@ -272,7 +311,19 @@ class TestPayrollServiceSetup:
         updated.refresh_from_db()
         assert updated.name == 'FY 2026 Old Regime'
         assert updated.is_old_regime is True
+        assert updated.fiscal_year == '2026-2027'
+        assert updated.is_active is True
         assert list(updated.slabs.values_list('rate_percent', flat=True)) == [Decimal('0.00'), Decimal('20.00')]
+
+        updated = update_tax_slab_set(
+            updated,
+            fiscal_year='2027-2028',
+            is_active=False,
+        )
+
+        updated.refresh_from_db()
+        assert updated.fiscal_year == '2027-2028'
+        assert updated.is_active is False
 
     def test_create_and_update_compensation_template_manage_lines(self):
         organisation = _create_active_organisation('Template Org')
@@ -512,4 +563,16 @@ class TestPayrollServiceSetup:
         assert first_setup['tax_slab_set'].source_set == master
         assert first_setup['tax_slab_set'].id == second_setup['tax_slab_set'].id
         assert PayrollTaxSlabSet.objects.filter(organisation=organisation, is_active=True).count() == 1
-        assert len(first_setup['components']) == 8
+        assert len(first_setup['components']) == 10
+        assert {component.code for component in first_setup['components']} == {
+            'BASIC',
+            'HRA',
+            'SPECIAL_ALLOWANCE',
+            'PF_EMPLOYEE',
+            'PF_EMPLOYER',
+            'ESI_EMPLOYEE',
+            'ESI_EMPLOYER',
+            'LWF_EMPLOYEE',
+            'LWF_EMPLOYER',
+            'PROFESSIONAL_TAX',
+        }

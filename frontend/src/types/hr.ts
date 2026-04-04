@@ -1116,6 +1116,9 @@ export type CompensationTemplateStatus = 'DRAFT' | 'PENDING_APPROVAL' | 'APPROVE
 export type CompensationAssignmentStatus = 'DRAFT' | 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED'
 export type PayrollRunStatus = 'DRAFT' | 'CALCULATED' | 'APPROVAL_PENDING' | 'APPROVED' | 'REJECTED' | 'FINALIZED' | 'CANCELLED'
 export type PayrollRunType = 'REGULAR' | 'RERUN'
+export type StatutoryFilingType = 'PF_ECR' | 'ESI_MONTHLY' | 'FORM24Q' | 'PROFESSIONAL_TAX' | 'FORM16'
+export type StatutoryFilingStatus = 'READY' | 'BLOCKED' | 'GENERATED' | 'SUPERSEDED' | 'CANCELLED'
+export type StatutoryFilingArtifactFormat = 'CSV' | 'JSON' | 'XML' | 'PDF' | 'TEXT'
 
 export interface PayrollTaxSlab {
   id: string
@@ -1262,11 +1265,54 @@ export interface Payslip {
   created_at: string
 }
 
+export interface StatutoryFilingBatch {
+  id: string
+  filing_type: StatutoryFilingType
+  status: StatutoryFilingStatus
+  artifact_format: StatutoryFilingArtifactFormat
+  period_year: number | null
+  period_month: number | null
+  fiscal_year: string
+  quarter: string
+  checksum: string
+  file_name: string
+  content_type: string
+  file_size_bytes: number
+  generated_at: string | null
+  source_signature: string
+  validation_errors: string[]
+  metadata: Record<string, unknown>
+  structured_payload: Record<string, unknown>
+  source_pay_run_ids: string[]
+  created_at: string
+  modified_at: string
+}
+
+export interface PayrollTdsChallan {
+  id: string
+  fiscal_year: string
+  quarter: 'Q1' | 'Q2' | 'Q3' | 'Q4'
+  period_year: number
+  period_month: number
+  bsr_code: string
+  challan_serial_number: string
+  deposit_date: string
+  tax_deposited: string
+  interest_amount: string
+  fee_amount: string
+  statement_receipt_number: string
+  notes: string
+  created_at: string
+  modified_at: string
+}
+
 export interface OrgPayrollSummary {
   tax_slab_sets: PayrollTaxSlabSet[]
   components: PayrollComponent[]
   compensation_templates: CompensationTemplate[]
   compensation_assignments: CompensationAssignment[]
   pay_runs: PayrollRun[]
+  statutory_filing_batches: StatutoryFilingBatch[]
+  tds_challans: PayrollTdsChallan[]
   payslip_count: number
 }

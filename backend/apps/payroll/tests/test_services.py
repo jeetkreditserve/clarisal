@@ -27,6 +27,8 @@ from apps.organisations.models import (
 from apps.organisations.services import create_licence_batch, mark_licence_batch_paid
 from apps.payroll.models import (
     CompensationAssignmentStatus,
+    InvestmentDeclaration,
+    InvestmentSection,
     PayrollComponentType,
     PayrollRunStatus,
     PayrollTaxSlabSet,
@@ -45,6 +47,8 @@ from apps.payroll.services import (
     submit_pay_run_for_approval,
 )
 
+from .test_service_setup import _attach_registered_and_billing_addresses
+
 
 def _create_active_organisation(name='Acme Corp'):
     organisation = Organisation.objects.create(
@@ -53,6 +57,7 @@ def _create_active_organisation(name='Acme Corp'):
         billing_status=OrganisationBillingStatus.PAID,
         access_state=OrganisationAccessState.ACTIVE,
     )
+    _attach_registered_and_billing_addresses(organisation)
     batch = create_licence_batch(
         organisation,
         quantity=25,
@@ -442,6 +447,105 @@ class TestPayrollServices:
 
         assert item.snapshot['tax_regime'] == TaxRegime.OLD
         assert item.snapshot['tax_slab_set_id'] == str(old_regime_set.id)
+
+    def test_old_regime_pay_run_applies_investment_declarations_before_surcharge(self):
+        organisation = _create_active_organisation('Old Regime Surcharge Org')
+        requester_user = _create_workforce_user('old-surcharge-admin@test.com', role=UserRole.ORG_ADMIN, organisation=organisation)
+        employee_user = _create_workforce_user('old-surcharge-employee@test.com', organisation=organisation)
+        employee = Employee.objects.create(
+            organisation=organisation,
+            user=employee_user,
+            employee_code='EMP201',
+            designation='Director',
+            status=EmployeeStatus.ACTIVE,
+            date_of_joining=date(2026, 4, 1),
+        )
+        OrganisationMembership.objects.create(
+            user=requester_user,
+            organisation=organisation,
+            is_org_admin=True,
+            status=OrganisationMembershipStatus.ACTIVE,
+        )
+
+        create_tax_slab_set(
+            fiscal_year='2026-2027',
+            name='FY 2026 New Regime',
+            country_code='IN',
+            slabs=[
+                {'min_income': '0', 'max_income': '300000', 'rate_percent': '0'},
+                {'min_income': '300000', 'max_income': '700000', 'rate_percent': '5'},
+                {'min_income': '700000', 'max_income': '1000000', 'rate_percent': '10'},
+                {'min_income': '1000000', 'max_income': None, 'rate_percent': '20'},
+            ],
+            actor=requester_user,
+            organisation=organisation,
+            is_old_regime=False,
+        )
+        old_regime_set = create_tax_slab_set(
+            fiscal_year='2026-2027',
+            name='FY 2026 Old Regime',
+            country_code='IN',
+            slabs=[
+                {'min_income': '0', 'max_income': '250000', 'rate_percent': '0'},
+                {'min_income': '250000', 'max_income': '500000', 'rate_percent': '5'},
+                {'min_income': '500000', 'max_income': '1000000', 'rate_percent': '20'},
+                {'min_income': '1000000', 'max_income': None, 'rate_percent': '30'},
+            ],
+            actor=requester_user,
+            organisation=organisation,
+            is_old_regime=True,
+        )
+
+        template = create_compensation_template(
+            organisation,
+            name='Old Regime Surcharge Template',
+            description='Old regime surcharge composition',
+            lines=[
+                {
+                    'component_code': 'BASIC',
+                    'name': 'Basic Pay',
+                    'component_type': PayrollComponentType.EARNING,
+                    'monthly_amount': '500000',
+                    'is_taxable': True,
+                }
+            ],
+            actor=requester_user,
+        )
+        assign_employee_compensation(
+            employee,
+            template,
+            effective_from=date(2026, 4, 1),
+            actor=requester_user,
+            auto_approve=True,
+            tax_regime=TaxRegime.OLD,
+        )
+        InvestmentDeclaration.objects.create(
+            employee=employee,
+            fiscal_year='2026-2027',
+            section=InvestmentSection.SECTION_80C,
+            description='PPF',
+            declared_amount=Decimal('150000.00'),
+        )
+
+        pay_run = create_payroll_run(
+            organisation,
+            period_year=2026,
+            period_month=4,
+            actor=requester_user,
+            requester_user=requester_user,
+        )
+        calculate_pay_run(pay_run, actor=requester_user)
+        item = pay_run.items.get(employee=employee)
+
+        assert item.snapshot['tax_regime'] == TaxRegime.OLD
+        assert item.snapshot['tax_slab_set_id'] == str(old_regime_set.id)
+        assert Decimal(item.snapshot['annual_taxable_after_sd']) == Decimal('5775000.00')
+        assert Decimal(item.snapshot['annual_investment_deductions']) == Decimal('150000.00')
+        assert Decimal(item.snapshot['annual_tax_before_rebate']) == Decimal('1545000.00')
+        assert Decimal(item.snapshot['annual_surcharge']) == Decimal('154500.00')
+        assert Decimal(item.snapshot['annual_tax_before_cess']) == Decimal('1699500.00')
+        assert Decimal(item.snapshot['annual_cess']) == Decimal('67980.00')
+        assert Decimal(item.snapshot['annual_tax_total']) == Decimal('1767480.00')
 
     def test_get_employee_arrears_for_run_sums_only_unincluded_entries(self):
         from apps.payroll.models import Arrears

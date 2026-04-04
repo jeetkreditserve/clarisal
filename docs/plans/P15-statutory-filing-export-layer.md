@@ -44,42 +44,45 @@
 
 ## Task 1: Create the Filing Batch Domain
 
-- [ ] Add a `StatutoryFilingBatch` model with filing type, period, organisation, source payroll runs, generation status, checksum, and file storage metadata.
-- [ ] Ensure every export path is reproducible: same inputs must generate identical serialized rows unless configuration changes.
-- [ ] Add audit-log hooks for generate, regenerate, download, and cancel operations.
+- [x] Add a `StatutoryFilingBatch` model with filing type, period, organisation, source payroll runs, generation status, checksum, and file storage metadata.
+- [x] Ensure every export path is reproducible: same inputs must generate identical serialized rows unless configuration changes.
+- [x] Add audit-log hooks for generate, regenerate, download, and cancel operations.
 
 ## Task 2: Implement PF ECR Export
 
-- [ ] Convert finalized payroll run data into ECR-ready row structures with UAN, wage, EPS, EPF, and admin-charge columns.
-- [ ] Validate mandatory employee identifiers and surface actionable exceptions instead of producing partial files silently.
-- [ ] Add golden-file tests using representative employee fixtures and exact text/CSV assertions.
+- [x] Convert finalized payroll run data into ECR-ready row structures with UAN, wage, EPS, EPF, and admin-charge columns.
+- [x] Validate mandatory employee identifiers and surface actionable exceptions instead of producing partial files silently.
+- [x] Add golden-file tests using representative employee fixtures and exact text/CSV assertions.
 
 ## Task 3: Implement ESI Challan / Monthly Export
 
-- [ ] Generate ESI monthly contribution export rows from persisted ESI contribution-period logic introduced in `P14`.
-- [ ] Include employee and employer contribution totals, insured-person identifiers, and period metadata.
-- [ ] Add tests for threshold edges and mid-period eligibility continuation.
+- [x] Generate ESI monthly contribution export rows from persisted ESI contribution-period logic introduced in `P14`.
+- [x] Include employee and employer contribution totals, insured-person identifiers, and period metadata.
+- [x] Add tests for threshold edges and mid-period eligibility continuation.
 
 ## Task 4: Implement Form 24Q Quarterly Export
 
-- [ ] Aggregate finalized payslip and TDS data into quarter-level return rows.
-- [ ] Add validation for PAN completeness, challan grouping, and quarter cutoffs.
-- [ ] Produce a stable, machine-readable export format first; add any human-readable summary sheet only after the structured dataset is correct.
+- [x] Aggregate finalized payslip and TDS data into quarter-level return rows.
+- [-] Add validation for PAN completeness, challan grouping, and quarter cutoffs.
+  Quarter cutoffs are implemented, but the current export still emits masked PAN values and only month-level tax totals instead of filing-grade challan grouping.
+- [-] Produce a stable, machine-readable export format first; add any human-readable summary sheet only after the structured dataset is correct.
+  The JSON is stable, but it is not yet filing-grade because employee PAN and challan detail are incomplete.
 
 ## Task 5: Implement PT Return and Form 16 Document Outputs
 
-- [ ] Add a PT-return generator that uses the state master data from `P14` and fails fast for states without a defined export template.
-- [ ] Upgrade Form 16 from JSON-only output to downloadable PDF and structured machine-readable export.
-- [ ] Keep template/rendering code separate from tax calculation code so statutory math stays testable.
+- [x] Add a PT-return generator that uses the state master data from `P14` and fails fast for states without a defined export template.
+- [-] Upgrade Form 16 from JSON-only output to downloadable PDF and structured machine-readable export.
+  PDF/XML outputs exist, but they still use masked employee PAN values, so the document layer is not yet compliance-ready.
+- [x] Keep template/rendering code separate from tax calculation code so statutory math stays testable.
 
 ## Task 6: Wire APIs, UI, and Operational Guardrails
 
-- [ ] Add org-admin export endpoints grouped by filing type and period.
-- [ ] Show validation blockers before download when mandatory employee or organisation metadata is missing.
-- [ ] Provide clear UI status for `ready`, `blocked`, `generated`, and `superseded` filing batches.
+- [x] Add org-admin export endpoints grouped by filing type and period.
+- [x] Show validation blockers before download when mandatory employee or organisation metadata is missing.
+- [x] Provide clear UI status for `ready`, `blocked`, `generated`, and `superseded` filing batches.
 
 ## Task 7: Cleanup and Full Export Verification
 
-- [ ] Remove any duplicate export formatting helpers left in report or payroll views.
-- [ ] Add API, service, and generator tests to fully exercise changed filing modules.
-- [ ] Store fixture samples under tests so future audits can compare generated files against expected statutory shapes.
+- [x] Remove any duplicate export formatting helpers left in report or payroll views.
+- [x] Add API, service, and generator tests to fully exercise changed filing modules.
+- [x] Store fixture samples under tests so future audits can compare generated files against expected statutory shapes.

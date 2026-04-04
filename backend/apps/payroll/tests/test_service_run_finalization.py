@@ -48,6 +48,9 @@ def _create_ready_item(pay_run, employee, *, gross='50000.00', net='45000.00', t
             'annual_tax_total': '10400.00',
             'gross_pay': gross,
             'income_tax': '2000.00',
+            'esi_eligibility_mode': 'DIRECT',
+            'esi_contribution_period_start': '2026-04-01',
+            'esi_contribution_period_end': '2026-09-30',
             'lines': [],
         },
     )
@@ -173,6 +176,36 @@ class TestPayrollRunFinalizationService:
 
         with pytest.raises(ValueError):
             finalize_pay_run(pay_run, actor=requester_user)
+
+    def test_finalize_pay_run_persists_esi_contribution_period_fields(self):
+        organisation = _create_active_organisation('Finalize ESI Org')
+        requester_user, _requester_employee = _create_employee(
+            organisation,
+            'finalize-esi-requester@test.com',
+            employee_code='EMPF16K',
+        )
+        _employee_user, employee = _create_employee(
+            organisation,
+            'finalize-esi-employee@test.com',
+            role='EMPLOYEE',
+            employee_code='EMPF16L',
+        )
+        pay_run = create_payroll_run(
+            organisation,
+            period_year=2026,
+            period_month=4,
+            requester_user=requester_user,
+        )
+        _create_ready_item(pay_run, employee)
+        pay_run.status = PayrollRunStatus.CALCULATED
+        pay_run.save(update_fields=['status'])
+
+        finalize_pay_run(pay_run, actor=requester_user, skip_approval=True)
+
+        payslip = Payslip.objects.get(pay_run=pay_run, employee=employee)
+        assert str(payslip.esi_contribution_period_start) == '2026-04-01'
+        assert str(payslip.esi_contribution_period_end) == '2026-09-30'
+        assert payslip.esi_eligibility_mode == 'DIRECT'
 
     def test_rerun_payroll_run_requires_finalized_status(self):
         organisation = _create_active_organisation('Rerun Guard Org')

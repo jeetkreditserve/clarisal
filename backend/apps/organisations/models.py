@@ -159,6 +159,7 @@ class Organisation(AuditedBaseModel):
         default=OrganisationEntityType.PRIVATE_LIMITED,
     )
     pan_number = models.CharField(max_length=10, null=True, blank=True)
+    tan_number = models.CharField(max_length=10, null=True, blank=True)
     address = models.TextField(blank=True)
     phone = models.CharField(max_length=20, blank=True)
     email = models.EmailField(blank=True)

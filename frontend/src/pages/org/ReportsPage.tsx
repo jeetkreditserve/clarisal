@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { BarChart3, Calculator, Download, FileSpreadsheet, Users } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -234,6 +235,20 @@ export function ReportsPage() {
               </label>
             </>
           ) : null}
+        </div>
+      </SectionCard>
+
+      <SectionCard
+        title="Statutory filing exports"
+        description="PF ECR, ESI monthly, Form 24Q, PT returns, and Form 16 now live under Payroll so filing batches stay versioned and auditable."
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-[22px] border border-[hsl(var(--border)_/_0.76)] bg-[hsl(var(--surface)_/_0.9)] px-4 py-4">
+          <p className="text-sm text-[hsl(var(--muted-foreground))]">
+            Use Payroll → Filings when you need a downloadable statutory artifact instead of an analytics report.
+          </p>
+          <Link to="/org/payroll" className="btn-secondary">
+            Open payroll filings
+          </Link>
         </div>
       </SectionCard>
     </div>

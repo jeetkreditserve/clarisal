@@ -11,9 +11,10 @@ from apps.organisations.models import (
     OrganisationBillingStatus,
     OrganisationStatus,
 )
+from apps.payroll.services import assign_employee_compensation, create_compensation_template
 
 
-def _create_employee():
+def _create_employee(*, date_of_joining=None):
     organisation = Organisation.objects.create(
         name='FNF Org',
         status=OrganisationStatus.ACTIVE,
@@ -34,6 +35,7 @@ def _create_employee():
         employee_code='FNF001',
         designation='Manager',
         status=EmployeeStatus.ACTIVE,
+        date_of_joining=date_of_joining,
     )
 
 
@@ -75,3 +77,61 @@ class TestFullAndFinalSettlement:
         )
 
         assert amount == Decimal('19230.80')
+
+    def test_fnf_automatically_adds_gratuity_from_final_effective_assignment(self):
+        from apps.payroll.services import create_full_and_final_settlement
+
+        employee = _create_employee(date_of_joining=date(2021, 1, 1))
+        first_template = create_compensation_template(
+            employee.organisation,
+            name='Legacy Basic',
+            actor=employee.user,
+            lines=[
+                {
+                    'component_code': 'BASIC',
+                    'name': 'Basic Pay',
+                    'component_type': 'EARNING',
+                    'monthly_amount': '20000.00',
+                    'is_taxable': True,
+                },
+            ],
+        )
+        assign_employee_compensation(
+            employee,
+            first_template,
+            effective_from=date(2025, 1, 1),
+            actor=employee.user,
+            auto_approve=True,
+        )
+        latest_template = create_compensation_template(
+            employee.organisation,
+            name='Current Basic',
+            actor=employee.user,
+            lines=[
+                {
+                    'component_code': 'BASIC',
+                    'name': 'Basic Pay',
+                    'component_type': 'EARNING',
+                    'monthly_amount': '26000.00',
+                    'is_taxable': True,
+                },
+            ],
+        )
+        assign_employee_compensation(
+            employee,
+            latest_template,
+            effective_from=date(2026, 1, 1),
+            actor=employee.user,
+            auto_approve=True,
+        )
+
+        fnf = create_full_and_final_settlement(
+            employee=employee,
+            last_working_day=date(2026, 1, 31),
+            initiated_by=employee.user,
+        )
+
+        assert fnf.prorated_salary == Decimal('26000.00')
+        assert fnf.gratuity == Decimal('75000.00')
+        assert fnf.gross_payable == Decimal('101000.00')
+        assert fnf.net_payable == Decimal('101000.00')

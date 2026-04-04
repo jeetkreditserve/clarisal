@@ -16,6 +16,8 @@ from apps.organisations.models import (
 from apps.organisations.services import create_licence_batch, mark_licence_batch_paid
 from apps.payroll.services import create_payroll_run
 
+from .test_service_setup import _attach_registered_and_billing_addresses
+
 
 def _create_active_organisation(name='Async Payroll Org'):
     organisation = Organisation.objects.create(
@@ -24,6 +26,7 @@ def _create_active_organisation(name='Async Payroll Org'):
         billing_status=OrganisationBillingStatus.PAID,
         access_state=OrganisationAccessState.ACTIVE,
     )
+    _attach_registered_and_billing_addresses(organisation)
     batch = create_licence_batch(
         organisation,
         quantity=10,
