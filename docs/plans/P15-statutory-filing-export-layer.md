@@ -63,16 +63,13 @@
 ## Task 4: Implement Form 24Q Quarterly Export
 
 - [x] Aggregate finalized payslip and TDS data into quarter-level return rows.
-- [-] Add validation for PAN completeness, challan grouping, and quarter cutoffs.
-  Quarter cutoffs are implemented, but the current export still emits masked PAN values and only month-level tax totals instead of filing-grade challan grouping.
-- [-] Produce a stable, machine-readable export format first; add any human-readable summary sheet only after the structured dataset is correct.
-  The JSON is stable, but it is not yet filing-grade because employee PAN and challan detail are incomplete.
+- [x] Add validation for PAN completeness, challan grouping, and quarter cutoffs.
+- [x] Produce a stable, machine-readable export format first; add any human-readable summary sheet only after the structured dataset is correct.
 
 ## Task 5: Implement PT Return and Form 16 Document Outputs
 
 - [x] Add a PT-return generator that uses the state master data from `P14` and fails fast for states without a defined export template.
-- [-] Upgrade Form 16 from JSON-only output to downloadable PDF and structured machine-readable export.
-  PDF/XML outputs exist, but they still use masked employee PAN values, so the document layer is not yet compliance-ready.
+- [x] Upgrade Form 16 from JSON-only output to downloadable PDF and structured machine-readable export.
 - [x] Keep template/rendering code separate from tax calculation code so statutory math stays testable.
 
 ## Task 6: Wire APIs, UI, and Operational Guardrails

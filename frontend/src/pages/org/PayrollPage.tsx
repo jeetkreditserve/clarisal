@@ -15,6 +15,7 @@ import {
   useCreateCompensationAssignment,
   useCreateCompensationTemplate,
   useCreatePayrollRun,
+  useCreatePayrollTdsChallan,
   useCreatePayrollTaxSlabSet,
   useDownloadPayrollFiling,
   useEmployees,
@@ -72,6 +73,7 @@ export function PayrollPage() {
   const createAssignmentMutation = useCreateCompensationAssignment()
   const submitAssignmentMutation = useSubmitCompensationAssignment()
   const createRunMutation = useCreatePayrollRun()
+  const createTdsChallanMutation = useCreatePayrollTdsChallan()
   const calculateRunMutation = useCalculatePayrollRun()
   const submitRunMutation = useSubmitPayrollRun()
   const finalizeRunMutation = useFinalizePayrollRun()
@@ -112,6 +114,17 @@ export function PayrollPage() {
     fiscal_year: `${currentYear}-${currentYear + 1}`,
     quarter: 'Q1',
     artifact_format: 'PDF',
+  })
+  const [tdsChallanForm, setTdsChallanForm] = useState({
+    fiscal_year: `${currentYear}-${currentYear + 1}`,
+    period_year: String(currentYear),
+    period_month: String(new Date().getMonth() + 1),
+    deposit_date: `${currentYear}-${String(new Date().getMonth() + 1).padStart(2, '0')}-07`,
+    bsr_code: '',
+    challan_serial_number: '',
+    tax_deposited: '',
+    statement_receipt_number: '',
+    notes: '',
   })
   const [activeSection, setActiveSection] = useState<(typeof PAYROLL_SECTION_OPTIONS)[number]['value']>('setup')
 
@@ -314,6 +327,26 @@ export function PayrollPage() {
       toast.success('Statutory filing generated.')
     } catch (error) {
       toast.error(getErrorMessage(error, 'Unable to generate the statutory filing.'))
+    }
+  }
+
+  const handleCreateTdsChallan = async (event: React.FormEvent) => {
+    event.preventDefault()
+    try {
+      await createTdsChallanMutation.mutateAsync({
+        fiscal_year: tdsChallanForm.fiscal_year,
+        period_year: Number(tdsChallanForm.period_year),
+        period_month: Number(tdsChallanForm.period_month),
+        deposit_date: tdsChallanForm.deposit_date,
+        bsr_code: tdsChallanForm.bsr_code,
+        challan_serial_number: tdsChallanForm.challan_serial_number,
+        tax_deposited: tdsChallanForm.tax_deposited,
+        statement_receipt_number: tdsChallanForm.statement_receipt_number,
+        notes: tdsChallanForm.notes,
+      })
+      toast.success('TDS challan recorded.')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to record the TDS challan.'))
     }
   }
 
@@ -719,100 +752,218 @@ export function PayrollPage() {
 
       {activeSection === 'filings' ? (
         <div className="grid gap-6 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
-          <SectionCard title="Generate statutory filing" description="Create a persisted filing batch from finalized payroll data. Blockers are surfaced immediately so the batch never downloads partial statutory rows.">
-            <form onSubmit={handleGenerateFiling} className="grid gap-4 md:grid-cols-2">
-              <label className="grid gap-2">
-                <span className="field-label">Filing type</span>
-                <select
-                  className="field-input"
-                  value={filingForm.filing_type}
-                  onChange={(event) =>
-                    setFilingForm((current) => ({
-                      ...current,
-                      filing_type: event.target.value,
-                    }))
-                  }
-                >
-                  <option value="PF_ECR">PF ECR</option>
-                  <option value="ESI_MONTHLY">ESI monthly</option>
-                  <option value="PROFESSIONAL_TAX">Professional tax</option>
-                  <option value="FORM24Q">Form 24Q</option>
-                  <option value="FORM16">Form 16</option>
-                </select>
-              </label>
+          <div className="space-y-6">
+            <SectionCard title="Generate statutory filing" description="Create a persisted filing batch from finalized payroll data. Blockers are surfaced immediately so the batch never downloads partial statutory rows.">
+              <form onSubmit={handleGenerateFiling} className="grid gap-4 md:grid-cols-2">
+                <label className="grid gap-2">
+                  <span className="field-label">Filing type</span>
+                  <select
+                    className="field-input"
+                    value={filingForm.filing_type}
+                    onChange={(event) =>
+                      setFilingForm((current) => ({
+                        ...current,
+                        filing_type: event.target.value,
+                      }))
+                    }
+                  >
+                    <option value="PF_ECR">PF ECR</option>
+                    <option value="ESI_MONTHLY">ESI monthly</option>
+                    <option value="PROFESSIONAL_TAX">Professional tax</option>
+                    <option value="FORM24Q">Form 24Q</option>
+                    <option value="FORM16">Form 16</option>
+                  </select>
+                </label>
 
-              {['PF_ECR', 'ESI_MONTHLY', 'PROFESSIONAL_TAX'].includes(filingForm.filing_type) ? (
-                <>
+                {['PF_ECR', 'ESI_MONTHLY', 'PROFESSIONAL_TAX'].includes(filingForm.filing_type) ? (
+                  <>
+                    <label className="grid gap-2">
+                      <span className="field-label">Period year</span>
+                      <input
+                        className="field-input"
+                        value={filingForm.period_year}
+                        onChange={(event) => setFilingForm((current) => ({ ...current, period_year: event.target.value }))}
+                        placeholder="2026"
+                      />
+                    </label>
+                    <label className="grid gap-2">
+                      <span className="field-label">Period month</span>
+                      <input
+                        className="field-input"
+                        value={filingForm.period_month}
+                        onChange={(event) => setFilingForm((current) => ({ ...current, period_month: event.target.value }))}
+                        placeholder="4"
+                      />
+                    </label>
+                  </>
+                ) : null}
+
+                {['FORM24Q', 'FORM16'].includes(filingForm.filing_type) ? (
                   <label className="grid gap-2">
-                    <span className="field-label">Period year</span>
+                    <span className="field-label">Fiscal year</span>
                     <input
                       className="field-input"
-                      value={filingForm.period_year}
-                      onChange={(event) => setFilingForm((current) => ({ ...current, period_year: event.target.value }))}
-                      placeholder="2026"
+                      value={filingForm.fiscal_year}
+                      onChange={(event) => setFilingForm((current) => ({ ...current, fiscal_year: event.target.value }))}
+                      placeholder="2026-2027"
                     />
                   </label>
-                  <label className="grid gap-2">
-                    <span className="field-label">Period month</span>
-                    <input
-                      className="field-input"
-                      value={filingForm.period_month}
-                      onChange={(event) => setFilingForm((current) => ({ ...current, period_month: event.target.value }))}
-                      placeholder="4"
-                    />
-                  </label>
-                </>
-              ) : null}
+                ) : null}
 
-              {['FORM24Q', 'FORM16'].includes(filingForm.filing_type) ? (
+                {filingForm.filing_type === 'FORM24Q' ? (
+                  <label className="grid gap-2">
+                    <span className="field-label">Quarter</span>
+                    <select
+                      className="field-input"
+                      value={filingForm.quarter}
+                      onChange={(event) => setFilingForm((current) => ({ ...current, quarter: event.target.value }))}
+                    >
+                      <option value="Q1">Q1</option>
+                      <option value="Q2">Q2</option>
+                      <option value="Q3">Q3</option>
+                      <option value="Q4">Q4</option>
+                    </select>
+                  </label>
+                ) : null}
+
+                {filingForm.filing_type === 'FORM16' ? (
+                  <label className="grid gap-2">
+                    <span className="field-label">Artifact format</span>
+                    <select
+                      className="field-input"
+                      value={filingForm.artifact_format}
+                      onChange={(event) => setFilingForm((current) => ({ ...current, artifact_format: event.target.value }))}
+                    >
+                      <option value="PDF">PDF</option>
+                      <option value="XML">XML</option>
+                    </select>
+                  </label>
+                ) : null}
+
+                <div className="md:col-span-2">
+                  <button type="submit" className="btn-primary" disabled={generateFilingMutation.isPending}>
+                    {generateFilingMutation.isPending ? 'Generating…' : 'Generate filing'}
+                  </button>
+                </div>
+              </form>
+            </SectionCard>
+
+            <SectionCard title="Record TDS challan" description="Form 24Q and filing-grade Form 16 exports use these monthly deposit records for BSR code, challan serial, and statement receipt metadata.">
+              <form onSubmit={handleCreateTdsChallan} className="grid gap-4 md:grid-cols-2">
                 <label className="grid gap-2">
                   <span className="field-label">Fiscal year</span>
                   <input
                     className="field-input"
-                    value={filingForm.fiscal_year}
-                    onChange={(event) => setFilingForm((current) => ({ ...current, fiscal_year: event.target.value }))}
+                    value={tdsChallanForm.fiscal_year}
+                    onChange={(event) => setTdsChallanForm((current) => ({ ...current, fiscal_year: event.target.value }))}
                     placeholder="2026-2027"
                   />
                 </label>
-              ) : null}
-
-              {filingForm.filing_type === 'FORM24Q' ? (
                 <label className="grid gap-2">
-                  <span className="field-label">Quarter</span>
-                  <select
+                  <span className="field-label">Period year</span>
+                  <input
                     className="field-input"
-                    value={filingForm.quarter}
-                    onChange={(event) => setFilingForm((current) => ({ ...current, quarter: event.target.value }))}
-                  >
-                    <option value="Q1">Q1</option>
-                    <option value="Q2">Q2</option>
-                    <option value="Q3">Q3</option>
-                    <option value="Q4">Q4</option>
-                  </select>
+                    value={tdsChallanForm.period_year}
+                    onChange={(event) => setTdsChallanForm((current) => ({ ...current, period_year: event.target.value }))}
+                    placeholder="2026"
+                  />
                 </label>
-              ) : null}
-
-              {filingForm.filing_type === 'FORM16' ? (
                 <label className="grid gap-2">
-                  <span className="field-label">Artifact format</span>
-                  <select
+                  <span className="field-label">Period month</span>
+                  <input
                     className="field-input"
-                    value={filingForm.artifact_format}
-                    onChange={(event) => setFilingForm((current) => ({ ...current, artifact_format: event.target.value }))}
-                  >
-                    <option value="PDF">PDF</option>
-                    <option value="XML">XML</option>
-                  </select>
+                    value={tdsChallanForm.period_month}
+                    onChange={(event) => setTdsChallanForm((current) => ({ ...current, period_month: event.target.value }))}
+                    placeholder="4"
+                  />
                 </label>
-              ) : null}
+                <div className="grid gap-2">
+                  <span className="field-label">Deposit date</span>
+                  <AppDatePicker
+                    id="tds-challan-deposit-date"
+                    value={tdsChallanForm.deposit_date}
+                    onValueChange={(value) => setTdsChallanForm((current) => ({ ...current, deposit_date: value }))}
+                    placeholder="Select deposit date"
+                  />
+                </div>
+                <label className="grid gap-2">
+                  <span className="field-label">BSR code</span>
+                  <input
+                    className="field-input"
+                    value={tdsChallanForm.bsr_code}
+                    onChange={(event) => setTdsChallanForm((current) => ({ ...current, bsr_code: event.target.value }))}
+                    placeholder="0510032"
+                  />
+                </label>
+                <label className="grid gap-2">
+                  <span className="field-label">Challan serial</span>
+                  <input
+                    className="field-input"
+                    value={tdsChallanForm.challan_serial_number}
+                    onChange={(event) => setTdsChallanForm((current) => ({ ...current, challan_serial_number: event.target.value }))}
+                    placeholder="00004"
+                  />
+                </label>
+                <label className="grid gap-2">
+                  <span className="field-label">Tax deposited</span>
+                  <input
+                    className="field-input"
+                    value={tdsChallanForm.tax_deposited}
+                    onChange={(event) => setTdsChallanForm((current) => ({ ...current, tax_deposited: event.target.value }))}
+                    placeholder="3500.00"
+                  />
+                </label>
+                <label className="grid gap-2">
+                  <span className="field-label">Statement receipt number</span>
+                  <input
+                    className="field-input"
+                    value={tdsChallanForm.statement_receipt_number}
+                    onChange={(event) => setTdsChallanForm((current) => ({ ...current, statement_receipt_number: event.target.value }))}
+                    placeholder="Optional until 24Q is filed"
+                  />
+                </label>
+                <label className="grid gap-2 md:col-span-2">
+                  <span className="field-label">Notes</span>
+                  <input
+                    className="field-input"
+                    value={tdsChallanForm.notes}
+                    onChange={(event) => setTdsChallanForm((current) => ({ ...current, notes: event.target.value }))}
+                    placeholder="Optional reconciliation note"
+                  />
+                </label>
+                <div className="md:col-span-2">
+                  <button type="submit" className="btn-secondary" disabled={createTdsChallanMutation.isPending}>
+                    {createTdsChallanMutation.isPending ? 'Recording…' : 'Record TDS challan'}
+                  </button>
+                </div>
+              </form>
 
-              <div className="md:col-span-2">
-                <button type="submit" className="btn-primary" disabled={generateFilingMutation.isPending}>
-                  {generateFilingMutation.isPending ? 'Generating…' : 'Generate filing'}
-                </button>
+              <div className="mt-5 space-y-3">
+                {data.tds_challans.length === 0 ? (
+                  <p className="text-sm text-[hsl(var(--muted-foreground))]">No TDS challans recorded yet for this organisation.</p>
+                ) : (
+                  data.tds_challans.map((challan) => (
+                    <div key={challan.id} className="surface-shell rounded-[16px] px-4 py-3">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <p className="font-medium text-[hsl(var(--foreground-strong))]">
+                            {challan.period_month}/{challan.period_year} • {challan.quarter}
+                          </p>
+                          <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
+                            BSR {challan.bsr_code} • Challan {challan.challan_serial_number} • Deposit {challan.deposit_date}
+                          </p>
+                        </div>
+                        <div className="text-right text-sm text-[hsl(var(--foreground-strong))]">
+                          <p>INR {challan.tax_deposited}</p>
+                          <p className="text-[hsl(var(--muted-foreground))]">{challan.statement_receipt_number || 'Receipt pending'}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
-            </form>
-          </SectionCard>
+            </SectionCard>
+          </div>
 
           <SectionCard title="Generated batches" description="Reproducible filing batches stay versioned. Regenerating a scope supersedes the older batch instead of silently mutating it.">
             <div className="space-y-3">

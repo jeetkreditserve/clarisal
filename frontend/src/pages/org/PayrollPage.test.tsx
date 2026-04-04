@@ -13,6 +13,7 @@ const useCalculatePayrollRun = vi.fn()
 const useCreateCompensationAssignment = vi.fn()
 const useCreateCompensationTemplate = vi.fn()
 const useCreatePayrollRun = vi.fn()
+const useCreatePayrollTdsChallan = vi.fn()
 const useCreatePayrollTaxSlabSet = vi.fn()
 const useDownloadPayrollFiling = vi.fn()
 const useEmployees = vi.fn()
@@ -38,6 +39,7 @@ vi.mock('@/hooks/useOrgAdmin', () => ({
   useCreateCompensationAssignment: () => useCreateCompensationAssignment(),
   useCreateCompensationTemplate: () => useCreateCompensationTemplate(),
   useCreatePayrollRun: () => useCreatePayrollRun(),
+  useCreatePayrollTdsChallan: () => useCreatePayrollTdsChallan(),
   useCreatePayrollTaxSlabSet: () => useCreatePayrollTaxSlabSet(),
   useDownloadPayrollFiling: () => useDownloadPayrollFiling(),
   useEmployees: (...args: unknown[]) => useEmployees(...args),
@@ -73,6 +75,7 @@ describe('PayrollPage', () => {
         compensation_assignments: [],
         pay_runs: [],
         statutory_filing_batches: [],
+        tds_challans: [],
         payslip_count: 0,
       },
     })
@@ -83,6 +86,7 @@ describe('PayrollPage', () => {
       useCreateCompensationTemplate,
       useSubmitCompensationTemplate,
       useCreateCompensationAssignment,
+      useCreatePayrollTdsChallan,
       useSubmitCompensationAssignment,
       useCalculatePayrollRun,
       useSubmitPayrollRun,
@@ -142,8 +146,9 @@ describe('PayrollPage', () => {
 
     await user.click(screen.getByRole('button', { name: 'Filings' }))
     await user.selectOptions(screen.getByDisplayValue('PF ECR'), 'FORM16')
-    await user.clear(screen.getByDisplayValue(/\d{4}-\d{4}/))
-    await user.type(screen.getByPlaceholderText('2026-2027'), '2026-2027')
+    const fiscalYearInputs = screen.getAllByPlaceholderText('2026-2027')
+    await user.clear(fiscalYearInputs[0])
+    await user.type(fiscalYearInputs[0], '2026-2027')
     await user.click(screen.getByRole('button', { name: 'Generate filing' }))
 
     await waitFor(() => {
@@ -154,5 +159,37 @@ describe('PayrollPage', () => {
       })
     })
     expect(toastSuccess).toHaveBeenCalledWith('Statutory filing generated.')
+  })
+
+  it('records a payroll TDS challan from the filings section', async () => {
+    const user = userEvent.setup()
+    const createTdsChallan = vi.fn().mockResolvedValue({ id: 'challan-1' })
+    useCreatePayrollRun.mockReturnValue({ isPending: false, mutateAsync: vi.fn().mockResolvedValue(undefined) })
+    useCreatePayrollTdsChallan.mockReturnValue({ isPending: false, mutateAsync: createTdsChallan })
+
+    renderPage()
+
+    await user.click(screen.getByRole('button', { name: 'Filings' }))
+    await user.clear(screen.getByPlaceholderText('2026-2027'))
+    await user.type(screen.getByPlaceholderText('2026-2027'), '2026-2027')
+    await user.clear(screen.getByPlaceholderText('0510032'))
+    await user.type(screen.getByPlaceholderText('0510032'), '0510032')
+    await user.clear(screen.getByPlaceholderText('00004'))
+    await user.type(screen.getByPlaceholderText('00004'), '00004')
+    await user.clear(screen.getByPlaceholderText('3500.00'))
+    await user.type(screen.getByPlaceholderText('3500.00'), '3500.00')
+    await user.click(screen.getByRole('button', { name: 'Record TDS challan' }))
+
+    await waitFor(() => {
+      expect(createTdsChallan).toHaveBeenCalledWith(
+        expect.objectContaining({
+          fiscal_year: '2026-2027',
+          bsr_code: '0510032',
+          challan_serial_number: '00004',
+          tax_deposited: '3500.00',
+        }),
+      )
+    })
+    expect(toastSuccess).toHaveBeenCalledWith('TDS challan recorded.')
   })
 })

@@ -1,10 +1,53 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import TypedDict
 
 from apps.payroll.models import PayrollTDSChallan
 
 from . import FilingGenerationResult, decimal_to_string, get_employee_identifier, quarter_months
+
+
+class QuarterSummary(TypedDict):
+    amount_paid: Decimal
+    tax_deducted: Decimal
+    tax_deposited: Decimal
+    statement_receipt_number: str
+
+
+class QuarterSummaryPayload(TypedDict):
+    quarter: str
+    statement_receipt_number: str
+    amount_paid: str
+    tax_deducted: str
+    tax_deposited: str
+
+
+class ChallanDetailPayload(TypedDict):
+    period: str
+    tax_deposited_for_employee: str
+    bsr_code: str
+    challan_serial_number: str
+    deposit_date: str
+
+
+class Form16EmployeePayload(TypedDict):
+    employee_id: str
+    employee_code: str
+    employee_name: str
+    employee_pan: str
+    tax_regime: str
+    gross_salary: str
+    standard_deduction: str
+    deductions_chapter_via: str
+    taxable_income: str
+    tax_before_rebate: str
+    surcharge: str
+    cess: str
+    tax_deducted: str
+    quarter_summaries: list[QuarterSummaryPayload]
+    challan_details: list[ChallanDetailPayload]
+    fiscal_year: str
 
 
 def _escape_xml(value: str) -> str:
@@ -107,9 +150,9 @@ def _fiscal_year_challan_map(*, organisation, fiscal_year: str) -> dict[tuple[in
     }
 
 
-def _aggregate_form16_dataset(*, organisation, fiscal_year: str, payslips_by_employee: dict[str, list]) -> tuple[list[dict[str, object]], list[str]]:
+def _aggregate_form16_dataset(*, organisation, fiscal_year: str, payslips_by_employee: dict[str, list]) -> tuple[list[Form16EmployeePayload], list[str]]:
     blockers: list[str] = []
-    employees: list[dict[str, object]] = []
+    employees: list[Form16EmployeePayload] = []
     challan_map = _fiscal_year_challan_map(organisation=organisation, fiscal_year=fiscal_year)
     if not (organisation.tan_number or '').strip():
         blockers.append('Organisation TAN is required for Form 16 generation.')
@@ -130,8 +173,8 @@ def _aggregate_form16_dataset(*, organisation, fiscal_year: str, payslips_by_emp
         surcharge = Decimal('0.00')
         tax_before_rebate = Decimal('0.00')
         regime = 'NEW'
-        quarter_summaries: dict[str, dict[str, Decimal | str]] = {}
-        challan_details: list[dict[str, str]] = []
+        quarter_summaries: dict[str, QuarterSummary] = {}
+        challan_details: list[ChallanDetailPayload] = []
         for payslip in sorted(payslips, key=lambda item: (item.period_year, item.period_month)):
             snapshot = {**(payslip.pay_run_item.snapshot or {}), **(payslip.snapshot or {})}
             monthly_gross_salary = Decimal(str(snapshot.get('gross_pay', '0') or '0'))

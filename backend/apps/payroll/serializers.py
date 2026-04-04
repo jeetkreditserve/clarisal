@@ -171,8 +171,8 @@ class PayrollTDSChallanWriteSerializer(serializers.Serializer):
     challan_serial_number = serializers.CharField(max_length=16)
     deposit_date = serializers.DateField()
     tax_deposited = serializers.DecimalField(max_digits=12, decimal_places=2)
-    interest_amount = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, default='0.00')
-    fee_amount = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, default='0.00')
+    interest_amount = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, default=Decimal('0.00'))
+    fee_amount = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, default=Decimal('0.00'))
     statement_receipt_number = serializers.CharField(max_length=32, required=False, allow_blank=True, default='')
     notes = serializers.CharField(max_length=255, required=False, allow_blank=True, default='')
 
