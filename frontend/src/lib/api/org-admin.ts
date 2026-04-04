@@ -19,6 +19,7 @@ import type {
   AttendanceShift,
   AttendanceShiftAssignment,
   ApprovalWorkflowConfig,
+  Arrears,
   CompensationAssignment,
   CompensationTemplate,
   Department,
@@ -26,6 +27,7 @@ import type {
   EmployeeDocumentRequest,
   EmployeeDetail,
   EmployeeListItem,
+  FullAndFinalSettlement,
   HolidayCalendar,
   LeaveCycle,
   LeavePlan,
@@ -285,6 +287,11 @@ export async function updateEmployeeOffboardingTask(
 
 export async function completeEmployeeOffboarding(id: string) {
   const { data } = await api.post<OffboardingProcess>(`/org/employees/${id}/offboarding/complete/`)
+  return data
+}
+
+export async function markEmployeeProbationComplete(id: string) {
+  const { data } = await api.post<EmployeeDetail>(`/org/employees/${id}/probation-complete/`)
   return data
 }
 
@@ -622,6 +629,33 @@ export async function getDeviceSyncLogs(deviceId: string) {
 
 export async function fetchPayrollSummary() {
   const { data } = await api.get<OrgPayrollSummary>('/org/payroll/summary/')
+  return data
+}
+
+export async function fetchOrgFullAndFinalSettlements() {
+  const { data } = await api.get<FullAndFinalSettlement[]>('/org/payroll/full-and-final-settlements/')
+  return data
+}
+
+export async function fetchOrgFullAndFinalSettlement(id: string) {
+  const { data } = await api.get<FullAndFinalSettlement>(`/org/payroll/full-and-final-settlements/${id}/`)
+  return data
+}
+
+export async function fetchOrgArrears(employeeId?: string) {
+  const { data } = await api.get<Arrears[]>('/org/payroll/arrears/')
+  if (!employeeId) return data
+  return data.filter((arrear) => arrear.employee_id === employeeId)
+}
+
+export async function createOrgArrear(payload: {
+  employee_id: string
+  for_period_year: number
+  for_period_month: number
+  reason: string
+  amount: string
+}) {
+  const { data } = await api.post<Arrears>('/org/payroll/arrears/', payload)
   return data
 }
 

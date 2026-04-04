@@ -20,6 +20,7 @@ import {
   createDepartment,
   createHolidayCalendar,
   createOrgAddress,
+  createOrgArrear,
   createPayrollRun,
   createPayrollTdsChallan,
   createPayrollTaxSlabSet,
@@ -39,6 +40,9 @@ import {
   fetchEmployeeDetail,
   fetchEmployeeDocuments,
   fetchEmployees,
+  fetchOrgFullAndFinalSettlement,
+  fetchOrgFullAndFinalSettlements,
+  fetchOrgArrears,
   fetchHolidayCalendars,
   fetchLeaveCycles,
   fetchLeavePlans,
@@ -70,6 +74,7 @@ import {
   getEmployeeDocumentDownloadUrl,
   inviteEmployee,
   markEmployeeJoined,
+  markEmployeeProbationComplete,
   overrideAttendanceDay,
   publishHolidayCalendar,
   publishNotice,
@@ -355,6 +360,16 @@ export function useCompleteEmployeeOffboarding(employeeId: string) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: () => completeEmployeeOffboarding(employeeId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useMarkEmployeeProbationComplete(employeeId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => markEmployeeProbationComplete(employeeId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['org'] })
     },
@@ -671,6 +686,31 @@ export function usePayrollSummary() {
   })
 }
 
+export function useOrgFullAndFinalSettlements() {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'fnf-settlements'],
+    queryFn: fetchOrgFullAndFinalSettlements,
+  })
+}
+
+export function useOrgFullAndFinalSettlement(id: string) {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'fnf-settlements', id],
+    queryFn: () => fetchOrgFullAndFinalSettlement(id),
+    enabled: Boolean(id),
+  })
+}
+
+export function useOrgArrears(employeeId?: string) {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'arrears', employeeId ?? 'all'],
+    queryFn: () => fetchOrgArrears(employeeId),
+  })
+}
+
 export function useCreatePayrollTaxSlabSet() {
   const queryClient = useQueryClient()
   return useMutation({
@@ -747,6 +787,16 @@ export function useCreatePayrollRun() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: createPayrollRun,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useCreateOrgArrear() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: createOrgArrear,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['org'] })
     },

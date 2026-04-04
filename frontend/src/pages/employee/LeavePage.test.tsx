@@ -7,8 +7,10 @@ import { LeavePage } from '@/pages/employee/LeavePage'
 
 const toastSuccess = vi.fn()
 const toastError = vi.fn()
+const useCreateMyLeaveEncashment = vi.fn()
 const useCreateMyLeaveRequest = vi.fn()
 const useMyCalendar = vi.fn()
+const useMyLeaveEncashments = vi.fn()
 const useMyLeaveOverview = vi.fn()
 const useWithdrawMyLeaveRequest = vi.fn()
 
@@ -20,8 +22,10 @@ vi.mock('sonner', () => ({
 }))
 
 vi.mock('@/hooks/useEmployeeSelf', () => ({
+  useCreateMyLeaveEncashment: () => useCreateMyLeaveEncashment(),
   useCreateMyLeaveRequest: () => useCreateMyLeaveRequest(),
   useMyCalendar: () => useMyCalendar(),
+  useMyLeaveEncashments: () => useMyLeaveEncashments(),
   useMyLeaveOverview: () => useMyLeaveOverview(),
   useWithdrawMyLeaveRequest: () => useWithdrawMyLeaveRequest(),
 }))
@@ -44,6 +48,7 @@ describe('LeavePage', () => {
         days: [],
       },
     })
+    useMyLeaveEncashments.mockReturnValue({ data: [] })
     useMyLeaveOverview.mockReturnValue({
       isLoading: false,
       data: {
@@ -59,7 +64,7 @@ describe('LeavePage', () => {
           },
         ],
         leave_plan: {
-          leave_types: [{ id: 'leave-1', name: 'Casual Leave', is_active: true }],
+          leave_types: [{ id: 'leave-1', name: 'Casual Leave', is_active: true, allows_encashment: true }],
         },
         requests: [
           {
@@ -76,6 +81,7 @@ describe('LeavePage', () => {
   })
 
   it('renders leave balances and requests', () => {
+    useCreateMyLeaveEncashment.mockReturnValue({ isPending: false, mutateAsync: vi.fn().mockResolvedValue(undefined) })
     useCreateMyLeaveRequest.mockReturnValue({ isPending: false, mutateAsync: vi.fn().mockResolvedValue(undefined) })
     useWithdrawMyLeaveRequest.mockReturnValue({ isPending: false, mutateAsync: vi.fn().mockResolvedValue(undefined) })
 
@@ -91,6 +97,7 @@ describe('LeavePage', () => {
     const user = userEvent.setup()
     const withdrawRequest = vi.fn().mockResolvedValue(undefined)
 
+    useCreateMyLeaveEncashment.mockReturnValue({ isPending: false, mutateAsync: vi.fn().mockResolvedValue(undefined) })
     useCreateMyLeaveRequest.mockReturnValue({ isPending: false, mutateAsync: vi.fn().mockResolvedValue(undefined) })
     useWithdrawMyLeaveRequest.mockReturnValue({ isPending: false, mutateAsync: withdrawRequest })
 
@@ -102,5 +109,35 @@ describe('LeavePage', () => {
       expect(withdrawRequest).toHaveBeenCalledWith('request-1')
     })
     expect(toastSuccess).toHaveBeenCalledWith('Leave request withdrawn.')
+  })
+
+  it('submits a leave encashment request', async () => {
+    const user = userEvent.setup()
+    const createEncashment = vi.fn().mockResolvedValue(undefined)
+
+    useCreateMyLeaveRequest.mockReturnValue({ isPending: false, mutateAsync: vi.fn().mockResolvedValue(undefined) })
+    useCreateMyLeaveEncashment.mockReturnValue({ isPending: false, mutateAsync: createEncashment })
+    useWithdrawMyLeaveRequest.mockReturnValue({ isPending: false, mutateAsync: vi.fn().mockResolvedValue(undefined) })
+
+    renderPage()
+
+    const leaveTypeButtons = screen.getAllByRole('button', { name: 'Select leave type' })
+    await user.click(leaveTypeButtons[1])
+    const encashmentOptions = screen.getAllByRole('button', { name: 'Casual Leave' })
+    await user.click(encashmentOptions[encashmentOptions.length - 1])
+    await user.type(screen.getByPlaceholderText('Cycle start'), '2026-01-01')
+    await user.type(screen.getByPlaceholderText('Cycle end'), '2026-12-31')
+    await user.type(screen.getByPlaceholderText('Days to encash'), '2.50')
+    await user.click(screen.getByRole('button', { name: 'Submit encashment request' }))
+
+    await waitFor(() => {
+      expect(createEncashment).toHaveBeenCalledWith({
+        leave_type_id: 'leave-1',
+        cycle_start: '2026-01-01',
+        cycle_end: '2026-12-31',
+        days_to_encash: '2.50',
+      })
+    })
+    expect(toastSuccess).toHaveBeenCalledWith('Leave encashment request submitted.')
   })
 })

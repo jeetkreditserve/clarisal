@@ -594,6 +594,34 @@ class TestPayrollViews:
         assert detail_response.status_code == 200
         assert detail_response.data['last_working_day'] == '2026-04-30'
 
+    def test_create_arrear(self, payroll_setup):
+        org_admin_client = payroll_setup['org_admin_client']
+        employee = payroll_setup['employee']
+
+        response = org_admin_client.post(
+            '/api/v1/org/payroll/arrears/',
+            {
+                'employee_id': str(employee.id),
+                'for_period_year': 2024,
+                'for_period_month': 3,
+                'reason': 'Missed allowance Q4',
+                'amount': '5000.00',
+            },
+            format='json',
+        )
+
+        assert response.status_code == 201
+        assert response.json()['amount'] == '5000.00'
+        assert response.json()['is_included_in_payslip'] is False
+
+    def test_list_arrears(self, payroll_setup):
+        org_admin_client = payroll_setup['org_admin_client']
+
+        response = org_admin_client.get('/api/v1/org/payroll/arrears/')
+
+        assert response.status_code == 200
+        assert isinstance(response.json(), list)
+
     def test_form16_export_returns_structured_json(self, payroll_setup):
         organisation = payroll_setup['organisation']
         org_admin_client = payroll_setup['org_admin_client']

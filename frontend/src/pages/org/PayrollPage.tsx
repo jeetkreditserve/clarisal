@@ -14,6 +14,7 @@ import {
   useCalculatePayrollRun,
   useCreateCompensationAssignment,
   useCreateCompensationTemplate,
+  useCreateOrgArrear,
   useCreatePayrollRun,
   useCreatePayrollTdsChallan,
   useCreatePayrollTaxSlabSet,
@@ -21,6 +22,7 @@ import {
   useEmployees,
   useFinalizePayrollRun,
   useGeneratePayrollFiling,
+  useOrgArrears,
   usePayrollSummary,
   useRegeneratePayrollFiling,
   useRerunPayrollRun,
@@ -71,6 +73,7 @@ export function PayrollPage() {
   const createTemplateMutation = useCreateCompensationTemplate()
   const submitTemplateMutation = useSubmitCompensationTemplate()
   const createAssignmentMutation = useCreateCompensationAssignment()
+  const createArrearMutation = useCreateOrgArrear()
   const submitAssignmentMutation = useSubmitCompensationAssignment()
   const createRunMutation = useCreatePayrollRun()
   const createTdsChallanMutation = useCreatePayrollTdsChallan()
@@ -82,6 +85,7 @@ export function PayrollPage() {
   const regenerateFilingMutation = useRegeneratePayrollFiling()
   const cancelFilingMutation = useCancelPayrollFiling()
   const downloadFilingMutation = useDownloadPayrollFiling()
+  const { data: arrears = [] } = useOrgArrears()
 
   const [taxForm, setTaxForm] = useState({
     name: '',
@@ -101,6 +105,13 @@ export function PayrollPage() {
     employee_id: '',
     template_id: '',
     effective_from: `${currentYear}-04-01`,
+  })
+  const [arrearForm, setArrearForm] = useState({
+    employee_id: '',
+    for_period_year: String(currentYear),
+    for_period_month: String(new Date().getMonth() || 12),
+    reason: '',
+    amount: '',
   })
   const [runForm, setRunForm] = useState({
     period_year: String(currentYear),
@@ -218,6 +229,28 @@ export function PayrollPage() {
       toast.success('Compensation assignment created.')
     } catch (error) {
       toast.error(getErrorMessage(error, 'Unable to create the compensation assignment. Select an employee, an approved template, and an effective date.'))
+    }
+  }
+
+  const handleCreateArrear = async (event: React.FormEvent) => {
+    event.preventDefault()
+    try {
+      await createArrearMutation.mutateAsync({
+        employee_id: arrearForm.employee_id,
+        for_period_year: Number(arrearForm.for_period_year),
+        for_period_month: Number(arrearForm.for_period_month),
+        reason: arrearForm.reason,
+        amount: arrearForm.amount,
+      })
+      toast.success('Arrear recorded.')
+      setArrearForm((current) => ({
+        ...current,
+        employee_id: '',
+        reason: '',
+        amount: '',
+      }))
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to record the arrear. Confirm the employee, payroll period, and amount.'))
     }
   }
 
@@ -609,6 +642,88 @@ export function PayrollPage() {
                 </div>
               )) : (
                 <EmptyState title="No salary assignments yet" description="Assign a compensation template to at least one employee before calculating payroll." />
+              )}
+            </div>
+          </SectionCard>
+
+          <SectionCard title="Arrears adjustments" description="Record underpayments from prior periods so they flow into the next payroll calculation.">
+            <form onSubmit={handleCreateArrear} className="grid gap-4 md:grid-cols-2">
+              <div className="md:col-span-2">
+                <label className="field-label" htmlFor="payroll-arrear-employee">Employee</label>
+                <AppSelect
+                  id="payroll-arrear-employee"
+                  value={arrearForm.employee_id}
+                  onValueChange={(value) => setArrearForm((current) => ({ ...current, employee_id: value }))}
+                  options={employeeOptions}
+                  placeholder="Select employee"
+                />
+              </div>
+              <div>
+                <label className="field-label" htmlFor="payroll-arrear-year">For period year</label>
+                <input
+                  id="payroll-arrear-year"
+                  className="field-input"
+                  value={arrearForm.for_period_year}
+                  onChange={(event) => setArrearForm((current) => ({ ...current, for_period_year: event.target.value }))}
+                  placeholder="Year"
+                />
+              </div>
+              <div>
+                <label className="field-label" htmlFor="payroll-arrear-month">For period month</label>
+                <input
+                  id="payroll-arrear-month"
+                  className="field-input"
+                  value={arrearForm.for_period_month}
+                  onChange={(event) => setArrearForm((current) => ({ ...current, for_period_month: event.target.value }))}
+                  placeholder="Month"
+                />
+              </div>
+              <div>
+                <label className="field-label" htmlFor="payroll-arrear-reason">Reason</label>
+                <input
+                  id="payroll-arrear-reason"
+                  className="field-input"
+                  value={arrearForm.reason}
+                  onChange={(event) => setArrearForm((current) => ({ ...current, reason: event.target.value }))}
+                  placeholder="Reason"
+                />
+              </div>
+              <div>
+                <label className="field-label" htmlFor="payroll-arrear-amount">Amount</label>
+                <input
+                  id="payroll-arrear-amount"
+                  className="field-input"
+                  value={arrearForm.amount}
+                  onChange={(event) => setArrearForm((current) => ({ ...current, amount: event.target.value }))}
+                  placeholder="Amount"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <button type="submit" className="btn-primary" disabled={createArrearMutation.isPending}>
+                  Record arrear
+                </button>
+              </div>
+            </form>
+            <div className="mt-5 space-y-3">
+              {arrears.length ? arrears.map((arrear) => (
+                <div key={arrear.id} className="surface-shell rounded-[18px] px-4 py-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="font-semibold text-[hsl(var(--foreground-strong))]">{arrear.employee_name}</p>
+                      <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
+                        {arrear.reason} • {arrear.for_period_month}/{arrear.for_period_year}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-semibold text-[hsl(var(--foreground-strong))]">₹{arrear.amount}</p>
+                      <p className="mt-2 text-xs uppercase tracking-[0.12em] text-[hsl(var(--muted-foreground))]">
+                        {arrear.is_included_in_payslip ? 'Included in payslip' : 'Pending payroll run'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )) : (
+                <EmptyState title="No arrears recorded" description="Record manual arrears here when pay from a prior period needs to be recovered in the next run." />
               )}
             </div>
           </SectionCard>

@@ -24,6 +24,8 @@ import {
   useEndEmployeeEmployment,
   useLocations,
   useMarkEmployeeJoined,
+  useMarkEmployeeProbationComplete,
+  useOrgFullAndFinalSettlements,
   useUpdateEmployeeOffboarding,
   useUpdateEmployeeOffboardingTask,
   useUpdateEmployee,
@@ -51,12 +53,14 @@ export function EmployeeDetailPage() {
   const { data: managerOptions } = useEmployees({ status: 'ACTIVE', page: 1 })
   const { data: documentRequests } = useEmployeeDocumentRequests(employeeId)
   const { data: documents } = useEmployeeDocuments(employeeId)
+  const { data: fnfSettlements } = useOrgFullAndFinalSettlements()
   const updateMutation = useUpdateEmployee(employeeId)
   const markJoinedMutation = useMarkEmployeeJoined(employeeId)
   const endEmploymentMutation = useEndEmployeeEmployment(employeeId)
   const updateOffboardingMutation = useUpdateEmployeeOffboarding(employeeId)
   const updateOffboardingTaskMutation = useUpdateEmployeeOffboardingTask(employeeId)
   const completeOffboardingMutation = useCompleteEmployeeOffboarding(employeeId)
+  const probationCompleteMutation = useMarkEmployeeProbationComplete(employeeId)
   const deleteEmployeeMutation = useDeleteEmployee(employeeId)
   const downloadDocumentMutation = useEmployeeDocumentDownload()
 
@@ -138,6 +142,7 @@ export function EmployeeDetailPage() {
     value: status,
     label: startCase(status),
   }))
+  const fnfSettlement = fnfSettlements?.find((settlement) => settlement.employee_id === employeeId) ?? null
 
   const formValues = {
     designation: draft.designation ?? employee.designation ?? '',
@@ -229,6 +234,15 @@ export function EmployeeDetailPage() {
       toast.success('Offboarding completed.')
     } catch (error) {
       toast.error(getErrorMessage(error, 'Unable to complete offboarding.'))
+    }
+  }
+
+  const handleProbationComplete = async () => {
+    try {
+      await probationCompleteMutation.mutateAsync()
+      toast.success('Probation marked as complete.')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to mark probation complete.'))
     }
   }
 
@@ -335,6 +349,18 @@ export function EmployeeDetailPage() {
 
           <div className="mt-6 grid gap-4 md:grid-cols-3">
             <div className="surface-muted rounded-[24px] p-5">
+              <p className="text-sm text-[hsl(var(--muted-foreground))]">Date of joining</p>
+              <p className="mt-2 font-medium text-[hsl(var(--foreground-strong))]">{employee.date_of_joining || 'Not set'}</p>
+            </div>
+            <div className="surface-muted rounded-[24px] p-5">
+              <p className="text-sm text-[hsl(var(--muted-foreground))]">Probation ends</p>
+              <p className="mt-2 font-medium text-[hsl(var(--foreground-strong))]">{employee.probation_end_date || 'Not on probation'}</p>
+            </div>
+            <div className="surface-muted rounded-[24px] p-5">
+              <p className="text-sm text-[hsl(var(--muted-foreground))]">Exit date</p>
+              <p className="mt-2 font-medium text-[hsl(var(--foreground-strong))]">{employee.date_of_exit || 'Active employment'}</p>
+            </div>
+            <div className="surface-muted rounded-[24px] p-5">
               <p className="text-sm text-[hsl(var(--muted-foreground))]">Effective leave workflow</p>
               <p className="mt-2 font-medium text-[hsl(var(--foreground-strong))]">{employee.effective_approval_workflows.leave.workflow_name}</p>
               <p className="mt-2 text-xs uppercase tracking-[0.12em] text-[hsl(var(--muted-foreground))]">
@@ -360,6 +386,29 @@ export function EmployeeDetailPage() {
           </div>
 
           <div className="mt-6 grid gap-4">
+            {employee.probation_end_date ? (
+              <div className="surface-muted flex flex-wrap items-center justify-between gap-4 rounded-[24px] p-5">
+                <div>
+                  <p className="font-semibold text-[hsl(var(--foreground-strong))]">Probation review</p>
+                  <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
+                    Probation ends on {employee.probation_end_date}. Mark this complete once the employee clears review.
+                  </p>
+                </div>
+                <ConfirmDialog
+                  trigger={
+                    <button type="button" className="btn-secondary text-sm" disabled={probationCompleteMutation.isPending}>
+                      Mark probation complete
+                    </button>
+                  }
+                  title="Mark probation complete?"
+                  description={`This will clear the probation end date for ${employee.full_name} and log the event. This cannot be undone.`}
+                  confirmLabel="Mark complete"
+                  variant="primary"
+                  onConfirm={handleProbationComplete}
+                />
+              </div>
+            ) : null}
+
             {employee.status === 'PENDING' ? (
               <form onSubmit={handleMarkJoined} className="surface-muted grid gap-4 rounded-[24px] p-5">
                 <p className="font-semibold text-[hsl(var(--foreground-strong))]">Mark employee as joined</p>
@@ -542,6 +591,55 @@ export function EmployeeDetailPage() {
                     </div>
                   ))}
                 </div>
+
+                {fnfSettlement ? (
+                  <div className="surface-card mt-1 rounded-[28px] p-5">
+                    <div className="flex items-center justify-between">
+                      <p className="font-semibold text-[hsl(var(--foreground-strong))]">Full &amp; Final Settlement</p>
+                      <StatusBadge
+                        tone={
+                          fnfSettlement.status === 'PAID'
+                            ? 'success'
+                            : fnfSettlement.status === 'APPROVED'
+                              ? 'info'
+                              : fnfSettlement.status === 'CANCELLED'
+                                ? 'danger'
+                                : 'warning'
+                        }
+                      >
+                        {fnfSettlement.status}
+                      </StatusBadge>
+                    </div>
+                    <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
+                      Last working day: {fnfSettlement.last_working_day}
+                    </p>
+                    <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                      {[
+                        { label: 'Prorated salary', value: fnfSettlement.prorated_salary },
+                        { label: 'Leave encashment', value: fnfSettlement.leave_encashment },
+                        { label: 'Gratuity', value: fnfSettlement.gratuity },
+                        { label: 'Arrears', value: fnfSettlement.arrears },
+                        { label: 'Other credits', value: fnfSettlement.other_credits },
+                        { label: 'TDS deduction', value: `-${fnfSettlement.tds_deduction}` },
+                        { label: 'PF deduction', value: `-${fnfSettlement.pf_deduction}` },
+                        { label: 'Loan recovery', value: `-${fnfSettlement.loan_recovery}` },
+                        { label: 'Other deductions', value: `-${fnfSettlement.other_deductions}` },
+                      ].map(({ label, value }) => (
+                        <div key={label} className="surface-muted rounded-[18px] p-3">
+                          <p className="text-xs text-[hsl(var(--muted-foreground))]">{label}</p>
+                          <p className="mt-1 font-semibold text-[hsl(var(--foreground-strong))]">₹{value}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-4 flex items-center justify-between rounded-[18px] bg-[hsl(var(--foreground-strong)_/_0.06)] px-4 py-3">
+                      <p className="text-sm font-semibold text-[hsl(var(--foreground-strong))]">Net payable</p>
+                      <p className="text-lg font-bold text-[hsl(var(--foreground-strong))]">₹{fnfSettlement.net_payable}</p>
+                    </div>
+                    {fnfSettlement.notes ? (
+                      <p className="mt-3 text-sm text-[hsl(var(--muted-foreground))]">{fnfSettlement.notes}</p>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
             ) : null}
 

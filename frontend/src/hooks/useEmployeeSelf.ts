@@ -8,6 +8,7 @@ import {
   createEmergencyContact,
   createEducation,
   createFamilyMember,
+  createMyLeaveEncashment,
   createMyLeaveRequest,
   createMyOnDutyRequest,
   deleteBankAccount,
@@ -29,6 +30,7 @@ import {
   fetchMyDocumentRequests,
   fetchMyDocuments,
   fetchMyEvents,
+  fetchMyLeaveEncashments,
   fetchMyLeaveOverview,
   fetchMyNotices,
   fetchMyOffboarding,
@@ -445,6 +447,24 @@ export function useWithdrawMyLeaveRequest() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: withdrawMyLeaveRequest,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['me'] })
+    },
+  })
+}
+
+export function useMyLeaveEncashments() {
+  const organisationId = useEmployeeScope()
+  return useQuery({
+    queryKey: ['me', organisationId, 'leave-encashments'],
+    queryFn: fetchMyLeaveEncashments,
+  })
+}
+
+export function useCreateMyLeaveEncashment() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: createMyLeaveEncashment,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['me'] })
     },

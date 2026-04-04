@@ -3,6 +3,7 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from .models import (
+    Arrears,
     CompensationAssignment,
     CompensationAssignmentLine,
     CompensationTemplate,
@@ -540,9 +541,38 @@ class FullAndFinalSettlementSerializer(serializers.ModelSerializer):
         ]
 
 
+class ArrearsSerializer(serializers.ModelSerializer):
+    employee_id = serializers.UUIDField(source='employee.id', read_only=True)
+    employee_name = serializers.CharField(source='employee.user.full_name', read_only=True)
+    pay_run_id = serializers.UUIDField(source='pay_run.id', read_only=True, allow_null=True)
+
+    class Meta:
+        model = Arrears
+        fields = [
+            'id',
+            'employee_id',
+            'employee_name',
+            'pay_run_id',
+            'for_period_year',
+            'for_period_month',
+            'reason',
+            'amount',
+            'is_included_in_payslip',
+            'created_at',
+        ]
+
+
 class InvestmentDeclarationWriteSerializer(serializers.Serializer):
     fiscal_year = serializers.CharField(max_length=16)
     section = serializers.ChoiceField(choices=InvestmentDeclaration._meta.get_field('section').choices)  # type: ignore[arg-type]
     description = serializers.CharField(max_length=200)
     declared_amount = serializers.DecimalField(max_digits=12, decimal_places=2)
     proof_file_key = serializers.CharField(required=False, allow_blank=True, allow_null=True, default='')
+
+
+class ArrearsCreateSerializer(serializers.Serializer):
+    employee_id = serializers.UUIDField()
+    for_period_year = serializers.IntegerField(min_value=2000, max_value=2099)
+    for_period_month = serializers.IntegerField(min_value=1, max_value=12)
+    reason = serializers.CharField(max_length=200)
+    amount = serializers.DecimalField(max_digits=12, decimal_places=2, min_value=Decimal('0.01'))

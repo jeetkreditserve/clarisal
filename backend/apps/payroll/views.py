@@ -18,6 +18,7 @@ from apps.accounts.workspaces import get_active_admin_organisation, get_active_e
 from apps.employees.models import Employee, EmployeeStatus
 
 from .models import (
+    Arrears,
     CompensationAssignment,
     CompensationTemplate,
     FullAndFinalSettlement,
@@ -31,6 +32,8 @@ from .models import (
     StatutoryFilingStatus,
 )
 from .serializers import (
+    ArrearsCreateSerializer,
+    ArrearsSerializer,
     CompensationAssignmentSerializer,
     CompensationAssignmentWriteSerializer,
     CompensationTemplateSerializer,
@@ -536,6 +539,42 @@ class OrgFullAndFinalSettlementDetailView(APIView):
             id=pk,
         )
         return Response(FullAndFinalSettlementSerializer(settlement).data)
+
+
+class OrgArrearsListCreateView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
+
+    def get(self, request):
+        organisation = _get_admin_organisation(request)
+        queryset = Arrears.objects.filter(employee__organisation=organisation).select_related('employee__user', 'pay_run')
+        return Response(ArrearsSerializer(queryset, many=True).data)
+
+    def post(self, request):
+        organisation = _get_admin_organisation(request)
+        serializer = ArrearsCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        employee = get_object_or_404(Employee, organisation=organisation, id=serializer.validated_data['employee_id'])
+        arrear = Arrears.objects.create(
+            employee=employee,
+            for_period_year=serializer.validated_data['for_period_year'],
+            for_period_month=serializer.validated_data['for_period_month'],
+            reason=serializer.validated_data['reason'],
+            amount=serializer.validated_data['amount'],
+        )
+        return Response(ArrearsSerializer(arrear).data, status=status.HTTP_201_CREATED)
+
+
+class OrgArrearsDetailView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
+
+    def get(self, request, pk):
+        organisation = _get_admin_organisation(request)
+        arrear = get_object_or_404(
+            Arrears.objects.select_related('employee__user', 'pay_run'),
+            employee__organisation=organisation,
+            id=pk,
+        )
+        return Response(ArrearsSerializer(arrear).data)
 
 
 class MyPayslipListView(APIView):

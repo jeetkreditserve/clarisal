@@ -1,6 +1,8 @@
 from django.urls import path
 
 from .views import (
+    OrgArrearsDetailView,
+    OrgArrearsListCreateView,
     OrgCompensationAssignmentListCreateView,
     OrgCompensationAssignmentSubmitView,
     OrgCompensationTemplateDetailView,
@@ -43,6 +45,8 @@ urlpatterns = [
     path('payroll/compensations/<uuid:pk>/submit/', OrgCompensationAssignmentSubmitView.as_view(), name='org-compensation-assignment-submit'),
     path('payroll/full-and-final-settlements/', OrgFullAndFinalSettlementListView.as_view(), name='org-full-and-final-settlement-list'),
     path('payroll/full-and-final-settlements/<uuid:pk>/', OrgFullAndFinalSettlementDetailView.as_view(), name='org-full-and-final-settlement-detail'),
+    path('payroll/arrears/', OrgArrearsListCreateView.as_view(), name='org-payroll-arrears-list-create'),
+    path('payroll/arrears/<uuid:pk>/', OrgArrearsDetailView.as_view(), name='org-payroll-arrears-detail'),
     path('payroll/runs/', OrgPayrollRunListCreateView.as_view(), name='org-payroll-run-list-create'),
     path('payroll/runs/<uuid:pk>/', OrgPayrollRunDetailView.as_view(), name='org-payroll-run-detail'),
     path('payroll/runs/<uuid:pk>/form16/', OrgPayrollRunForm16View.as_view(), name='org-payroll-run-form16'),

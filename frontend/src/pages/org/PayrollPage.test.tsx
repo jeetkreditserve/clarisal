@@ -12,6 +12,7 @@ const useCancelPayrollFiling = vi.fn()
 const useCalculatePayrollRun = vi.fn()
 const useCreateCompensationAssignment = vi.fn()
 const useCreateCompensationTemplate = vi.fn()
+const useCreateOrgArrear = vi.fn()
 const useCreatePayrollRun = vi.fn()
 const useCreatePayrollTdsChallan = vi.fn()
 const useCreatePayrollTaxSlabSet = vi.fn()
@@ -19,6 +20,7 @@ const useDownloadPayrollFiling = vi.fn()
 const useEmployees = vi.fn()
 const useFinalizePayrollRun = vi.fn()
 const useGeneratePayrollFiling = vi.fn()
+const useOrgArrears = vi.fn()
 const usePayrollSummary = vi.fn()
 const useRegeneratePayrollFiling = vi.fn()
 const useRerunPayrollRun = vi.fn()
@@ -38,6 +40,7 @@ vi.mock('@/hooks/useOrgAdmin', () => ({
   useCalculatePayrollRun: () => useCalculatePayrollRun(),
   useCreateCompensationAssignment: () => useCreateCompensationAssignment(),
   useCreateCompensationTemplate: () => useCreateCompensationTemplate(),
+  useCreateOrgArrear: () => useCreateOrgArrear(),
   useCreatePayrollRun: () => useCreatePayrollRun(),
   useCreatePayrollTdsChallan: () => useCreatePayrollTdsChallan(),
   useCreatePayrollTaxSlabSet: () => useCreatePayrollTaxSlabSet(),
@@ -45,6 +48,7 @@ vi.mock('@/hooks/useOrgAdmin', () => ({
   useEmployees: (...args: unknown[]) => useEmployees(...args),
   useFinalizePayrollRun: () => useFinalizePayrollRun(),
   useGeneratePayrollFiling: () => useGeneratePayrollFiling(),
+  useOrgArrears: (...args: unknown[]) => useOrgArrears(...args),
   usePayrollSummary: () => usePayrollSummary(),
   useRegeneratePayrollFiling: () => useRegeneratePayrollFiling(),
   useRerunPayrollRun: () => useRerunPayrollRun(),
@@ -80,12 +84,14 @@ describe('PayrollPage', () => {
       },
     })
     useEmployees.mockReturnValue({ data: { results: [] } })
+    useOrgArrears.mockReturnValue({ data: [] })
 
     for (const hook of [
       useCreatePayrollTaxSlabSet,
       useCreateCompensationTemplate,
       useSubmitCompensationTemplate,
       useCreateCompensationAssignment,
+      useCreateOrgArrear,
       useCreatePayrollTdsChallan,
       useSubmitCompensationAssignment,
       useCalculatePayrollRun,
@@ -191,5 +197,43 @@ describe('PayrollPage', () => {
       )
     })
     expect(toastSuccess).toHaveBeenCalledWith('TDS challan recorded.')
+  })
+
+  it('records an arrear from the compensation section', async () => {
+    const user = userEvent.setup()
+    const createArrear = vi.fn().mockResolvedValue({ id: 'arrear-1' })
+
+    useEmployees.mockReturnValue({
+      data: {
+        results: [{ id: 'employee-1', full_name: 'Ava Patel', designation: 'Engineer', employee_code: 'EMP001' }],
+      },
+    })
+    useCreatePayrollRun.mockReturnValue({ isPending: false, mutateAsync: vi.fn().mockResolvedValue(undefined) })
+    useCreateOrgArrear.mockReturnValue({ isPending: false, mutateAsync: createArrear })
+
+    renderPage()
+
+    await user.click(screen.getByRole('button', { name: 'Compensation' }))
+    const employeeButtons = screen.getAllByRole('button', { name: 'Employee' })
+    await user.click(employeeButtons[1])
+    await user.click(screen.getByText('Ava Patel'))
+    await user.clear(screen.getByLabelText('For period year'))
+    await user.type(screen.getByLabelText('For period year'), '2026')
+    await user.clear(screen.getByLabelText('For period month'))
+    await user.type(screen.getByLabelText('For period month'), '3')
+    await user.type(screen.getByLabelText('Reason'), 'Q4 correction')
+    await user.type(screen.getByLabelText('Amount'), '4250.00')
+    await user.click(screen.getByRole('button', { name: 'Record arrear' }))
+
+    await waitFor(() => {
+      expect(createArrear).toHaveBeenCalledWith({
+        employee_id: 'employee-1',
+        for_period_year: 2026,
+        for_period_month: 3,
+        reason: 'Q4 correction',
+        amount: '4250.00',
+      })
+    })
+    expect(toastSuccess).toHaveBeenCalledWith('Arrear recorded.')
   })
 })

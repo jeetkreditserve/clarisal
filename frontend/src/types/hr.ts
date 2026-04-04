@@ -225,6 +225,7 @@ export interface EmployeeDetail {
   designation: string
   employment_type: EmploymentType
   date_of_joining: string | null
+  probation_end_date: string | null
   date_of_exit: string | null
   status: EmployeeStatus
   onboarding_status: EmployeeOnboardingStatus
@@ -280,6 +281,46 @@ export interface OffboardingProcess {
   pending_document_requests: number
   has_primary_bank_account: boolean
   tasks: OffboardingTask[]
+}
+
+export type FNFStatus = 'DRAFT' | 'CALCULATED' | 'APPROVED' | 'PAID' | 'CANCELLED'
+
+export interface FullAndFinalSettlement {
+  id: string
+  employee_id: string
+  employee_name: string
+  offboarding_process_id: string | null
+  last_working_day: string
+  status: FNFStatus
+  prorated_salary: string
+  leave_encashment: string
+  gratuity: string
+  arrears: string
+  other_credits: string
+  tds_deduction: string
+  pf_deduction: string
+  loan_recovery: string
+  other_deductions: string
+  gross_payable: string
+  net_payable: string
+  notes: string
+  approved_at: string | null
+  paid_at: string | null
+  created_at: string
+  modified_at: string
+}
+
+export interface Arrears {
+  id: string
+  employee_id: string
+  employee_name: string
+  pay_run_id: string | null
+  for_period_year: number
+  for_period_month: number
+  reason: string
+  amount: string
+  is_included_in_payslip: boolean
+  created_at: string
 }
 
 export interface CtEmployeeDetail {
@@ -919,6 +960,8 @@ export interface LeaveTypeConfig {
   carry_forward_mode: CarryForwardMode
   carry_forward_cap: string | null
   max_balance: string | null
+  allows_encashment: boolean
+  max_encashment_days_per_year: string | null
   allows_half_day: boolean
   requires_attachment: boolean
   attachment_after_days: string | null
@@ -994,6 +1037,22 @@ export interface LeaveOverview {
   balances: LeaveBalanceSnapshot[]
   requests: LeaveRequestRecord[]
   leave_plan: LeavePlan | null
+}
+
+export interface LeaveEncashmentRequest {
+  id: string
+  employee_id: string
+  employee_name: string
+  leave_type_id: string
+  leave_type_name: string
+  cycle_start: string
+  cycle_end: string
+  days_to_encash: string
+  encashment_amount: string
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'PAID' | 'CANCELLED'
+  rejection_reason: string
+  created_at: string
+  modified_at: string
 }
 
 export interface OnDutyPolicy {

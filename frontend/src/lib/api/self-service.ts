@@ -16,6 +16,7 @@ import type {
   EmployeeAttendanceSummary,
   FamilyMember,
   GovernmentId,
+  LeaveEncashmentRequest,
   LeaveOverview,
   LeaveRequestRecord,
   MyOnboardingResponse,
@@ -258,6 +259,21 @@ export async function createMyLeaveRequest(payload: Record<string, unknown>) {
 
 export async function withdrawMyLeaveRequest(id: string) {
   const { data } = await api.post<LeaveRequestRecord>(`/me/leave/requests/${id}/withdraw/`)
+  return data
+}
+
+export async function fetchMyLeaveEncashments() {
+  const { data } = await api.get<LeaveEncashmentRequest[]>('/me/leave-encashments/')
+  return data
+}
+
+export async function createMyLeaveEncashment(payload: {
+  leave_type_id: string
+  cycle_start: string
+  cycle_end: string
+  days_to_encash: string
+}) {
+  const { data } = await api.post<LeaveEncashmentRequest>('/me/leave-encashments/', payload)
   return data
 }
 
