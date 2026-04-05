@@ -15,7 +15,6 @@ const useCreateCompensationTemplate = vi.fn()
 const useCreateOrgArrear = vi.fn()
 const useCreatePayrollRun = vi.fn()
 const useCreatePayrollTdsChallan = vi.fn()
-const useCreatePayrollTaxSlabSet = vi.fn()
 const useDownloadPayrollFiling = vi.fn()
 const useEmployees = vi.fn()
 const useFinalizePayrollRun = vi.fn()
@@ -43,7 +42,6 @@ vi.mock('@/hooks/useOrgAdmin', () => ({
   useCreateOrgArrear: () => useCreateOrgArrear(),
   useCreatePayrollRun: () => useCreatePayrollRun(),
   useCreatePayrollTdsChallan: () => useCreatePayrollTdsChallan(),
-  useCreatePayrollTaxSlabSet: () => useCreatePayrollTaxSlabSet(),
   useDownloadPayrollFiling: () => useDownloadPayrollFiling(),
   useEmployees: (...args: unknown[]) => useEmployees(...args),
   useFinalizePayrollRun: () => useFinalizePayrollRun(),
@@ -73,7 +71,7 @@ describe('PayrollPage', () => {
       isLoading: false,
       data: {
         tax_slab_sets: [
-          { id: 'slab-1', name: 'FY 2026-2027', source_set_id: null, fiscal_year: '2026-2027', slabs: [{ id: 'slab-line-1' }] },
+          { id: 'slab-1', name: 'FY 2026-2027 New Regime Individual', fiscal_year: '2026-2027', is_old_regime: false, slabs: [{ id: 'slab-line-1' }] },
         ],
         compensation_templates: [],
         compensation_assignments: [],
@@ -87,7 +85,6 @@ describe('PayrollPage', () => {
     useOrgArrears.mockReturnValue({ data: [] })
 
     for (const hook of [
-      useCreatePayrollTaxSlabSet,
       useCreateCompensationTemplate,
       useSubmitCompensationTemplate,
       useCreateCompensationAssignment,

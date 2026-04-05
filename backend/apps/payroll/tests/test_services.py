@@ -100,7 +100,7 @@ def _create_workforce_user(email, *, role=UserRole.EMPLOYEE, organisation=None):
 
 @pytest.mark.django_db
 class TestPayrollServices:
-    def test_ensure_org_payroll_setup_clones_active_ct_master(self):
+    def test_ensure_org_payroll_setup_provisions_components_without_org_slab_copy(self):
         ct_user = User.objects.create_user(
             email='ct@test.com',
             password='pass123!',
@@ -110,7 +110,7 @@ class TestPayrollServices:
         )
         organisation = _create_active_organisation()
 
-        master = create_tax_slab_set(
+        create_tax_slab_set(
             fiscal_year='2026-2027',
             name='FY 2026 Master',
             country_code='IN',
@@ -124,11 +124,10 @@ class TestPayrollServices:
 
         setup = ensure_org_payroll_setup(organisation, actor=ct_user)
 
-        org_set = PayrollTaxSlabSet.objects.get(organisation=organisation, is_active=True)
-        assert org_set.source_set == master
-        assert org_set.slabs.count() == 3
+        # CT masters are used directly; no org-level copy is created.
+        assert not PayrollTaxSlabSet.objects.filter(organisation=organisation).exists()
+        assert 'tax_slab_set' not in setup
         assert setup['components']
-        assert setup['tax_slab_set'] == org_set
 
     def test_pay_run_approval_and_finalize_generates_payslip(self):
         organisation = _create_active_organisation('Payroll Org')

@@ -17,7 +17,6 @@ import {
   useCreateOrgArrear,
   useCreatePayrollRun,
   useCreatePayrollTdsChallan,
-  useCreatePayrollTaxSlabSet,
   useDownloadPayrollFiling,
   useEmployees,
   useFinalizePayrollRun,
@@ -69,7 +68,6 @@ function getFilingTone(status: string) {
 export function PayrollPage() {
   const { data, isLoading } = usePayrollSummary()
   const { data: employeesResponse } = useEmployees({ status: 'ACTIVE' })
-  const createTaxSetMutation = useCreatePayrollTaxSlabSet()
   const createTemplateMutation = useCreateCompensationTemplate()
   const submitTemplateMutation = useSubmitCompensationTemplate()
   const createAssignmentMutation = useCreateCompensationAssignment()
@@ -87,14 +85,6 @@ export function PayrollPage() {
   const downloadFilingMutation = useDownloadPayrollFiling()
   const { data: arrears = [] } = useOrgArrears()
 
-  const [taxForm, setTaxForm] = useState({
-    name: '',
-    fiscal_year: `${currentYear}-${currentYear + 1}`,
-    slab_one_limit: '300000',
-    slab_two_limit: '700000',
-    slab_two_rate: '10',
-    slab_three_rate: '20',
-  })
   const [templateForm, setTemplateForm] = useState({
     name: '',
     description: '',
@@ -166,26 +156,6 @@ export function PayrollPage() {
       count: exceptionItems.length,
       items: exceptionItems.slice(0, 3),
       hiddenCount: Math.max(0, exceptionItems.length - 3),
-    }
-  }
-
-  const handleCreateTaxSet = async (event: React.FormEvent) => {
-    event.preventDefault()
-    try {
-      await createTaxSetMutation.mutateAsync({
-        name: taxForm.name,
-        country_code: 'IN',
-        fiscal_year: taxForm.fiscal_year,
-        is_active: true,
-        slabs: [
-          { min_income: '0', max_income: taxForm.slab_one_limit, rate_percent: '0' },
-          { min_income: taxForm.slab_one_limit, max_income: taxForm.slab_two_limit, rate_percent: taxForm.slab_two_rate },
-          { min_income: taxForm.slab_two_limit, max_income: null, rate_percent: taxForm.slab_three_rate },
-        ],
-      })
-      toast.success('Tax slab set created.')
-    } catch (error) {
-      toast.error(getErrorMessage(error, 'Unable to create the tax slab set.'))
     }
   }
 
@@ -489,48 +459,20 @@ export function PayrollPage() {
 
       {activeSection === 'setup' ? (
         <div className="grid gap-6 xl:grid-cols-2">
-          <SectionCard title="Org tax slabs" description="Create org-specific preview copies of the active tax master or additional slab sets for alternate payroll scenarios.">
-            <form onSubmit={handleCreateTaxSet} className="grid gap-4 md:grid-cols-2">
-              <div>
-                <label className="field-label" htmlFor="payroll-tax-set-name">Slab set name</label>
-                <input id="payroll-tax-set-name" className="field-input" value={taxForm.name} onChange={(event) => setTaxForm((current) => ({ ...current, name: event.target.value }))} placeholder="Slab set name" />
-              </div>
-              <div>
-                <label className="field-label" htmlFor="payroll-tax-fiscal-year">Fiscal year</label>
-                <input id="payroll-tax-fiscal-year" className="field-input" value={taxForm.fiscal_year} onChange={(event) => setTaxForm((current) => ({ ...current, fiscal_year: event.target.value }))} placeholder="2026-2027" />
-              </div>
-              <div>
-                <label className="field-label" htmlFor="payroll-tax-slab-one-limit">First slab upper limit</label>
-                <input id="payroll-tax-slab-one-limit" className="field-input" value={taxForm.slab_one_limit} onChange={(event) => setTaxForm((current) => ({ ...current, slab_one_limit: event.target.value }))} placeholder="First slab upper limit" />
-              </div>
-              <div>
-                <label className="field-label" htmlFor="payroll-tax-slab-two-limit">Second slab upper limit</label>
-                <input id="payroll-tax-slab-two-limit" className="field-input" value={taxForm.slab_two_limit} onChange={(event) => setTaxForm((current) => ({ ...current, slab_two_limit: event.target.value }))} placeholder="Second slab upper limit" />
-              </div>
-              <div>
-                <label className="field-label" htmlFor="payroll-tax-slab-two-rate">Second slab rate (%)</label>
-                <input id="payroll-tax-slab-two-rate" className="field-input" value={taxForm.slab_two_rate} onChange={(event) => setTaxForm((current) => ({ ...current, slab_two_rate: event.target.value }))} placeholder="Second slab rate" />
-              </div>
-              <div>
-                <label className="field-label" htmlFor="payroll-tax-slab-three-rate">Top slab rate (%)</label>
-                <input id="payroll-tax-slab-three-rate" className="field-input" value={taxForm.slab_three_rate} onChange={(event) => setTaxForm((current) => ({ ...current, slab_three_rate: event.target.value }))} placeholder="Top slab rate" />
-              </div>
-              <div className="md:col-span-2">
-                <button type="submit" className="btn-primary" disabled={createTaxSetMutation.isPending}>
-                  Save tax slab set
-                </button>
-              </div>
-            </form>
-            <div className="mt-5 space-y-3">
+          <SectionCard title="Income tax masters" description="Statutory tax slab masters are managed by the Control Tower. Contact your CT admin to add or update slabs for a new financial year.">
+            <div className="space-y-3">
               {data.tax_slab_sets.map((set) => (
                 <div key={set.id} className="surface-shell rounded-[18px] px-4 py-4">
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="font-semibold text-[hsl(var(--foreground-strong))]">{set.name}</p>
-                    <StatusBadge tone={set.source_set_id ? 'info' : 'success'}>{set.source_set_id ? 'Seeded copy' : 'Masterless copy'}</StatusBadge>
+                    <StatusBadge tone="info">{set.is_old_regime ? 'Old Regime' : 'New Regime'}</StatusBadge>
                   </div>
                   <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">{set.fiscal_year} • {set.slabs.length} slabs</p>
                 </div>
               ))}
+              {data.tax_slab_sets.length === 0 ? (
+                <p className="text-sm text-[hsl(var(--muted-foreground))]">No income tax masters seeded yet. Ask your CT admin to run the seed command.</p>
+              ) : null}
             </div>
           </SectionCard>
 

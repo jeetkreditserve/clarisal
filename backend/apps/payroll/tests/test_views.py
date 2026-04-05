@@ -189,7 +189,9 @@ class TestPayrollViews:
         summary_response = org_admin_client.get('/api/org/payroll/summary/')
         assert summary_response.status_code == 200
         assert summary_response.data['tax_slab_sets']
-        assert summary_response.data['tax_slab_sets'][0]['source_set_id'] == response.data['id']
+        # Org summary returns CT masters directly; verify the newly created master appears.
+        slab_set_ids = [ss['id'] for ss in summary_response.data['tax_slab_sets']]
+        assert response.data['id'] in slab_set_ids
         assert summary_response.data['professional_tax_rules']
         assert summary_response.data['labour_welfare_fund_rules']
 

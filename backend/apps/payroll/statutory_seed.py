@@ -5,11 +5,14 @@ from datetime import date
 from .models import (
     LabourWelfareFundContribution,
     LabourWelfareFundRule,
+    PayrollTaxSlab,
+    PayrollTaxSlabSet,
     ProfessionalTaxGender,
     ProfessionalTaxRule,
     ProfessionalTaxSlab,
     StatutoryDeductionFrequency,
     StatutoryIncomeBasis,
+    TaxCategory,
 )
 
 ALL_MONTHS_EXCEPT_FEBRUARY = [1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
@@ -266,6 +269,168 @@ LABOUR_WELFARE_FUND_RULES = [
 ]
 
 
+# ─── Income Tax Slab Masters ──────────────────────────────────────────────────
+# Source: Finance Act 2024 (AY 2024-25) and Finance Act 2025 (AY 2025-26).
+# New Regime: all three age categories share identical slabs (Section 115BAC).
+# Old Regime: Individual < 2.5 L; Senior Citizen (60-79) < 3 L; Super Senior (80+) < 5 L.
+# Amounts are annual income in INR.
+
+_NEW_REGIME_2024_SLABS = [
+    {'min_income': '0.00',        'max_income': '300000.00',   'rate_percent': '0.00'},
+    {'min_income': '300000.00',   'max_income': '700000.00',   'rate_percent': '5.00'},
+    {'min_income': '700000.00',   'max_income': '1000000.00',  'rate_percent': '10.00'},
+    {'min_income': '1000000.00',  'max_income': '1200000.00',  'rate_percent': '15.00'},
+    {'min_income': '1200000.00',  'max_income': '1500000.00',  'rate_percent': '20.00'},
+    {'min_income': '1500000.00',  'max_income': None,           'rate_percent': '30.00'},
+]
+
+_NEW_REGIME_2025_SLABS = [
+    {'min_income': '0.00',        'max_income': '400000.00',   'rate_percent': '0.00'},
+    {'min_income': '400000.00',   'max_income': '800000.00',   'rate_percent': '5.00'},
+    {'min_income': '800000.00',   'max_income': '1200000.00',  'rate_percent': '10.00'},
+    {'min_income': '1200000.00',  'max_income': '1600000.00',  'rate_percent': '15.00'},
+    {'min_income': '1600000.00',  'max_income': '2000000.00',  'rate_percent': '20.00'},
+    {'min_income': '2000000.00',  'max_income': '2400000.00',  'rate_percent': '25.00'},
+    {'min_income': '2400000.00',  'max_income': None,           'rate_percent': '30.00'},
+]
+
+INCOME_TAX_SLAB_MASTERS = [
+    # ── FY 2024-2025 ─────────────────────────────────────────────────────────
+    {
+        'fiscal_year': '2024-2025', 'country_code': 'IN', 'is_old_regime': False,
+        'tax_category': TaxCategory.INDIVIDUAL,
+        'name': 'India New Regime 2024-2025 (Individual)',
+        'slabs': _NEW_REGIME_2024_SLABS,
+    },
+    {
+        'fiscal_year': '2024-2025', 'country_code': 'IN', 'is_old_regime': False,
+        'tax_category': TaxCategory.SENIOR_CITIZEN,
+        'name': 'India New Regime 2024-2025 (Senior Citizen)',
+        'slabs': _NEW_REGIME_2024_SLABS,
+    },
+    {
+        'fiscal_year': '2024-2025', 'country_code': 'IN', 'is_old_regime': False,
+        'tax_category': TaxCategory.SUPER_SENIOR_CITIZEN,
+        'name': 'India New Regime 2024-2025 (Super Senior Citizen)',
+        'slabs': _NEW_REGIME_2024_SLABS,
+    },
+    {
+        'fiscal_year': '2024-2025', 'country_code': 'IN', 'is_old_regime': True,
+        'tax_category': TaxCategory.INDIVIDUAL,
+        'name': 'India Old Regime 2024-2025 (Individual)',
+        'slabs': [
+            {'min_income': '0.00',       'max_income': '250000.00',   'rate_percent': '0.00'},
+            {'min_income': '250000.00',  'max_income': '500000.00',   'rate_percent': '5.00'},
+            {'min_income': '500000.00',  'max_income': '1000000.00',  'rate_percent': '20.00'},
+            {'min_income': '1000000.00', 'max_income': None,           'rate_percent': '30.00'},
+        ],
+    },
+    {
+        'fiscal_year': '2024-2025', 'country_code': 'IN', 'is_old_regime': True,
+        'tax_category': TaxCategory.SENIOR_CITIZEN,
+        'name': 'India Old Regime 2024-2025 (Senior Citizen)',
+        'slabs': [
+            {'min_income': '0.00',       'max_income': '300000.00',   'rate_percent': '0.00'},
+            {'min_income': '300000.00',  'max_income': '500000.00',   'rate_percent': '5.00'},
+            {'min_income': '500000.00',  'max_income': '1000000.00',  'rate_percent': '20.00'},
+            {'min_income': '1000000.00', 'max_income': None,           'rate_percent': '30.00'},
+        ],
+    },
+    {
+        'fiscal_year': '2024-2025', 'country_code': 'IN', 'is_old_regime': True,
+        'tax_category': TaxCategory.SUPER_SENIOR_CITIZEN,
+        'name': 'India Old Regime 2024-2025 (Super Senior Citizen)',
+        'slabs': [
+            {'min_income': '0.00',       'max_income': '500000.00',   'rate_percent': '0.00'},
+            {'min_income': '500000.00',  'max_income': '1000000.00',  'rate_percent': '20.00'},
+            {'min_income': '1000000.00', 'max_income': None,           'rate_percent': '30.00'},
+        ],
+    },
+    # ── FY 2025-2026 ─────────────────────────────────────────────────────────
+    {
+        'fiscal_year': '2025-2026', 'country_code': 'IN', 'is_old_regime': False,
+        'tax_category': TaxCategory.INDIVIDUAL,
+        'name': 'India New Regime 2025-2026 (Individual)',
+        'slabs': _NEW_REGIME_2025_SLABS,
+    },
+    {
+        'fiscal_year': '2025-2026', 'country_code': 'IN', 'is_old_regime': False,
+        'tax_category': TaxCategory.SENIOR_CITIZEN,
+        'name': 'India New Regime 2025-2026 (Senior Citizen)',
+        'slabs': _NEW_REGIME_2025_SLABS,
+    },
+    {
+        'fiscal_year': '2025-2026', 'country_code': 'IN', 'is_old_regime': False,
+        'tax_category': TaxCategory.SUPER_SENIOR_CITIZEN,
+        'name': 'India New Regime 2025-2026 (Super Senior Citizen)',
+        'slabs': _NEW_REGIME_2025_SLABS,
+    },
+    {
+        'fiscal_year': '2025-2026', 'country_code': 'IN', 'is_old_regime': True,
+        'tax_category': TaxCategory.INDIVIDUAL,
+        'name': 'India Old Regime 2025-2026 (Individual)',
+        'slabs': [
+            {'min_income': '0.00',       'max_income': '250000.00',   'rate_percent': '0.00'},
+            {'min_income': '250000.00',  'max_income': '500000.00',   'rate_percent': '5.00'},
+            {'min_income': '500000.00',  'max_income': '1000000.00',  'rate_percent': '20.00'},
+            {'min_income': '1000000.00', 'max_income': None,           'rate_percent': '30.00'},
+        ],
+    },
+    {
+        'fiscal_year': '2025-2026', 'country_code': 'IN', 'is_old_regime': True,
+        'tax_category': TaxCategory.SENIOR_CITIZEN,
+        'name': 'India Old Regime 2025-2026 (Senior Citizen)',
+        'slabs': [
+            {'min_income': '0.00',       'max_income': '300000.00',   'rate_percent': '0.00'},
+            {'min_income': '300000.00',  'max_income': '500000.00',   'rate_percent': '5.00'},
+            {'min_income': '500000.00',  'max_income': '1000000.00',  'rate_percent': '20.00'},
+            {'min_income': '1000000.00', 'max_income': None,           'rate_percent': '30.00'},
+        ],
+    },
+    {
+        'fiscal_year': '2025-2026', 'country_code': 'IN', 'is_old_regime': True,
+        'tax_category': TaxCategory.SUPER_SENIOR_CITIZEN,
+        'name': 'India Old Regime 2025-2026 (Super Senior Citizen)',
+        'slabs': [
+            {'min_income': '0.00',       'max_income': '500000.00',   'rate_percent': '0.00'},
+            {'min_income': '500000.00',  'max_income': '1000000.00',  'rate_percent': '20.00'},
+            {'min_income': '1000000.00', 'max_income': None,           'rate_percent': '30.00'},
+        ],
+    },
+]
+
+
+def seed_income_tax_masters():
+    """Idempotent seed of all CT-level income tax slab sets defined in INCOME_TAX_SLAB_MASTERS."""
+    count = 0
+    for master_data in INCOME_TAX_SLAB_MASTERS:
+        slabs = master_data['slabs']
+        slab_set, _ = PayrollTaxSlabSet.objects.update_or_create(
+            organisation=None,
+            country_code=master_data['country_code'],
+            fiscal_year=master_data['fiscal_year'],
+            is_old_regime=master_data['is_old_regime'],
+            tax_category=master_data['tax_category'],
+            defaults={
+                'name': master_data['name'],
+                'is_system_master': True,
+                'is_active': True,
+            },
+        )
+        slab_set.slabs.all().delete()
+        PayrollTaxSlab.objects.bulk_create([
+            PayrollTaxSlab(
+                slab_set=slab_set,
+                min_income=slab['min_income'],
+                max_income=slab.get('max_income'),
+                rate_percent=slab['rate_percent'],
+            )
+            for slab in slabs
+        ])
+        count += 1
+    return count
+
+
 def seed_statutory_master_data():
     pt_count = 0
     lwf_count = 0
@@ -321,4 +486,5 @@ def seed_statutory_master_data():
         )
         lwf_count += 1
 
-    return {'professional_tax_rules': pt_count, 'labour_welfare_fund_rules': lwf_count}
+    it_count = seed_income_tax_masters()
+    return {'professional_tax_rules': pt_count, 'labour_welfare_fund_rules': lwf_count, 'income_tax_masters': it_count}

@@ -24,6 +24,7 @@ from .models import (
     StatutoryFilingArtifactFormat,
     StatutoryFilingBatch,
     StatutoryFilingType,
+    TaxCategory,
     TaxRegime,
 )
 
@@ -148,6 +149,7 @@ class PayrollTaxSlabSetSerializer(serializers.ModelSerializer):
             'is_active',
             'is_system_master',
             'is_old_regime',
+            'tax_category',
             'source_set_id',
             'slabs',
             'created_at',
@@ -161,6 +163,11 @@ class PayrollTaxSlabSetWriteSerializer(serializers.Serializer):
     fiscal_year = serializers.CharField(max_length=16)
     is_active = serializers.BooleanField(required=False, default=True)
     is_old_regime = serializers.BooleanField(required=False, default=False)
+    tax_category = serializers.ChoiceField(
+        choices=TaxCategory.choices,
+        required=False,
+        default=TaxCategory.INDIVIDUAL,
+    )
     slabs = PayrollTaxSlabWriteSerializer(many=True)
 
 
