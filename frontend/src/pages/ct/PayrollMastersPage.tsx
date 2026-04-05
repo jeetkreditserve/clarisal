@@ -549,7 +549,7 @@ export function PayrollMastersPage() {
       <SectionCard
         title="Income tax masters"
         description="India income tax slabs by financial year, regime, and taxpayer age category. The payroll engine automatically selects the correct master for each employee based on their date of birth."
-        actions={
+        action={
           editing.mode === 'none' ? (
             <button type="button" className="btn-secondary text-sm" onClick={() => openCreate()}>
               <Plus className="size-3.5 mr-1" />
