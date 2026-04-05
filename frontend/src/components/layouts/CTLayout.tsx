@@ -7,7 +7,7 @@ import { ThemeToggle } from '@/components/ui/ThemeToggle'
 
 const navItems: NavItem[] = [
   { label: 'Dashboard', href: '/ct/dashboard', icon: LayoutDashboard },
-  { label: 'Payroll Preview', href: '/ct/payroll', icon: Landmark },
+  { label: 'Payroll Masters', href: '/ct/payroll', icon: Landmark },
   { label: 'Organisations', href: '/ct/organisations', icon: Building2 },
 ]
 

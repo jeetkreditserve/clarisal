@@ -1,13 +1,15 @@
-import pytest
 from unittest.mock import patch
+
+import pytest
 from django.utils import timezone
+from rest_framework import serializers as drf_serializers
+from rest_framework.exceptions import NotFound
+
 from apps.accounts.models import User, UserRole
 from apps.common.security import hash_token
 from apps.invitations.models import Invitation, InvitationRole, InvitationStatus
-from apps.invitations.services import create_org_admin_invitation, validate_invite_token, accept_invitation
+from apps.invitations.services import accept_invitation, create_org_admin_invitation, validate_invite_token
 from apps.organisations.models import Organisation, OrganisationStatus
-from rest_framework import serializers as drf_serializers
-from rest_framework.exceptions import NotFound
 
 
 @pytest.fixture
@@ -77,7 +79,7 @@ class TestValidateInviteToken:
     def test_raises_for_expired_invite(self, ct_user, paid_org):
         import secrets
         raw_token = secrets.token_urlsafe(32)
-        invite = Invitation.objects.create(
+        Invitation.objects.create(
             token_hash=hash_token(raw_token), email='a@b.com',
             organisation=paid_org, role=InvitationRole.ORG_ADMIN,
             invited_by=ct_user, status=InvitationStatus.PENDING,

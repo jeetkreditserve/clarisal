@@ -7,11 +7,11 @@ import pytest
 from apps.accounts.models import User, UserRole
 from apps.employees.models import Employee, EmployeeStatus
 from apps.organisations.models import (
-    Organisation,
     BootstrapAdminStatus,
+    Organisation,
+    OrganisationBootstrapAdmin,
     OrganisationMembership,
     OrganisationMembershipStatus,
-    OrganisationBootstrapAdmin,
     OrganisationStatus,
 )
 from apps.organisations.services import (

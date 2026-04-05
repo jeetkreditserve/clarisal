@@ -1,0 +1,9 @@
+Hi {{ greeting_name }},
+
+{{ body }}
+
+{% if action_url and action_label %}
+{{ action_label }}: {{ action_url }}
+{% endif %}
+
+{{ footer_brand }}

@@ -1,7 +1,9 @@
 import api from '@/lib/api'
+import type { ImpersonationSession } from '@/types/auth'
 import type {
   CtDashboardStats,
   LicenceBatch,
+  OrganisationFeatureFlag,
   OrganisationNote,
   OrgAdmin,
   OrganisationEntityType,
@@ -13,6 +15,7 @@ import type {
 import type {
   CtOrganisationAttendanceSupportSummary,
   ApprovalWorkflowConfig,
+  CtOrganisationOnboardingSupportSummary,
   CtOrganisationApprovalSupportSummary,
   CtOrganisationPayrollSupportSummary,
   CtEmployeeDetail,
@@ -25,6 +28,8 @@ import type {
   Location,
   NoticeItem,
   OnDutyPolicy,
+  CtPayrollStatutoryMastersResponse,
+  CtOnboardingChecklist,
 } from '@/types/hr'
 
 export interface OrganisationAddressInput {
@@ -58,6 +63,65 @@ export async function fetchOrganisations(params?: {
 export async function fetchOrganisation(id: string): Promise<OrganisationDetail> {
   const { data } = await api.get(`/ct/organisations/${id}/`)
   return data
+}
+
+export async function updateCtOrganisationFeatureFlags(
+  id: string,
+  payload: Array<{ feature_code: string; is_enabled: boolean }>
+): Promise<OrganisationFeatureFlag[]> {
+  const { data } = await api.patch(`/ct/organisations/${id}/feature-flags/`, payload)
+  return data
+}
+
+export async function startCtImpersonation(
+  id: string,
+  payload: {
+    reason: string
+    target_org_admin_id?: string | null
+  }
+): Promise<ImpersonationSession> {
+  const { data } = await api.post(`/ct/organisations/${id}/act-as/`, payload)
+  return {
+    session_id: data.id,
+    organisation_id: data.organisation_id,
+    organisation_name: data.organisation_name,
+    reason: data.reason,
+    started_at: data.started_at,
+    refreshed_at: data.refreshed_at,
+    is_active: data.is_active,
+    return_path: `/ct/organisations/${data.organisation_id}`,
+    target_org_admin: data.target_org_admin,
+  }
+}
+
+export async function refreshCtImpersonation(): Promise<ImpersonationSession> {
+  const { data } = await api.post('/ct/act-as/refresh/', {})
+  return {
+    session_id: data.id,
+    organisation_id: data.organisation_id,
+    organisation_name: data.organisation_name,
+    reason: data.reason,
+    started_at: data.started_at,
+    refreshed_at: data.refreshed_at,
+    is_active: data.is_active,
+    return_path: `/ct/organisations/${data.organisation_id}`,
+    target_org_admin: data.target_org_admin,
+  }
+}
+
+export async function stopCtImpersonation(): Promise<ImpersonationSession> {
+  const { data } = await api.post('/ct/act-as/stop/', {})
+  return {
+    session_id: data.id,
+    organisation_id: data.organisation_id,
+    organisation_name: data.organisation_name,
+    reason: data.reason,
+    started_at: data.started_at,
+    refreshed_at: data.refreshed_at,
+    is_active: data.is_active,
+    return_path: `/ct/organisations/${data.organisation_id}`,
+    target_org_admin: data.target_org_admin,
+  }
 }
 
 export async function createOrganisation(payload: {
@@ -209,6 +273,15 @@ export async function createCtPayrollTaxSlabSet(payload: Record<string, unknown>
   return data
 }
 
+export async function updateCtPayrollTaxSlabSet(id: string, payload: Record<string, unknown>): Promise<PayrollTaxSlabSet> {
+  const { data } = await api.patch(`/ct/payroll/tax-slab-sets/${id}/`, payload)
+  return data
+}
+
+export async function deleteCtPayrollTaxSlabSet(id: string): Promise<void> {
+  await api.delete(`/ct/payroll/tax-slab-sets/${id}/`)
+}
+
 export async function fetchCtOrgEmployees(
   id: string,
   params?: { status?: string; search?: string; page?: number }
@@ -227,8 +300,24 @@ export async function fetchCtOrgPayrollSummary(id: string): Promise<CtOrganisati
   return data
 }
 
+export async function fetchCtPayrollStatutoryMasters(stateCode?: string): Promise<CtPayrollStatutoryMastersResponse> {
+  const params = stateCode ? { state_code: stateCode } : undefined
+  const { data } = await api.get('/ct/payroll/statutory-masters/', { params })
+  return data
+}
+
+export async function fetchCtOrgOnboardingChecklist(id: string): Promise<CtOnboardingChecklist> {
+  const { data } = await api.get(`/ct/organisations/${id}/onboarding-checklist/`)
+  return data
+}
+
 export async function fetchCtOrgAttendanceSummary(id: string): Promise<CtOrganisationAttendanceSupportSummary> {
   const { data } = await api.get(`/ct/organisations/${id}/attendance/`)
+  return data
+}
+
+export async function fetchCtOrgOnboardingSummary(id: string): Promise<CtOrganisationOnboardingSupportSummary> {
+  const { data } = await api.get(`/ct/organisations/${id}/onboarding-support/`)
   return data
 }
 

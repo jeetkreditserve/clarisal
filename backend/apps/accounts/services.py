@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import transaction
@@ -50,7 +52,7 @@ def create_password_reset_request(
         reset_token = PasswordResetToken.objects.create(
             user=user,
             token_hash=hash_token(raw_token),
-            expires_at=timezone.now() + timezone.timedelta(minutes=expiry_minutes),
+            expires_at=timezone.now() + timedelta(minutes=expiry_minutes),
             requested_by_ip=requested_by_ip,
         )
         transaction.on_commit(
@@ -76,8 +78,8 @@ def validate_password_reset_token(raw_token: str):
 
     if not reset_token.is_valid:
         if reset_token.is_expired:
-            raise drf_serializers.ValidationError({'token': 'This password reset link has expired.'})
-        raise drf_serializers.ValidationError({'token': 'This password reset link has already been used.'})
+            raise drf_serializers.ValidationError({'token': 'This password reset link has expired.'})  # nosec B105
+        raise drf_serializers.ValidationError({'token': 'This password reset link has already been used.'})  # nosec B105
 
     return reset_token
 

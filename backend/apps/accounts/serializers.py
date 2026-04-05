@@ -27,7 +27,7 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
 
     def validate(self, data):
         if data['password'] != data['confirm_password']:
-            raise serializers.ValidationError({'confirm_password': 'Passwords do not match.'})
+            raise serializers.ValidationError({'confirm_password': 'Passwords do not match.'})  # nosec B105
         return data
 
 
@@ -51,6 +51,8 @@ class UserSerializer(serializers.ModelSerializer):
     org_setup_required = serializers.SerializerMethodField()
     org_setup_current_step = serializers.SerializerMethodField()
     org_setup_completed_at = serializers.SerializerMethodField()
+    impersonation = serializers.SerializerMethodField()
+    feature_flags = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -80,6 +82,8 @@ class UserSerializer(serializers.ModelSerializer):
             'org_setup_required',
             'org_setup_current_step',
             'org_setup_completed_at',
+            'impersonation',
+            'feature_flags',
             'is_active',
         ]
         read_only_fields = fields
@@ -90,6 +94,8 @@ class UserSerializer(serializers.ModelSerializer):
 
     def _current_org(self, obj):
         state = self._state(obj)
+        if state.impersonated_organisation:
+            return state.impersonated_organisation
         if state.active_kind == 'ADMIN' and state.active_admin_membership:
             return state.active_admin_membership.organisation
         if state.active_kind == 'EMPLOYEE' and state.active_employee:
@@ -121,7 +127,7 @@ class UserSerializer(serializers.ModelSerializer):
         return organisation.access_state if organisation else None
 
     def get_active_workspace_kind(self, obj):
-        if obj.account_type == AccountType.CONTROL_TOWER:
+        if obj.account_type == AccountType.CONTROL_TOWER and self._state(obj).impersonation_session is None:
             return 'CONTROL_TOWER'
         return self._state(obj).active_kind
 
@@ -132,7 +138,8 @@ class UserSerializer(serializers.ModelSerializer):
         return obj.account_type == AccountType.CONTROL_TOWER
 
     def get_has_org_admin_access(self, obj):
-        return bool(self._state(obj).admin_memberships)
+        state = self._state(obj)
+        return bool(state.admin_memberships or state.impersonation_session)
 
     def get_has_employee_access(self, obj):
         return bool(self._state(obj).employee_records)
@@ -184,7 +191,9 @@ class UserSerializer(serializers.ModelSerializer):
 
     def get_org_operations_guard(self, obj):
         organisation = self._current_org(obj)
-        if organisation is None or obj.account_type == AccountType.CONTROL_TOWER:
+        if organisation is None:
+            return None
+        if obj.account_type == AccountType.CONTROL_TOWER and self._state(obj).impersonation_session is None:
             return None
         return get_org_operations_guard(organisation)
 
@@ -205,3 +214,37 @@ class UserSerializer(serializers.ModelSerializer):
         if organisation is None or obj.account_type == AccountType.CONTROL_TOWER:
             return None
         return get_org_admin_setup_state(organisation)['completed_at']
+
+    def get_impersonation(self, obj):
+        state = self._state(obj)
+        session = state.impersonation_session
+        if session is None:
+            return None
+        target_admin = session.target_org_admin
+        return {
+            'session_id': str(session.id),
+            'organisation_id': str(session.organisation_id),
+            'organisation_name': session.organisation.name,
+            'reason': session.reason,
+            'started_at': session.started_at,
+            'refreshed_at': session.refreshed_at,
+            'is_active': session.is_active,
+            'return_path': f'/ct/organisations/{session.organisation_id}',
+            'target_org_admin': (
+                {
+                    'id': str(target_admin.id),
+                    'full_name': target_admin.full_name,
+                    'email': target_admin.email,
+                }
+                if target_admin is not None
+                else None
+            ),
+        }
+
+    def get_feature_flags(self, obj):
+        organisation = self._current_org(obj)
+        if organisation is None:
+            return {}
+        from apps.organisations.services import get_org_feature_flags_map
+
+        return get_org_feature_flags_map(organisation)

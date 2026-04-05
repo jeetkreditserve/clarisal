@@ -39,6 +39,9 @@ PY
 echo "==> Applying database migrations..."
 python manage.py migrate --noinput
 
+echo "==> Seeding statutory masters (idempotent)..."
+python manage.py seed_statutory_masters
+
 echo "==> Collecting static files..."
 python manage.py collectstatic --noinput
 

@@ -1,6 +1,11 @@
 from django.urls import path
 
-from .views import MyDocumentDownloadView, MyDocumentListCreateView, MyDocumentRequestListView, MyDocumentRequestUploadView
+from .views import (
+    MyDocumentDownloadView,
+    MyDocumentListCreateView,
+    MyDocumentRequestListView,
+    MyDocumentRequestUploadView,
+)
 
 urlpatterns = [
     path('document-requests/', MyDocumentRequestListView.as_view(), name='my-document-requests'),

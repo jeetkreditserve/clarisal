@@ -4,7 +4,10 @@ import {
   createCtApprovalWorkflow,
   fetchCtOrgAttendanceSummary,
   createCtPayrollTaxSlabSet,
+  updateCtPayrollTaxSlabSet,
+  deleteCtPayrollTaxSlabSet,
   fetchCtOrgApprovalSummary,
+  fetchCtOrgOnboardingSummary,
   createCtHolidayCalendar,
   createCtLeaveCycle,
   createCtLeavePlan,
@@ -40,8 +43,12 @@ import {
   reactivateCtOrgAdmin,
   resendOrgAdminInvite,
   restoreOrganisation,
+  startCtImpersonation,
+  stopCtImpersonation,
   revokePendingCtOrgAdmin,
   suspendOrganisation,
+  refreshCtImpersonation,
+  updateCtOrganisationFeatureFlags,
   updateCtApprovalWorkflow,
   updateCtBootstrapAdmin,
   updateCtDepartment,
@@ -54,6 +61,8 @@ import {
   updateLicenceBatch,
   updateOrganisation,
   updateOrganisationAddress,
+  fetchCtPayrollStatutoryMasters,
+  fetchCtOrgOnboardingChecklist,
 } from '@/lib/api/organisations'
 
 export function useCtStats() {
@@ -68,6 +77,23 @@ export function useCreateCtPayrollTaxSlabSet() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: createCtPayrollTaxSlabSet,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['ct', 'payroll'] }),
+  })
+}
+
+export function useUpdateCtPayrollTaxSlabSet() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Record<string, unknown> }) =>
+      updateCtPayrollTaxSlabSet(id, payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['ct', 'payroll'] }),
+  })
+}
+
+export function useDeleteCtPayrollTaxSlabSet() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => deleteCtPayrollTaxSlabSet(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['ct', 'payroll'] }),
   })
 }
@@ -200,6 +226,38 @@ export function useRestoreOrganisation() {
   })
 }
 
+export function useStartCtImpersonation(id: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: Parameters<typeof startCtImpersonation>[1]) => startCtImpersonation(id, payload),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ['ct', 'organisations', id] })
+    },
+  })
+}
+
+export function useRefreshCtImpersonation() {
+  return useMutation({
+    mutationFn: refreshCtImpersonation,
+  })
+}
+
+export function useStopCtImpersonation() {
+  return useMutation({
+    mutationFn: stopCtImpersonation,
+  })
+}
+
+export function useUpdateCtOrganisationFeatureFlags(id: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: Parameters<typeof updateCtOrganisationFeatureFlags>[1]) => updateCtOrganisationFeatureFlags(id, payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ct', 'organisations', id] })
+    },
+  })
+}
+
 export function useOrgAdmins(orgId: string, enabled = true) {
   return useQuery({
     queryKey: ['ct', 'organisations', orgId, 'admins'],
@@ -236,6 +294,14 @@ export function useCtOrgAttendanceSummary(orgId: string, enabled = true) {
   return useQuery({
     queryKey: ['ct', 'organisations', orgId, 'attendance-support'],
     queryFn: () => fetchCtOrgAttendanceSummary(orgId),
+    enabled: Boolean(orgId && enabled),
+  })
+}
+
+export function useCtOrgOnboardingSummary(orgId: string, enabled = true) {
+  return useQuery({
+    queryKey: ['ct', 'organisations', orgId, 'onboarding-support'],
+    queryFn: () => fetchCtOrgOnboardingSummary(orgId),
     enabled: Boolean(orgId && enabled),
   })
 }
@@ -550,5 +616,19 @@ export function usePublishCtNotice(orgId: string) {
   return useMutation({
     mutationFn: (noticeId: string) => publishCtNotice(orgId, noticeId),
     onSuccess: () => invalidateCtConfiguration(qc, orgId),
+  })
+}
+
+export function useCtPayrollStatutoryMasters(stateCode?: string) {
+  return useQuery({
+    queryKey: ['ct', 'payroll', 'statutory-masters', stateCode ?? 'all'],
+    queryFn: () => fetchCtPayrollStatutoryMasters(stateCode),
+  })
+}
+
+export function useCtOrgOnboardingChecklist(organisationId: string) {
+  return useQuery({
+    queryKey: ['ct', 'organisations', organisationId, 'onboarding-checklist'],
+    queryFn: () => fetchCtOrgOnboardingChecklist(organisationId),
   })
 }

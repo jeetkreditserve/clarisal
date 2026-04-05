@@ -9,17 +9,17 @@ from io import BytesIO
 from zoneinfo import ZoneInfo
 
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 from openpyxl import Workbook, load_workbook
 
-from apps.common.security import decrypt_value, encrypt_value, generate_secure_token, hash_token, mask_value
-from apps.approvals.models import ApprovalRequestKind, ApprovalRun
+from apps.approvals.models import ApprovalRequestKind
 from apps.approvals.services import cancel_approval_run, create_approval_run
 from apps.audit.services import log_audit_event
+from apps.common.security import decrypt_value, encrypt_value, generate_secure_token, hash_token, mask_value
 from apps.employees.models import Employee, EmployeeStatus
 from apps.timeoff.models import (
     DaySession,
-    Holiday,
     HolidayCalendar,
     HolidayCalendarStatus,
     LeaveRequest,
@@ -120,6 +120,11 @@ def _policy_timezone(policy):
         return ZoneInfo(policy.timezone_name)
     except Exception:  # noqa: BLE001
         return timezone.get_default_timezone()
+
+
+def _policy_local_date(policy, dt=None):
+    current_dt = dt or timezone.now()
+    return timezone.localtime(current_dt, _policy_timezone(policy)).date()
 
 
 def _make_aware_datetime(attendance_date, time_value, policy=None):
@@ -260,6 +265,8 @@ def build_punch_sheet_sample():
 
 
 def build_normalized_attendance_workbook(job):
+    policy = get_default_attendance_policy(job.organisation)
+    policy_timezone = _policy_timezone(policy)
     normalized_rows = []
     review_notes = []
     validation_errors = []
@@ -269,8 +276,8 @@ def build_normalized_attendance_workbook(job):
                 [
                     row.employee_code,
                     row.attendance_date.isoformat() if row.attendance_date else '',
-                    timezone.localtime(row.check_in_at).strftime('%H:%M') if row.check_in_at else '',
-                    timezone.localtime(row.check_out_at).strftime('%H:%M') if row.check_out_at else '',
+                    timezone.localtime(row.check_in_at, policy_timezone).strftime('%H:%M') if row.check_in_at else '',
+                    timezone.localtime(row.check_out_at, policy_timezone).strftime('%H:%M') if row.check_out_at else '',
                 ]
             )
             review_notes.append(
@@ -322,6 +329,9 @@ def get_default_attendance_policy(organisation):
 
 
 def upsert_attendance_policy(organisation, *, actor=None, policy=None, **fields):
+    target_is_default = fields.get('is_default', policy.is_default if policy is not None else False)
+    if target_is_default:
+        AttendancePolicy.objects.filter(organisation=organisation).exclude(id=getattr(policy, 'id', None)).update(is_default=False)
     if policy is None:
         policy = AttendancePolicy.objects.create(
             organisation=organisation,
@@ -334,9 +344,6 @@ def upsert_attendance_policy(organisation, *, actor=None, policy=None, **fields)
         if not policy.week_off_days:
             policy.week_off_days = DEFAULT_WEEK_OFF_DAYS
         policy.save()
-
-    if policy.is_default:
-        AttendancePolicy.objects.filter(organisation=organisation).exclude(id=policy.id).update(is_default=False)
     log_audit_event(actor, 'attendance.policy.upserted', organisation=organisation, target=policy)
     return policy
 
@@ -717,9 +724,9 @@ def recalculate_attendance_day(employee, attendance_date, *, actor=None):
 
 
 def get_employee_attendance_summary(employee):
-    today = timezone.localdate()
-    attendance_day = recalculate_attendance_day(employee, today)
     policy = get_default_attendance_policy(employee.organisation)
+    today = _policy_local_date(policy)
+    attendance_day = recalculate_attendance_day(employee, today)
     shift_assignment = _get_effective_shift(employee, today)
     pending_regularizations = employee.attendance_regularization_requests.filter(
         status=AttendanceRegularizationStatus.PENDING
@@ -732,12 +739,12 @@ def get_employee_attendance_summary(employee):
     }
 
 
-def _month_window(month):
+def _month_window(month, *, policy=None):
     if month:
         year, month_number = [int(part) for part in month.split('-')]
         start_date = date(year, month_number, 1)
     else:
-        today = timezone.localdate()
+        today = _policy_local_date(policy) if policy is not None else timezone.localdate()
         start_date = date(today.year, today.month, 1)
     next_month = date(start_date.year + (1 if start_date.month == 12 else 0), 1 if start_date.month == 12 else start_date.month + 1, 1)
     end_date = next_month - timedelta(days=1)
@@ -745,7 +752,7 @@ def _month_window(month):
 
 
 def get_employee_attendance_history(employee, *, month=None):
-    start_date, end_date = _month_window(month)
+    start_date, end_date = _month_window(month, policy=get_default_attendance_policy(employee.organisation))
     days = []
     current = start_date
     while current <= end_date:
@@ -757,7 +764,7 @@ def get_employee_attendance_history(employee, *, month=None):
 def get_employee_attendance_calendar(employee, *, month=None):
     days = get_employee_attendance_history(employee, month=month)
     return {
-        'month': month or date.today().strftime('%Y-%m'),
+        'month': month or _month_window(None, policy=get_default_attendance_policy(employee.organisation))[0].strftime('%Y-%m'),
         'days': [
             {
                 'date': day.attendance_date.isoformat(),
@@ -811,13 +818,84 @@ def _validate_geo(policy, latitude, longitude):
     if latitude is None or longitude is None:
         raise ValueError('This attendance policy requires a location-enabled punch.')
     for site in policy.allowed_geo_sites:
+        distance = None
         try:
             distance = _haversine_distance_meters(latitude, longitude, site['latitude'], site['longitude'])
-            if distance <= float(site.get('radius_meters', 250)):
-                return
+            radius_meters = float(site.get('radius_meters', 250))
         except Exception:  # noqa: BLE001
-            continue
+            distance = None
+        if distance is not None and distance <= radius_meters:
+            return
     raise ValueError('You are outside the approved attendance location.')
+
+
+def calculate_attendance_day_status(
+    punches: list,
+    shift_start,
+    full_day_minutes: int = 480,
+    half_day_minutes: int = 240,
+    grace_minutes: int = 15,
+    leave_override: str | None = None,
+) -> dict:
+    if leave_override == AttendanceDayStatus.ON_LEAVE:
+        return {
+            'status': AttendanceDayStatus.ON_LEAVE,
+            'is_late': False,
+            'worked_minutes': 0,
+            'overtime_minutes': 0,
+        }
+
+    if leave_override == AttendanceDayStatus.ON_DUTY:
+        return {
+            'status': AttendanceDayStatus.ON_DUTY,
+            'is_late': False,
+            'worked_minutes': full_day_minutes,
+            'overtime_minutes': 0,
+        }
+
+    ins = sorted(
+        [punch['punch_time'] for punch in punches if punch.get('direction', 'IN') == 'IN']
+    )
+    outs = sorted(
+        [punch['punch_time'] for punch in punches if punch.get('direction') == 'OUT']
+    )
+
+    if not ins:
+        return {
+            'status': AttendanceDayStatus.ABSENT,
+            'is_late': False,
+            'worked_minutes': 0,
+            'overtime_minutes': 0,
+        }
+
+    if not outs:
+        return {
+            'status': AttendanceDayStatus.INCOMPLETE,
+            'is_late': False,
+            'worked_minutes': 0,
+            'overtime_minutes': 0,
+        }
+
+    first_in = ins[0]
+    last_out = outs[-1]
+    worked_minutes = max(0, int((last_out - first_in).total_seconds() // 60))
+    overtime_minutes = max(0, worked_minutes - full_day_minutes)
+    grace_cutoff = datetime.combine(first_in.date(), shift_start) + timedelta(minutes=grace_minutes)
+    is_late = first_in > grace_cutoff
+
+    if worked_minutes >= full_day_minutes:
+        status = AttendanceDayStatus.PRESENT
+    elif worked_minutes >= half_day_minutes:
+        status = AttendanceDayStatus.HALF_DAY
+    else:
+        status = AttendanceDayStatus.ABSENT
+
+    return {
+        'status': status,
+        'is_late': is_late,
+        'worked_minutes': worked_minutes,
+        'overtime_minutes': overtime_minutes,
+    }
 
 
 def record_employee_punch(employee, *, action_type, actor=None, remote_ip='', latitude=None, longitude=None, source=AttendancePunchSource.WEB):
@@ -827,7 +905,7 @@ def record_employee_punch(employee, *, action_type, actor=None, remote_ip='', la
     _validate_ip(policy, remote_ip)
     _validate_geo(policy, latitude, longitude)
 
-    today = timezone.localdate()
+    today = _policy_local_date(policy)
     attendance_day = recalculate_attendance_day(employee, today)
     if action_type == AttendancePunchActionType.CHECK_IN and attendance_day.check_in_at and not attendance_day.check_out_at:
         raise ValueError('You are already checked in for today.')
@@ -910,6 +988,63 @@ def ingest_source_punches(source_config, *, punches, actor=None):
     }
 
 
+def create_punch_from_source(
+    employee_code: str,
+    punch_time,
+    organisation_id: str,
+    direction: str = 'IN',
+    source: str = AttendancePunchSource.DEVICE,
+    device_id: str | None = None,
+    source_config=None,
+    metadata: dict | None = None,
+) -> dict:
+    try:
+        employee = Employee.objects.select_related('organisation').get(
+            organisation_id=organisation_id,
+            employee_code=_strip_string(employee_code).upper(),
+            status=EmployeeStatus.ACTIVE,
+        )
+    except Employee.DoesNotExist:
+        return {'status': 'skipped', 'reason': f'No active employee with code {employee_code}'}
+    except Employee.MultipleObjectsReturned:
+        return {'status': 'error', 'reason': f'Multiple employees match code {employee_code}'}
+
+    if timezone.is_naive(punch_time):
+        punch_time = timezone.make_aware(punch_time, timezone.get_default_timezone())
+
+    action_type = {
+        'IN': AttendancePunchActionType.CHECK_IN,
+        'OUT': AttendancePunchActionType.CHECK_OUT,
+    }.get(str(direction).upper(), AttendancePunchActionType.RAW)
+
+    duplicate = AttendancePunch.objects.filter(
+        organisation_id=organisation_id,
+        employee=employee,
+        action_type=action_type,
+        punch_at__gte=punch_time - timedelta(minutes=1),
+        punch_at__lte=punch_time + timedelta(minutes=1),
+    ).exists()
+    if duplicate:
+        return {'status': 'skipped', 'reason': 'Duplicate punch within 1-minute window'}
+
+    safe_source = source if source in AttendancePunchSource.values else AttendancePunchSource.DEVICE
+    punch = AttendancePunch.objects.create(
+        organisation=employee.organisation,
+        employee=employee,
+        source_config=source_config,
+        action_type=action_type,
+        source=safe_source,
+        punch_at=punch_time,
+        metadata={
+            'device_id': device_id or '',
+            **(metadata or {}),
+        },
+    )
+    policy = get_default_attendance_policy(employee.organisation)
+    recalculate_attendance_day(employee, timezone.localtime(punch_time, _policy_timezone(policy)).date())
+    return {'status': 'created', 'punch_id': str(punch.id)}
+
+
 def upsert_attendance_override(employee, attendance_date, *, check_in_at=None, check_out_at=None, source=AttendanceRecordSource.MANUAL_OVERRIDE, actor=None, note=''):
     if check_in_at is None and check_out_at is not None:
         check_in_at = check_out_at
@@ -973,7 +1108,11 @@ def withdraw_regularization_request(regularization, *, actor=None):
     regularization.status = AttendanceRegularizationStatus.WITHDRAWN
     regularization.save(update_fields=['status', 'modified_at'])
     if regularization.approval_run_id:
-        cancel_approval_run(regularization.approval_run, actor=actor)
+        cancel_approval_run(
+            regularization.approval_run,
+            actor=actor,
+            subject_status=AttendanceRegularizationStatus.WITHDRAWN,
+        )
     log_audit_event(actor, 'attendance.regularization.withdrawn', organisation=regularization.organisation, target=regularization)
     return regularization
 
@@ -1004,7 +1143,7 @@ def apply_regularization_status_change(regularization, new_status, rejection_rea
 
 
 def get_org_attendance_dashboard(organisation, *, target_date=None):
-    day = target_date or timezone.localdate()
+    day = target_date or _policy_local_date(get_default_attendance_policy(organisation))
     employees = Employee.objects.filter(organisation=organisation, status=EmployeeStatus.ACTIVE).select_related('user', 'office_location')
     summaries = [recalculate_attendance_day(employee, day) for employee in employees]
     return {
@@ -1034,7 +1173,7 @@ def get_org_attendance_report(organisation, *, month=None):
         except (TypeError, ValueError) as exc:
             raise ValueError('month must use YYYY-MM format.') from exc
     else:
-        today = timezone.localdate()
+        today = _policy_local_date(get_default_attendance_policy(organisation))
         report_month = date(today.year, today.month, 1)
 
     next_month = date(report_month.year + (1 if report_month.month == 12 else 0), 1 if report_month.month == 12 else report_month.month + 1, 1)
@@ -1074,7 +1213,7 @@ def get_org_attendance_report(organisation, *, month=None):
 
 
 def list_org_attendance_days(organisation, *, target_date=None, employee_id=None, status_value=''):
-    attendance_date = target_date or timezone.localdate()
+    attendance_date = target_date or _policy_local_date(get_default_attendance_policy(organisation))
     employees = Employee.objects.filter(organisation=organisation, status=EmployeeStatus.ACTIVE)
     if employee_id:
         employees = employees.filter(id=employee_id)

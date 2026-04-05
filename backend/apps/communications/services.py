@@ -1,9 +1,13 @@
 from datetime import timedelta
 
 from django.db import transaction
+from django.db.models import Prefetch, Q
 from django.utils import timezone
 
 from apps.audit.services import log_audit_event
+from apps.departments.models import Department
+from apps.employees.models import Employee
+from apps.locations.models import OfficeLocation
 
 from .models import Notice, NoticeAudienceType, NoticeStatus
 
@@ -71,34 +75,84 @@ def publish_notice(notice, actor=None):
     return notice
 
 
-def get_visible_notices(employee):
-    now = timezone.now()
+def publish_scheduled_notices(now=None):
+    current_time = now or timezone.now()
+    published_count = 0
     queryset = Notice.objects.filter(
-        organisation=employee.organisation,
-        status__in=[NoticeStatus.PUBLISHED, NoticeStatus.SCHEDULED, NoticeStatus.EXPIRED],
-    ).order_by('-is_sticky', '-published_at', '-created_at')
+        status=NoticeStatus.SCHEDULED,
+        scheduled_for__isnull=False,
+        scheduled_for__lte=current_time,
+    )
+    for notice in queryset.iterator():
+        Notice.objects.filter(id=notice.id, status=NoticeStatus.SCHEDULED).update(
+            status=NoticeStatus.PUBLISHED,
+            published_at=current_time,
+            modified_at=current_time,
+        )
+        notice.refresh_from_db()
+        log_audit_event(
+            None,
+            'notice.auto_published',
+            organisation=notice.organisation,
+            target=notice,
+            payload={'scheduled_for': notice.scheduled_for.isoformat() if notice.scheduled_for else None},
+        )
+        published_count += 1
+    return published_count
 
-    visible = []
-    for notice in queryset:
-        if notice.expires_at and notice.expires_at <= now:
-            if notice.status != NoticeStatus.EXPIRED:
-                Notice.objects.filter(id=notice.id).update(status=NoticeStatus.EXPIRED, modified_at=now)
-            continue
-        if notice.status == NoticeStatus.SCHEDULED and (notice.scheduled_for is None or notice.scheduled_for > now):
-            continue
-        if notice.audience_type == NoticeAudienceType.ALL_EMPLOYEES:
-            visible.append(notice)
-            continue
-        if notice.audience_type == NoticeAudienceType.DEPARTMENTS and employee.department_id and notice.departments.filter(id=employee.department_id).exists():
-            visible.append(notice)
-            continue
-        if notice.audience_type == NoticeAudienceType.OFFICE_LOCATIONS and employee.office_location_id and notice.office_locations.filter(id=employee.office_location_id).exists():
-            visible.append(notice)
-            continue
-        if notice.audience_type == NoticeAudienceType.SPECIFIC_EMPLOYEES and notice.employees.filter(id=employee.id).exists():
-            visible.append(notice)
-            continue
-    return visible
+
+def expire_stale_notices(now=None):
+    current_time = now or timezone.now()
+    expired_count = 0
+    queryset = Notice.objects.filter(
+        status__in=[NoticeStatus.PUBLISHED, NoticeStatus.SCHEDULED],
+        expires_at__isnull=False,
+        expires_at__lte=current_time,
+    )
+    for notice in queryset.iterator():
+        Notice.objects.filter(
+            id=notice.id,
+            status__in=[NoticeStatus.PUBLISHED, NoticeStatus.SCHEDULED],
+        ).update(
+            status=NoticeStatus.EXPIRED,
+            modified_at=current_time,
+        )
+        notice.refresh_from_db()
+        log_audit_event(
+            None,
+            'notice.auto_expired',
+            organisation=notice.organisation,
+            target=notice,
+            payload={'expires_at': notice.expires_at.isoformat() if notice.expires_at else None},
+        )
+        expired_count += 1
+    return expired_count
+
+
+def get_visible_notices(employee, now=None):
+    current_time = now or timezone.now()
+    audience_filter = Q(audience_type=NoticeAudienceType.ALL_EMPLOYEES)
+    if employee.department_id:
+        audience_filter |= Q(audience_type=NoticeAudienceType.DEPARTMENTS, departments__id=employee.department_id)
+    if employee.office_location_id:
+        audience_filter |= Q(audience_type=NoticeAudienceType.OFFICE_LOCATIONS, office_locations__id=employee.office_location_id)
+    audience_filter |= Q(audience_type=NoticeAudienceType.SPECIFIC_EMPLOYEES, employees__id=employee.id)
+
+    return list(
+        Notice.objects.filter(
+            organisation=employee.organisation,
+            status=NoticeStatus.PUBLISHED,
+        )
+        .filter(Q(expires_at__isnull=True) | Q(expires_at__gt=current_time))
+        .filter(audience_filter)
+        .prefetch_related(
+            Prefetch('departments', queryset=Department.objects.only('id')),
+            Prefetch('office_locations', queryset=OfficeLocation.objects.only('id')),
+            Prefetch('employees', queryset=Employee.objects.only('id')),
+        )
+        .distinct()
+        .order_by('-is_sticky', '-published_at', '-created_at')
+    )
 
 
 def get_employee_events(employee):

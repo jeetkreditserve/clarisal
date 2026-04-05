@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { GraduationCap } from 'lucide-react'
 import { toast } from 'sonner'
 import { AppCheckbox } from '@/components/ui/AppCheckbox'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import {
   useCreateEducation,
   useDeleteEducation,
@@ -76,7 +77,6 @@ export function EducationPage() {
   }
 
   const handleDelete = async (recordId: string) => {
-    if (!window.confirm('Delete this education record?')) return
     try {
       await deleteMutation.mutateAsync(recordId)
       toast.success('Education record removed.')
@@ -164,9 +164,17 @@ export function EducationPage() {
                     <button type="button" onClick={() => handleEdit(record.id)} className="btn-secondary">
                       Edit
                     </button>
-                    <button type="button" onClick={() => handleDelete(record.id)} className="btn-danger">
-                      Delete
-                    </button>
+                    <ConfirmDialog
+                      trigger={
+                        <button type="button" className="btn-danger">
+                          Delete
+                        </button>
+                      }
+                      title="Delete education record?"
+                      description="This removes the education entry from your profile history."
+                      confirmLabel="Delete"
+                      onConfirm={() => handleDelete(record.id)}
+                    />
                   </div>
                 </div>
               ))}

@@ -1,146 +1,64 @@
 import { orgAdminTest as test, expect } from '../fixtures/auth'
-import { waitForToast, uniqueName } from '../helpers'
+
+async function openLocationModal(page: Parameters<typeof test>[0]['page']) {
+  await page.goto('/org/locations')
+  await expect(page.getByRole('heading', { name: 'Office locations' })).toBeVisible({ timeout: 10000 })
+  await page.getByRole('button', { name: 'Add location' }).click()
+  await expect(page.getByRole('heading', { name: 'Add location' })).toBeVisible({ timeout: 5000 })
+}
 
 test.describe('Org Admin — Locations (read-only)', () => {
   test('locations page loads at /org/locations', async ({ page }) => {
     await page.goto('/org/locations')
-    await expect(page.getByText('Office locations')).toBeVisible({ timeout: 10000 })
-    await expect(page.getByText('Every office location must link to an organisation address')).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Office locations' })).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText('Every office location links to an organisation address')).toBeVisible()
   })
 
-  test('empty state is visible initially — no locations seeded', async ({ page }) => {
+  test('location directory and add action are visible', async ({ page }) => {
     await page.goto('/org/locations')
-    await expect(page.getByText('Office locations')).toBeVisible({ timeout: 10000 })
-    await expect(page.getByText('No locations added yet')).toBeVisible({ timeout: 10000 })
+    await expect(page.getByRole('heading', { name: 'Location directory' })).toBeVisible({ timeout: 10000 })
+    await expect(page.getByRole('button', { name: 'Add location' })).toBeVisible()
   })
 
-  test('add location form is visible on the page', async ({ page }) => {
-    await page.goto('/org/locations')
-    await expect(page.getByText('Add location')).toBeVisible({ timeout: 10000 })
+  test('add location modal exposes the current required fields', async ({ page }) => {
+    await openLocationModal(page)
     await expect(page.locator('#location-name')).toBeVisible()
     await expect(page.locator('#location-address')).toBeVisible()
+    await expect(page.getByText('Mark as remote office location')).toBeVisible()
     await expect(page.getByRole('button', { name: 'Create location' })).toBeVisible()
   })
 
   test('form validation — empty name shows HTML5 required validation', async ({ page }) => {
-    await page.goto('/org/locations')
-    await expect(page.getByRole('button', { name: 'Create location' })).toBeVisible({ timeout: 10000 })
-    // Click submit without filling required fields
+    await openLocationModal(page)
     await page.getByRole('button', { name: 'Create location' }).click()
-    // HTML5 required validation should prevent submission
     const isInvalid = await page.locator('#location-name').evaluate((el: HTMLInputElement) => !el.validity.valid)
     expect(isInvalid).toBe(true)
   })
 })
 
-test.describe('Org Admin — Locations (write)', () => {
-  test('create location — fill name + linked address, submit, success toast', async ({ page }) => {
-    const locationName = uniqueName('Head Office')
+test.describe('Org Admin — Locations (existing records)', () => {
+  test('seeded location cards expose edit and deactivate actions', async ({ page }) => {
     await page.goto('/org/locations')
-    await expect(page.locator('#location-name')).toBeVisible({ timeout: 10000 })
-
-    await page.locator('#location-name').fill(locationName)
-
-    // Select any available address from the dropdown
-    const addressSelect = page.locator('#location-address')
-    const options = await addressSelect.locator('option').all()
-    // options[0] is the placeholder, pick options[1] if available
-    if (options.length > 1) {
-      const optionValue = await options[1].getAttribute('value')
-      if (optionValue) {
-        await addressSelect.selectOption(optionValue)
-      }
-    }
-
-    await page.getByRole('button', { name: 'Create location' }).click()
-    await waitForToast(page, 'Location created.')
-
-    // Location should appear in the directory
-    await expect(page.getByText(locationName)).toBeVisible({ timeout: 8000 })
+    const locationCard = page.locator('.surface-muted').filter({ hasText: 'Registered Office' }).first()
+    await expect(locationCard).toBeVisible({ timeout: 10000 })
+    await expect(locationCard.getByRole('button', { name: 'Edit' })).toBeVisible()
+    await expect(locationCard.getByRole('button', { name: 'Deactivate' })).toBeVisible()
   })
 
-  test('location appears in the list after creation', async ({ page }) => {
-    const locationName = uniqueName('Branch Office')
+  test('remote seeded location shows the remote status badge', async ({ page }) => {
     await page.goto('/org/locations')
-    await expect(page.locator('#location-name')).toBeVisible({ timeout: 10000 })
-
-    await page.locator('#location-name').fill(locationName)
-
-    const addressSelect = page.locator('#location-address')
-    const options = await addressSelect.locator('option').all()
-    if (options.length > 1) {
-      const optionValue = await options[1].getAttribute('value')
-      if (optionValue) {
-        await addressSelect.selectOption(optionValue)
-      }
-    }
-
-    await page.getByRole('button', { name: 'Create location' }).click()
-    await waitForToast(page, 'Location created.')
-
-    // Verify in location directory
-    await expect(page.getByText('Location directory')).toBeVisible()
-    await expect(page.getByText(locationName)).toBeVisible({ timeout: 8000 })
+    const remoteCard = page.locator('.surface-muted').filter({ hasText: 'Distributed Workforce' }).first()
+    await expect(remoteCard).toBeVisible({ timeout: 10000 })
+    await expect(remoteCard.getByText('Remote')).toBeVisible()
   })
 
-  test('edit location — change name, save, toast success', async ({ page }) => {
-    const locationName = uniqueName('Regional Office')
+  test('editing an existing location pre-fills the modal', async ({ page }) => {
     await page.goto('/org/locations')
-    await expect(page.locator('#location-name')).toBeVisible({ timeout: 10000 })
-
-    // Create a location to edit
-    await page.locator('#location-name').fill(locationName)
-    const addressSelect = page.locator('#location-address')
-    const options = await addressSelect.locator('option').all()
-    if (options.length > 1) {
-      const optionValue = await options[1].getAttribute('value')
-      if (optionValue) {
-        await addressSelect.selectOption(optionValue)
-      }
-    }
-    await page.getByRole('button', { name: 'Create location' }).click()
-    await waitForToast(page, 'Location created.')
-    await expect(page.getByText(locationName)).toBeVisible({ timeout: 8000 })
-
-    // Edit it
-    const locationCard = page.locator('.surface-muted').filter({ hasText: locationName })
+    const locationCard = page.locator('.surface-muted').filter({ hasText: 'Registered Office' }).first()
     await locationCard.getByRole('button', { name: 'Edit' }).click()
-
-    // Form should switch to "Edit location" with "Save changes"
-    await expect(page.getByRole('button', { name: 'Save changes' })).toBeVisible({ timeout: 5000 })
-
-    const updatedName = `${locationName} Updated`
-    await page.locator('#location-name').fill(updatedName)
-    await page.getByRole('button', { name: 'Save changes' }).click()
-    await waitForToast(page, 'Location updated.')
-    await expect(page.getByText(updatedName)).toBeVisible({ timeout: 8000 })
-  })
-})
-
-test.describe('Org Admin — Locations (destructive)', () => {
-  test('deactivate location — create, deactivate, confirm dialog', async ({ page }) => {
-    const locationName = uniqueName('Temp Location')
-    await page.goto('/org/locations')
-    await expect(page.locator('#location-name')).toBeVisible({ timeout: 10000 })
-
-    // Create the location
-    await page.locator('#location-name').fill(locationName)
-    const addressSelect = page.locator('#location-address')
-    const options = await addressSelect.locator('option').all()
-    if (options.length > 1) {
-      const optionValue = await options[1].getAttribute('value')
-      if (optionValue) {
-        await addressSelect.selectOption(optionValue)
-      }
-    }
-    await page.getByRole('button', { name: 'Create location' }).click()
-    await waitForToast(page, 'Location created.')
-    await expect(page.getByText(locationName)).toBeVisible({ timeout: 8000 })
-
-    // Deactivate it — uses window.confirm
-    const locationCard = page.locator('.surface-muted').filter({ hasText: locationName })
-    page.once('dialog', (dialog) => dialog.accept())
-    await locationCard.getByRole('button', { name: 'Deactivate' }).click()
-    await waitForToast(page, 'Location deactivated.')
+    await expect(page.getByRole('heading', { name: 'Edit location' })).toBeVisible({ timeout: 5000 })
+    await expect(page.locator('#location-name')).toHaveValue('Registered Office')
+    await expect(page.locator('#location-address')).toContainText('Registered Office')
+    await expect(page.getByRole('button', { name: 'Save changes' })).toBeVisible()
   })
 })

@@ -1,8 +1,10 @@
+import type { ReactNode } from 'react'
 import { createBrowserRouter, Navigate } from 'react-router-dom'
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute'
 import { CTLayout } from '@/components/layouts/CTLayout'
 import { OrgLayout } from '@/components/layouts/OrgLayout'
 import { EmployeeLayout } from '@/components/layouts/EmployeeLayout'
+import { AppErrorBoundary } from '@/components/ui/AppErrorBoundary'
 import { LoginPage } from '@/pages/auth/LoginPage'
 import { ControlTowerLoginPage } from '@/pages/auth/ControlTowerLoginPage'
 import { InviteAcceptPage } from '@/pages/auth/InviteAcceptPage'
@@ -18,10 +20,17 @@ import { OrgDashboardPage } from '@/pages/org/DashboardPage'
 import { OrgSetupPage } from '@/pages/org/SetupPage'
 import { OrgProfilePage } from '@/pages/org/ProfilePage'
 import { PayrollPage } from '@/pages/org/PayrollPage'
+import { JobPostingsPage } from '@/pages/org/JobPostingsPage'
+import { ApplicationsPage } from '@/pages/org/ApplicationsPage'
+import { CandidateDetailPage } from '@/pages/org/CandidateDetailPage'
+import { GoalCyclesPage } from '@/pages/org/GoalCyclesPage'
+import { AppraisalCyclesPage } from '@/pages/org/AppraisalCyclesPage'
+import { ReportsPage } from '@/pages/org/ReportsPage'
 import { OrgAuditPage } from '@/pages/org/AuditPage'
 import { LocationsPage } from '@/pages/org/LocationsPage'
 import { DepartmentsPage } from '@/pages/org/DepartmentsPage'
 import { AttendanceImportsPage } from '@/pages/org/AttendanceImportsPage'
+import { BiometricDevicesPage } from '@/pages/org/BiometricDevicesPage'
 import { EmployeesPage } from '@/pages/org/EmployeesPage'
 import { EmployeeDetailPage } from '@/pages/org/EmployeeDetailPage'
 import { EmployeeDashboardPage } from '@/pages/employee/DashboardPage'
@@ -34,6 +43,7 @@ import { LeavePage } from '@/pages/employee/LeavePage'
 import { OnDutyPage } from '@/pages/employee/OnDutyPage'
 import { ApprovalsPage } from '@/pages/employee/ApprovalsPage'
 import { PayslipsPage } from '@/pages/employee/PayslipsPage'
+import { PerformancePage } from '@/pages/employee/PerformancePage'
 import { HolidaysPage } from '@/pages/org/HolidaysPage'
 import { LeaveCyclesPage } from '@/pages/org/LeaveCyclesPage'
 import { LeavePlansPage } from '@/pages/org/LeavePlansPage'
@@ -45,44 +55,49 @@ import { ApprovalWorkflowBuilderPage } from '@/pages/org/ApprovalWorkflowBuilder
 import { NoticesPage } from '@/pages/org/NoticesPage'
 import { NoticeEditorPage } from '@/pages/org/NoticeEditorPage'
 import { PayrollMastersPage } from '@/pages/ct/PayrollMastersPage'
+import { CtOrgPayrollPage } from '@/pages/ct/CtOrgPayrollPage'
+
+function withErrorBoundary(element: ReactNode) {
+  return <AppErrorBoundary>{element}</AppErrorBoundary>
+}
 
 export const router = createBrowserRouter([
   // Public auth routes
   {
     path: '/auth/login',
-    element: <LoginPage />,
+    element: withErrorBoundary(<LoginPage />),
   },
   {
     path: '/ct/login',
-    element: <ControlTowerLoginPage />,
+    element: withErrorBoundary(<ControlTowerLoginPage />),
   },
   {
     path: '/auth/invite/:token',
-    element: <InviteAcceptPage />,
+    element: withErrorBoundary(<InviteAcceptPage />),
   },
   {
     path: '/auth/reset-password',
-    element: <RequestPasswordResetPage />,
+    element: withErrorBoundary(<RequestPasswordResetPage />),
   },
   {
     path: '/ct/reset-password',
-    element: <ControlTowerRequestPasswordResetPage />,
+    element: withErrorBoundary(<ControlTowerRequestPasswordResetPage />),
   },
   {
     path: '/auth/reset-password/:token',
-    element: <ResetPasswordPage />,
+    element: withErrorBoundary(<ResetPasswordPage />),
   },
   {
     path: '/ct/reset-password/:token',
-    element: <ResetPasswordPage />,
+    element: withErrorBoundary(<ResetPasswordPage />),
   },
 
   // Control Tower routes
   {
-    element: <ProtectedRoute requiredAccess="CONTROL_TOWER" />,
+    element: withErrorBoundary(<ProtectedRoute requiredAccess="CONTROL_TOWER" />),
     children: [
       {
-        element: <CTLayout />,
+        element: withErrorBoundary(<CTLayout />),
         children: [
           { path: '/ct/dashboard', element: <CTDashboardPage /> },
           { path: '/ct/payroll', element: <PayrollMastersPage /> },
@@ -103,6 +118,7 @@ export const router = createBrowserRouter([
           { path: '/ct/organisations/:organisationId/notices/new', element: <NoticeEditorPage /> },
           { path: '/ct/organisations/:organisationId/notices/:id', element: <NoticeEditorPage /> },
           { path: '/ct/organisations/:organisationId/audit', element: <OrgAuditPage /> },
+          { path: '/ct/organisations/:organisationId/payroll', element: <CtOrgPayrollPage /> },
           { path: '/ct/organisations/:id', element: <OrganisationDetailPage /> },
         ],
       },
@@ -111,16 +127,23 @@ export const router = createBrowserRouter([
 
   // Organisation Admin routes
   {
-    element: <ProtectedRoute requiredAccess="ORG_ADMIN" />,
+    element: withErrorBoundary(<ProtectedRoute requiredAccess="ORG_ADMIN" />),
     children: [
       {
-        element: <OrgLayout />,
+        element: withErrorBoundary(<OrgLayout />),
         children: [
           { path: '/org/setup', element: <OrgSetupPage /> },
           { path: '/org/dashboard', element: <OrgDashboardPage /> },
           { path: '/org/profile', element: <OrgProfilePage /> },
           { path: '/org/attendance', element: <AttendanceImportsPage /> },
+          { path: '/org/biometric-devices', element: <BiometricDevicesPage /> },
           { path: '/org/payroll', element: <PayrollPage /> },
+          { path: '/org/recruitment/jobs', element: <JobPostingsPage /> },
+          { path: '/org/recruitment/applications', element: <ApplicationsPage /> },
+          { path: '/org/recruitment/candidates/:id', element: <CandidateDetailPage /> },
+          { path: '/org/performance/goals', element: <GoalCyclesPage /> },
+          { path: '/org/performance/appraisals', element: <AppraisalCyclesPage /> },
+          { path: '/org/reports', element: <ReportsPage /> },
           { path: '/org/locations', element: <LocationsPage /> },
           { path: '/org/departments', element: <DepartmentsPage /> },
           { path: '/org/employees', element: <EmployeesPage /> },
@@ -147,10 +170,10 @@ export const router = createBrowserRouter([
 
   // Employee routes
   {
-    element: <ProtectedRoute requiredAccess="EMPLOYEE" />,
+    element: withErrorBoundary(<ProtectedRoute requiredAccess="EMPLOYEE" />),
     children: [
       {
-        element: <EmployeeLayout />,
+        element: withErrorBoundary(<EmployeeLayout />),
         children: [
           { path: '/me/onboarding', element: <OnboardingPage /> },
           { path: '/me/dashboard', element: <EmployeeDashboardPage /> },
@@ -161,6 +184,7 @@ export const router = createBrowserRouter([
           { path: '/me/leave', element: <LeavePage /> },
           { path: '/me/od', element: <OnDutyPage /> },
           { path: '/me/payslips', element: <PayslipsPage /> },
+          { path: '/me/performance', element: <PerformancePage /> },
           { path: '/me/approvals', element: <ApprovalsPage /> },
         ],
       },
@@ -168,6 +192,6 @@ export const router = createBrowserRouter([
   },
 
   // Root redirect
-  { path: '/', element: <Navigate to="/auth/login" replace /> },
-  { path: '*', element: <Navigate to="/auth/login" replace /> },
+  { path: '/', element: withErrorBoundary(<Navigate to="/auth/login" replace />) },
+  { path: '*', element: withErrorBoundary(<Navigate to="/auth/login" replace />) },
 ])

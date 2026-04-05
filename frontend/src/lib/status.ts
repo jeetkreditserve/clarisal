@@ -139,6 +139,72 @@ export function getLeaveStatusTone(status?: LeaveRequestStatus | OnDutyRequestSt
   }
 }
 
+export function getPayrollRunStatusTone(status?: string | null): Tone {
+  switch (status) {
+    case 'FINALIZED':
+    case 'APPROVED':
+      return 'success'
+    case 'CALCULATED':
+      return 'info'
+    case 'REJECTED':
+      return 'danger'
+    case 'DRAFT':
+    default:
+      return 'warning'
+  }
+}
+
+export function getCompensationStatusTone(status?: string | null): Tone {
+  switch (status) {
+    case 'APPROVED':
+    case 'ACTIVE':
+      return 'success'
+    case 'REJECTED':
+      return 'danger'
+    case 'PENDING_APPROVAL':
+      return 'warning'
+    case 'DRAFT':
+    case 'SUPERSEDED':
+    case 'EXPIRED':
+    default:
+      return 'neutral'
+  }
+}
+
+export function getAttendanceImportTone(status?: string | null): Tone {
+  switch (status) {
+    case 'POSTED':
+    case 'COMPLETED':
+      return 'success'
+    case 'READY_FOR_REVIEW':
+    case 'PARTIAL':
+      return 'info'
+    case 'PENDING':
+    case 'PROCESSING':
+      return 'warning'
+    case 'FAILED':
+    default:
+      return 'danger'
+  }
+}
+
+export function getAttendanceDayStatusTone(status?: string | null): Tone {
+  switch (status) {
+    case 'PRESENT':
+    case 'ON_DUTY':
+      return 'success'
+    case 'HALF_DAY':
+    case 'HOLIDAY':
+    case 'WEEK_OFF':
+      return 'info'
+    case 'INCOMPLETE':
+      return 'warning'
+    case 'ABSENT':
+    default:
+      return 'danger'
+  }
+}
+
 export const ORG_ONBOARDING_STEPS: Array<{
   id: OrganisationOnboardingStage
   label: string

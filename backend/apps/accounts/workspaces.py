@@ -6,6 +6,7 @@ from django.utils import timezone
 
 from apps.employees.models import Employee, EmployeeStatus
 from apps.organisations.models import (
+    ActAsSession,
     Organisation,
     OrganisationMembership,
     OrganisationMembershipStatus,
@@ -27,6 +28,40 @@ class WorkspaceState:
     active_admin_membership: OrganisationMembership | None
     active_employee: Employee | None
     active_kind: str | None
+    impersonation_session: ActAsSession | None
+    impersonated_organisation: Organisation | None
+
+
+def _clear_control_tower_impersonation_session(request):
+    if request is None:
+        return
+    request.session.pop('ct_act_as_session_id', None)
+    request.session.modified = True
+
+
+def get_active_impersonation_session(request, user: User) -> ActAsSession | None:
+    if request is None or user.account_type != AccountType.CONTROL_TOWER:
+        return None
+    session_id = request.session.get('ct_act_as_session_id')
+    if not session_id:
+        return None
+    act_as_session = (
+        ActAsSession.objects.select_related('organisation', 'target_org_admin')
+        .filter(
+            id=session_id,
+            actor=user,
+            ended_at__isnull=True,
+            revoked_at__isnull=True,
+        )
+        .first()
+    )
+    if act_as_session is None:
+        _clear_control_tower_impersonation_session(request)
+    return act_as_session
+
+
+def is_control_tower_impersonating(request, user: User) -> bool:
+    return get_active_impersonation_session(request, user) is not None
 
 
 def list_admin_memberships(user: User):
@@ -63,18 +98,26 @@ def get_workspace_state(user: User, request=None) -> WorkspaceState:
     active_admin_membership = None
     active_employee = None
     active_kind = None
+    impersonation_session = None
+    impersonated_organisation = None
+
+    if user.account_type == AccountType.CONTROL_TOWER and request is not None:
+        impersonation_session = get_active_impersonation_session(request, user)
+        if impersonation_session is not None:
+            impersonated_organisation = impersonation_session.organisation
+            active_kind = 'ADMIN'
 
     if request is not None:
         admin_org_id = request.session.get('active_admin_org_id')
         employee_org_id = request.session.get('active_employee_org_id')
-        active_kind = request.session.get('active_workspace_kind')
+        active_kind = active_kind or request.session.get('active_workspace_kind')
 
-        if admin_org_id:
+        if admin_org_id and user.account_type == AccountType.WORKFORCE:
             active_admin_membership = next(
                 (membership for membership in admin_memberships if str(membership.organisation_id) == str(admin_org_id)),
                 None,
             )
-        if employee_org_id:
+        if employee_org_id and user.account_type == AccountType.WORKFORCE:
             active_employee = next(
                 (employee for employee in employee_records if str(employee.organisation_id) == str(employee_org_id)),
                 None,
@@ -97,6 +140,8 @@ def get_workspace_state(user: User, request=None) -> WorkspaceState:
         active_admin_membership=active_admin_membership,
         active_employee=active_employee,
         active_kind=active_kind,
+        impersonation_session=impersonation_session,
+        impersonated_organisation=impersonated_organisation,
     )
 
 
@@ -122,9 +167,9 @@ def sync_user_role(user: User):
 
 def initialize_workforce_workspace(request, user: User):
     state = get_workspace_state(user, request)
-    if state.admin_memberships:
+    if state.admin_memberships and state.active_admin_membership is not None:
         set_active_admin_organisation(request, user, state.active_admin_membership.organisation_id)
-    elif state.employee_records:
+    elif state.employee_records and state.active_employee is not None:
         set_active_employee_workspace(request, user, state.active_employee.organisation_id)
     else:
         request.session.pop('active_workspace_kind', None)
@@ -168,6 +213,8 @@ def set_active_employee_workspace(request, user: User, organisation_id):
 
 def get_active_admin_organisation(request, user: User) -> Organisation | None:
     state = get_workspace_state(user, request)
+    if state.impersonated_organisation is not None:
+        return state.impersonated_organisation
     return state.active_admin_membership.organisation if state.active_admin_membership else None
 
 
@@ -178,6 +225,8 @@ def get_active_employee(request, user: User) -> Employee | None:
 
 def get_current_organisation(request, user: User) -> Organisation | None:
     state = get_workspace_state(user, request)
+    if state.impersonated_organisation is not None:
+        return state.impersonated_organisation
     if state.active_kind == 'ADMIN' and state.active_admin_membership:
         return state.active_admin_membership.organisation
     if state.active_kind == 'EMPLOYEE' and state.active_employee:
@@ -191,6 +240,8 @@ def get_current_organisation(request, user: User) -> Organisation | None:
 
 def get_default_route(user: User, request=None):
     if user.account_type == AccountType.CONTROL_TOWER:
+        if request is not None and is_control_tower_impersonating(request, user):
+            return '/org/dashboard'
         return '/ct/dashboard'
 
     state = get_workspace_state(user, request)

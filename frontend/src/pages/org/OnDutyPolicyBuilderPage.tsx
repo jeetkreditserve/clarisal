@@ -25,9 +25,9 @@ export function OnDutyPolicyBuilderPage() {
   const isEditing = Boolean(id)
   const isCtMode = Boolean(organisationId)
   const basePath = isCtMode ? `/ct/organisations/${organisationId}` : '/org'
-  const { data: orgPolicy, isLoading } = useOnDutyPolicy(id ?? '')
+  const { data: orgPolicy, isLoading } = useOnDutyPolicy(id ?? '', !isCtMode)
   const { data: configuration, isLoading: isCtLoading } = useCtOrgConfiguration(organisationId ?? '', isCtMode)
-  const { data: requests } = useOrgOnDutyRequests()
+  const { data: requests } = useOrgOnDutyRequests(!isCtMode)
   const createMutation = useCreateOnDutyPolicy()
   const updateMutation = useUpdateOnDutyPolicy(id ?? '')
   const createCtMutation = useCreateCtOnDutyPolicy(organisationId ?? '')

@@ -1,5 +1,4 @@
 import re
-from datetime import date
 
 from django.db import transaction
 from django.utils import timezone
@@ -16,27 +15,30 @@ from apps.documents.services import assign_document_requests
 from apps.invitations.models import InvitationRole, InvitationStatus
 from apps.invitations.services import create_employee_invitation
 from apps.locations.models import OfficeLocation
-from apps.organisations.services import get_org_licence_summary, mark_employee_invited
 from apps.organisations.address_metadata import (
     get_country_name,
     normalize_subdivision,
     validate_postal_code,
 )
 from apps.organisations.country_metadata import resolve_country_code
+from apps.organisations.services import get_org_licence_summary, mark_employee_invited
 
 from .models import (
-    BloodTypeChoice,
     EducationRecord,
     Employee,
     EmployeeBankAccount,
     EmployeeEmergencyContact,
     EmployeeFamilyMember,
     EmployeeGovernmentId,
+    EmployeeOffboardingProcess,
+    EmployeeOffboardingTask,
     EmployeeOnboardingStatus,
     EmployeeProfile,
     EmployeeStatus,
-    FamilyRelationChoice,
     GovernmentIdType,
+    OffboardingProcessStatus,
+    OffboardingTaskOwner,
+    OffboardingTaskStatus,
 )
 
 PAN_PATTERN = re.compile(r'^[A-Z]{5}[0-9]{4}[A-Z]$')
@@ -56,6 +58,45 @@ ONBOARDING_COMPLETE_DOCUMENT_STATUSES = [
     EmployeeDocumentRequestStatus.SUBMITTED,
     EmployeeDocumentRequestStatus.VERIFIED,
     EmployeeDocumentRequestStatus.WAIVED,
+]
+OFFBOARDING_DONE_STATUSES = [OffboardingTaskStatus.COMPLETED, OffboardingTaskStatus.WAIVED]
+DEFAULT_OFFBOARDING_TASKS = [
+    {
+        'code': 'EXIT_COMMUNICATION',
+        'title': 'Confirm employee exit communication',
+        'description': 'Capture exit reason, last working day, and confirm internal stakeholders are aligned.',
+        'owner': OffboardingTaskOwner.ORG_ADMIN,
+    },
+    {
+        'code': 'ASSET_RETURN',
+        'title': 'Collect company assets',
+        'description': 'Track return of laptop, badge, peripherals, SIM, and any assigned equipment.',
+        'owner': OffboardingTaskOwner.ORG_ADMIN,
+    },
+    {
+        'code': 'ACCESS_REMOVAL',
+        'title': 'Disable system access',
+        'description': 'Revoke workspace, application, and device access on or before the exit date.',
+        'owner': OffboardingTaskOwner.IT,
+    },
+    {
+        'code': 'ATTENDANCE_REVIEW',
+        'title': 'Review attendance and last working day',
+        'description': 'Confirm attendance, leave, and on-duty records are correct through the final working date.',
+        'owner': OffboardingTaskOwner.MANAGER,
+    },
+    {
+        'code': 'PAYROLL_CLEARANCE',
+        'title': 'Prepare payroll and settlement review',
+        'description': 'Review pending salary, deductions, reimbursements, and any settlement items before closure.',
+        'owner': OffboardingTaskOwner.PAYROLL,
+    },
+    {
+        'code': 'EXIT_INTERVIEW',
+        'title': 'Schedule exit interview and acknowledgements',
+        'description': 'Capture feedback, policy acknowledgements, and any final employee submissions.',
+        'owner': OffboardingTaskOwner.EMPLOYEE,
+    },
 ]
 
 
@@ -308,6 +349,26 @@ def invite_employee(
         return employee, invitation
 
 
+def create_employee_from_offer(offer, actor=None):
+    posting = offer.application.job_posting
+    candidate = offer.application.candidate
+
+    employee, _invitation = invite_employee(
+        posting.organisation,
+        company_email=candidate.email,
+        first_name=candidate.first_name,
+        last_name=candidate.last_name,
+        designation=posting.title,
+        employment_type='FULL_TIME',
+        date_of_joining=offer.joining_date,
+        department_id=str(posting.department_id) if posting.department_id else None,
+        office_location_id=str(posting.location_id) if posting.location_id else None,
+        required_document_type_ids=None,
+        invited_by=actor,
+    )
+    return employee
+
+
 def update_employee(employee, actor=None, **fields):
     payload = dict(fields)
     has_leave_approval_workflow = 'leave_approval_workflow_id' in fields
@@ -421,7 +482,7 @@ def mark_employee_joined(employee, employee_code, date_of_joining, designation, 
     return employee
 
 
-def end_employment(employee, end_status, date_of_exit, actor=None):
+def end_employment(employee, end_status, date_of_exit, exit_reason='', exit_notes='', actor=None):
     if employee.status != EmployeeStatus.ACTIVE:
         raise ValueError('Only active employees can end employment.')
     if end_status not in TERMINAL_EMPLOYEE_STATUSES:
@@ -432,14 +493,246 @@ def end_employment(employee, end_status, date_of_exit, actor=None):
     employee.status = end_status
     employee.date_of_exit = date_of_exit
     employee.save(update_fields=['status', 'date_of_exit', 'modified_at'])
+    offboarding = create_or_update_offboarding_process(
+        employee,
+        exit_status=end_status,
+        date_of_exit=date_of_exit,
+        exit_reason=exit_reason,
+        exit_notes=exit_notes,
+        actor=actor,
+    )
+    from apps.payroll.services import create_full_and_final_settlement
+
+    fnf = create_full_and_final_settlement(
+        employee=employee,
+        last_working_day=date_of_exit,
+        initiated_by=actor,
+        offboarding_process=offboarding,
+    )
     log_audit_event(
         actor,
         'employee.employment_ended',
         organisation=employee.organisation,
         target=employee,
-        payload={'status': end_status, 'date_of_exit': date_of_exit.isoformat()},
+        payload={
+            'status': end_status,
+            'date_of_exit': date_of_exit.isoformat(),
+            'exit_reason': (exit_reason or '').strip(),
+            'offboarding_process_id': str(offboarding.id),
+            'fnf_settlement_id': str(fnf.id),
+        },
     )
     return employee
+
+
+def _seed_offboarding_tasks(process, actor=None):
+    if process.tasks.exists():
+        return
+    for payload in DEFAULT_OFFBOARDING_TASKS:
+        EmployeeOffboardingTask.objects.create(
+            process=process,
+            code=payload['code'],
+            title=payload['title'],
+            description=payload['description'],
+            owner=payload['owner'],
+            due_date=process.date_of_exit,
+            created_by=actor,
+            modified_by=actor,
+        )
+
+
+def create_or_update_offboarding_process(
+    employee,
+    *,
+    exit_status,
+    date_of_exit,
+    exit_reason='',
+    exit_notes='',
+    actor=None,
+):
+    process, created = EmployeeOffboardingProcess.objects.get_or_create(
+        employee=employee,
+        defaults={
+            'organisation': employee.organisation,
+            'initiated_by': actor,
+            'status': OffboardingProcessStatus.IN_PROGRESS,
+            'exit_status': exit_status,
+            'date_of_exit': date_of_exit,
+            'exit_reason': (exit_reason or '').strip(),
+            'exit_notes': (exit_notes or '').strip(),
+            'created_by': actor,
+            'modified_by': actor,
+        },
+    )
+    if created:
+        _seed_offboarding_tasks(process, actor=actor)
+    changed = False
+    updates = {
+        'status': OffboardingProcessStatus.IN_PROGRESS,
+        'exit_status': exit_status,
+        'date_of_exit': date_of_exit,
+        'exit_reason': (exit_reason or '').strip(),
+        'exit_notes': (exit_notes or '').strip(),
+    }
+    for field, value in updates.items():
+        if getattr(process, field) != value:
+            setattr(process, field, value)
+            changed = True
+    if changed:
+        process.completed_at = None
+        process.modified_by = actor
+        process.save(
+            update_fields=[
+                'status',
+                'exit_status',
+                'date_of_exit',
+                'exit_reason',
+                'exit_notes',
+                'completed_at',
+                'modified_by',
+                'modified_at',
+            ]
+        )
+    log_audit_event(
+        actor,
+        'employee.offboarding.started' if created else 'employee.offboarding.updated',
+        organisation=employee.organisation,
+        target=employee,
+        payload={
+            'process_id': str(process.id),
+            'status': process.status,
+            'exit_status': process.exit_status,
+            'date_of_exit': process.date_of_exit.isoformat(),
+        },
+    )
+    return process
+
+
+def update_offboarding_process(process, *, exit_reason=None, exit_notes=None, actor=None):
+    payload = {}
+    if exit_reason is not None:
+        process.exit_reason = (exit_reason or '').strip()
+        payload['exit_reason'] = process.exit_reason
+    if exit_notes is not None:
+        process.exit_notes = (exit_notes or '').strip()
+        payload['exit_notes'] = process.exit_notes
+    if payload:
+        process.modified_by = actor
+        process.save(update_fields=[*payload.keys(), 'modified_by', 'modified_at'])
+        log_audit_event(
+            actor,
+            'employee.offboarding.updated',
+            organisation=process.organisation,
+            target=process.employee,
+            payload={'process_id': str(process.id), **payload},
+        )
+    return process
+
+
+def update_offboarding_task(task, *, status_value, note='', actor=None):
+    if status_value not in OffboardingTaskStatus.values:
+        raise ValueError('Unsupported offboarding task status.')
+    task.status = status_value
+    task.note = (note or '').strip()
+    if status_value in OFFBOARDING_DONE_STATUSES:
+        task.completed_at = timezone.now()
+        task.completed_by = actor
+    else:
+        task.completed_at = None
+        task.completed_by = None
+    task.modified_by = actor
+    task.save(update_fields=['status', 'note', 'completed_at', 'completed_by', 'modified_by', 'modified_at'])
+    log_audit_event(
+        actor,
+        'employee.offboarding.task_updated',
+        organisation=task.process.organisation,
+        target=task.process.employee,
+        payload={
+            'process_id': str(task.process.id),
+            'task_id': str(task.id),
+            'task_code': task.code,
+            'status': task.status,
+        },
+    )
+    return task
+
+
+def complete_offboarding_process(process, actor=None):
+    pending_required = process.tasks.filter(is_required=True).exclude(status__in=OFFBOARDING_DONE_STATUSES)
+    if pending_required.exists():
+        raise ValueError('Complete or waive all required offboarding tasks before closing the process.')
+    process.status = OffboardingProcessStatus.COMPLETED
+    process.completed_at = timezone.now()
+    process.modified_by = actor
+    process.save(update_fields=['status', 'completed_at', 'modified_by', 'modified_at'])
+    log_audit_event(
+        actor,
+        'employee.offboarding.completed',
+        organisation=process.organisation,
+        target=process.employee,
+        payload={'process_id': str(process.id)},
+    )
+    return process
+
+
+def get_employee_offboarding_summary(employee):
+    try:
+        process = employee.offboarding_process
+    except EmployeeOffboardingProcess.DoesNotExist:
+        return None
+    tasks = list(process.tasks.all())
+    completed_required = sum(1 for task in tasks if task.is_required and task.status in OFFBOARDING_DONE_STATUSES)
+    required_tasks = sum(1 for task in tasks if task.is_required)
+    try:
+        from apps.payroll.models import CompensationAssignment, CompensationAssignmentStatus, Payslip
+
+        has_payroll_assignment = CompensationAssignment.objects.filter(
+            employee=employee,
+            status=CompensationAssignmentStatus.APPROVED,
+        ).exists()
+        last_payslip = Payslip.objects.filter(employee=employee).order_by('-created_at').first()
+    except Exception:  # noqa: BLE001
+        has_payroll_assignment = False
+        last_payslip = None
+    return {
+        'id': str(process.id),
+        'status': process.status,
+        'exit_status': process.exit_status,
+        'date_of_exit': process.date_of_exit.isoformat(),
+        'exit_reason': process.exit_reason,
+        'exit_notes': process.exit_notes,
+        'started_at': process.started_at.isoformat() if process.started_at else None,
+        'completed_at': process.completed_at.isoformat() if process.completed_at else None,
+        'required_task_count': required_tasks,
+        'completed_required_task_count': completed_required,
+        'pending_required_task_count': max(required_tasks - completed_required, 0),
+        'pending_document_requests': employee.document_requests.filter(
+            status__in=[EmployeeDocumentRequestStatus.REQUESTED, EmployeeDocumentRequestStatus.REJECTED]
+        ).count(),
+        'has_primary_bank_account': employee.bank_accounts.filter(is_primary=True).exists(),
+        'has_payroll_assignment': has_payroll_assignment,
+        'last_payslip_period': (
+            f'{last_payslip.period_month:02d}/{last_payslip.period_year}'
+            if last_payslip is not None
+            else None
+        ),
+        'tasks': [
+            {
+                'id': str(task.id),
+                'code': task.code,
+                'title': task.title,
+                'description': task.description,
+                'owner': task.owner,
+                'status': task.status,
+                'note': task.note,
+                'due_date': task.due_date.isoformat() if task.due_date else None,
+                'is_required': task.is_required,
+                'completed_at': task.completed_at.isoformat() if task.completed_at else None,
+                'completed_by_name': task.completed_by.full_name if task.completed_by_id else '',
+            }
+            for task in tasks
+        ],
+    }
 
 
 def delete_employee(employee, actor=None):
@@ -695,7 +988,11 @@ def get_employee_dashboard(employee, calendar_month=None):
         leave_balances = get_employee_leave_balances(employee)
         calendar = get_employee_calendar_month(employee, calendar_month=calendar_month)
     except Exception:  # noqa: BLE001
-        pass
+        approvals_summary = {'count': 0, 'items': []}
+        notices = []
+        events = []
+        leave_balances = []
+        calendar = {'month': None, 'days': []}
 
     serialized_notices = [
         {
@@ -709,6 +1006,7 @@ def get_employee_dashboard(employee, calendar_month=None):
     ]
 
     documents = employee.documents.all()
+    offboarding = get_employee_offboarding_summary(employee)
     return {
         'profile_completion': completion,
         'pending_documents': documents.filter(status='PENDING').count(),
@@ -722,4 +1020,5 @@ def get_employee_dashboard(employee, calendar_month=None):
         'events': events,
         'leave_balances': leave_balances,
         'calendar': calendar,
+        'offboarding': offboarding,
     }

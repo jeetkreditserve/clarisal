@@ -1,7 +1,6 @@
 import base64
 import hashlib
 import secrets
-from typing import Optional
 
 from cryptography.fernet import Fernet, InvalidToken
 from django.conf import settings
@@ -23,6 +22,12 @@ def validate_field_encryption_configuration(*, field_encryption_key: str, debug:
         raise ImproperlyConfigured(
             'FIELD_ENCRYPTION_KEY must be set to a real secret when DEBUG is false.'
         )
+    try:
+        Fernet(field_encryption_key)
+    except (TypeError, ValueError) as exc:
+        raise ImproperlyConfigured(
+            'FIELD_ENCRYPTION_KEY must be a Fernet-compatible URL-safe base64-encoded 32-byte key.'
+        ) from exc
 
 
 def _derive_fernet_key() -> bytes:
@@ -35,13 +40,13 @@ def get_fernet() -> Fernet:
     return Fernet(_derive_fernet_key())
 
 
-def encrypt_value(value: Optional[str]) -> str:
+def encrypt_value(value: str | None) -> str:
     if not value:
         return ''
     return get_fernet().encrypt(value.encode('utf-8')).decode('utf-8')
 
 
-def decrypt_value(value: Optional[str]) -> str:
+def decrypt_value(value: str | None) -> str:
     if not value:
         return ''
     try:

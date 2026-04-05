@@ -1,14 +1,27 @@
-from rest_framework import status
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework.pagination import PageNumberPagination
+from django.db.models import Count, F, Max, Q
 from django.shortcuts import get_object_or_404
-from apps.accounts.permissions import BelongsToActiveOrg, IsControlTowerUser, IsOrgAdmin, OrgAdminMutationAllowed
-from apps.accounts.workspaces import get_active_admin_organisation
+from rest_framework import status
+from rest_framework.pagination import PageNumberPagination
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from apps.accounts.permissions import (
+    BelongsToActiveOrg,
+    IsControlTowerUser,
+    IsOrgAdmin,
+    OrgAdminMutationAllowed,
+)
+from apps.accounts.workspaces import get_active_admin_organisation, get_active_impersonation_session
 from apps.approvals.models import ApprovalAction, ApprovalActionStatus, ApprovalRun, ApprovalRunStatus, ApprovalWorkflow
 from apps.approvals.serializers import ApprovalWorkflowSerializer, ApprovalWorkflowWriteSerializer
 from apps.approvals.views import _upsert_workflow as upsert_approval_workflow
-from apps.attendance.models import AttendanceImportJob, AttendancePolicy, AttendanceRegularizationRequest, AttendanceRegularizationStatus, AttendanceSourceConfig
+from apps.attendance.models import (
+    AttendanceImportJob,
+    AttendancePolicy,
+    AttendanceRegularizationRequest,
+    AttendanceRegularizationStatus,
+    AttendanceSourceConfig,
+)
 from apps.attendance.services import get_org_attendance_dashboard
 from apps.communications.models import Notice
 from apps.communications.serializers import NoticeSerializer, NoticeWriteSerializer
@@ -17,9 +30,10 @@ from apps.departments.models import Department
 from apps.departments.repositories import list_departments
 from apps.departments.serializers import DepartmentCreateUpdateSerializer, DepartmentSerializer
 from apps.departments.services import create_department, deactivate_department, update_department
+from apps.documents.models import EmployeeDocumentRequest, EmployeeDocumentRequestStatus
+from apps.employees.models import Employee, EmployeeOnboardingStatus
 from apps.employees.repositories import get_employee, list_employees
 from apps.employees.serializers import CtEmployeeDetailSerializer, CtEmployeeListSerializer
-from apps.employees.models import Employee
 from apps.locations.models import OfficeLocation
 from apps.locations.repositories import list_locations
 from apps.locations.serializers import LocationCreateUpdateSerializer, LocationSerializer
@@ -44,44 +58,87 @@ from apps.timeoff.serializers import (
     OnDutyPolicySerializer,
     OnDutyPolicyWriteSerializer,
 )
-from apps.timeoff.services import create_holiday_calendar, publish_holiday_calendar, update_holiday_calendar
-from .models import Organisation, OrganisationAddress, OrganisationLicenceBatch, OrganisationNote, OrganisationStatus
-from .repositories import get_organisations, get_organisation_by_id, get_org_admins
+from apps.timeoff.services import (
+    create_holiday_calendar,
+    create_leave_plan,
+    publish_holiday_calendar,
+    update_holiday_calendar,
+    update_leave_plan,
+    upsert_leave_cycle,
+    upsert_on_duty_policy,
+)
+
+from .models import (
+    Organisation,
+    OrganisationAddress,
+    OrganisationLicenceBatch,
+    OrganisationNote,
+    OrganisationStatus,
+)
+from .repositories import get_org_admins, get_organisations
 from .serializers import (
-    OrganisationListSerializer, OrganisationDetailSerializer,
-    OrganisationAddressSerializer,
-    OrganisationAddressWriteSerializer,
-    CreateOrganisationSerializer, UpdateOrganisationSerializer,
+    ActAsSessionSerializer,
+    ActAsSessionStartSerializer,
+    CreateOrganisationSerializer,
+    CTDashboardStatsSerializer,
     LicenceBatchMarkPaidSerializer,
     LicenceBatchSerializer,
     LicenceBatchUpdateSerializer,
     LicenceBatchWriteSerializer,
-    OrgAdminSerializer, CTDashboardStatsSerializer, OrgDashboardStatsSerializer,
-    OrganisationNoteSerializer, OrganisationNoteWriteSerializer,
-    OrgAdminSetupStateSerializer, OrgAdminSetupUpdateSerializer,
+    OrgAdminSerializer,
+    OrgAdminSetupStateSerializer,
+    OrgAdminSetupUpdateSerializer,
+    OrganisationAddressSerializer,
+    OrganisationAddressWriteSerializer,
+    OrganisationDetailSerializer,
+    OrganisationFeatureFlagSerializer,
+    OrganisationFeatureFlagWriteSerializer,
+    OrganisationListSerializer,
+    OrganisationNoteSerializer,
+    OrganisationNoteWriteSerializer,
+    OrgDashboardStatsSerializer,
+    UpdateOrganisationSerializer,
 )
 from .services import (
-    create_organisation_address,
     create_licence_batch,
+    create_organisation,
+    create_organisation_address,
     create_organisation_note,
-    create_organisation, transition_organisation_state,
-    deactivate_organisation_address,
-    get_ct_dashboard_stats, get_org_dashboard_stats, get_org_licence_summary,
-    mark_licence_batch_paid,
     deactivate_org_admin_membership,
-    reactivate_org_admin_membership,
-    revoke_org_admin_membership_invitation,
+    deactivate_organisation_address,
+    get_ct_dashboard_stats,
+    get_ct_onboarding_checklist,
     get_org_admin_setup_state,
+    get_org_dashboard_stats,
+    get_org_licence_summary,
+    list_org_feature_flags,
+    mark_licence_batch_paid,
+    reactivate_org_admin_membership,
+    refresh_act_as_session,
+    revoke_org_admin_membership_invitation,
+    set_org_feature_flag,
+    start_act_as_session,
+    stop_act_as_session,
+    transition_organisation_state,
+    update_licence_batch,
     update_org_admin_setup_state,
     update_organisation_address,
-    update_licence_batch,
     update_organisation_profile,
 )
-from apps.timeoff.services import create_leave_plan, update_leave_plan, upsert_leave_cycle, upsert_on_duty_policy
 
 
 def _get_ct_organisation(pk):
     return get_object_or_404(Organisation, id=pk)
+
+
+def _set_impersonation_session(request, session):
+    request.session['ct_act_as_session_id'] = str(session.id)
+    request.session.modified = True
+
+
+def _clear_impersonation_session(request):
+    request.session.pop('ct_act_as_session_id', None)
+    request.session.modified = True
 
 
 def _resolve_leave_plan_rules(organisation, rules_payload):
@@ -99,6 +156,155 @@ def _resolve_leave_plan_rules(organisation, rules_payload):
         }
         for rule in rules_payload
     ]
+
+
+def _support_diagnostic(*, code, severity, title, detail, action):
+    return {
+        'code': code,
+        'severity': severity,
+        'title': title,
+        'detail': detail,
+        'action': action,
+    }
+
+
+def _build_ct_payroll_diagnostics(
+    *,
+    active_employee_count,
+    tax_slab_set_count,
+    compensation_template_count,
+    approved_assignment_count,
+    pending_assignment_count,
+    payroll_runs,
+):
+    diagnostics = []
+    if tax_slab_set_count == 0:
+        diagnostics.append(
+            _support_diagnostic(
+                code='MISSING_TAX_SLAB_SET',
+                severity='critical',
+                title='Payroll tax slab set missing',
+                detail='No organisation payroll tax slab set is configured, so statutory payroll deductions cannot be validated.',
+                action='Create or derive an org tax slab set before running payroll.',
+            )
+        )
+    if compensation_template_count == 0:
+        diagnostics.append(
+            _support_diagnostic(
+                code='NO_COMPENSATION_TEMPLATES',
+                severity='critical',
+                title='No compensation templates configured',
+                detail='The organisation has no reusable salary structures configured for payroll setup.',
+                action='Create and approve at least one compensation template.',
+            )
+        )
+    if active_employee_count > 0 and approved_assignment_count == 0:
+        diagnostics.append(
+            _support_diagnostic(
+                code='NO_APPROVED_ASSIGNMENTS',
+                severity='critical',
+                title='No approved employee compensation assignments',
+                detail=f'{active_employee_count} active employees exist, but none have an approved compensation assignment for payroll processing.',
+                action='Approve employee compensation assignments before calculating payroll.',
+            )
+        )
+    if pending_assignment_count > 0:
+        diagnostics.append(
+            _support_diagnostic(
+                code='PENDING_ASSIGNMENTS',
+                severity='warning',
+                title='Compensation assignments still pending approval',
+                detail=f'{pending_assignment_count} employee assignment(s) are waiting on approval and may block payroll readiness.',
+                action='Review pending assignment approvals and finalize the intended effective versions.',
+            )
+        )
+    exception_runs = [run for run in payroll_runs if run['exception_count'] > 0]
+    if exception_runs:
+        latest_exception_run = exception_runs[0]
+        diagnostics.append(
+            _support_diagnostic(
+                code='RUN_EXCEPTIONS_PRESENT',
+                severity='warning',
+                title='Payroll run exceptions need investigation',
+                detail=f"{latest_exception_run['name']} currently has {latest_exception_run['exception_count']} exception item(s).",
+                action='Inspect the latest run exception messages before submission or finalization.',
+            )
+        )
+    return diagnostics
+
+
+def _build_ct_attendance_diagnostics(
+    *,
+    policy_count,
+    active_source_count,
+    pending_regularizations,
+    incomplete_count,
+    recent_imports,
+):
+    diagnostics = []
+    if policy_count == 0:
+        diagnostics.append(
+            _support_diagnostic(
+                code='NO_ATTENDANCE_POLICY',
+                severity='critical',
+                title='No default attendance policy configured',
+                detail='Attendance calculations and punch interpretation have no configured default policy for this organisation.',
+                action='Create and activate a default attendance policy before relying on attendance summaries.',
+            )
+        )
+    if active_source_count == 0:
+        diagnostics.append(
+            _support_diagnostic(
+                code='NO_ACTIVE_ATTENDANCE_SOURCE',
+                severity='warning',
+                title='No active attendance source connected',
+                detail='The organisation has no active attendance source, so attendance capture depends on manual or import-driven workflows.',
+                action='Configure and activate an attendance source or confirm the intended manual operating model.',
+            )
+        )
+    if pending_regularizations > 0:
+        diagnostics.append(
+            _support_diagnostic(
+                code='PENDING_REGULARIZATIONS',
+                severity='warning',
+                title='Attendance regularizations are waiting on review',
+                detail=f'{pending_regularizations} attendance correction request(s) are still pending approval.',
+                action='Review the regularization queue before attendance data is used for payroll.',
+            )
+        )
+    failed_imports = [job for job in recent_imports if job.status == 'FAILED']
+    if failed_imports:
+        diagnostics.append(
+            _support_diagnostic(
+                code='FAILED_IMPORTS',
+                severity='warning',
+                title='Recent attendance import failures detected',
+                detail=f'{len(failed_imports)} recent attendance import job(s) failed validation or posting.',
+                action='Inspect the most recent failed import and correct workbook errors before retrying.',
+            )
+        )
+    review_imports = [job for job in recent_imports if job.status == 'READY_FOR_REVIEW']
+    if review_imports:
+        diagnostics.append(
+            _support_diagnostic(
+                code='IMPORTS_NEED_REVIEW',
+                severity='warning',
+                title='Attendance imports need review before posting',
+                detail=f'{len(review_imports)} import job(s) are waiting for review and posting.',
+                action='Review incomplete or normalized punch rows before attendance is treated as final.',
+            )
+        )
+    if incomplete_count > 0:
+        diagnostics.append(
+            _support_diagnostic(
+                code='INCOMPLETE_ATTENDANCE_TODAY',
+                severity='info',
+                title='Incomplete punches present in today attendance',
+                detail=f'{incomplete_count} employees currently have incomplete attendance for today.',
+                action='Guide the org admin to review missed punch or regularization cases.',
+            )
+        )
+    return diagnostics
 
 
 class OrganisationListCreateView(APIView):
@@ -144,6 +350,89 @@ class OrganisationDetailView(APIView):
         except ValueError as exc:
             return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(OrganisationDetailSerializer(org).data)
+
+
+class CtOrganisationActAsStartView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def post(self, request, pk):
+        organisation = _get_ct_organisation(pk)
+        serializer = ActAsSessionStartSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        target_org_admin = None
+        if serializer.validated_data.get('target_org_admin_id'):
+            from apps.accounts.models import User
+
+            target_org_admin = get_object_or_404(User, id=serializer.validated_data['target_org_admin_id'])
+        try:
+            session = start_act_as_session(
+                organisation,
+                actor=request.user,
+                reason=serializer.validated_data['reason'],
+                target_org_admin=target_org_admin,
+                request=request,
+            )
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        _set_impersonation_session(request, session)
+        return Response(ActAsSessionSerializer(session).data, status=status.HTTP_201_CREATED)
+
+
+class CtActAsCurrentView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def get(self, request):
+        session = get_active_impersonation_session(request, request.user)
+        if session is None:
+            return Response({'impersonation': None})
+        return Response(ActAsSessionSerializer(session).data)
+
+
+class CtActAsRefreshView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def post(self, request):
+        session = get_active_impersonation_session(request, request.user)
+        if session is None:
+            return Response({'error': 'No active impersonation session.'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            session = refresh_act_as_session(session, actor=request.user, request=request)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(ActAsSessionSerializer(session).data)
+
+
+class CtActAsStopView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def post(self, request):
+        session = get_active_impersonation_session(request, request.user)
+        if session is None:
+            return Response({'error': 'No active impersonation session.'}, status=status.HTTP_400_BAD_REQUEST)
+        session = stop_act_as_session(session, actor=request.user, request=request)
+        _clear_impersonation_session(request)
+        return Response(ActAsSessionSerializer(session).data)
+
+
+class CtOrganisationFeatureFlagsView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def get(self, request, pk):
+        organisation = _get_ct_organisation(pk)
+        return Response(OrganisationFeatureFlagSerializer(list_org_feature_flags(organisation), many=True).data)
+
+    def patch(self, request, pk):
+        organisation = _get_ct_organisation(pk)
+        serializer = OrganisationFeatureFlagWriteSerializer(data=request.data, many=True)
+        serializer.is_valid(raise_exception=True)
+        for item in serializer.validated_data:
+            set_org_feature_flag(
+                organisation,
+                feature_code=item['feature_code'],
+                is_enabled=item['is_enabled'],
+                actor=request.user,
+            )
+        return Response(OrganisationFeatureFlagSerializer(list_org_feature_flags(organisation), many=True).data)
 
 
 class OrganisationActivateView(APIView):
@@ -363,22 +652,47 @@ class CtOrganisationPayrollSummaryView(APIView):
                     'ready_count': ready_count,
                     'exception_count': exception_count,
                     'exception_messages': exception_messages,
+                    'attendance_snapshot_summary': {
+                        'attendance_source': (pay_run.attendance_snapshot or {}).get('attendance_source', ''),
+                        'period_start': (pay_run.attendance_snapshot or {}).get('period_start'),
+                        'period_end': (pay_run.attendance_snapshot or {}).get('period_end'),
+                        'use_attendance_inputs': (pay_run.attendance_snapshot or {}).get('use_attendance_inputs', False),
+                        'employee_count': (pay_run.attendance_snapshot or {}).get('employee_count', 0),
+                        'ready_item_count': (pay_run.attendance_snapshot or {}).get('ready_item_count', 0),
+                        'exception_item_count': (pay_run.attendance_snapshot or {}).get('exception_item_count', 0),
+                        'total_attendance_paid_days': (pay_run.attendance_snapshot or {}).get('total_attendance_paid_days', '0.00'),
+                        'total_lop_days': (pay_run.attendance_snapshot or {}).get('total_lop_days', '0.00'),
+                        'total_overtime_minutes': (pay_run.attendance_snapshot or {}).get('total_overtime_minutes', 0),
+                    },
                 }
             )
+        active_employee_count = Employee.objects.filter(organisation=organisation, status='ACTIVE').count()
+        tax_slab_set_count = PayrollTaxSlabSet.objects.filter(organisation=organisation).count()
+        compensation_template_count = CompensationTemplate.objects.filter(organisation=organisation).count()
+        approved_assignment_count = CompensationAssignment.objects.filter(
+            employee__organisation=organisation,
+            status=CompensationAssignmentStatus.APPROVED,
+        ).count()
+        pending_assignment_count = CompensationAssignment.objects.filter(
+            employee__organisation=organisation,
+            status=CompensationAssignmentStatus.PENDING_APPROVAL,
+        ).count()
 
         return Response(
             {
-                'tax_slab_set_count': PayrollTaxSlabSet.objects.filter(organisation=organisation).count(),
-                'compensation_template_count': CompensationTemplate.objects.filter(organisation=organisation).count(),
-                'approved_assignment_count': CompensationAssignment.objects.filter(
-                    employee__organisation=organisation,
-                    status=CompensationAssignmentStatus.APPROVED,
-                ).count(),
-                'pending_assignment_count': CompensationAssignment.objects.filter(
-                    employee__organisation=organisation,
-                    status=CompensationAssignmentStatus.PENDING_APPROVAL,
-                ).count(),
+                'tax_slab_set_count': tax_slab_set_count,
+                'compensation_template_count': compensation_template_count,
+                'approved_assignment_count': approved_assignment_count,
+                'pending_assignment_count': pending_assignment_count,
                 'payslip_count': Payslip.objects.filter(organisation=organisation).count(),
+                'diagnostics': _build_ct_payroll_diagnostics(
+                    active_employee_count=active_employee_count,
+                    tax_slab_set_count=tax_slab_set_count,
+                    compensation_template_count=compensation_template_count,
+                    approved_assignment_count=approved_assignment_count,
+                    pending_assignment_count=pending_assignment_count,
+                    payroll_runs=runs_payload,
+                ),
                 'payroll_runs': runs_payload,
             }
         )
@@ -391,15 +705,19 @@ class CtOrganisationAttendanceSupportView(APIView):
         organisation = get_object_or_404(Organisation, id=pk)
         dashboard = get_org_attendance_dashboard(organisation)
         recent_imports = AttendanceImportJob.objects.filter(organisation=organisation).order_by('-created_at')[:5]
+        policy_count = AttendancePolicy.objects.filter(organisation=organisation).count()
+        source_count = AttendanceSourceConfig.objects.filter(organisation=organisation).count()
+        active_source_count = AttendanceSourceConfig.objects.filter(organisation=organisation, is_active=True).count()
+        pending_regularizations = AttendanceRegularizationRequest.objects.filter(
+            organisation=organisation,
+            status=AttendanceRegularizationStatus.PENDING,
+        ).count()
         return Response(
             {
-                'policy_count': AttendancePolicy.objects.filter(organisation=organisation).count(),
-                'source_count': AttendanceSourceConfig.objects.filter(organisation=organisation).count(),
-                'active_source_count': AttendanceSourceConfig.objects.filter(organisation=organisation, is_active=True).count(),
-                'pending_regularizations': AttendanceRegularizationRequest.objects.filter(
-                    organisation=organisation,
-                    status=AttendanceRegularizationStatus.PENDING,
-                ).count(),
+                'policy_count': policy_count,
+                'source_count': source_count,
+                'active_source_count': active_source_count,
+                'pending_regularizations': pending_regularizations,
                 'today_summary': {
                     'date': dashboard['date'],
                     'total_employees': dashboard['total_employees'],
@@ -423,8 +741,99 @@ class CtOrganisationAttendanceSupportView(APIView):
                     }
                     for job in recent_imports
                 ],
+                'diagnostics': _build_ct_attendance_diagnostics(
+                    policy_count=policy_count,
+                    active_source_count=active_source_count,
+                    pending_regularizations=pending_regularizations,
+                    incomplete_count=dashboard['incomplete_count'],
+                    recent_imports=recent_imports,
+                ),
             }
         )
+
+
+class CtOrganisationOnboardingSupportView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def get(self, request, pk):
+        organisation = get_object_or_404(Organisation, id=pk)
+        onboarding_status_counts = {
+            status_value: Employee.objects.filter(organisation=organisation, onboarding_status=status_value).count()
+            for status_value in EmployeeOnboardingStatus.values
+        }
+        document_request_status_counts = {
+            status_value: EmployeeDocumentRequest.objects.filter(
+                employee__organisation=organisation,
+                status=status_value,
+            ).count()
+            for status_value in EmployeeDocumentRequestStatus.values
+        }
+        blocked_request_statuses = [
+            EmployeeDocumentRequestStatus.REQUESTED,
+            EmployeeDocumentRequestStatus.SUBMITTED,
+            EmployeeDocumentRequestStatus.REJECTED,
+        ]
+        blocked_employees = (
+            Employee.objects.filter(organisation=organisation)
+            .select_related('user')
+            .annotate(
+                pending_document_requests=Count(
+                    'document_requests',
+                    filter=Q(document_requests__status__in=blocked_request_statuses),
+                    distinct=True,
+                ),
+                latest_document_activity_at=Max('documents__created_at'),
+            )
+            .filter(
+                Q(onboarding_status__in=[
+                    EmployeeOnboardingStatus.NOT_STARTED,
+                    EmployeeOnboardingStatus.BASIC_DETAILS_PENDING,
+                    EmployeeOnboardingStatus.DOCUMENTS_PENDING,
+                ])
+                | Q(pending_document_requests__gt=0)
+            )
+            .order_by('-pending_document_requests', 'user__first_name', 'user__last_name')[:12]
+        )
+        top_blocker_types = (
+            EmployeeDocumentRequest.objects.filter(
+                employee__organisation=organisation,
+                status__in=blocked_request_statuses,
+            )
+            .values(
+                document_type_code=F('document_type_ref__code'),
+                document_type_name=F('document_type_ref__name'),
+            )
+            .annotate(blocked_employee_count=Count('employee_id', distinct=True))
+            .order_by('-blocked_employee_count', 'document_type_name')[:5]
+        )
+        return Response(
+            {
+                'onboarding_status_counts': onboarding_status_counts,
+                'document_request_status_counts': document_request_status_counts,
+                'blocked_employees': [
+                    {
+                        'id': str(employee.id),
+                        'employee_code': employee.employee_code,
+                        'full_name': employee.user.full_name,
+                        'designation': employee.designation,
+                        'status': employee.status,
+                        'onboarding_status': employee.onboarding_status,
+                        'pending_document_requests': employee.pending_document_requests,
+                        'latest_document_activity_at': employee.latest_document_activity_at,
+                    }
+                    for employee in blocked_employees
+                ],
+                'top_blocker_types': list(top_blocker_types),
+            }
+        )
+
+
+class CtOrganisationOnboardingChecklistView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def get(self, request, pk):
+        org = get_object_or_404(Organisation, id=pk)
+        return Response(get_ct_onboarding_checklist(org))
 
 
 class CtOrganisationApprovalSupportView(APIView):

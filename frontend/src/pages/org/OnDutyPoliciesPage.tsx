@@ -13,8 +13,8 @@ export function OnDutyPoliciesPage() {
   const { organisationId } = useParams()
   const isCtMode = Boolean(organisationId)
   const basePath = isCtMode ? `/ct/organisations/${organisationId}` : '/org'
-  const { data: policies, isLoading } = useOnDutyPolicies()
-  const { data: requests } = useOrgOnDutyRequests()
+  const { data: policies, isLoading } = useOnDutyPolicies(!isCtMode)
+  const { data: requests } = useOrgOnDutyRequests(!isCtMode)
   const { data: configuration, isLoading: isCtLoading } = useCtOrgConfiguration(organisationId ?? '', isCtMode)
   const resolvedPolicies = isCtMode ? configuration?.on_duty_policies : policies
   const pageLoading = isCtMode ? isCtLoading : isLoading

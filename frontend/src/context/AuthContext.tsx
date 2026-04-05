@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import type { AuthUser } from '@/types/auth'
-import api, { ensureCsrfCookie } from '@/lib/api'
+import api from '@/lib/api'
 import { loginControlTower, loginWorkforce, switchWorkspace as switchWorkspaceRequest } from '@/lib/api/auth'
 import { AuthContext } from './auth-context'
 
@@ -10,7 +10,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refreshUser = async () => {
     try {
-      await ensureCsrfCookie()
       const response = await api.get<AuthUser>('/auth/me/')
       setUser(response.data)
       return response.data
@@ -45,14 +44,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const login = async (email: string, password: string) => {
-    await ensureCsrfCookie()
     const response = await loginWorkforce(email, password)
     setUser(response.user)
     return response.user
   }
 
   const loginControlTowerAccount = async (email: string, password: string) => {
-    await ensureCsrfCookie()
     const response = await loginControlTower(email, password)
     setUser(response.user)
     return response.user

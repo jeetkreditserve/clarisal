@@ -1,6 +1,5 @@
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
-from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.models import AccountType
@@ -28,5 +27,5 @@ class AuditLogListView(APIView):
 
         paginator = PageNumberPagination()
         page = paginator.paginate_queryset(queryset, request)
-        serializer = AuditLogSerializer(page, many=True)
+        serializer = AuditLogSerializer(page, many=True, context={'request': request})
         return paginator.get_paginated_response(serializer.data)

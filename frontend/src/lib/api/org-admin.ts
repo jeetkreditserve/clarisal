@@ -9,14 +9,18 @@ import type {
 import type { OrgAdminSetupState } from '@/types/organisation'
 import type {
   ApprovalActionItem,
+  ApprovalDelegation,
   AttendanceDayRecord,
   AttendanceImportJob,
   AttendancePolicy,
   AttendanceRegularization,
   AttendanceSourceConfig,
+  BiometricDevice,
+  BiometricSyncLog,
   AttendanceShift,
   AttendanceShiftAssignment,
   ApprovalWorkflowConfig,
+  Arrears,
   CompensationAssignment,
   CompensationTemplate,
   Department,
@@ -24,6 +28,7 @@ import type {
   EmployeeDocumentRequest,
   EmployeeDetail,
   EmployeeListItem,
+  FullAndFinalSettlement,
   HolidayCalendar,
   LeaveCycle,
   LeavePlan,
@@ -33,10 +38,14 @@ import type {
   OnDutyPolicy,
   OrgAttendanceDashboard,
   OrgAttendanceReport,
+  OffboardingProcess,
+  OffboardingTaskStatus,
   OnDutyRequestRecord,
   OnboardingDocumentType,
   OrgPayrollSummary,
   PayrollRun,
+  PayrollTdsChallan,
+  StatutoryFilingBatch,
   PayrollTaxSlabSet,
 } from '@/types/hr'
 
@@ -254,9 +263,36 @@ export async function assignEmployeeDocumentRequests(employeeId: string, documen
 
 export async function endEmployeeEmployment(
   id: string,
-  payload: { status: 'RESIGNED' | 'RETIRED' | 'TERMINATED'; date_of_exit: string }
+  payload: { status: 'RESIGNED' | 'RETIRED' | 'TERMINATED'; date_of_exit: string; exit_reason?: string; exit_notes?: string }
 ) {
   const { data } = await api.post<EmployeeDetail>(`/org/employees/${id}/end-employment/`, payload)
+  return data
+}
+
+export async function updateEmployeeOffboarding(
+  id: string,
+  payload: Partial<{ exit_reason: string; exit_notes: string }>
+) {
+  const { data } = await api.patch<OffboardingProcess>(`/org/employees/${id}/offboarding/`, payload)
+  return data
+}
+
+export async function updateEmployeeOffboardingTask(
+  employeeId: string,
+  taskId: string,
+  payload: { status: OffboardingTaskStatus; note?: string }
+) {
+  const { data } = await api.patch<OffboardingProcess>(`/org/employees/${employeeId}/offboarding/tasks/${taskId}/`, payload)
+  return data
+}
+
+export async function completeEmployeeOffboarding(id: string) {
+  const { data } = await api.post<OffboardingProcess>(`/org/employees/${id}/offboarding/complete/`)
+  return data
+}
+
+export async function markEmployeeProbationComplete(id: string) {
+  const { data } = await api.post<EmployeeDetail>(`/org/employees/${id}/probation-complete/`)
   return data
 }
 
@@ -309,6 +345,21 @@ export async function updateApprovalWorkflow(id: string, payload: Record<string,
 
 export async function fetchApprovalInbox() {
   const { data } = await api.get<ApprovalActionItem[]>('/org/approvals/inbox/')
+  return data
+}
+
+export async function fetchApprovalDelegations() {
+  const { data } = await api.get<ApprovalDelegation[]>('/org/approvals/delegations/')
+  return data
+}
+
+export async function createApprovalDelegation(payload: Record<string, unknown>) {
+  const { data } = await api.post<ApprovalDelegation>('/org/approvals/delegations/', payload)
+  return data
+}
+
+export async function updateApprovalDelegation(id: string, payload: Record<string, unknown>) {
+  const { data } = await api.patch<ApprovalDelegation>(`/org/approvals/delegations/${id}/`, payload)
   return data
 }
 
@@ -562,9 +613,88 @@ export async function downloadNormalizedAttendanceFile(jobId: string) {
   }
 }
 
+export async function getBiometricDevices() {
+  const { data } = await api.get<BiometricDevice[]>('/org/biometrics/devices/')
+  return data
+}
+
+export async function createBiometricDevice(payload: {
+  name: string
+  device_serial?: string
+  protocol: BiometricDevice['protocol']
+  ip_address?: string
+  port?: number
+  auth_username?: string
+  api_key?: string
+  oauth_client_id?: string
+  oauth_client_secret?: string
+  is_active?: boolean
+}) {
+  const { data } = await api.post<BiometricDevice>('/org/biometrics/devices/', payload)
+  return data
+}
+
+export async function deleteBiometricDevice(id: string) {
+  await api.delete(`/org/biometrics/devices/${id}/`)
+}
+
+export async function getDeviceSyncLogs(deviceId: string) {
+  const { data } = await api.get<BiometricSyncLog[]>(`/org/biometrics/devices/${deviceId}/sync-logs/`)
+  return data
+}
+
 export async function fetchPayrollSummary() {
   const { data } = await api.get<OrgPayrollSummary>('/org/payroll/summary/')
   return data
+}
+
+export async function fetchOrgFullAndFinalSettlements() {
+  const { data } = await api.get<FullAndFinalSettlement[]>('/org/payroll/full-and-final-settlements/')
+  return data
+}
+
+export async function fetchOrgFullAndFinalSettlement(id: string) {
+  const { data } = await api.get<FullAndFinalSettlement>(`/org/payroll/full-and-final-settlements/${id}/`)
+  return data
+}
+
+export async function fetchOrgArrears(employeeId?: string) {
+  const { data } = await api.get<Arrears[]>('/org/payroll/arrears/')
+  if (!employeeId) return data
+  return data.filter((arrear) => arrear.employee_id === employeeId)
+}
+
+export async function createOrgArrear(payload: {
+  employee_id: string
+  for_period_year: number
+  for_period_month: number
+  reason: string
+  amount: string
+}) {
+  const { data } = await api.post<Arrears>('/org/payroll/arrears/', payload)
+  return data
+}
+
+export type OrgReportFormat = 'json' | 'csv' | 'xlsx'
+
+export async function downloadOrgReport(
+  reportType: string,
+  params: Record<string, string> = {},
+  fileFormat: OrgReportFormat = 'xlsx',
+) {
+  const response = await api.get<Blob | Record<string, unknown>>(`/org/reports/${reportType}/`, {
+    params: { ...params, file_format: fileFormat },
+    responseType: fileFormat === 'json' ? 'json' : 'blob',
+  })
+
+  if (fileFormat === 'json') {
+    return response.data
+  }
+
+  return {
+    blob: response.data as Blob,
+    filename: response.headers['content-disposition']?.match(/filename=\"?([^"]+)\"?/)?.[1] || `${reportType}.${fileFormat}`,
+  }
 }
 
 export async function createPayrollTaxSlabSet(payload: Record<string, unknown>) {
@@ -607,6 +737,16 @@ export async function createPayrollRun(payload: Record<string, unknown>) {
   return data
 }
 
+export async function createPayrollTdsChallan(payload: Record<string, unknown>) {
+  const { data } = await api.post<PayrollTdsChallan>('/org/payroll/tds-challans/', payload)
+  return data
+}
+
+export async function updatePayrollTdsChallan(id: string, payload: Record<string, unknown>) {
+  const { data } = await api.patch<PayrollTdsChallan>(`/org/payroll/tds-challans/${id}/`, payload)
+  return data
+}
+
 export async function calculatePayrollRun(id: string) {
   const { data } = await api.post<PayrollRun>(`/org/payroll/runs/${id}/calculate/`)
   return data
@@ -625,6 +765,32 @@ export async function finalizePayrollRun(id: string) {
 export async function rerunPayrollRun(id: string) {
   const { data } = await api.post<PayrollRun>(`/org/payroll/runs/${id}/rerun/`)
   return data
+}
+
+export async function generatePayrollFiling(payload: Record<string, unknown>) {
+  const { data } = await api.post<StatutoryFilingBatch>('/org/payroll/filings/', payload)
+  return data
+}
+
+export async function regeneratePayrollFiling(id: string) {
+  const { data } = await api.post<StatutoryFilingBatch>(`/org/payroll/filings/${id}/regenerate/`)
+  return data
+}
+
+export async function cancelPayrollFiling(id: string) {
+  const { data } = await api.post<StatutoryFilingBatch>(`/org/payroll/filings/${id}/cancel/`)
+  return data
+}
+
+export async function downloadPayrollFiling(id: string) {
+  const response = await api.get<Blob>(`/org/payroll/filings/${id}/download/`, {
+    responseType: 'blob',
+  })
+
+  return {
+    blob: response.data as Blob,
+    filename: response.headers['content-disposition']?.match(/filename=\"?([^"]+)\"?/)?.[1] || `statutory-filing-${id}`,
+  }
 }
 
 export async function fetchNotices(params?: { status?: string; audience_type?: string; search?: string }) {

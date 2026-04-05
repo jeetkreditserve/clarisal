@@ -1,3 +1,4 @@
+# ruff: noqa: F403, F405
 from .development import *
 
 # Use in-memory SQLite for tests

@@ -20,19 +20,28 @@ from apps.timeoff.models import LeaveType
 from .models import (
     ApprovalAction,
     ApprovalApproverType,
+    ApprovalDelegation,
     ApprovalFallbackType,
     ApprovalStage,
     ApprovalStageApprover,
+    ApprovalStageEscalationPolicy,
     ApprovalWorkflow,
     ApprovalWorkflowRule,
 )
 from .serializers import (
     ApprovalActionDecisionSerializer,
     ApprovalActionSerializer,
+    ApprovalDelegationSerializer,
+    ApprovalDelegationWriteSerializer,
     ApprovalWorkflowSerializer,
     ApprovalWorkflowWriteSerializer,
 )
-from .services import approve_action, get_pending_approval_actions_for_user, reject_action
+from .services import (
+    approve_action,
+    get_pending_approval_actions_for_user,
+    reject_action,
+    upsert_approval_delegation,
+)
 
 
 def _get_admin_organisation(request):
@@ -150,6 +159,24 @@ def _upsert_workflow(organisation, payload, actor, workflow=None):
                 stage = ApprovalStage.objects.create(workflow=workflow, **stage_data)
             keep_stage_ids.append(stage.id)
 
+            reminder_after_hours = stage_payload.get('reminder_after_hours')
+            escalate_after_hours = stage_payload.get('escalate_after_hours')
+            escalation_target_type = stage_payload.get('escalation_target_type', ApprovalFallbackType.NONE)
+            escalation_employee = _get_employee_record(organisation, stage_payload.get('escalation_employee_id'))
+            if reminder_after_hours or escalate_after_hours or escalation_target_type != ApprovalFallbackType.NONE:
+                ApprovalStageEscalationPolicy.objects.update_or_create(
+                    stage=stage,
+                    defaults={
+                        'reminder_after_hours': reminder_after_hours,
+                        'escalate_after_hours': escalate_after_hours,
+                        'escalation_target_type': escalation_target_type,
+                        'escalation_employee': escalation_employee,
+                        'is_active': True,
+                    },
+                )
+            else:
+                ApprovalStageEscalationPolicy.objects.filter(stage=stage).delete()
+
             keep_approver_ids = []
             for approver_payload in approvers_payload:
                 approver_id = approver_payload.get('id')
@@ -190,6 +217,7 @@ class OrgApprovalWorkflowListCreateView(APIView):
             'rules__leave_type',
             'stages__approvers__approver_employee__user',
             'stages__fallback_employee__user',
+            'stages__sla_policy__escalation_employee__user',
         )
         return Response(ApprovalWorkflowSerializer(workflows, many=True).data)
 
@@ -217,6 +245,7 @@ class OrgApprovalWorkflowDetailView(APIView):
                 'rules__leave_type',
                 'stages__approvers__approver_employee__user',
                 'stages__fallback_employee__user',
+                'stages__sla_policy__escalation_employee__user',
             ),
             id=pk,
         )
@@ -241,6 +270,62 @@ class OrgApprovalInboxView(APIView):
         organisation = _get_admin_organisation(request)
         queryset = get_pending_approval_actions_for_user(request.user, organisation=organisation)
         return Response(ApprovalActionSerializer(queryset, many=True).data)
+
+
+class OrgApprovalDelegationListCreateView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
+
+    def get(self, request):
+        organisation = _get_admin_organisation(request)
+        delegations = ApprovalDelegation.objects.filter(organisation=organisation).select_related(
+            'delegator_employee__user',
+            'delegate_employee__user',
+        )
+        return Response(ApprovalDelegationSerializer(delegations, many=True).data)
+
+    def post(self, request):
+        organisation = _get_admin_organisation(request)
+        serializer = ApprovalDelegationWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            delegation = upsert_approval_delegation(
+                organisation,
+                delegator_employee=_get_employee_record(organisation, serializer.validated_data['delegator_employee_id']),
+                delegate_employee=_get_employee_record(organisation, serializer.validated_data['delegate_employee_id']),
+                request_kinds=serializer.validated_data['request_kinds'],
+                start_date=serializer.validated_data['start_date'],
+                end_date=serializer.validated_data.get('end_date'),
+                is_active=serializer.validated_data.get('is_active', True),
+                actor=request.user,
+            )
+        except (ValueError, Employee.DoesNotExist) as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(ApprovalDelegationSerializer(delegation).data, status=status.HTTP_201_CREATED)
+
+
+class OrgApprovalDelegationDetailView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
+
+    def patch(self, request, pk):
+        organisation = _get_admin_organisation(request)
+        delegation = get_object_or_404(ApprovalDelegation, organisation=organisation, id=pk)
+        serializer = ApprovalDelegationWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            delegation = upsert_approval_delegation(
+                organisation,
+                delegator_employee=_get_employee_record(organisation, serializer.validated_data['delegator_employee_id']),
+                delegate_employee=_get_employee_record(organisation, serializer.validated_data['delegate_employee_id']),
+                request_kinds=serializer.validated_data['request_kinds'],
+                start_date=serializer.validated_data['start_date'],
+                end_date=serializer.validated_data.get('end_date'),
+                is_active=serializer.validated_data.get('is_active', True),
+                actor=request.user,
+                delegation=delegation,
+            )
+        except (ValueError, Employee.DoesNotExist) as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(ApprovalDelegationSerializer(delegation).data)
 
 
 class MyApprovalInboxView(APIView):

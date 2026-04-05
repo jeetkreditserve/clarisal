@@ -1,7 +1,6 @@
 import axios, { type AxiosError } from 'axios'
 
 const BASE_URL = import.meta.env.DEV ? '/api' : import.meta.env.VITE_API_BASE_URL || '/api'
-let csrfPrimed = false
 
 function getCookie(name: string): string | null {
   const match = document.cookie
@@ -10,10 +9,8 @@ function getCookie(name: string): string | null {
   return match ? decodeURIComponent(match.split('=')[1]) : null
 }
 
-export async function ensureCsrfCookie() {
-  if (csrfPrimed) return
+async function fetchCsrfCookie(): Promise<void> {
   await axios.get(`${BASE_URL}/auth/csrf/`, { withCredentials: true })
-  csrfPrimed = true
 }
 
 export const api = axios.create({
@@ -30,8 +27,11 @@ api.interceptors.request.use(async (config) => {
   const csrfRequest = config.url?.includes('/auth/csrf/')
 
   if (!safeMethod && !csrfRequest) {
-    await ensureCsrfCookie()
-    const csrfToken = getCookie('csrftoken')
+    let csrfToken = getCookie('csrftoken')
+    if (!csrfToken) {
+      await fetchCsrfCookie()
+      csrfToken = getCookie('csrftoken')
+    }
     if (csrfToken) {
       config.headers['X-CSRFToken'] = csrfToken
     }
@@ -52,8 +52,22 @@ api.interceptors.response.use(
       '/auth/password-reset/confirm/',
     ].some((path) => url.includes(path))
 
-    if ((error.response?.status === 401 || error.response?.status === 403) && !isAuthMutation) {
+    if (error.response?.status === 401 && !isAuthMutation) {
       window.dispatchEvent(new Event('clarisal:auth-lost'))
+    }
+
+    // Self-heal: if a CSRF failure comes back, fetch a fresh token and retry once.
+    if (error.response?.status === 403 && !error.config?.headers?.['X-CSRF-Retried']) {
+      const detail = (error.response.data as Record<string, unknown>)?.detail ?? ''
+      if (typeof detail === 'string' && detail.startsWith('CSRF Failed')) {
+        await fetchCsrfCookie()
+        const csrfToken = getCookie('csrftoken')
+        if (csrfToken && error.config) {
+          error.config.headers['X-CSRFToken'] = csrfToken
+          error.config.headers['X-CSRF-Retried'] = 'true'
+          return api(error.config)
+        }
+      }
     }
 
     return Promise.reject(error)

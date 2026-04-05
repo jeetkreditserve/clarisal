@@ -15,11 +15,11 @@ from .views import (
     OrgAttendanceReportView,
     OrgAttendanceSheetImportView,
     OrgAttendanceSheetSampleView,
-    OrgAttendanceSourceConfigDetailView,
-    OrgAttendanceSourceConfigListView,
     OrgAttendanceShiftAssignmentListView,
     OrgAttendanceShiftDetailView,
     OrgAttendanceShiftListView,
+    OrgAttendanceSourceConfigDetailView,
+    OrgAttendanceSourceConfigListView,
 )
 
 urlpatterns = [

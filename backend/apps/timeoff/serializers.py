@@ -1,12 +1,15 @@
+from decimal import Decimal
+
 from rest_framework import serializers
 
 from .models import (
     Holiday,
     HolidayCalendar,
     HolidayClassification,
+    LeaveCreditFrequency,
     LeaveCycle,
     LeaveCycleType,
-    LeaveCreditFrequency,
+    LeaveEncashmentRequest,
     LeavePlan,
     LeavePlanRule,
     LeaveRequest,
@@ -33,8 +36,8 @@ class HolidayWriteSerializer(serializers.Serializer):
     id = serializers.UUIDField(required=False)
     name = serializers.CharField(max_length=255)
     holiday_date = serializers.DateField()
-    classification = serializers.ChoiceField(choices=HolidayClassification.choices, default=HolidayClassification.PUBLIC)
-    session = serializers.ChoiceField(choices=Holiday._meta.get_field('session').choices, default='FULL_DAY')
+    classification = serializers.ChoiceField(choices=HolidayClassification.choices, default=HolidayClassification.PUBLIC)  # type: ignore[arg-type]
+    session = serializers.ChoiceField(choices=Holiday._meta.get_field('session').choices, default='FULL_DAY')  # type: ignore[arg-type]
     description = serializers.CharField(required=False, allow_blank=True, default='')
 
 
@@ -125,6 +128,8 @@ class LeaveTypeSerializer(serializers.ModelSerializer):
             'carry_forward_mode',
             'carry_forward_cap',
             'max_balance',
+            'allows_encashment',
+            'max_encashment_days_per_year',
             'allows_half_day',
             'requires_attachment',
             'attachment_after_days',
@@ -144,13 +149,15 @@ class LeaveTypeWriteSerializer(serializers.Serializer):
     color = serializers.CharField(required=False, allow_blank=True, default='#2563eb')
     is_paid = serializers.BooleanField(required=False, default=True)
     is_loss_of_pay = serializers.BooleanField(required=False, default=False)
-    annual_entitlement = serializers.DecimalField(max_digits=8, decimal_places=2, required=False, default='0.00')
-    credit_frequency = serializers.ChoiceField(choices=LeaveCreditFrequency.choices, default=LeaveCreditFrequency.YEARLY)
+    annual_entitlement = serializers.DecimalField(max_digits=8, decimal_places=2, required=False, default=Decimal('0.00'))
+    credit_frequency = serializers.ChoiceField(choices=LeaveCreditFrequency.choices, default=LeaveCreditFrequency.YEARLY)  # type: ignore[arg-type]
     credit_day_of_period = serializers.IntegerField(required=False, allow_null=True, min_value=1, max_value=31)
     prorate_on_join = serializers.BooleanField(required=False, default=True)
-    carry_forward_mode = serializers.ChoiceField(choices=LeaveType._meta.get_field('carry_forward_mode').choices, default='NONE')
+    carry_forward_mode = serializers.ChoiceField(choices=LeaveType._meta.get_field('carry_forward_mode').choices, default='NONE')  # type: ignore[arg-type]
     carry_forward_cap = serializers.DecimalField(max_digits=8, decimal_places=2, required=False, allow_null=True)
     max_balance = serializers.DecimalField(max_digits=8, decimal_places=2, required=False, allow_null=True)
+    allows_encashment = serializers.BooleanField(required=False, default=False)
+    max_encashment_days_per_year = serializers.DecimalField(max_digits=5, decimal_places=2, required=False, allow_null=True)
     allows_half_day = serializers.BooleanField(required=False, default=True)
     requires_attachment = serializers.BooleanField(required=False, default=False)
     attachment_after_days = serializers.DecimalField(max_digits=8, decimal_places=2, required=False, allow_null=True)
@@ -258,9 +265,18 @@ class LeaveRequestCreateSerializer(serializers.Serializer):
     leave_type_id = serializers.UUIDField()
     start_date = serializers.DateField()
     end_date = serializers.DateField()
-    start_session = serializers.ChoiceField(choices=LeaveRequest._meta.get_field('start_session').choices, default='FULL_DAY')
-    end_session = serializers.ChoiceField(choices=LeaveRequest._meta.get_field('end_session').choices, default='FULL_DAY')
+    start_session = serializers.ChoiceField(choices=LeaveRequest._meta.get_field('start_session').choices, default='FULL_DAY')  # type: ignore[arg-type]
+    end_session = serializers.ChoiceField(choices=LeaveRequest._meta.get_field('end_session').choices, default='FULL_DAY')  # type: ignore[arg-type]
     reason = serializers.CharField(required=False, allow_blank=True, default='')
+
+    def validate(self, data):
+        start_date = data.get('start_date')
+        end_date = data.get('end_date')
+        if start_date and end_date and end_date < start_date:
+            raise serializers.ValidationError(
+                {'end_date': 'End date must be on or after the start date.'}
+            )
+        return data
 
 
 class OnDutyPolicySerializer(serializers.ModelSerializer):
@@ -327,8 +343,45 @@ class OnDutyRequestCreateSerializer(serializers.Serializer):
     policy_id = serializers.UUIDField(required=False, allow_null=True)
     start_date = serializers.DateField()
     end_date = serializers.DateField()
-    duration_type = serializers.ChoiceField(choices=OnDutyRequest._meta.get_field('duration_type').choices, default='FULL_DAY')
+    duration_type = serializers.ChoiceField(choices=OnDutyRequest._meta.get_field('duration_type').choices, default='FULL_DAY')  # type: ignore[arg-type]
     start_time = serializers.TimeField(required=False, allow_null=True)
     end_time = serializers.TimeField(required=False, allow_null=True)
     purpose = serializers.CharField()
     destination = serializers.CharField(required=False, allow_blank=True, default='')
+
+
+class LeaveEncashmentRequestSerializer(serializers.ModelSerializer):
+    employee_id = serializers.UUIDField(source='employee.id', read_only=True)
+    employee_name = serializers.CharField(source='employee.user.full_name', read_only=True)
+    leave_type_id = serializers.UUIDField(source='leave_type.id', read_only=True)
+    leave_type_name = serializers.CharField(source='leave_type.name', read_only=True)
+
+    class Meta:
+        model = LeaveEncashmentRequest
+        fields = [
+            'id',
+            'employee_id',
+            'employee_name',
+            'leave_type_id',
+            'leave_type_name',
+            'cycle_start',
+            'cycle_end',
+            'days_to_encash',
+            'encashment_amount',
+            'status',
+            'rejection_reason',
+            'created_at',
+            'modified_at',
+        ]
+
+
+class LeaveEncashmentRequestCreateSerializer(serializers.Serializer):
+    leave_type_id = serializers.UUIDField()
+    cycle_start = serializers.DateField()
+    cycle_end = serializers.DateField()
+    days_to_encash = serializers.DecimalField(max_digits=5, decimal_places=2, min_value=Decimal('0.50'))
+
+    def validate(self, attrs):
+        if attrs['cycle_end'] < attrs['cycle_start']:
+            raise serializers.ValidationError({'cycle_end': 'Cycle end must be on or after cycle start.'})
+        return attrs

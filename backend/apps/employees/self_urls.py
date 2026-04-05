@@ -11,6 +11,7 @@ from .views import (
     MyFamilyMemberDetailView,
     MyFamilyMemberListCreateView,
     MyGovernmentIdListUpsertView,
+    MyOffboardingView,
     MyOnboardingView,
     MyProfileView,
 )
@@ -18,6 +19,7 @@ from .views import (
 urlpatterns = [
     path('onboarding/', MyOnboardingView.as_view(), name='my-onboarding'),
     path('dashboard/', MyDashboardView.as_view(), name='my-dashboard'),
+    path('offboarding/', MyOffboardingView.as_view(), name='my-offboarding'),
     path('profile/', MyProfileView.as_view(), name='my-profile'),
     path('family-members/', MyFamilyMemberListCreateView.as_view(), name='my-family-members'),
     path('family-members/<uuid:pk>/', MyFamilyMemberDetailView.as_view(), name='my-family-member-detail'),

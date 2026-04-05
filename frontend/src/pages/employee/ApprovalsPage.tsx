@@ -44,11 +44,19 @@ export function ApprovalsPage() {
                 <div>
                   <p className="font-semibold text-[hsl(var(--foreground-strong))]">{action.subject_label}</p>
                   <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                    {action.requester_name} • {action.request_kind.replace(/_/g, ' ')} • {action.stage_name}
+                    {action.requester_name} • {action.request_kind.replace(/_/g, ' ')} • {action.stage_name} • Owner: {action.owner_name}
                   </p>
+                  {action.original_approver_name ? (
+                    <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
+                      Routed via {action.assignment_source.toLowerCase()} from {action.original_approver_name}
+                    </p>
+                  ) : null}
                 </div>
                 <div className="flex items-center gap-3">
                   <StatusBadge tone={getApprovalActionTone(action.status)}>{action.status}</StatusBadge>
+                  {action.is_overdue ? <StatusBadge tone="danger">Overdue</StatusBadge> : null}
+                  {action.assignment_source === 'ESCALATED' ? <StatusBadge tone="warning">Escalated</StatusBadge> : null}
+                  {action.assignment_source === 'DELEGATED' ? <StatusBadge tone="info">Delegated</StatusBadge> : null}
                   <ApprovalDecisionDialog
                     actionLabel={`Approve ${action.subject_label}`}
                     triggerClassName="btn-secondary"

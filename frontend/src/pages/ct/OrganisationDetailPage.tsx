@@ -51,8 +51,9 @@ import {
   useCtOrgConfiguration,
   useCtOrgEmployeeDetail,
   useCtOrgEmployees,
+  useCtOrgOnboardingSummary,
+  useCtOrgOnboardingChecklist,
   useCtOrgNotes,
-  useCtOrgPayrollSummary,
   useDeactivateCtDepartment,
   useDeactivateCtLocation,
   useDeactivateCtOrgAdmin,
@@ -68,6 +69,8 @@ import {
   useResendOrgAdminInvite,
   useRestoreOrganisation,
   useSuspendOrganisation,
+  useStartCtImpersonation,
+  useUpdateCtOrganisationFeatureFlags,
   useUpdateCtApprovalWorkflow,
   useUpdateCtBootstrapAdmin,
   useUpdateCtDepartment,
@@ -81,6 +84,7 @@ import {
   useUpdateOrganisation,
   useUpdateOrganisationAddress,
 } from '@/hooks/useCtOrganisations'
+import { useAuth } from '@/hooks/useAuth'
 import {
   APPROVAL_REQUEST_KIND_OPTIONS,
   createDefaultApprovalWorkflow,
@@ -114,7 +118,7 @@ import {
   validatePhoneForCountry,
 } from '@/lib/organisationMetadata'
 import { ORG_ONBOARDING_STEPS } from '@/lib/status'
-import type { ApprovalWorkflowConfig, CtOrganisationApprovalSupportSummary, CtOrganisationAttendanceSupportSummary, CtOrganisationPayrollSupportSummary, Department, HolidayCalendar, LeaveCycle, LeavePlan, Location, NoticeItem, OnDutyPolicy } from '@/types/hr'
+import type { ApprovalRequestKind, ApprovalWorkflowConfig, CtOrganisationApprovalSupportSummary, CtOrganisationAttendanceSupportSummary, CtOrganisationOnboardingSupportSummary, Department, HolidayCalendar, LeaveCycle, LeavePlan, Location, NoticeItem, OnDutyPolicy } from '@/types/hr'
 import type { LicenceBatch, OrganisationAddress, OrganisationAddressType, OrganisationDetail, OrganisationEntityType } from '@/types/organisation'
 
 type DetailTabKey =
@@ -123,9 +127,9 @@ type DetailTabKey =
   | 'licences'
   | 'admins'
   | 'employees'
+  | 'onboarding'
   | 'attendance'
   | 'approvals'
-  | 'payroll'
   | 'holidays'
   | 'configuration'
   | 'audit'
@@ -240,6 +244,12 @@ type ActionDialogState = {
   note: string
 }
 
+type ActAsDialogState = {
+  open: boolean
+  reason: string
+  target_org_admin_id: string
+}
+
 const mandatoryAddressTypes: OrganisationAddressType[] = ['REGISTERED', 'BILLING']
 const COUNTRY_SELECT_OPTIONS = COUNTRY_OPTIONS.map((country) => ({
   value: country.code,
@@ -274,9 +284,9 @@ const TAB_OPTIONS: Array<{
   { key: 'licences', label: 'Org Licences', icon: CreditCard },
   { key: 'admins', label: 'Org Admins', icon: Users },
   { key: 'employees', label: 'Employees', icon: Users },
+  { key: 'onboarding', label: 'Onboarding Support', icon: UserPlus },
   { key: 'attendance', label: 'Attendance Support', icon: Clock3 },
   { key: 'approvals', label: 'Approval Support', icon: FileText },
-  { key: 'payroll', label: 'Payroll Support', icon: BadgeDollarSign },
   { key: 'holidays', label: 'Org Holidays', icon: CalendarDays },
   { key: 'configuration', label: 'Configuration', icon: FileText },
   { key: 'audit', label: 'Audit Timeline', icon: History },
@@ -498,7 +508,7 @@ function createWorkflowDialogForm(workflow?: ApprovalWorkflowConfig): WorkflowFo
     name: workflow.name,
     description: workflow.description ?? '',
     is_default: workflow.is_default,
-    default_request_kind: workflow.default_request_kind,
+    default_request_kind: workflow.default_request_kind ?? 'LEAVE',
     is_active: workflow.is_active,
     rules: workflow.rules.map((rule) => ({
       id: rule.id,
@@ -520,6 +530,10 @@ function createWorkflowDialogForm(workflow?: ApprovalWorkflowConfig): WorkflowFo
       mode: stage.mode,
       fallback_type: stage.fallback_type,
       fallback_employee_id: stage.fallback_employee_id,
+      reminder_after_hours: stage.reminder_after_hours,
+      escalate_after_hours: stage.escalate_after_hours,
+      escalation_target_type: stage.escalation_target_type,
+      escalation_employee_id: stage.escalation_employee_id,
       approvers: stage.approvers.map((approver) => ({
         id: approver.id,
         approver_type: approver.approver_type,
@@ -582,6 +596,46 @@ function DetailListCard({
   )
 }
 
+function diagnosticTone(severity: 'critical' | 'warning' | 'info') {
+  if (severity === 'critical') return 'danger'
+  if (severity === 'warning') return 'warning'
+  return 'info'
+}
+
+function SupportDiagnostics({
+  diagnostics,
+}: {
+  diagnostics: Array<{
+    code: string
+    severity: 'critical' | 'warning' | 'info'
+    title: string
+    detail: string
+    action: string
+  }>
+}) {
+  if (!diagnostics.length) return null
+
+  return (
+    <SectionCard
+      title="Needs CT attention"
+      description="These diagnostics turn zero-value summaries into actionable support guidance so Control Tower can explain what is misconfigured or blocked."
+    >
+      <div className="space-y-3">
+        {diagnostics.map((diagnostic) => (
+          <div key={diagnostic.code} className="surface-muted rounded-[22px] p-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="font-semibold text-[hsl(var(--foreground-strong))]">{diagnostic.title}</p>
+              <StatusBadge tone={diagnosticTone(diagnostic.severity)}>{startCase(diagnostic.severity)}</StatusBadge>
+            </div>
+            <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">{diagnostic.detail}</p>
+            <p className="mt-2 text-sm font-medium text-[hsl(var(--foreground-strong))]">{diagnostic.action}</p>
+          </div>
+        ))}
+      </div>
+    </SectionCard>
+  )
+}
+
 function InfoStack({
   items,
 }: {
@@ -622,6 +676,7 @@ function createHolidayFormState(calendar?: HolidayCalendar) {
 
 export function OrganisationDetailPage() {
   const navigate = useNavigate()
+  const { user, refreshUser } = useAuth()
   const { id } = useParams<{ id: string }>()
   const organisationId = id ?? ''
   const [searchParams, setSearchParams] = useSearchParams()
@@ -645,6 +700,11 @@ export function OrganisationDetailPage() {
   const [noticeDialogOpen, setNoticeDialogOpen] = useState(false)
   const [suspendDialog, setSuspendDialog] = useState<ActionDialogState>({ open: false, note: '' })
   const [restoreDialog, setRestoreDialog] = useState<ActionDialogState>({ open: false, note: '' })
+  const [actAsDialog, setActAsDialog] = useState<ActAsDialogState>({
+    open: false,
+    reason: '',
+    target_org_admin_id: '',
+  })
   const [inviteForm, setInviteForm] = useState({ email: '', first_name: '', last_name: '' })
   const [noteBody, setNoteBody] = useState('')
   const [employeesPage, setEmployeesPage] = useState(1)
@@ -678,7 +738,7 @@ export function OrganisationDetailPage() {
   const [hasProfileCurrencyManualOverride, setHasProfileCurrencyManualOverride] = useState(false)
 
   const { data: organisation, isLoading } = useOrganisation(organisationId)
-  const { data: admins } = useOrgAdmins(organisationId, activeTab === 'admins')
+  const { data: admins } = useOrgAdmins(organisationId, activeTab === 'admins' || actAsDialog.open)
   const { data: employees, isLoading: employeesLoading } = useCtOrgEmployees(
     organisationId,
     { page: employeesPage, search: employeeSearch || undefined, status: employeeStatusFilter || undefined },
@@ -697,12 +757,15 @@ export function OrganisationDetailPage() {
     organisationId,
     Boolean(organisationId),
   )
+  const { data: onboardingSummary, isLoading: onboardingSummaryLoading } = useCtOrgOnboardingSummary(
+    organisationId,
+    activeTab === 'onboarding',
+  )
+  const { data: onboardingChecklist } = useCtOrgOnboardingChecklist(organisationId)
   const { data: attendanceSummary, isLoading: attendanceSummaryLoading } = useCtOrgAttendanceSummary(organisationId, activeTab === 'attendance')
   const { data: approvalSummary, isLoading: approvalSummaryLoading } = useCtOrgApprovalSummary(organisationId, activeTab === 'approvals')
   const { data: auditLogs } = useCtAuditLogs(organisationId, activeTab === 'audit')
   const { data: notes, isLoading: notesLoading } = useCtOrgNotes(organisationId, activeTab === 'notes')
-  const { data: payrollSummary, isLoading: payrollSummaryLoading } = useCtOrgPayrollSummary(organisationId, activeTab === 'payroll')
-
   const updateOrganisationMutation = useUpdateOrganisation(organisationId)
   const updateBootstrapAdminMutation = useUpdateCtBootstrapAdmin(organisationId)
   const createAddressMutation = useCreateOrganisationAddress(organisationId)
@@ -710,6 +773,8 @@ export function OrganisationDetailPage() {
   const deactivateAddressMutation = useDeactivateOrganisationAddress(organisationId)
   const suspendMutation = useSuspendOrganisation()
   const restoreMutation = useRestoreOrganisation()
+  const startImpersonationMutation = useStartCtImpersonation(organisationId)
+  const updateFeatureFlagsMutation = useUpdateCtOrganisationFeatureFlags(organisationId)
   const inviteAdminMutation = useInviteOrgAdmin(organisationId)
   const resendInviteMutation = useResendOrgAdminInvite(organisationId)
   const deactivateAdminMutation = useDeactivateCtOrgAdmin(organisationId)
@@ -1354,6 +1419,38 @@ export function OrganisationDetailPage() {
     }
   }
 
+  const openActAsDialog = () => {
+    setActAsDialog({
+      open: true,
+      reason: `Control Tower support review for ${organisation?.name ?? 'this organisation'}`,
+      target_org_admin_id: '',
+    })
+  }
+
+  const handleStartImpersonation = async () => {
+    try {
+      await startImpersonationMutation.mutateAsync({
+        reason: actAsDialog.reason.trim(),
+        target_org_admin_id: actAsDialog.target_org_admin_id || null,
+      })
+      await refreshUser()
+      toast.success('Read-only organisation workspace opened.')
+      setActAsDialog((current) => ({ ...current, open: false }))
+      navigate('/org/dashboard')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to start Control Tower impersonation.'))
+    }
+  }
+
+  const handleToggleFeatureFlag = async (featureCode: string, nextValue: boolean) => {
+    try {
+      await updateFeatureFlagsMutation.mutateAsync([{ feature_code: featureCode, is_enabled: nextValue }])
+      toast.success(`Updated ${startCase(featureCode)} access.`)
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to update feature flag.'))
+    }
+  }
+
   if (isLoading || !organisation) {
     return (
       <div className="space-y-5">
@@ -1385,7 +1482,7 @@ export function OrganisationDetailPage() {
             <button type="button" className="btn-secondary" onClick={() => setSearchParams({ tab: 'approvals' })}>
               Review approval support
             </button>
-            <button type="button" className="btn-secondary" onClick={() => setSearchParams({ tab: 'payroll' })}>
+            <button type="button" className="btn-secondary" onClick={() => navigate(`/ct/organisations/${id}/payroll`)}>
               Review payroll support
             </button>
           </div>
@@ -1454,6 +1551,55 @@ export function OrganisationDetailPage() {
           <DetailMetric label="Notes" value={String(organisation.note_count)} helper="Control Tower internal notes" />
         </div>
       </SectionCard>
+
+      {onboardingChecklist && (
+        <SectionCard
+          title="Setup checklist"
+          description="Specific actions required to complete this organisation's onboarding."
+        >
+          <div className="space-y-3">
+            {onboardingChecklist.stages.map((stage) => (
+              <div
+                key={stage.id}
+                className={`rounded-[18px] border px-4 py-4 ${stage.is_complete ? 'border-[hsl(var(--success)_/_0.28)] bg-[hsl(var(--success)_/_0.06)]' : 'border-[hsl(var(--border))] bg-[hsl(var(--surface-subtle))]'}`}
+              >
+                <div className="flex items-center gap-2">
+                  <span className={`h-2 w-2 flex-shrink-0 rounded-full ${stage.is_complete ? 'bg-[hsl(var(--success))]' : 'bg-[hsl(var(--border-strong))]'}`} />
+                  <p className={`text-sm font-semibold ${stage.is_complete ? 'text-[hsl(var(--success))]' : 'text-[hsl(var(--foreground-strong))]'}`}>{stage.label}</p>
+                </div>
+                {!stage.is_complete && (
+                  <div className="mt-3 space-y-2 pl-4">
+                    {stage.items.filter((item) => !item.is_complete).map((item) => (
+                      <div key={item.label} className="flex items-center justify-between gap-2">
+                        <p className="text-xs text-[hsl(var(--muted-foreground))]">{item.label}</p>
+                        {item.action && (
+                          <button
+                            type="button"
+                            className="text-xs font-semibold text-[hsl(var(--brand))] hover:underline"
+                            onClick={() => setActiveTab(item.action as DetailTabKey)}
+                          >
+                            Go →
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          {onboardingChecklist.activation_blockers.length > 0 && (
+            <div className="mt-4 rounded-[14px] border border-[hsl(var(--destructive)_/_0.25)] bg-[hsl(var(--destructive)_/_0.07)] px-4 py-3">
+              <p className="text-xs font-semibold text-[hsl(var(--destructive))]">Activation blocked</p>
+              <ul className="mt-1.5 space-y-1">
+                {onboardingChecklist.activation_blockers.map((blocker) => (
+                  <li key={blocker} className="text-xs text-[hsl(var(--muted-foreground))]">• {blocker}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </SectionCard>
+      )}
     </div>
   )
 
@@ -1924,79 +2070,121 @@ export function OrganisationDetailPage() {
     </div>
   )
 
-  const renderPayrollTab = () => {
-    if (payrollSummaryLoading) {
+  const renderOnboardingTab = () => {
+    if (onboardingSummaryLoading) {
       return <SkeletonTable rows={5} />
     }
 
-    const summary = payrollSummary as CtOrganisationPayrollSupportSummary | undefined
+    const summary = onboardingSummary as CtOrganisationOnboardingSupportSummary | undefined
     if (!summary) {
       return (
         <EmptyState
-          title="Payroll support data unavailable"
-          description="Open this tab after CT payroll support visibility is enabled for the organisation."
-          icon={BadgeDollarSign}
+          title="Onboarding support data unavailable"
+          description="This tab will show Control Tower blocker visibility for invites, profile completion, and document follow-up."
+          icon={UserPlus}
         />
       )
     }
 
+    const openDocumentBlockers =
+      (summary.document_request_status_counts.REQUESTED ?? 0)
+      + (summary.document_request_status_counts.SUBMITTED ?? 0)
+      + (summary.document_request_status_counts.REJECTED ?? 0)
+
     return (
       <div className="space-y-6">
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-          <DetailMetric label="Tax slab sets" value={String(summary.tax_slab_set_count)} helper="Org-scoped preview masters" />
-          <DetailMetric label="Templates" value={String(summary.compensation_template_count)} helper="Reusable structures" />
-          <DetailMetric label="Approved assignments" value={String(summary.approved_assignment_count)} helper="Salary records ready" />
-          <DetailMetric label="Pending assignments" value={String(summary.pending_assignment_count)} helper="Waiting on approval" />
-          <DetailMetric label="Payslips" value={String(summary.payslip_count)} helper="Generated preview slips" />
+          <DetailMetric label="Not started" value={String(summary.onboarding_status_counts.NOT_STARTED ?? 0)} helper="Invite accepted or pending action missing" />
+          <DetailMetric label="Basic details pending" value={String(summary.onboarding_status_counts.BASIC_DETAILS_PENDING ?? 0)} helper="Employee still has profile setup to finish" />
+          <DetailMetric label="Documents pending" value={String(summary.onboarding_status_counts.DOCUMENTS_PENDING ?? 0)} helper="Operational follow-up still required" />
+          <DetailMetric label="Open document blockers" value={String(openDocumentBlockers)} helper={`${summary.document_request_status_counts.REJECTED ?? 0} rejected submissions`} />
+          <DetailMetric label="Blocked employees" value={String(summary.blocked_employees.length)} helper="Highest-friction onboarding cases" />
         </div>
 
         <SectionCard
-          title="Payroll run history"
-          description="Sanitized payroll support visibility for Control Tower. Run state and exception counts are visible here, while employee-level pay remains hidden."
+          title="Onboarding blockers"
+          description="Control Tower can inspect who is blocked and why, without opening employee PII or the underlying document contents."
         >
-          {summary.payroll_runs.length ? (
+          {summary.blocked_employees.length ? (
             <div className="space-y-3">
-              {summary.payroll_runs.map((run) => (
-                <div key={run.id} className="surface-muted rounded-[24px] p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
+              {summary.blocked_employees.map((employee) => (
+                <div key={employee.id} className="surface-muted rounded-[24px] p-4">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-semibold text-[hsl(var(--foreground-strong))]">{run.name}</p>
-                        <StatusBadge tone={run.status === 'FINALIZED' ? 'success' : run.status === 'REJECTED' ? 'danger' : 'info'}>
-                          {run.status}
+                        <p className="font-semibold text-[hsl(var(--foreground-strong))]">{employee.full_name}</p>
+                        <StatusBadge tone={employee.status === 'ACTIVE' ? 'success' : employee.status === 'PENDING' ? 'warning' : 'info'}>
+                          {employee.status}
                         </StatusBadge>
-                        {run.exception_count ? <StatusBadge tone="warning">{run.exception_count} exceptions</StatusBadge> : null}
+                        <StatusBadge tone={employee.onboarding_status === 'COMPLETE' ? 'success' : 'warning'}>
+                          {startCase(employee.onboarding_status)}
+                        </StatusBadge>
+                        {employee.pending_document_requests > 0 ? (
+                          <StatusBadge tone="warning">{employee.pending_document_requests} open document blocker{employee.pending_document_requests === 1 ? '' : 's'}</StatusBadge>
+                        ) : null}
                       </div>
                       <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
-                        {run.period_month}/{run.period_year} • {run.run_type} • {run.ready_count} ready items
+                        {[employee.employee_code || 'No employee code', employee.designation || 'No designation'].filter(Boolean).join(' • ')}
                       </p>
                     </div>
                     <div className="text-right text-sm text-[hsl(var(--muted-foreground))]">
-                      <p>Created {formatDateTime(run.created_at)}</p>
-                      <p>{run.finalized_at ? `Finalized ${formatDateTime(run.finalized_at)}` : run.calculated_at ? `Calculated ${formatDateTime(run.calculated_at)}` : 'Not finalized yet'}</p>
+                      <p>{employee.latest_document_activity_at ? `Last document activity ${formatDateTime(employee.latest_document_activity_at)}` : 'No document upload yet'}</p>
+                      <p>CT view is limited to blocker metadata only</p>
                     </div>
                   </div>
-                  {run.exception_messages.length ? (
-                    <div className="mt-4 rounded-[18px] border border-[hsl(var(--warning)_/_0.32)] bg-[hsl(var(--warning)_/_0.12)] px-4 py-3 text-sm text-[hsl(var(--foreground-strong))]">
-                      <p className="font-medium">Why this run is blocked</p>
-                      <ul className="mt-2 space-y-1 text-[hsl(var(--muted-foreground))]">
-                        {run.exception_messages.map((message) => (
-                          <li key={message}>{message}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
                 </div>
               ))}
             </div>
           ) : (
             <EmptyState
-              title="No payroll runs yet"
-              description="Once this organisation starts payroll preview processing, CT will be able to inspect run status here without seeing salary amounts."
-              icon={BadgeDollarSign}
+              title="No onboarding blockers"
+              description="This organisation currently has no employees stalled in onboarding or document verification."
+              icon={UserPlus}
             />
           )}
         </SectionCard>
+
+        <div className="grid gap-6 xl:grid-cols-2">
+          <SectionCard
+            title="Top blocker types"
+            description="Shows which request types are creating the largest onboarding queue without exposing submitted files."
+          >
+            {summary.top_blocker_types.length ? (
+              <div className="space-y-3">
+                {summary.top_blocker_types.map((blocker) => (
+                  <div key={blocker.document_type_code} className="surface-muted flex flex-wrap items-center justify-between gap-3 rounded-[22px] p-4">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold text-[hsl(var(--foreground-strong))]">{blocker.document_type_name}</p>
+                        <StatusBadge tone="info">{blocker.document_type_code}</StatusBadge>
+                      </div>
+                      <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">{blocker.blocked_employee_count} employees currently blocked</p>
+                    </div>
+                    <p className="text-sm font-medium text-[hsl(var(--foreground-strong))]">{blocker.blocked_employee_count}</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <EmptyState
+                title="No document blocker types"
+                description="Document request blockers will appear here when onboarding tasks need org admin follow-up."
+                icon={FileText}
+              />
+            )}
+          </SectionCard>
+
+          <SectionCard
+            title="Document request queue"
+            description="This queue view helps CT tell whether the organisation is waiting on employee submission, admin review, or completed verification."
+          >
+            <div className="grid gap-4 sm:grid-cols-2">
+              <DetailMetric label="Requested" value={String(summary.document_request_status_counts.REQUESTED ?? 0)} helper="Waiting on employee submission" />
+              <DetailMetric label="Submitted" value={String(summary.document_request_status_counts.SUBMITTED ?? 0)} helper="Waiting on admin review" />
+              <DetailMetric label="Rejected" value={String(summary.document_request_status_counts.REJECTED ?? 0)} helper="Employee needs resubmission" />
+              <DetailMetric label="Verified" value={String(summary.document_request_status_counts.VERIFIED ?? 0)} helper="Cleared requests" />
+            </div>
+          </SectionCard>
+        </div>
       </div>
     )
   }
@@ -2025,6 +2213,8 @@ export function OrganisationDetailPage() {
           <DetailMetric label="Pending regularizations" value={String(summary.pending_regularizations)} helper="Corrections still awaiting approval" />
           <DetailMetric label="Today's incomplete" value={String(summary.today_summary.incomplete_count)} helper={`${summary.today_summary.absent_count} absent today`} />
         </div>
+
+        <SupportDiagnostics diagnostics={summary.diagnostics} />
 
         <SectionCard
           title="Today attendance health"
@@ -2216,6 +2406,35 @@ export function OrganisationDetailPage() {
 
   const renderConfigurationTab = () => (
     <div className="space-y-6">
+      <SectionCard
+        title="Tenant feature flags"
+        description="Control module rollout centrally for this organisation. Disabled modules disappear from the org navigation and return 403 from protected APIs."
+      >
+        <div className="grid gap-3 md:grid-cols-2">
+          {organisation.feature_flags.map((flag) => (
+            <div key={flag.feature_code} className="rounded-[20px] border border-[hsl(var(--border)_/_0.78)] px-4 py-4">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="font-semibold text-[hsl(var(--foreground-strong))]">{flag.label}</p>
+                  <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
+                    Code: {flag.feature_code}
+                    {flag.is_default ? ' • default rollout' : ' • tenant override'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className={flag.is_enabled ? 'btn-secondary' : 'btn-primary'}
+                  disabled={updateFeatureFlagsMutation.isPending}
+                  onClick={() => void handleToggleFeatureFlag(flag.feature_code, !flag.is_enabled)}
+                >
+                  {flag.is_enabled ? 'Disable' : 'Enable'}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </SectionCard>
+
       <SectionCard
         title="Workplace structure"
         description="Locations and departments configured for this tenant."
@@ -2544,6 +2763,15 @@ export function OrganisationDetailPage() {
         description={`Tenant ${organisation.slug} is ${startCase(organisation.status)} with ${organisation.licence_summary.allocated} allocated employees against ${organisation.licence_summary.active_paid_quantity} active paid seats.`}
         actions={
           <>
+            {user?.impersonation?.organisation_id === organisation.id ? (
+              <button type="button" className="btn-primary" onClick={() => navigate('/org/dashboard')}>
+                Open org workspace
+              </button>
+            ) : (
+              <button type="button" className="btn-secondary" onClick={openActAsDialog}>
+                Open read-only org view
+              </button>
+            )}
             {onlyDraftBatch ? (
               <button type="button" className="btn-primary" onClick={() => openMarkPaidDialog(onlyDraftBatch.id)}>
                 Mark paid & send onboarding
@@ -2607,13 +2835,67 @@ export function OrganisationDetailPage() {
       {activeTab === 'licences' ? renderLicencesTab() : null}
       {activeTab === 'admins' ? renderAdminsTab() : null}
       {activeTab === 'employees' ? renderEmployeesTab() : null}
+      {activeTab === 'onboarding' ? renderOnboardingTab() : null}
       {activeTab === 'attendance' ? renderAttendanceTab() : null}
       {activeTab === 'approvals' ? renderApprovalsTab() : null}
-      {activeTab === 'payroll' ? renderPayrollTab() : null}
       {activeTab === 'holidays' ? renderHolidaysTab() : null}
       {activeTab === 'configuration' ? renderConfigurationTab() : null}
       {activeTab === 'audit' ? renderAuditTab() : null}
       {activeTab === 'notes' ? renderNotesTab() : null}
+
+      <AppDialog
+        open={actAsDialog.open}
+        onOpenChange={(open) => setActAsDialog((current) => ({ ...current, open }))}
+        title="Start Control Tower impersonation"
+        description="This opens the organisation admin workspace in read-only mode. Every start, refresh, and stop action is audit logged."
+        footer={
+          <div className="flex flex-wrap justify-end gap-3">
+            <button type="button" className="btn-secondary" onClick={() => setActAsDialog((current) => ({ ...current, open: false }))}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={() => void handleStartImpersonation()}
+              disabled={startImpersonationMutation.isPending || !actAsDialog.reason.trim()}
+            >
+              Start read-only session
+            </button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <label className="space-y-2 text-sm">
+            <span className="font-medium text-[hsl(var(--foreground-strong))]">Reason</span>
+            <textarea
+              value={actAsDialog.reason}
+              onChange={(event) => setActAsDialog((current) => ({ ...current, reason: event.target.value }))}
+              rows={4}
+              className="min-h-[7rem] w-full rounded-[20px] border border-[hsl(var(--border)_/_0.84)] bg-[hsl(var(--surface))] px-4 py-3 text-sm outline-none transition focus:border-[hsl(var(--brand)_/_0.45)]"
+              placeholder="Describe why this support session is required"
+            />
+          </label>
+          <label className="space-y-2 text-sm">
+            <span className="font-medium text-[hsl(var(--foreground-strong))]">Target org admin</span>
+            <AppSelect
+              value={actAsDialog.target_org_admin_id}
+              onValueChange={(value) => setActAsDialog((current) => ({ ...current, target_org_admin_id: value }))}
+              options={[
+                { value: '', label: 'Auto-select active admin context' },
+                ...(admins ?? []).map((admin) => ({
+                  value: admin.id,
+                  label: `${admin.full_name} (${admin.email})`,
+                })),
+              ]}
+              placeholder="Select a target admin"
+            />
+          </label>
+          <div className="rounded-[20px] border border-[hsl(var(--warning)_/_0.32)] bg-[hsl(var(--warning)_/_0.12)] px-4 py-3 text-sm text-[hsl(var(--foreground-strong))]">
+            <p className="font-semibold">Writes stay blocked while this session is active.</p>
+            <p className="mt-1 text-[hsl(var(--muted-foreground))]">Use this mode to inspect org configuration safely, then stop the session to return to Control Tower.</p>
+          </div>
+        </div>
+      </AppDialog>
 
       <AppDialog
         open={profileDialogOpen}
@@ -3433,7 +3715,7 @@ export function OrganisationDetailPage() {
           {workflowForm.is_default ? (
             <AppSelect
               value={workflowForm.default_request_kind ?? ''}
-              onValueChange={(value) => setWorkflowForm((current) => ({ ...current, default_request_kind: value }))}
+              onValueChange={(value) => setWorkflowForm((current) => ({ ...current, default_request_kind: value as ApprovalRequestKind }))}
               options={APPROVAL_REQUEST_KIND_OPTIONS.map((value) => ({ value, label: startCase(value) }))}
               placeholder="Default request kind"
             />

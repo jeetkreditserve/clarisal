@@ -48,6 +48,7 @@ export type ApprovalRequestKind =
   | 'SALARY_REVISION'
   | 'COMPENSATION_TEMPLATE_CHANGE'
 export type ApprovalActionStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'SKIPPED' | 'CANCELLED'
+export type ApprovalActionAssignmentSource = 'DIRECT' | 'DELEGATED' | 'ESCALATED'
 export type HolidayCalendarStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED'
 export type HolidayClassification = 'PUBLIC' | 'RESTRICTED' | 'COMPANY'
 export type LeaveCycleType = 'CALENDAR_YEAR' | 'FINANCIAL_YEAR' | 'CUSTOM_FIXED_START' | 'EMPLOYEE_JOINING_DATE'
@@ -64,6 +65,10 @@ export type AttendanceImportMode = 'ATTENDANCE_SHEET' | 'PUNCH_SHEET'
 export type AttendanceImportStatus = 'FAILED' | 'READY_FOR_REVIEW' | 'POSTED'
 export type AttendanceDayStatus = 'PRESENT' | 'HALF_DAY' | 'ABSENT' | 'INCOMPLETE' | 'HOLIDAY' | 'WEEK_OFF' | 'ON_LEAVE' | 'ON_DUTY'
 export type AttendanceRegularizationStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED' | 'WITHDRAWN'
+export type BiometricProtocol = 'ZK_ADMS' | 'ESSL_EBIOSERVER' | 'MATRIX_COSEC' | 'SUPREMA_BIOSTAR' | 'HIKVISION_ISAPI'
+export type OffboardingProcessStatus = 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED'
+export type OffboardingTaskStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'WAIVED'
+export type OffboardingTaskOwner = 'ORG_ADMIN' | 'MANAGER' | 'EMPLOYEE' | 'PAYROLL' | 'IT'
 
 export interface LinkedOrganisationAddress {
   id: string
@@ -221,6 +226,7 @@ export interface EmployeeDetail {
   designation: string
   employment_type: EmploymentType
   date_of_joining: string | null
+  probation_end_date: string | null
   date_of_exit: string | null
   status: EmployeeStatus
   onboarding_status: EmployeeOnboardingStatus
@@ -244,6 +250,78 @@ export interface EmployeeDetail {
     on_duty: EffectiveApprovalWorkflowSummary
     attendance_regularization: EffectiveApprovalWorkflowSummary
   }
+  offboarding: OffboardingProcess | null
+}
+
+export interface OffboardingTask {
+  id: string
+  code: string
+  title: string
+  description: string
+  owner: OffboardingTaskOwner
+  status: OffboardingTaskStatus
+  note: string
+  due_date: string | null
+  is_required: boolean
+  completed_at: string | null
+  completed_by_name: string
+}
+
+export interface OffboardingProcess {
+  id: string
+  status: OffboardingProcessStatus
+  exit_status: EmployeeStatus
+  date_of_exit: string
+  exit_reason: string
+  exit_notes: string
+  started_at: string | null
+  completed_at: string | null
+  required_task_count: number
+  completed_required_task_count: number
+  pending_required_task_count: number
+  pending_document_requests: number
+  has_primary_bank_account: boolean
+  tasks: OffboardingTask[]
+}
+
+export type FNFStatus = 'DRAFT' | 'CALCULATED' | 'APPROVED' | 'PAID' | 'CANCELLED'
+
+export interface FullAndFinalSettlement {
+  id: string
+  employee_id: string
+  employee_name: string
+  offboarding_process_id: string | null
+  last_working_day: string
+  status: FNFStatus
+  prorated_salary: string
+  leave_encashment: string
+  gratuity: string
+  arrears: string
+  other_credits: string
+  tds_deduction: string
+  pf_deduction: string
+  loan_recovery: string
+  other_deductions: string
+  gross_payable: string
+  net_payable: string
+  notes: string
+  approved_at: string | null
+  paid_at: string | null
+  created_at: string
+  modified_at: string
+}
+
+export interface Arrears {
+  id: string
+  employee_id: string
+  employee_name: string
+  pay_run_id: string | null
+  for_period_year: number
+  for_period_month: number
+  reason: string
+  amount: string
+  is_included_in_payslip: boolean
+  created_at: string
 }
 
 export interface CtEmployeeDetail {
@@ -261,6 +339,14 @@ export interface CtEmployeeDetail {
   reporting_to_name: string | null
 }
 
+export interface CtSupportDiagnostic {
+  code: string
+  severity: 'critical' | 'warning' | 'info'
+  title: string
+  detail: string
+  action: string
+}
+
 export interface CtOrganisationPayrollRunSummary {
   id: string
   name: string
@@ -275,6 +361,18 @@ export interface CtOrganisationPayrollRunSummary {
   ready_count: number
   exception_count: number
   exception_messages: string[]
+  attendance_snapshot_summary: {
+    attendance_source: string
+    period_start: string | null
+    period_end: string | null
+    use_attendance_inputs?: boolean
+    employee_count: number
+    ready_item_count: number
+    exception_item_count: number
+    total_attendance_paid_days: string
+    total_lop_days: string
+    total_overtime_minutes: number
+  }
 }
 
 export interface CtOrganisationPayrollSupportSummary {
@@ -283,6 +381,7 @@ export interface CtOrganisationPayrollSupportSummary {
   approved_assignment_count: number
   pending_assignment_count: number
   payslip_count: number
+  diagnostics: CtSupportDiagnostic[]
   payroll_runs: CtOrganisationPayrollRunSummary[]
 }
 
@@ -315,6 +414,7 @@ export interface CtOrganisationAttendanceSupportSummary {
   source_count: number
   active_source_count: number
   pending_regularizations: number
+  diagnostics: CtSupportDiagnostic[]
   today_summary: {
     date: string
     total_employees: number
@@ -335,6 +435,30 @@ export interface CtOrganisationAttendanceSupportSummary {
     posted_rows: number
     created_at: string
   }>
+}
+
+export interface CtOrganisationOnboardingBlockedEmployee {
+  id: string
+  employee_code: string | null
+  full_name: string
+  designation: string
+  status: EmployeeStatus
+  onboarding_status: EmployeeOnboardingStatus
+  pending_document_requests: number
+  latest_document_activity_at: string | null
+}
+
+export interface CtOrganisationOnboardingBlockerType {
+  document_type_code: string
+  document_type_name: string
+  blocked_employee_count: number
+}
+
+export interface CtOrganisationOnboardingSupportSummary {
+  onboarding_status_counts: Record<EmployeeOnboardingStatus, number>
+  document_request_status_counts: Record<EmployeeDocumentRequestStatus, number>
+  blocked_employees: CtOrganisationOnboardingBlockedEmployee[]
+  top_blocker_types: CtOrganisationOnboardingBlockerType[]
 }
 
 export interface ProfileCompletion {
@@ -364,6 +488,7 @@ export interface EmployeeDashboard {
   events: EmployeeEvent[]
   leave_balances: LeaveBalanceSnapshot[]
   calendar: CalendarMonthView
+  offboarding: OffboardingProcess | null
 }
 
 export interface MyProfileResponse {
@@ -444,6 +569,12 @@ export interface ApprovalActionItem {
   requester_employee_id: string
   stage_name: string
   organisation_id: string
+  owner_name: string
+  assignment_source: ApprovalActionAssignmentSource
+  original_approver_name: string | null
+  due_at: string | null
+  is_overdue: boolean
+  escalated_from_action_id: string | null
   created_at: string
   modified_at: string
 }
@@ -472,6 +603,8 @@ export interface NoticeItem {
   department_ids: string[]
   office_location_ids: string[]
   employee_ids: string[]
+  automation_state: 'MANUAL' | 'WAITING_TO_PUBLISH' | 'PUBLISH_OVERDUE' | 'LIVE' | 'EXPIRY_OVERDUE' | 'EXPIRED'
+  is_automation_blocked: boolean
   created_at: string
   modified_at: string
 }
@@ -607,6 +740,149 @@ export interface AttendanceSourceConfig {
   modified_at: string
 }
 
+export interface BiometricDevice {
+  id: string
+  name: string
+  device_serial: string
+  protocol: BiometricProtocol
+  ip_address: string | null
+  port: number
+  auth_username: string
+  oauth_client_id: string
+  location_id: string | null
+  secret_preview: string
+  endpoint_path: string
+  is_active: boolean
+  last_sync_at: string | null
+  created_at: string
+}
+
+export interface BiometricSyncLog {
+  id: string
+  synced_at: string
+  records_fetched: number
+  records_processed: number
+  records_skipped: number
+  errors: string[]
+  success: boolean
+}
+
+export interface RecruitmentInterview {
+  id: string
+  application: string
+  interviewer_id: string | null
+  interviewer_name: string | null
+  scheduled_at: string
+  format: string
+  feedback: string
+  outcome: string
+  meet_link: string
+  created_at: string
+}
+
+export interface RecruitmentOfferLetter {
+  id: string
+  application_id: string
+  ctc_annual: string
+  joining_date: string | null
+  status: string
+  template_text: string
+  sent_at: string | null
+  accepted_at: string | null
+  expires_at: string | null
+  onboarded_employee_id: string | null
+}
+
+export interface RecruitmentApplication {
+  id: string
+  candidate: string
+  candidate_name: string
+  candidate_email: string
+  job_posting_id: string
+  job_posting_title: string
+  stage: string
+  applied_at: string
+  notes: string
+  rejection_reason: string
+  interviews: RecruitmentInterview[]
+  offer_letter: RecruitmentOfferLetter | null
+}
+
+export interface RecruitmentCandidateDetail {
+  id: string
+  first_name: string
+  last_name: string
+  full_name: string
+  email: string
+  phone: string
+  source: string
+  created_at: string
+  applications: RecruitmentApplication[]
+}
+
+export interface RecruitmentJobPosting {
+  id: string
+  title: string
+  department_id: string | null
+  department_name: string | null
+  location_id: string | null
+  location_name: string | null
+  description: string
+  requirements: string
+  status: string
+  posted_at: string | null
+  closes_at: string | null
+  application_count: number
+  created_at: string
+}
+
+export interface PerformanceGoalCycle {
+  id: string
+  name: string
+  start_date: string
+  end_date: string
+  status: string
+  created_at: string
+}
+
+export interface PerformanceGoal {
+  id: string
+  cycle: string
+  employee: string
+  title: string
+  description: string
+  target: string
+  metric: string
+  weight: string
+  status: string
+  due_date: string | null
+  progress_percent: number
+  created_at: string
+}
+
+export interface PerformanceAppraisalCycle {
+  id: string
+  name: string
+  review_type: string
+  start_date: string
+  end_date: string
+  status: string
+  is_probation_review: boolean
+  created_at: string
+}
+
+export interface PerformanceReview {
+  id: string
+  cycle: string
+  employee: string
+  reviewer: string | null
+  relationship: string
+  ratings: Record<string, number>
+  comments: string
+  status: string
+  submitted_at: string | null
+}
+
 export interface OrgAttendanceDashboard {
   date: string
   total_employees: number
@@ -693,6 +969,8 @@ export interface LeaveTypeConfig {
   carry_forward_mode: CarryForwardMode
   carry_forward_cap: string | null
   max_balance: string | null
+  allows_encashment: boolean
+  max_encashment_days_per_year: string | null
   allows_half_day: boolean
   requires_attachment: boolean
   attachment_after_days: string | null
@@ -770,6 +1048,22 @@ export interface LeaveOverview {
   leave_plan: LeavePlan | null
 }
 
+export interface LeaveEncashmentRequest {
+  id: string
+  employee_id: string
+  employee_name: string
+  leave_type_id: string
+  leave_type_name: string
+  cycle_start: string
+  cycle_end: string
+  days_to_encash: string
+  encashment_amount: string
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'PAID' | 'CANCELLED'
+  rejection_reason: string
+  created_at: string
+  modified_at: string
+}
+
 export interface OnDutyPolicy {
   id: string
   name: string
@@ -844,7 +1138,26 @@ export interface ApprovalStageConfig {
   fallback_type: ApprovalFallbackType
   fallback_employee_id: string | null
   fallback_employee_name: string | null
+  reminder_after_hours: number | null
+  escalate_after_hours: number | null
+  escalation_target_type: ApprovalFallbackType
+  escalation_employee_id: string | null
+  escalation_employee_name: string | null
   approvers: ApprovalStageApproverConfig[]
+}
+
+export interface ApprovalDelegation {
+  id: string
+  delegator_employee: string
+  delegator_employee_name: string
+  delegate_employee: string
+  delegate_employee_name: string
+  request_kinds: ApprovalRequestKind[]
+  start_date: string
+  end_date: string | null
+  is_active: boolean
+  created_at: string
+  modified_at: string
 }
 
 export interface ApprovalWorkflowRuleConfig {
@@ -890,6 +1203,9 @@ export type CompensationTemplateStatus = 'DRAFT' | 'PENDING_APPROVAL' | 'APPROVE
 export type CompensationAssignmentStatus = 'DRAFT' | 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED'
 export type PayrollRunStatus = 'DRAFT' | 'CALCULATED' | 'APPROVAL_PENDING' | 'APPROVED' | 'REJECTED' | 'FINALIZED' | 'CANCELLED'
 export type PayrollRunType = 'REGULAR' | 'RERUN'
+export type StatutoryFilingType = 'PF_ECR' | 'ESI_MONTHLY' | 'FORM24Q' | 'PROFESSIONAL_TAX' | 'FORM16'
+export type StatutoryFilingStatus = 'READY' | 'BLOCKED' | 'GENERATED' | 'SUPERSEDED' | 'CANCELLED'
+export type StatutoryFilingArtifactFormat = 'CSV' | 'JSON' | 'XML' | 'PDF' | 'TEXT'
 
 export interface PayrollTaxSlab {
   id: string
@@ -898,6 +1214,8 @@ export interface PayrollTaxSlab {
   rate_percent: string
 }
 
+export type TaxCategory = 'INDIVIDUAL' | 'SENIOR_CITIZEN' | 'SUPER_SENIOR_CITIZEN'
+
 export interface PayrollTaxSlabSet {
   id: string
   name: string
@@ -905,6 +1223,8 @@ export interface PayrollTaxSlabSet {
   fiscal_year: string
   is_active: boolean
   is_system_master: boolean
+  is_old_regime: boolean
+  tax_category: TaxCategory
   source_set_id: string | null
   slabs: PayrollTaxSlab[]
   created_at: string
@@ -979,6 +1299,32 @@ export interface PayrollRunItem {
   message: string
 }
 
+export interface PayrollRunAttendanceSnapshotEmployee {
+  employee_id: string
+  employee_code: string
+  status: 'READY' | 'EXCEPTION'
+  active_period_start?: string
+  active_period_end?: string
+  attendance_paid_days?: string
+  effective_lop_days?: string
+  attendance_overtime_minutes?: number
+  reason?: string
+}
+
+export interface PayrollRunAttendanceSnapshot {
+  attendance_source: string
+  period_start: string
+  period_end: string
+  use_attendance_inputs: boolean
+  employee_count: number
+  ready_item_count: number
+  exception_item_count: number
+  total_attendance_paid_days: string
+  total_lop_days: string
+  total_overtime_minutes: number
+  employees: PayrollRunAttendanceSnapshotEmployee[]
+}
+
 export interface PayrollRun {
   id: string
   name: string
@@ -986,8 +1332,10 @@ export interface PayrollRun {
   period_month: number
   run_type: PayrollRunType
   status: PayrollRunStatus
+  use_attendance_inputs: boolean
   approval_run_id: string | null
   source_run_id: string | null
+  attendance_snapshot: PayrollRunAttendanceSnapshot
   calculated_at: string | null
   submitted_at: string | null
   finalized_at: string | null
@@ -1008,11 +1356,109 @@ export interface Payslip {
   created_at: string
 }
 
+export interface StatutoryFilingBatch {
+  id: string
+  filing_type: StatutoryFilingType
+  status: StatutoryFilingStatus
+  artifact_format: StatutoryFilingArtifactFormat
+  period_year: number | null
+  period_month: number | null
+  fiscal_year: string
+  quarter: string
+  checksum: string
+  file_name: string
+  content_type: string
+  file_size_bytes: number
+  generated_at: string | null
+  source_signature: string
+  validation_errors: string[]
+  metadata: Record<string, unknown>
+  structured_payload: Record<string, unknown>
+  source_pay_run_ids: string[]
+  created_at: string
+  modified_at: string
+}
+
+export interface PayrollTdsChallan {
+  id: string
+  fiscal_year: string
+  quarter: 'Q1' | 'Q2' | 'Q3' | 'Q4'
+  period_year: number
+  period_month: number
+  bsr_code: string
+  challan_serial_number: string
+  deposit_date: string
+  tax_deposited: string
+  interest_amount: string
+  fee_amount: string
+  statement_receipt_number: string
+  notes: string
+  created_at: string
+  modified_at: string
+}
+
 export interface OrgPayrollSummary {
   tax_slab_sets: PayrollTaxSlabSet[]
   components: PayrollComponent[]
   compensation_templates: CompensationTemplate[]
   compensation_assignments: CompensationAssignment[]
   pay_runs: PayrollRun[]
+  statutory_filing_batches: StatutoryFilingBatch[]
+  tds_challans: PayrollTdsChallan[]
   payslip_count: number
+}
+
+export interface CtPayrollStatutoryMasterSlab {
+  gender: string
+  min_income: string
+  max_income: string | null
+  deduction_amount: string
+  applicable_months: number[] | null
+}
+
+export interface CtPayrollStatutoryMasterContribution {
+  min_wage: string
+  max_wage: string | null
+  employee_amount: string
+  employer_amount: string
+  applicable_months: number[] | null
+}
+
+export interface CtPayrollStatutoryMaster {
+  id: number
+  state_code: string
+  state_name: string
+  income_basis?: string
+  wage_basis?: string
+  deduction_frequency: string
+  effective_from: string
+  is_active: boolean
+  source_label?: string
+  slabs?: CtPayrollStatutoryMasterSlab[]
+  contributions?: CtPayrollStatutoryMasterContribution[]
+}
+
+export interface CtPayrollStatutoryMastersResponse {
+  professional_tax_rules: CtPayrollStatutoryMaster[]
+  labour_welfare_fund_rules: CtPayrollStatutoryMaster[]
+}
+
+export interface CtOnboardingChecklistItem {
+  label: string
+  is_complete: boolean
+  action: string | null
+}
+
+export interface CtOnboardingChecklistStage {
+  id: string
+  label: string
+  is_complete: boolean
+  items: CtOnboardingChecklistItem[]
+}
+
+export interface CtOnboardingChecklist {
+  current_stage: string
+  stages: CtOnboardingChecklistStage[]
+  can_activate: boolean
+  activation_blockers: string[]
 }

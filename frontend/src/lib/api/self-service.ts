@@ -16,11 +16,13 @@ import type {
   EmployeeAttendanceSummary,
   FamilyMember,
   GovernmentId,
+  LeaveEncashmentRequest,
   LeaveOverview,
   LeaveRequestRecord,
   MyOnboardingResponse,
   MyProfileResponse,
   NoticeItem,
+  OffboardingProcess,
   OnDutyPolicy,
   OnDutyRequestRecord,
   Payslip,
@@ -33,6 +35,11 @@ export async function fetchMyDashboard() {
 
 export async function fetchMyProfile() {
   const { data } = await api.get<MyProfileResponse>('/me/profile/')
+  return data
+}
+
+export async function fetchMyOffboarding() {
+  const { data } = await api.get<OffboardingProcess | null>('/me/offboarding/')
   return data
 }
 
@@ -255,6 +262,21 @@ export async function withdrawMyLeaveRequest(id: string) {
   return data
 }
 
+export async function fetchMyLeaveEncashments() {
+  const { data } = await api.get<LeaveEncashmentRequest[]>('/me/leave-encashments/')
+  return data
+}
+
+export async function createMyLeaveEncashment(payload: {
+  leave_type_id: string
+  cycle_start: string
+  cycle_end: string
+  days_to_encash: string
+}) {
+  const { data } = await api.post<LeaveEncashmentRequest>('/me/leave-encashments/', payload)
+  return data
+}
+
 export async function fetchMyOnDutyPolicies() {
   const { data } = await api.get<OnDutyPolicy[]>('/me/on-duty/policies/')
   return data
@@ -273,6 +295,13 @@ export async function fetchMyPayslips() {
 export async function fetchMyPayslip(id: string) {
   const { data } = await api.get<Payslip>(`/me/payroll/payslips/${id}/`)
   return data
+}
+
+export async function downloadMyPayslip(id: string) {
+  const response = await api.get<Blob>(`/me/payroll/payslips/${id}/download/`, {
+    responseType: 'blob',
+  })
+  return response.data
 }
 
 export async function createMyOnDutyRequest(payload: Record<string, unknown>) {

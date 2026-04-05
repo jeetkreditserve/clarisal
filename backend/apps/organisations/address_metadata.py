@@ -215,7 +215,7 @@ COUNTRY_ADDRESS_RULES = {
     },
 }
 
-SUBDIVISIONS_BY_COUNTRY = {}
+SUBDIVISIONS_BY_COUNTRY: dict[str, list[dict[str, str]]] = {}
 for row in SUBDIVISION_ROWS.splitlines():
     country_code, code, label, *rest = row.split('|')
     SUBDIVISIONS_BY_COUNTRY.setdefault(country_code, []).append(

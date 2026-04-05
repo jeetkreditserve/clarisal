@@ -4,7 +4,7 @@ test.describe('Employee Profile', () => {
   test.describe('Read-only', () => {
     test('profile page loads at /me/profile', async ({ page }) => {
       await page.goto('/me/profile')
-      await expect(page.locator('text=Profile, text=My profile, h1').first()).toBeVisible({ timeout: 15000 })
+      await expect(page.getByRole('heading', { name: 'Profile and identity' })).toBeVisible({ timeout: 15000 })
     })
 
     test('education page loads at /me/education', async ({ page }) => {
@@ -23,15 +23,14 @@ test.describe('Employee Profile', () => {
     test('government IDs section visible on profile', async ({ page }) => {
       await page.goto('/me/profile')
       await page.waitForSelector('body', { timeout: 10000 })
-      // Look for PAN, Aadhaar, or government ID section
-      const govSection = page.locator('text=Government IDs, text=PAN, text=Aadhaar').first()
+      const govSection = page.locator('text=Government IDs').first()
       await expect(govSection).toBeVisible({ timeout: 15000 })
     })
 
     test('bank account section visible on profile', async ({ page }) => {
       await page.goto('/me/profile')
       await page.waitForSelector('body', { timeout: 10000 })
-      const bankSection = page.locator('text=Bank account, text=Bank accounts').first()
+      const bankSection = page.locator('text=Bank accounts').first()
       await expect(bankSection).toBeVisible({ timeout: 15000 })
     })
   })

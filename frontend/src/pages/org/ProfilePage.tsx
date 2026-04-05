@@ -9,6 +9,7 @@ import {
   useUpdateOrgAddress,
   useUpdateOrgProfile,
 } from '@/hooks/useOrgAdmin'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { AppDialog } from '@/components/ui/AppDialog'
 import { AppSelect } from '@/components/ui/AppSelect'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -211,7 +212,6 @@ export function OrgProfilePage() {
 
   const handleDeactivate = async (address: OrganisationAddress) => {
     if (mandatoryAddressTypes.includes(address.address_type)) return
-    if (!window.confirm('Deactivate this address?')) return
     try {
       await deactivateAddressMutation.mutateAsync(address.id)
       toast.success('Address deactivated.')
@@ -401,9 +401,17 @@ export function OrgProfilePage() {
                     Edit
                   </button>
                   {!mandatoryAddressTypes.includes(address.address_type) && address.is_active ? (
-                    <button type="button" onClick={() => void handleDeactivate(address)} className="btn-danger">
-                      Deactivate
-                    </button>
+                    <ConfirmDialog
+                      trigger={
+                        <button type="button" className="btn-danger">
+                          Deactivate
+                        </button>
+                      }
+                      title="Deactivate address?"
+                      description="This address will remain in history but will no longer be available for active configuration."
+                      confirmLabel="Deactivate"
+                      onConfirm={() => handleDeactivate(address)}
+                    />
                   ) : null}
                 </div>
               </div>

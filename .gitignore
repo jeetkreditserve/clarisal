@@ -24,6 +24,7 @@ media/
 # Node
 node_modules/
 frontend/dist/
+frontend/coverage/
 frontend/.vite/
 
 # IDE
@@ -42,6 +43,7 @@ Thumbs.db
 # Test
 .coverage
 htmlcov/
+backend/htmlcov/
 .pytest_cache/
 /tmp/test-emails/
 

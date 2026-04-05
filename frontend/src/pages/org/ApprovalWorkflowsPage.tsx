@@ -1,18 +1,27 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { toast } from 'sonner'
 
 import { ApprovalDecisionDialog } from '@/components/ui/ApprovalDecisionDialog'
+import { AppCheckbox } from '@/components/ui/AppCheckbox'
+import { AppSelect } from '@/components/ui/AppSelect'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { SkeletonPageHeader, SkeletonTable } from '@/components/ui/Skeleton'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import {
   useApprovalInbox,
+  useApprovalDelegations,
   useApprovalWorkflows,
   useApproveApprovalAction,
+  useCreateApprovalDelegation,
+  useEmployees,
   useRejectApprovalAction,
+  useUpdateApprovalDelegation,
 } from '@/hooks/useOrgAdmin'
 import { useCtOrgConfiguration } from '@/hooks/useCtOrganisations'
+import { APPROVAL_REQUEST_KIND_OPTIONS } from '@/lib/constants'
+import { getErrorMessage } from '@/lib/errors'
 import { formatDateTime } from '@/lib/format'
 import { getApprovalActionTone } from '@/lib/status'
 
@@ -35,13 +44,25 @@ export function ApprovalWorkflowsPage() {
   const tabs = isCtMode ? CT_TABS : ORG_TABS
   const [searchParams, setSearchParams] = useSearchParams()
   const activeTab = tabs.some((tab) => tab.id === searchParams.get('tab')) ? searchParams.get('tab') : 'workflows'
-  const { data: workflows, isLoading } = useApprovalWorkflows()
+  const { data: workflows, isLoading } = useApprovalWorkflows(!isCtMode)
   const { data: configuration, isLoading: isCtLoading } = useCtOrgConfiguration(organisationId ?? '', isCtMode)
-  const { data: inbox } = useApprovalInbox()
+  const { data: inbox } = useApprovalInbox(!isCtMode)
+  const { data: approvalDelegations = [] } = useApprovalDelegations(!isCtMode)
+  const { data: employees } = useEmployees({ status: 'ACTIVE', page: 1 }, !isCtMode)
   const approveMutation = useApproveApprovalAction()
   const rejectMutation = useRejectApprovalAction()
+  const createDelegationMutation = useCreateApprovalDelegation()
+  const updateDelegationMutation = useUpdateApprovalDelegation()
   const resolvedWorkflows = isCtMode ? configuration?.approval_workflows : workflows
   const pageLoading = isCtMode ? isCtLoading : isLoading
+  const [delegationForm, setDelegationForm] = useState({
+    delegator_employee_id: '',
+    delegate_employee_id: '',
+    request_kinds: ['LEAVE'],
+    start_date: '',
+    end_date: '',
+    is_active: true,
+  })
 
   const health = useMemo(() => {
     const workflowList = resolvedWorkflows ?? []
@@ -52,6 +73,60 @@ export function ApprovalWorkflowsPage() {
       stages: workflowList.reduce((sum, workflow) => sum + workflow.stages.length, 0),
     }
   }, [resolvedWorkflows])
+  const employeeOptions = useMemo(
+    () => [{ value: '', label: 'Select employee' }, ...((employees?.results ?? []).map((employee) => ({ value: employee.id, label: employee.full_name, hint: employee.designation })))],
+    [employees],
+  )
+
+  const saveDelegation = async (event: React.FormEvent) => {
+    event.preventDefault()
+    try {
+      await createDelegationMutation.mutateAsync({
+        delegator_employee_id: delegationForm.delegator_employee_id,
+        delegate_employee_id: delegationForm.delegate_employee_id,
+        request_kinds: delegationForm.request_kinds,
+        start_date: delegationForm.start_date,
+        end_date: delegationForm.end_date || null,
+        is_active: delegationForm.is_active,
+      })
+      toast.success('Approval delegation saved.')
+      setDelegationForm({
+        delegator_employee_id: '',
+        delegate_employee_id: '',
+        request_kinds: ['LEAVE'],
+        start_date: '',
+        end_date: '',
+        is_active: true,
+      })
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to save the approval delegation.'))
+    }
+  }
+
+  const toggleDelegation = async (delegationId: string, nextActive: boolean, currentValues: {
+    delegator_employee: string
+    delegate_employee: string
+    request_kinds: string[]
+    start_date: string
+    end_date: string | null
+  }) => {
+    try {
+      await updateDelegationMutation.mutateAsync({
+        id: delegationId,
+        payload: {
+          delegator_employee_id: currentValues.delegator_employee,
+          delegate_employee_id: currentValues.delegate_employee,
+          request_kinds: currentValues.request_kinds,
+          start_date: currentValues.start_date,
+          end_date: currentValues.end_date,
+          is_active: nextActive,
+        },
+      })
+      toast.success('Delegation updated.')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to update the delegation.'))
+    }
+  }
 
   if (pageLoading) {
     return (
@@ -157,11 +232,19 @@ export function ApprovalWorkflowsPage() {
                 <div>
                   <p className="font-semibold text-[hsl(var(--foreground-strong))]">{action.subject_label}</p>
                   <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                    {action.requester_name} • {action.stage_name}
+                    {action.requester_name} • {action.stage_name} • Owner: {action.owner_name}
                   </p>
+                  {action.original_approver_name ? (
+                    <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
+                      Routed via {action.assignment_source.toLowerCase()} from {action.original_approver_name}
+                    </p>
+                  ) : null}
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
                   <StatusBadge tone={getApprovalActionTone(action.status)}>{action.status}</StatusBadge>
+                  {action.is_overdue ? <StatusBadge tone="danger">Overdue</StatusBadge> : null}
+                  {action.assignment_source === 'ESCALATED' ? <StatusBadge tone="warning">Escalated</StatusBadge> : null}
+                  {action.assignment_source === 'DELEGATED' ? <StatusBadge tone="info">Delegated</StatusBadge> : null}
                   <ApprovalDecisionDialog
                     actionLabel={`Approve ${action.subject_label}`}
                     triggerClassName="btn-secondary"
@@ -233,6 +316,121 @@ export function ApprovalWorkflowsPage() {
               </p>
             </div>
           </div>
+          {!isCtMode ? (
+            <div className="mt-6 grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+              <form onSubmit={saveDelegation} className="surface-shell rounded-[20px] px-5 py-5">
+                <p className="font-semibold text-[hsl(var(--foreground-strong))]">Approval delegation</p>
+                <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
+                  Redirect selected request kinds to another employee for a bounded date range.
+                </p>
+                <div className="mt-4 grid gap-4">
+                  <div>
+                    <label className="field-label">Delegator</label>
+                    <AppSelect
+                      value={delegationForm.delegator_employee_id}
+                      onValueChange={(value) => setDelegationForm((current) => ({ ...current, delegator_employee_id: value }))}
+                      options={employeeOptions}
+                    />
+                  </div>
+                  <div>
+                    <label className="field-label">Delegate</label>
+                    <AppSelect
+                      value={delegationForm.delegate_employee_id}
+                      onValueChange={(value) => setDelegationForm((current) => ({ ...current, delegate_employee_id: value }))}
+                      options={employeeOptions}
+                    />
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div>
+                      <label className="field-label">Start date</label>
+                      <input
+                        className="field-input"
+                        type="date"
+                        value={delegationForm.start_date}
+                        onChange={(event) => setDelegationForm((current) => ({ ...current, start_date: event.target.value }))}
+                      />
+                    </div>
+                    <div>
+                      <label className="field-label">End date</label>
+                      <input
+                        className="field-input"
+                        type="date"
+                        value={delegationForm.end_date}
+                        onChange={(event) => setDelegationForm((current) => ({ ...current, end_date: event.target.value }))}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {APPROVAL_REQUEST_KIND_OPTIONS.map((requestKind) => (
+                      <AppCheckbox
+                        key={requestKind}
+                        checked={delegationForm.request_kinds.includes(requestKind)}
+                        onCheckedChange={(checked) =>
+                          setDelegationForm((current) => ({
+                            ...current,
+                            request_kinds: checked
+                              ? [...current.request_kinds, requestKind]
+                              : current.request_kinds.filter((value) => value !== requestKind),
+                          }))
+                        }
+                        label={requestKind.replace(/_/g, ' ')}
+                      />
+                    ))}
+                  </div>
+                  <AppCheckbox
+                    checked={delegationForm.is_active}
+                    onCheckedChange={(checked) => setDelegationForm((current) => ({ ...current, is_active: checked }))}
+                    label="Delegation active"
+                  />
+                  <button type="submit" className="btn-primary" disabled={createDelegationMutation.isPending}>
+                    Save delegation
+                  </button>
+                </div>
+              </form>
+
+              <div className="surface-shell rounded-[20px] px-5 py-5">
+                <p className="font-semibold text-[hsl(var(--foreground-strong))]">Current delegations</p>
+                <div className="mt-4 space-y-3">
+                  {approvalDelegations.length ? approvalDelegations.map((delegation) => (
+                    <div key={delegation.id} className="surface-muted rounded-[18px] px-4 py-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <p className="font-semibold text-[hsl(var(--foreground-strong))]">
+                            {delegation.delegator_employee_name} → {delegation.delegate_employee_name}
+                          </p>
+                          <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
+                            {delegation.request_kinds.join(' • ')} • {delegation.start_date} to {delegation.end_date || 'Open ended'}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <StatusBadge tone={delegation.is_active ? 'success' : 'neutral'}>
+                            {delegation.is_active ? 'Active' : 'Inactive'}
+                          </StatusBadge>
+                          <button
+                            type="button"
+                            className="btn-secondary"
+                            onClick={() =>
+                              void toggleDelegation(delegation.id, !delegation.is_active, {
+                                delegator_employee: delegation.delegator_employee,
+                                delegate_employee: delegation.delegate_employee,
+                                request_kinds: delegation.request_kinds,
+                                start_date: delegation.start_date,
+                                end_date: delegation.end_date,
+                              })
+                            }
+                          >
+                            {delegation.is_active ? 'Deactivate' : 'Activate'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )) : (
+                    <p className="text-sm text-[hsl(var(--muted-foreground))]">No approval delegations configured yet.</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : null}
         </SectionCard>
       ) : null}
     </div>

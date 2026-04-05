@@ -11,10 +11,13 @@ test.describe('Employee Leave', () => {
     test('leave balance cards visible', async ({ page }) => {
       await page.goto('/me/leave')
       await page.waitForSelector('text=Leave management', { timeout: 15000 })
-      // Balance cards are surface-card divs with leave type names
-      // Either balances exist or a "no leave plan" empty state is shown
-      const balanceOrEmpty = page.locator('.surface-card, text=No leave plan, text=no leave').first()
-      await expect(balanceOrEmpty).toBeVisible({ timeout: 15000 })
+      const balanceCards = page.locator('.surface-card')
+      if (await balanceCards.count()) {
+        await expect(balanceCards.first()).toBeVisible({ timeout: 15000 })
+        return
+      }
+
+      await expect(page.locator('text=No leave plan is assigned to your employee record yet.')).toBeVisible({ timeout: 15000 })
     })
 
     test('leave request form visible', async ({ page }) => {
@@ -27,8 +30,7 @@ test.describe('Employee Leave', () => {
     test('leave history section visible', async ({ page }) => {
       await page.goto('/me/leave')
       await page.waitForSelector('text=Leave management', { timeout: 15000 })
-      // History table or empty state
-      const historySection = page.locator('text=Leave requests, text=No leave requests, text=history').first()
+      const historySection = page.locator('text=My leave requests').first()
       await expect(historySection).toBeVisible({ timeout: 15000 })
     })
   })
@@ -39,11 +41,10 @@ test.describe('Employee Leave', () => {
       await page.waitForSelector('text=Leave management', { timeout: 15000 })
 
       // Check if leave type selector has options (requires leave plan to be assigned)
-      const leaveTypeSelector = page.locator('[data-radix-select-trigger], button[role="combobox"]').first()
+      const leaveTypeSelector = page.getByRole('button', { name: /select leave type/i })
       const selectorExists = await leaveTypeSelector.isVisible({ timeout: 5000 }).catch(() => false)
       if (!selectorExists) {
-        // No leave plan assigned — skip this test
-        test.skip()
+        await expect(page.locator('text=No leave plan is assigned to your employee record yet.')).toBeVisible({ timeout: 10000 })
         return
       }
 
@@ -51,26 +52,18 @@ test.describe('Employee Leave', () => {
       const firstOption = page.locator('[role="option"]').first()
       const hasOptions = (await firstOption.count()) > 0
       if (!hasOptions) {
-        test.skip()
+        await page.keyboard.press('Escape')
         return
       }
       await firstOption.click()
 
-      // Fill dates using AppDatePicker (custom date picker) — try direct fill on hidden inputs
-      // Future dates to avoid past-date errors
-      const today = new Date()
-      const futureDate = new Date(today)
-      futureDate.setDate(today.getDate() + 7)
-      const futureDateStr = futureDate.toISOString().split('T')[0]
+      const startDateBtn = page.getByRole('button', { name: /select start date/i })
+      await startDateBtn.click()
+      await page.locator('[data-radix-popper-content-wrapper]').last().getByRole('button').filter({ hasText: /^\d+$/ }).first().click()
 
-      // Try to set dates via the AppDatePicker
-      const startDateBtn = page.locator('button:has-text("Start date"), [placeholder*="start"], button[aria-label*="date"]').first()
-      if (await startDateBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
-        await startDateBtn.click()
-        // In a date picker, type the date
-        await page.keyboard.type(futureDateStr)
-        await page.keyboard.press('Enter')
-      }
+      const endDateBtn = page.getByRole('button', { name: /select end date/i })
+      await endDateBtn.click()
+      await page.locator('[data-radix-popper-content-wrapper]').last().getByRole('button').filter({ hasText: /^\d+$/ }).nth(1).click()
 
       // Fill reason
       const reasonInput = page.locator('input[placeholder*="reason"], textarea[placeholder*="reason"], input[placeholder*="Reason"], textarea[placeholder*="Reason"]').first()

@@ -24,7 +24,7 @@ export function NoticesPage() {
     status: statusFilter || undefined,
     audience_type: audienceFilter || undefined,
     search: search || undefined,
-  })
+  }, !isCtMode)
   const { data: configuration, isLoading: isCtLoading } = useCtOrgConfiguration(organisationId ?? '', isCtMode)
   const publishMutation = usePublishNotice()
   const publishCtMutation = usePublishCtNotice(organisationId ?? '')
@@ -55,6 +55,7 @@ export function NoticesPage() {
   const stickyCount = (resolvedNotices ?? []).filter((notice) => notice.is_sticky).length
   const publishedCount = (resolvedNotices ?? []).filter((notice) => notice.status === 'PUBLISHED').length
   const scheduledCount = (resolvedNotices ?? []).filter((notice) => notice.status === 'SCHEDULED').length
+  const blockedCount = (resolvedNotices ?? []).filter((notice) => notice.is_automation_blocked).length
 
   return (
     <div className="space-y-6">
@@ -76,7 +77,7 @@ export function NoticesPage() {
         }
       />
 
-      <div className="grid gap-4 xl:grid-cols-4">
+      <div className="grid gap-4 xl:grid-cols-5">
         <div className="surface-card rounded-[28px] p-5">
           <p className="text-xs uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">Visible in list</p>
           <p className="mt-3 text-3xl font-semibold text-[hsl(var(--foreground-strong))]">{resolvedNotices?.length ?? 0}</p>
@@ -92,6 +93,10 @@ export function NoticesPage() {
         <div className="surface-card rounded-[28px] p-5">
           <p className="text-xs uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">Sticky notices</p>
           <p className="mt-3 text-3xl font-semibold text-[hsl(var(--foreground-strong))]">{stickyCount}</p>
+        </div>
+        <div className="surface-card rounded-[28px] p-5">
+          <p className="text-xs uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">Automation blocked</p>
+          <p className="mt-3 text-3xl font-semibold text-[hsl(var(--foreground-strong))]">{blockedCount}</p>
         </div>
       </div>
 
@@ -139,9 +144,17 @@ export function NoticesPage() {
                     <StatusBadge tone={notice.status === 'PUBLISHED' ? 'success' : notice.status === 'SCHEDULED' ? 'warning' : notice.status === 'EXPIRED' ? 'neutral' : 'info'}>
                       {startCase(notice.status)}
                     </StatusBadge>
+                    <StatusBadge tone={notice.is_automation_blocked ? 'danger' : notice.automation_state === 'WAITING_TO_PUBLISH' ? 'warning' : 'info'}>
+                      {startCase(notice.automation_state)}
+                    </StatusBadge>
                     {notice.is_sticky ? <StatusBadge tone="info">Sticky</StatusBadge> : null}
                   </div>
                   <p className="max-w-3xl text-sm text-[hsl(var(--muted-foreground))]">{notice.body}</p>
+                  {notice.is_automation_blocked ? (
+                    <p className="text-sm text-[hsl(var(--danger))]">
+                      Automation is blocked. Review the schedule or expiry window so the worker can complete this lifecycle transition.
+                    </p>
+                  ) : null}
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
                   <button type="button" className="btn-secondary" onClick={() => navigate(`${basePath}/notices/${notice.id}`)}>

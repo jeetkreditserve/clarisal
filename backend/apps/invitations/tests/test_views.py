@@ -1,12 +1,19 @@
-import pytest
 import secrets
+from unittest.mock import patch
+
+import pytest
 from django.utils import timezone
 from rest_framework.test import APIClient
+
 from apps.accounts.models import AccountType, User, UserRole
 from apps.common.security import hash_token
-from apps.organisations.models import Organisation, OrganisationMembership, OrganisationMembershipStatus, OrganisationStatus
 from apps.invitations.models import Invitation, InvitationRole, InvitationStatus
-from unittest.mock import patch
+from apps.organisations.models import (
+    Organisation,
+    OrganisationMembership,
+    OrganisationMembershipStatus,
+    OrganisationStatus,
+)
 
 
 @pytest.fixture
@@ -57,7 +64,7 @@ class TestValidateInviteToken:
         ct = User.objects.create_superuser(email='ct@t.com', password='pass', role=UserRole.CONTROL_TOWER)
         org = Organisation.objects.create(name='Org', licence_count=5, created_by=ct)
         raw_token = secrets.token_urlsafe(32)
-        invite = Invitation.objects.create(
+        Invitation.objects.create(
             token_hash=hash_token(raw_token), email='a@b.com',
             organisation=org, role=InvitationRole.ORG_ADMIN,
             invited_by=ct, status=InvitationStatus.PENDING,
@@ -87,7 +94,7 @@ class TestAcceptInvite:
             status=OrganisationMembershipStatus.INVITED,
         )
         raw_token = secrets.token_urlsafe(32)
-        invite = Invitation.objects.create(
+        Invitation.objects.create(
             token_hash=hash_token(raw_token), email='admin@org.com',
             organisation=org, role=InvitationRole.ORG_ADMIN,
             invited_by=ct, user=user, status=InvitationStatus.PENDING,

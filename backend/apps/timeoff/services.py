@@ -1,6 +1,6 @@
 import calendar
 import math
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 
 from django.db import transaction
@@ -23,17 +23,27 @@ from .models import (
     LeaveCreditFrequency,
     LeaveCycle,
     LeaveCycleType,
+    LeaveEncashmentRequest,
+    LeaveEncashmentStatus,
     LeavePlan,
-    LeavePlanEmployeeAssignment,
     LeavePlanRule,
     LeaveRequest,
     LeaveRequestStatus,
     LeaveType,
-    OnDutyPolicy,
     OnDutyDurationType,
+    OnDutyPolicy,
     OnDutyRequest,
     OnDutyRequestStatus,
 )
+from .repositories import (
+    get_leave_balance_record,
+    get_leave_request_total_units,
+    get_total_days_to_encash,
+    list_leave_requests_in_range,
+    list_overlapping_leave_requests,
+)
+
+ZERO = Decimal('0.00')
 
 
 def _decimal(value):
@@ -80,6 +90,9 @@ def get_default_leave_cycle(organisation):
 
 def upsert_leave_cycle(organisation, actor=None, cycle=None, **fields):
     with transaction.atomic():
+        target_is_default = fields.get('is_default', cycle.is_default if cycle is not None else False)
+        if target_is_default:
+            LeaveCycle.objects.filter(organisation=organisation).exclude(id=getattr(cycle, 'id', None)).update(is_default=False)
         if cycle is None:
             cycle = LeaveCycle.objects.create(
                 organisation=organisation,
@@ -90,9 +103,6 @@ def upsert_leave_cycle(organisation, actor=None, cycle=None, **fields):
             for attr, value in fields.items():
                 setattr(cycle, attr, value)
             cycle.save()
-
-        if cycle.is_default:
-            LeaveCycle.objects.filter(organisation=organisation).exclude(id=cycle.id).update(is_default=False)
 
     log_audit_event(actor, 'leave_cycle.upserted', organisation=organisation, target=cycle)
     return cycle
@@ -137,9 +147,9 @@ def _upsert_leave_plan_relations(leave_plan, leave_types=None, rules=None):
 
 def create_leave_plan(organisation, actor=None, leave_types=None, rules=None, **fields):
     with transaction.atomic():
+        if fields.get('is_default'):
+            LeavePlan.objects.filter(organisation=organisation).update(is_default=False)
         leave_plan = LeavePlan.objects.create(organisation=organisation, created_by=actor, **fields)
-        if leave_plan.is_default:
-            LeavePlan.objects.filter(organisation=organisation).exclude(id=leave_plan.id).update(is_default=False)
         _upsert_leave_plan_relations(leave_plan, leave_types=leave_types or [], rules=rules or [])
     log_audit_event(actor, 'leave_plan.created', organisation=organisation, target=leave_plan)
     return leave_plan
@@ -147,11 +157,12 @@ def create_leave_plan(organisation, actor=None, leave_types=None, rules=None, **
 
 def update_leave_plan(leave_plan, actor=None, leave_types=None, rules=None, **fields):
     with transaction.atomic():
+        target_is_default = fields.get('is_default', leave_plan.is_default)
+        if target_is_default:
+            LeavePlan.objects.filter(organisation=leave_plan.organisation).exclude(id=leave_plan.id).update(is_default=False)
         for attr, value in fields.items():
             setattr(leave_plan, attr, value)
         leave_plan.save()
-        if leave_plan.is_default:
-            LeavePlan.objects.filter(organisation=leave_plan.organisation).exclude(id=leave_plan.id).update(is_default=False)
         _upsert_leave_plan_relations(leave_plan, leave_types=leave_types, rules=rules)
     log_audit_event(actor, 'leave_plan.updated', organisation=leave_plan.organisation, target=leave_plan)
     return leave_plan
@@ -254,6 +265,21 @@ def _compute_credit_for_period(employee, leave_type, cycle_start, cycle_end):
     return _decimal(entitlement)
 
 
+def _calculate_period_credit_amount(leave_type):
+    annual = _decimal(leave_type.annual_entitlement)
+    if leave_type.credit_frequency == LeaveCreditFrequency.MANUAL:
+        return ZERO
+    if leave_type.credit_frequency == LeaveCreditFrequency.YEARLY:
+        return annual
+    if leave_type.credit_frequency == LeaveCreditFrequency.MONTHLY:
+        return _decimal(annual / Decimal('12'))
+    if leave_type.credit_frequency == LeaveCreditFrequency.QUARTERLY:
+        return _decimal(annual / Decimal('4'))
+    if leave_type.credit_frequency == LeaveCreditFrequency.HALF_YEARLY:
+        return _decimal(annual / Decimal('2'))
+    return ZERO
+
+
 def _leave_request_units(start_date, end_date, start_session, end_session):
     days = Decimal((end_date - start_date).days + 1)
     if start_date == end_date and start_session != DaySession.FULL_DAY and end_session != DaySession.FULL_DAY:
@@ -281,27 +307,34 @@ def get_or_create_leave_balance(employee, leave_type, as_of=None):
         },
     )
 
-    from django.db.models import Sum as _Sum
     credited = _compute_credit_for_period(employee, leave_type, cycle_start, cycle_end)
-    used = _decimal(
-        LeaveRequest.objects.filter(
-            employee=employee,
-            leave_type=leave_type,
-            status=LeaveRequestStatus.APPROVED,
-            start_date__gte=cycle_start,
-            end_date__lte=cycle_end,
-        ).aggregate(total=_Sum('total_units'))['total']
-    ) or Decimal('0.00')
-    pending = _decimal(
-        LeaveRequest.objects.filter(
-            employee=employee,
-            leave_type=leave_type,
-            status=LeaveRequestStatus.PENDING,
-            start_date__gte=cycle_start,
-            end_date__lte=cycle_end,
-        ).aggregate(total=_Sum('total_units'))['total']
-    ) or Decimal('0.00')
-    balance.credited_amount = _decimal(credited)
+    used_total = get_leave_request_total_units(
+        employee_id=employee.id,
+        leave_type_id=leave_type.id,
+        status=LeaveRequestStatus.APPROVED,
+        cycle_start=cycle_start,
+        cycle_end=cycle_end,
+    )
+    pending_total = get_leave_request_total_units(
+        employee_id=employee.id,
+        leave_type_id=leave_type.id,
+        status=LeaveRequestStatus.PENDING,
+        cycle_start=cycle_start,
+        cycle_end=cycle_end,
+    )
+    used = _decimal(used_total or Decimal('0.00'))
+    pending = _decimal(pending_total or Decimal('0.00'))
+    capped_credited = _decimal(credited)
+    if leave_type.max_balance is not None:
+        max_credit_total = _decimal(
+            leave_type.max_balance
+            - balance.opening_balance
+            - balance.carried_forward_amount
+            + used
+            + pending
+        )
+        capped_credited = max(ZERO, min(capped_credited, max_credit_total))
+    balance.credited_amount = capped_credited
     balance.used_amount = _decimal(used)
     balance.pending_amount = _decimal(pending)
     balance.save(update_fields=['credited_amount', 'used_amount', 'pending_amount', 'modified_at'])
@@ -312,6 +345,52 @@ def get_or_create_leave_balance(employee, leave_type, as_of=None):
             amount=balance.credited_amount,
             effective_date=cycle_start,
         )
+    return balance
+
+
+@transaction.atomic
+def credit_leave_for_period(*, employee, leave_type, cycle_start, cycle_end, credit_date=None, actor=None):
+    credit_amount = _calculate_period_credit_amount(leave_type)
+    if credit_amount <= ZERO:
+        return None
+
+    balance, _ = LeaveBalance.objects.get_or_create(
+        employee=employee,
+        leave_type=leave_type,
+        cycle_start=cycle_start,
+        cycle_end=cycle_end,
+        defaults={
+            'opening_balance': ZERO,
+            'credited_amount': ZERO,
+            'used_amount': ZERO,
+            'pending_amount': ZERO,
+            'carried_forward_amount': ZERO,
+        },
+    )
+
+    if leave_type.max_balance is not None:
+        current_total = (
+            balance.opening_balance
+            + balance.carried_forward_amount
+            + balance.credited_amount
+            - balance.used_amount
+            - balance.pending_amount
+        )
+        available_capacity = _decimal(leave_type.max_balance - current_total)
+        if available_capacity <= ZERO:
+            return balance
+        credit_amount = min(credit_amount, available_capacity)
+
+    balance.credited_amount = _decimal(balance.credited_amount + credit_amount)
+    balance.save(update_fields=['credited_amount', 'modified_at'])
+    LeaveBalanceLedgerEntry.objects.create(
+        leave_balance=balance,
+        entry_type=LeaveBalanceEntryType.CREDIT,
+        amount=credit_amount,
+        effective_date=credit_date or date.today(),
+        note=f'Periodic credit ({leave_type.credit_frequency})',
+        created_by=actor,
+    )
     return balance
 
 
@@ -337,23 +416,202 @@ def get_employee_leave_balances(employee):
     return balances
 
 
+@transaction.atomic
+def process_cycle_end_carry_forward(
+    *,
+    employee,
+    leave_type,
+    old_cycle_start,
+    old_cycle_end,
+    new_cycle_start,
+    new_cycle_end,
+    actor=None,
+):
+    old_balance = get_leave_balance_record(
+        employee_id=employee.id,
+        leave_type_id=leave_type.id,
+        cycle_start=old_cycle_start,
+        cycle_end=old_cycle_end,
+    )
+    available_to_carry = ZERO
+    if old_balance is not None:
+        available_to_carry = max(
+            ZERO,
+            old_balance.opening_balance
+            + old_balance.carried_forward_amount
+            + old_balance.credited_amount
+            - old_balance.used_amount
+            - old_balance.pending_amount,
+        )
+
+    if leave_type.carry_forward_mode == CarryForwardMode.NONE:
+        carry_forward_amount = ZERO
+    elif leave_type.carry_forward_mode == CarryForwardMode.UNLIMITED:
+        carry_forward_amount = _decimal(available_to_carry)
+    else:
+        cap = _decimal(leave_type.carry_forward_cap or ZERO)
+        carry_forward_amount = min(_decimal(available_to_carry), cap)
+
+    new_balance, _ = LeaveBalance.objects.get_or_create(
+        employee=employee,
+        leave_type=leave_type,
+        cycle_start=new_cycle_start,
+        cycle_end=new_cycle_end,
+        defaults={
+            'opening_balance': ZERO,
+            'credited_amount': ZERO,
+            'used_amount': ZERO,
+            'pending_amount': ZERO,
+            'carried_forward_amount': ZERO,
+        },
+    )
+    new_balance.carried_forward_amount = carry_forward_amount
+    new_balance.save(update_fields=['carried_forward_amount', 'modified_at'])
+    LeaveBalanceLedgerEntry.objects.update_or_create(
+        leave_balance=new_balance,
+        entry_type=LeaveBalanceEntryType.CARRY_FORWARD,
+        effective_date=new_cycle_start,
+        defaults={
+            'amount': carry_forward_amount,
+            'note': f'Carry forward from {old_cycle_start.isoformat()} to {old_cycle_end.isoformat()}',
+            'created_by': actor,
+        },
+    )
+    return new_balance
+
+
+def validate_leave_balance(*, employee, leave_type, requested_units, cycle_start=None, cycle_end=None, as_of=None):
+    if leave_type.is_loss_of_pay:
+        return
+
+    if cycle_start is not None and cycle_end is not None:
+        balance = get_leave_balance_record(
+            employee_id=employee.id,
+            leave_type_id=leave_type.id,
+            cycle_start=cycle_start,
+            cycle_end=cycle_end,
+        )
+    else:
+        balance = get_or_create_leave_balance(employee, leave_type, as_of=as_of)
+
+    available = ZERO
+    if balance is not None:
+        available = (
+            balance.opening_balance
+            + balance.carried_forward_amount
+            + balance.credited_amount
+            - balance.used_amount
+            - balance.pending_amount
+        )
+
+    if _decimal(requested_units) > _decimal(available):
+        raise ValueError(
+            f'Insufficient leave balance. Available: {_decimal(available)} days, '
+            f'Requested: {_decimal(requested_units)} days.'
+        )
+
+
+@transaction.atomic
+def create_leave_encashment_request(*, employee, leave_type, cycle_start, cycle_end, days_to_encash, actor=None):
+    if not leave_type.allows_encashment:
+        raise ValueError(f"Leave type '{leave_type.name}' does not allow encashment.")
+
+    balance = get_leave_balance_record(
+        employee_id=employee.id,
+        leave_type_id=leave_type.id,
+        cycle_start=cycle_start,
+        cycle_end=cycle_end,
+    )
+    available = ZERO
+    if balance is not None:
+        available = (
+            balance.opening_balance
+            + balance.carried_forward_amount
+            + balance.credited_amount
+            - balance.used_amount
+            - balance.pending_amount
+        )
+    if _decimal(days_to_encash) > _decimal(available):
+        raise ValueError(
+            f'Cannot encash {_decimal(days_to_encash)} days. Available balance: {_decimal(available)} days.'
+        )
+
+    if leave_type.max_encashment_days_per_year is not None:
+        already_encashed = get_total_days_to_encash(
+            employee_id=employee.id,
+            leave_type_id=leave_type.id,
+            cycle_start=cycle_start,
+            cycle_end=cycle_end,
+            statuses=[
+                LeaveEncashmentStatus.PENDING,
+                LeaveEncashmentStatus.APPROVED,
+                LeaveEncashmentStatus.PAID,
+            ],
+        )
+        if _decimal(already_encashed) + _decimal(days_to_encash) > _decimal(leave_type.max_encashment_days_per_year):
+            raise ValueError(f'Exceeds annual encashment limit of {leave_type.max_encashment_days_per_year} days.')
+
+    encashment_request = LeaveEncashmentRequest.objects.create(
+        employee=employee,
+        leave_type=leave_type,
+        cycle_start=cycle_start,
+        cycle_end=cycle_end,
+        days_to_encash=_decimal(days_to_encash),
+        status=LeaveEncashmentStatus.PENDING,
+    )
+    approval_run = create_approval_run(
+        encashment_request,
+        ApprovalRequestKind.LEAVE,
+        requester=employee,
+        actor=actor,
+        leave_type=leave_type,
+        subject_label=f'{leave_type.name} encashment',
+    )
+    encashment_request.approval_run = approval_run
+    encashment_request.save(update_fields=['approval_run', 'modified_at'])
+    return encashment_request
+
+
+@transaction.atomic
+def finalize_leave_encashment(encashment_request):
+    balance = LeaveBalance.objects.select_for_update().get(
+        employee=encashment_request.employee,
+        leave_type=encashment_request.leave_type,
+        cycle_start=encashment_request.cycle_start,
+        cycle_end=encashment_request.cycle_end,
+    )
+    ledger_note = f'Leave encashment - request {encashment_request.id}'
+    if balance.ledger_entries.filter(
+        entry_type=LeaveBalanceEntryType.DEBIT,
+        note=ledger_note,
+    ).exists():
+        return encashment_request
+
+    balance.used_amount = _decimal(balance.used_amount + encashment_request.days_to_encash)
+    balance.save(update_fields=['used_amount', 'modified_at'])
+    LeaveBalanceLedgerEntry.objects.create(
+        leave_balance=balance,
+        entry_type=LeaveBalanceEntryType.DEBIT,
+        amount=encashment_request.days_to_encash,
+        effective_date=date.today(),
+        note=ledger_note,
+    )
+    return encashment_request
+
+
 def create_leave_request(employee, leave_type, start_date, end_date, start_session, end_session, reason='', actor=None):
     if end_date < start_date:
         raise ValueError('End date cannot be before start date.')
-    overlapping_requests = LeaveRequest.objects.filter(
-        employee=employee,
-        status__in=[LeaveRequestStatus.PENDING, LeaveRequestStatus.APPROVED],
-        start_date__lte=end_date,
-        end_date__gte=start_date,
+    overlapping_requests = list_overlapping_leave_requests(
+        employee_id=employee.id,
+        start_date=start_date,
+        end_date=end_date,
     )
     for existing_request in overlapping_requests:
         if _leave_requests_overlap(existing_request, start_date, end_date, start_session, end_session):
             raise ValueError('A leave request already exists for the selected dates.')
     total_units = _leave_request_units(start_date, end_date, start_session, end_session)
-    balance = get_or_create_leave_balance(employee, leave_type)
-    available = balance.opening_balance + balance.carried_forward_amount + balance.credited_amount - balance.used_amount - balance.pending_amount
-    if not leave_type.is_loss_of_pay and total_units > available:
-        raise ValueError('This leave request exceeds the available balance.')
+    validate_leave_balance(employee=employee, leave_type=leave_type, requested_units=total_units, as_of=start_date)
 
     leave_request = LeaveRequest.objects.create(
         employee=employee,
@@ -392,7 +650,7 @@ def withdraw_leave_request(leave_request, actor=None):
         object_id=leave_request.id,
     ).first()
     if approval_run:
-        cancel_approval_run(approval_run, actor=actor)
+        cancel_approval_run(approval_run, actor=actor, subject_status=LeaveRequestStatus.WITHDRAWN)
     get_or_create_leave_balance(leave_request.employee, leave_request.leave_type)
     log_audit_event(actor, 'leave.request.withdrawn', organisation=leave_request.employee.organisation, target=leave_request)
     return leave_request
@@ -400,14 +658,15 @@ def withdraw_leave_request(leave_request, actor=None):
 
 def upsert_on_duty_policy(organisation, actor=None, policy=None, **fields):
     with transaction.atomic():
+        target_is_default = fields.get('is_default', policy.is_default if policy is not None else False)
+        if target_is_default:
+            OnDutyPolicy.objects.filter(organisation=organisation).exclude(id=getattr(policy, 'id', None)).update(is_default=False)
         if policy is None:
             policy = OnDutyPolicy.objects.create(organisation=organisation, created_by=actor, **fields)
         else:
             for attr, value in fields.items():
                 setattr(policy, attr, value)
             policy.save()
-        if policy.is_default:
-            OnDutyPolicy.objects.filter(organisation=organisation).exclude(id=policy.id).update(is_default=False)
     log_audit_event(actor, 'on_duty_policy.upserted', organisation=organisation, target=policy)
     return policy
 
@@ -462,16 +721,16 @@ def withdraw_on_duty_request(on_duty_request, actor=None):
         object_id=on_duty_request.id,
     ).first()
     if approval_run:
-        cancel_approval_run(approval_run, actor=actor)
+        cancel_approval_run(approval_run, actor=actor, subject_status=OnDutyRequestStatus.WITHDRAWN)
     log_audit_event(actor, 'on_duty.request.withdrawn', organisation=on_duty_request.employee.organisation, target=on_duty_request)
     return on_duty_request
 
 
 def create_holiday_calendar(organisation, actor=None, holidays=None, location_ids=None, **fields):
     with transaction.atomic():
+        if fields.get('is_default'):
+            HolidayCalendar.objects.filter(organisation=organisation, year=fields['year']).update(is_default=False)
         calendar_obj = HolidayCalendar.objects.create(organisation=organisation, created_by=actor, **fields)
-        if calendar_obj.is_default:
-            HolidayCalendar.objects.filter(organisation=organisation, year=calendar_obj.year).exclude(id=calendar_obj.id).update(is_default=False)
         for holiday in holidays or []:
             Holiday.objects.create(holiday_calendar=calendar_obj, **holiday)
         for location_id in location_ids or []:
@@ -482,11 +741,13 @@ def create_holiday_calendar(organisation, actor=None, holidays=None, location_id
 
 def update_holiday_calendar(calendar_obj, actor=None, holidays=None, location_ids=None, **fields):
     with transaction.atomic():
+        target_is_default = fields.get('is_default', calendar_obj.is_default)
+        target_year = fields.get('year', calendar_obj.year)
+        if target_is_default:
+            HolidayCalendar.objects.filter(organisation=calendar_obj.organisation, year=target_year).exclude(id=calendar_obj.id).update(is_default=False)
         for attr, value in fields.items():
             setattr(calendar_obj, attr, value)
         calendar_obj.save()
-        if calendar_obj.is_default:
-            HolidayCalendar.objects.filter(organisation=calendar_obj.organisation, year=calendar_obj.year).exclude(id=calendar_obj.id).update(is_default=False)
         if holidays is not None:
             keep_ids = []
             for holiday_payload in holidays:
@@ -567,11 +828,11 @@ def get_employee_calendar_month(employee, calendar_month=None):
     for holiday in get_employee_holiday_entries(employee, year, month):
         day_map[int(holiday['date'].split('-')[2])].append(holiday)
 
-    leave_requests = LeaveRequest.objects.filter(
-        employee=employee,
-        start_date__lte=last_day,
-        end_date__gte=first_day,
-    ).select_related('leave_type')
+    leave_requests = list_leave_requests_in_range(
+        employee_id=employee.id,
+        start_date=first_day,
+        end_date=last_day,
+    )
     for request in leave_requests:
         current = request.start_date
         while current <= request.end_date:

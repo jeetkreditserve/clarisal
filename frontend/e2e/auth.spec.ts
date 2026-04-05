@@ -12,7 +12,7 @@ const controlTowerEmail = process.env.CONTROL_TOWER_EMAIL ?? 'admin@clarisal.com
 const controlTowerPassword = requireEnv('CONTROL_TOWER_PASSWORD')
 const orgAdminEmail = process.env.SEED_ORG_ADMIN_EMAIL ?? 'admin@acmeworkforce.com'
 const orgAdminPassword = requireEnv('SEED_ORG_ADMIN_PASSWORD')
-const employeeEmail = process.env.SEED_PRIMARY_EMPLOYEE_EMAIL ?? 'priya.sharma@acmeworkforce.com'
+const employeeEmail = process.env.SEED_PRIMARY_EMPLOYEE_EMAIL ?? 'rohan.mehta@acmeworkforce.com'
 const employeePassword = requireEnv('SEED_EMPLOYEE_PASSWORD')
 
 test.describe('Authentication', () => {

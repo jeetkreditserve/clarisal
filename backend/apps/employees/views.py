@@ -6,15 +6,25 @@ from rest_framework.views import APIView
 
 from apps.accounts.permissions import BelongsToActiveOrg, IsEmployee, IsOrgAdmin, OrgAdminMutationAllowed
 from apps.accounts.workspaces import get_active_admin_organisation, get_active_employee
+from apps.audit.services import log_audit_event
 from apps.departments.models import Department
 from apps.locations.models import OfficeLocation
 
-from .models import EducationRecord, Employee, EmployeeBankAccount, EmployeeEmergencyContact, EmployeeFamilyMember
+from .models import (
+    EducationRecord,
+    Employee,
+    EmployeeBankAccount,
+    EmployeeEmergencyContact,
+    EmployeeFamilyMember,
+    EmployeeOffboardingProcess,
+    EmployeeOffboardingTask,
+)
 from .repositories import list_employees
 from .serializers import (
     BankAccountSerializer,
     BankAccountWriteSerializer,
     EducationRecordSerializer,
+    EmergencyContactSerializer,
     EmployeeDetailSerializer,
     EmployeeEndEmploymentSerializer,
     EmployeeInviteSerializer,
@@ -22,13 +32,15 @@ from .serializers import (
     EmployeeMarkJoinedSerializer,
     EmployeeProfileSerializer,
     EmployeeUpdateSerializer,
-    EmergencyContactSerializer,
     FamilyMemberSerializer,
     GovernmentIdSerializer,
     GovernmentIdWriteSerializer,
+    OffboardingProcessSerializer,
+    OffboardingTaskUpdateSerializer,
     OnboardingBasicDetailsSerializer,
 )
 from .services import (
+    complete_offboarding_process,
     create_bank_account,
     create_education_record,
     create_or_update_emergency_contact,
@@ -49,6 +61,8 @@ from .services import (
     update_education_record,
     update_employee,
     update_employee_profile,
+    update_offboarding_process,
+    update_offboarding_task,
     update_onboarding_basics,
     upsert_government_id,
 )
@@ -116,6 +130,7 @@ class EmployeeDetailView(APIView):
                 'leave_approval_workflow',
                 'on_duty_approval_workflow',
                 'attendance_regularization_approval_workflow',
+                'offboarding_process',
             ),
             organisation=organisation,
             id=pk,
@@ -164,10 +179,85 @@ class EmployeeEndEmploymentView(APIView):
                 actor=request.user,
                 end_status=serializer.validated_data['status'],
                 date_of_exit=serializer.validated_data['date_of_exit'],
+                exit_reason=serializer.validated_data.get('exit_reason', ''),
+                exit_notes=serializer.validated_data.get('exit_notes', ''),
             )
         except ValueError as exc:
             return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(EmployeeDetailSerializer(employee).data)
+
+
+class EmployeeProbationCompleteView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
+
+    def post(self, request, pk):
+        organisation = _get_admin_organisation(request)
+        employee = get_object_or_404(Employee, organisation=organisation, id=pk)
+        employee.probation_end_date = None
+        employee.save(update_fields=['probation_end_date', 'modified_at'])
+        log_audit_event(
+            request.user,
+            'employee.probation.completed',
+            organisation=organisation,
+            target=employee,
+        )
+        return Response(EmployeeDetailSerializer(employee).data)
+
+
+class EmployeeOffboardingDetailView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
+
+    def patch(self, request, pk):
+        organisation = _get_admin_organisation(request)
+        process = get_object_or_404(
+            EmployeeOffboardingProcess.objects.select_related('employee'),
+            organisation=organisation,
+            employee_id=pk,
+        )
+        process = update_offboarding_process(
+            process,
+            exit_reason=request.data.get('exit_reason'),
+            exit_notes=request.data.get('exit_notes'),
+            actor=request.user,
+        )
+        return Response(OffboardingProcessSerializer(process).data)
+
+
+class EmployeeOffboardingTaskDetailView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
+
+    def patch(self, request, pk, task_id):
+        organisation = _get_admin_organisation(request)
+        task = get_object_or_404(
+            EmployeeOffboardingTask.objects.select_related('process', 'process__employee'),
+            process__organisation=organisation,
+            process__employee_id=pk,
+            id=task_id,
+        )
+        serializer = OffboardingTaskUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            task = update_offboarding_task(task, actor=request.user, status_value=serializer.validated_data['status'], note=serializer.validated_data.get('note', ''))
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(OffboardingProcessSerializer(task.process).data)
+
+
+class EmployeeOffboardingCompleteView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
+
+    def post(self, request, pk):
+        organisation = _get_admin_organisation(request)
+        process = get_object_or_404(
+            EmployeeOffboardingProcess.objects.select_related('employee'),
+            organisation=organisation,
+            employee_id=pk,
+        )
+        try:
+            process = complete_offboarding_process(process, actor=request.user)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(OffboardingProcessSerializer(process).data)
 
 
 class EmployeeDeleteView(APIView):
@@ -245,6 +335,18 @@ class MyProfileView(APIView):
                 'profile_completion': get_profile_completion(employee),
             }
         )
+
+
+class MyOffboardingView(APIView):
+    permission_classes = [IsEmployee, BelongsToActiveOrg]
+
+    def get(self, request):
+        employee = _get_self_employee(request)
+        try:
+            process = employee.offboarding_process
+        except EmployeeOffboardingProcess.DoesNotExist:
+            return Response(None)
+        return Response(OffboardingProcessSerializer(process).data)
 
     def patch(self, request):
         employee = _get_self_employee(request)

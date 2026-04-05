@@ -1,0 +1,37 @@
+exclude: ^(frontend/coverage/|frontend/dist/|frontend/playwright-report/|frontend/test-results/|backend/htmlcov/|htmlcov/)
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+        exclude: ^frontend/tsconfig(\.app|\.node)?\.json$
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ['--maxkb=2048']
+      - id: no-commit-to-branch
+        args: ['--branch', 'main', '--branch', 'master']
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.4
+    hooks:
+      - id: ruff
+        args: ['--fix', '--exit-non-zero-on-fix']
+        files: ^backend/
+
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.8.0
+    hooks:
+      - id: bandit
+        args: ['-c', 'backend/pyproject.toml']
+        files: ^backend/apps/
+
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: ['--baseline', '.secrets.baseline']
+        exclude: '^(backend/apps/.*/migrations/|frontend/coverage/|frontend/dist/|frontend/playwright-report/|frontend/test-results/|backend/htmlcov/|htmlcov/|.*\.lock$|\.env\.example$)'

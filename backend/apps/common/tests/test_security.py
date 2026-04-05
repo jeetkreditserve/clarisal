@@ -4,6 +4,8 @@ from django.test import override_settings
 
 from apps.common.security import decrypt_value, encrypt_value, validate_field_encryption_configuration
 
+VALID_FIELD_ENCRYPTION_KEY = 'h8nlt4sUe92YRk0-GDbvJ8vYtM8n0af9moboa-UfJIQ='
+
 
 def test_validate_field_encryption_configuration_allows_debug_mode_without_field_key():
     validate_field_encryption_configuration(field_encryption_key='', debug=True)
@@ -18,7 +20,7 @@ def test_validate_field_encryption_configuration_rejects_missing_or_placeholder_
 
 
 def test_validate_field_encryption_configuration_allows_real_key_outside_debug():
-    validate_field_encryption_configuration(field_encryption_key='prod-secret-key-1234567890', debug=False)
+    validate_field_encryption_configuration(field_encryption_key=VALID_FIELD_ENCRYPTION_KEY, debug=False)
 
 
 @override_settings(FIELD_ENCRYPTION_KEY='unit-test-field-key', SECRET_KEY='fallback-secret')

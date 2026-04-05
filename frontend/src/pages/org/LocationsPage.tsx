@@ -11,6 +11,7 @@ import {
   useUpdateLocation,
 } from '@/hooks/useOrgAdmin'
 import { AppCheckbox } from '@/components/ui/AppCheckbox'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { AppDialog } from '@/components/ui/AppDialog'
 import { AppSelect } from '@/components/ui/AppSelect'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -78,7 +79,6 @@ export function LocationsPage() {
   }
 
   const handleDeactivate = async (id: string) => {
-    if (!window.confirm('Deactivate this location?')) return
     try {
       await deactivateMutation.mutateAsync(id)
       toast.success('Location deactivated.')
@@ -147,9 +147,17 @@ export function LocationsPage() {
                     Edit
                   </button>
                   {location.is_active ? (
-                    <button type="button" onClick={() => handleDeactivate(location.id)} className="btn-danger">
-                      Deactivate
-                    </button>
+                    <ConfirmDialog
+                      trigger={
+                        <button type="button" className="btn-danger">
+                          Deactivate
+                        </button>
+                      }
+                      title="Deactivate location?"
+                      description="Inactive locations stay in history but cannot be assigned to invited or active employees."
+                      confirmLabel="Deactivate"
+                      onConfirm={() => handleDeactivate(location.id)}
+                    />
                   ) : null}
                 </div>
               </div>

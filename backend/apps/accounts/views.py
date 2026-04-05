@@ -204,7 +204,7 @@ class PasswordResetValidateView(APIView):
         try:
             reset_token = validate_password_reset_token(token)
         except Exception as exc:  # noqa: BLE001 - keep response shape compact
-            detail = getattr(exc, 'detail', {'token': 'Invalid password reset link.'})
+            detail = getattr(exc, 'detail', {'token': 'Invalid password reset link.'})  # nosec B105
             return Response(detail, status=status.HTTP_400_BAD_REQUEST)
         return Response(
             {
@@ -229,7 +229,7 @@ class PasswordResetConfirmView(APIView):
                 request=request,
             )
         except Exception as exc:  # noqa: BLE001 - keep response shape compact
-            detail = getattr(exc, 'detail', {'token': 'Invalid password reset link.'})
+            detail = getattr(exc, 'detail', {'token': 'Invalid password reset link.'})  # nosec B105
             return Response(detail, status=status.HTTP_400_BAD_REQUEST)
 
         return _complete_login(request, user)

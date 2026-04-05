@@ -54,7 +54,7 @@ export function OrgAuditPage() {
     page,
   }
   const { data, isLoading } = useCtAuditLogs(queryParams, isCtMode)
-  const orgAudit = useOrgAuditLogs(isCtMode ? undefined : queryParams)
+  const orgAudit = useOrgAuditLogs(queryParams, !isCtMode)
   const resolvedData = isCtMode ? data : orgAudit.data
   const resolvedLoading = isCtMode ? isLoading : orgAudit.isLoading
 

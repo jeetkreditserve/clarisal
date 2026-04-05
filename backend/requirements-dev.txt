@@ -1,0 +1,13 @@
+pytest>=8.0
+pytest-django
+pytest-cov
+factory-boy
+faker
+Faker
+mypy
+django-stubs[compatible-mypy]
+djangorestframework-stubs
+ruff
+bandit
+pre-commit
+detect-secrets

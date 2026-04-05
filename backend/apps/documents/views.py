@@ -20,7 +20,6 @@ from .serializers import (
 from .services import (
     assign_document_requests,
     generate_download_url,
-    get_document_request,
     list_document_requests,
     list_onboarding_document_types,
     reject_document,

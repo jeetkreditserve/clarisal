@@ -36,7 +36,7 @@ export function LeaveCyclesPage() {
   const { organisationId } = useParams()
   const isCtMode = Boolean(organisationId)
   const basePath = isCtMode ? `/ct/organisations/${organisationId}` : '/org'
-  const { data: cycles, isLoading } = useLeaveCycles()
+  const { data: cycles, isLoading } = useLeaveCycles(!isCtMode)
   const { data: configuration, isLoading: isCtLoading } = useCtOrgConfiguration(organisationId ?? '', isCtMode)
   const createMutation = useCreateLeaveCycle()
   const createCtMutation = useCreateCtLeaveCycle(organisationId ?? '')

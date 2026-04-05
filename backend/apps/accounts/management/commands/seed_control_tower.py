@@ -11,7 +11,6 @@ from django.utils.text import slugify
 from apps.accounts.models import AccountType, User, UserRole
 from apps.accounts.workspaces import sync_user_role
 from apps.approvals.models import (
-    ApprovalAction,
     ApprovalApproverType,
     ApprovalFallbackType,
     ApprovalRequestKind,
@@ -23,9 +22,9 @@ from apps.approvals.models import (
     ApprovalWorkflowRule,
 )
 from apps.approvals.services import approve_action, reject_action
+from apps.common.security import hash_token
 from apps.communications.models import Notice, NoticeAudienceType, NoticeStatus
 from apps.communications.services import create_notice, publish_notice, update_notice
-from apps.common.security import hash_token
 from apps.departments.models import Department
 from apps.documents.models import (
     Document,
@@ -38,7 +37,6 @@ from apps.documents.services import assign_document_requests, ensure_default_doc
 from apps.employees.models import (
     EducationRecord,
     Employee,
-    EmployeeBankAccount,
     EmployeeEmergencyContact,
     EmployeeFamilyMember,
     EmployeeOnboardingStatus,
@@ -61,14 +59,9 @@ from apps.locations.services import create_location, update_location
 from apps.organisations.models import (
     LicenceBatchPaymentStatus,
     Organisation,
-    OrganisationAccessState,
-    OrganisationAddress,
     OrganisationAddressType,
-    OrganisationBillingStatus,
     OrganisationEntityType,
-    OrganisationMembership,
     OrganisationMembershipStatus,
-    OrganisationOnboardingStage,
     OrganisationStatus,
 )
 from apps.organisations.services import (
@@ -76,17 +69,16 @@ from apps.organisations.services import (
     create_organisation,
     create_organisation_address,
     ensure_org_admin_membership,
-    get_org_licence_summary,
     mark_bootstrap_admin_accepted,
     mark_employee_invited,
     mark_licence_batch_paid,
     mark_master_data_configured,
     set_primary_admin,
     transition_organisation_state,
-    upsert_bootstrap_admin,
     update_licence_count,
     update_organisation_address,
     update_organisation_profile,
+    upsert_bootstrap_admin,
 )
 from apps.timeoff.models import (
     CarryForwardMode,
@@ -2369,7 +2361,6 @@ class Command(BaseCommand):
             )
 
     def _ensure_timeoff_activity(self, organisation, actor, *, employees, leave_context, workflow_context):
-        casual_leave = leave_context['general_plan'].leave_types.get(code='CL')
         sick_leave = leave_context['general_plan'].leave_types.get(code='SL')
         earned_leave = leave_context['engineering_plan'].leave_types.get(code='EL')
         on_duty_policy = leave_context['default_policy']

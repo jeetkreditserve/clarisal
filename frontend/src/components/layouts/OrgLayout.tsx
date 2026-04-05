@@ -1,68 +1,157 @@
+import { useEffect } from 'react'
 import { Outlet, useNavigate } from 'react-router-dom'
-import { Bell, Building, Building2, CalendarDays, ClipboardCheck, Clock3, Landmark, LayoutDashboard, LogOut, MapPin, PlaneTakeoff, Repeat, ScrollText, Users } from 'lucide-react'
-import { SidebarNav, type NavItem } from './SidebarNav'
+import { BarChart3, Bell, BriefcaseBusiness, Building, Building2, CalendarDays, ClipboardCheck, Clock3, Fingerprint, Landmark, LayoutDashboard, LogOut, MapPin, PlaneTakeoff, Repeat, ScrollText, Target, Users } from 'lucide-react'
+import { SidebarNav, type NavGroup } from './SidebarNav'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
 import { useAuth } from '@/hooks/useAuth'
 import { StatusBadge } from '@/components/ui/StatusBadge'
+import { NotificationBell } from '@/components/ui/NotificationBell'
 import { ThemeToggle } from '@/components/ui/ThemeToggle'
 import { getAccessStateTone } from '@/lib/status'
 import { OrgSetupBanner } from '@/components/org/OrgSetupBanner'
+import { useRefreshCtImpersonation, useStopCtImpersonation } from '@/hooks/useCtOrganisations'
+import { formatDateTime } from '@/lib/format'
+import { toast } from 'sonner'
 
-const navItems: NavItem[] = [
-  { label: 'Dashboard', href: '/org/dashboard', icon: LayoutDashboard },
-  { label: 'Organisation', href: '/org/profile', icon: Building2 },
-  { label: 'Attendance', href: '/org/attendance', icon: Clock3 },
-  { label: 'Payroll Preview', href: '/org/payroll', icon: Landmark },
-  { label: 'Locations', href: '/org/locations', icon: MapPin },
-  { label: 'Departments', href: '/org/departments', icon: Building },
-  { label: 'Employees', href: '/org/employees', icon: Users },
-  { label: 'Holidays', href: '/org/holidays', icon: CalendarDays },
-  { label: 'Leave cycles', href: '/org/leave-cycles', icon: Repeat },
-  { label: 'Leave plans', href: '/org/leave-plans', icon: ClipboardCheck },
-  { label: 'OD policies', href: '/org/on-duty-policies', icon: PlaneTakeoff },
-  { label: 'Approvals', href: '/org/approval-workflows', icon: ClipboardCheck },
-  { label: 'Notices', href: '/org/notices', icon: Bell },
-  { label: 'Audit Timeline', href: '/org/audit', icon: ScrollText },
-]
+function isFeatureEnabled(featureFlags: Record<string, boolean> | undefined, featureCode: string) {
+  return featureFlags?.[featureCode] ?? true
+}
+
+function buildNavGroups(featureFlags: Record<string, boolean> | undefined): NavGroup[] {
+  return [
+    {
+      label: 'Workspace',
+      items: [
+        { label: 'Dashboard', href: '/org/dashboard', icon: LayoutDashboard },
+        { label: 'Organisation', href: '/org/profile', icon: Building2 },
+      ],
+    },
+    {
+      label: 'People',
+      items: [
+        { label: 'Employees', href: '/org/employees', icon: Users },
+        { label: 'Departments', href: '/org/departments', icon: Building },
+        { label: 'Locations', href: '/org/locations', icon: MapPin },
+      ],
+    },
+    {
+      label: 'Time & Leave',
+      items: [
+        ...(isFeatureEnabled(featureFlags, 'ATTENDANCE') ? [{ label: 'Attendance', href: '/org/attendance', icon: Clock3 }] : []),
+        ...(isFeatureEnabled(featureFlags, 'BIOMETRICS') ? [{ label: 'Biometric Devices', href: '/org/biometric-devices', icon: Fingerprint }] : []),
+        ...(isFeatureEnabled(featureFlags, 'TIMEOFF')
+          ? [
+              { label: 'Holidays', href: '/org/holidays', icon: CalendarDays },
+              { label: 'Leave cycles', href: '/org/leave-cycles', icon: Repeat },
+              { label: 'Leave plans', href: '/org/leave-plans', icon: ClipboardCheck },
+              { label: 'OD policies', href: '/org/on-duty-policies', icon: PlaneTakeoff },
+            ]
+          : []),
+      ],
+    },
+    {
+      label: 'Operations',
+      items: [
+        ...(isFeatureEnabled(featureFlags, 'PAYROLL') ? [{ label: 'Payroll Preview', href: '/org/payroll', icon: Landmark }] : []),
+        ...(isFeatureEnabled(featureFlags, 'RECRUITMENT')
+          ? [
+              { label: 'Job postings', href: '/org/recruitment/jobs', icon: BriefcaseBusiness },
+              { label: 'Applications', href: '/org/recruitment/applications', icon: Users },
+            ]
+          : []),
+        ...(isFeatureEnabled(featureFlags, 'PERFORMANCE')
+          ? [
+              { label: 'Goal cycles', href: '/org/performance/goals', icon: Target },
+              { label: 'Appraisal cycles', href: '/org/performance/appraisals', icon: ClipboardCheck },
+            ]
+          : []),
+        ...(isFeatureEnabled(featureFlags, 'REPORTS') ? [{ label: 'Reports', href: '/org/reports', icon: BarChart3 }] : []),
+        ...(isFeatureEnabled(featureFlags, 'APPROVALS') ? [{ label: 'Approvals', href: '/org/approval-workflows', icon: ClipboardCheck }] : []),
+        ...(isFeatureEnabled(featureFlags, 'NOTICES') ? [{ label: 'Notices', href: '/org/notices', icon: Bell }] : []),
+        { label: 'Audit Timeline', href: '/org/audit', icon: ScrollText },
+      ],
+    },
+  ].filter((group) => group.items.length > 0)
+}
 
 export function OrgLayout() {
-  const { user, logout } = useAuth()
+  const { user, logout, refreshUser } = useAuth()
   const navigate = useNavigate()
+  const refreshImpersonationMutation = useRefreshCtImpersonation()
+  const stopImpersonationMutation = useStopCtImpersonation()
+  const activeImpersonationSessionId = user?.impersonation?.session_id ?? null
+  const navGroups = buildNavGroups(user?.feature_flags)
+
+  useEffect(() => {
+    if (!activeImpersonationSessionId || user?.account_type !== 'CONTROL_TOWER') {
+      return
+    }
+    void refreshImpersonationMutation.mutateAsync().catch(() => undefined)
+  }, [activeImpersonationSessionId, user?.account_type])
 
   const handleLogout = async () => {
     await logout()
     navigate('/auth/login')
   }
 
+  const handleStopImpersonation = async () => {
+    try {
+      const session = await stopImpersonationMutation.mutateAsync()
+      await refreshUser()
+      toast.success('Returned to Control Tower.')
+      navigate(`/ct/organisations/${session.organisation_id}`, { replace: true })
+    } catch {
+      toast.error('Unable to stop Control Tower impersonation.')
+    }
+  }
+
   return (
     <div className="min-h-screen lg:flex">
-      <SidebarNav items={navItems} title="Clarisal" subtitle="Organisation Console" />
+      <SidebarNav groups={navGroups} title="Clarisal" subtitle="Organisation Console" />
       <div className="flex min-w-0 flex-1 flex-col px-4 pb-6 lg:pl-0 lg:pr-6">
-        <header className="shell-topbar sticky top-4 z-20 mt-0 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-sm font-medium text-[hsl(var(--muted-foreground))]">Organisation workspace</p>
-            <div className="mt-2 flex flex-wrap items-center gap-3">
-              <h1 className="text-xl font-semibold tracking-tight text-[hsl(var(--foreground-strong))]">{user?.organisation_name || 'Organisation'}</h1>
-              <StatusBadge tone={getAccessStateTone(user?.organisation_access_state)}>
-                {user?.organisation_access_state || 'Provisioning'}
-              </StatusBadge>
-              <StatusBadge tone="info">Attendance live</StatusBadge>
-            </div>
-          </div>
+        <header className="shell-topbar sticky top-4 z-20 mt-0 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap items-center gap-3">
+            <h1 className="text-base font-semibold tracking-tight text-[hsl(var(--foreground-strong))]">{user?.organisation_name || 'Organisation'}</h1>
+            <StatusBadge tone={getAccessStateTone(user?.organisation_access_state)}>
+              {user?.organisation_access_state || 'Provisioning'}
+            </StatusBadge>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <NotificationBell />
             <ThemeToggle />
             <WorkspaceSwitcher currentMode="ADMIN" />
-            <div className="shell-user-card rounded-[22px] px-4 py-2 text-right text-sm">
-              <p className="font-semibold">{user?.full_name || 'Organisation Admin'}</p>
-              <p className="text-xs opacity-80">{user?.email}</p>
-            </div>
-            <button onClick={handleLogout} className="btn-secondary">
+            <button onClick={handleLogout} className="btn-secondary px-2.5 py-2" aria-label="Sign out">
               <LogOut className="h-4 w-4" />
-              Sign out
             </button>
           </div>
         </header>
         <main className="page-shell flex-1 py-6">
+          {user?.impersonation ? (
+            <div className="mb-6 rounded-[24px] border border-[hsl(var(--warning)_/_0.32)] bg-[hsl(var(--warning)_/_0.12)] px-5 py-4 text-sm text-[hsl(var(--foreground-strong))]">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <p className="font-semibold">Control Tower impersonation is active.</p>
+                  <p className="mt-1 text-[hsl(var(--muted-foreground))]">
+                    Viewing {user.impersonation.organisation_name} in read-only mode. Started {formatDateTime(user.impersonation.started_at)}.
+                  </p>
+                  <p className="mt-1 text-[hsl(var(--muted-foreground))]">Reason: {user.impersonation.reason}</p>
+                  {user.impersonation.target_org_admin ? (
+                    <p className="mt-1 text-[hsl(var(--muted-foreground))]">
+                      Target admin: {user.impersonation.target_org_admin.full_name} ({user.impersonation.target_org_admin.email})
+                    </p>
+                  ) : null}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleStopImpersonation()}
+                  disabled={stopImpersonationMutation.isPending}
+                  className="btn-secondary"
+                >
+                  Stop impersonation
+                </button>
+              </div>
+            </div>
+          ) : null}
           {user?.org_operations_guard?.admin_mutations_blocked ? (
             <div className="mb-6 rounded-[24px] border border-[hsl(var(--warning)_/_0.32)] bg-[hsl(var(--warning)_/_0.12)] px-5 py-4 text-sm text-[hsl(var(--foreground-strong))]">
               <p className="font-semibold">Organisation admin actions are currently blocked.</p>

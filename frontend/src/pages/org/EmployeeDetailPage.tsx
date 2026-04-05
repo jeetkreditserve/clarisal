@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 
 import { EmptyState } from '@/components/ui/EmptyState'
 import { AppDatePicker } from '@/components/ui/AppDatePicker'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { AppSelect } from '@/components/ui/AppSelect'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
@@ -12,6 +13,7 @@ import { SkeletonFormBlock, SkeletonPageHeader, SkeletonTable } from '@/componen
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import {
   useApprovalWorkflows,
+  useCompleteEmployeeOffboarding,
   useDeleteEmployee,
   useDepartments,
   useEmployeeDetail,
@@ -22,12 +24,23 @@ import {
   useEndEmployeeEmployment,
   useLocations,
   useMarkEmployeeJoined,
+  useMarkEmployeeProbationComplete,
+  useOrgFullAndFinalSettlements,
+  useUpdateEmployeeOffboarding,
+  useUpdateEmployeeOffboardingTask,
   useUpdateEmployee,
 } from '@/hooks/useOrgAdmin'
 import { getErrorMessage } from '@/lib/errors'
 import { startCase } from '@/lib/format'
 import { getDocumentRequestStatusTone, getDocumentStatusTone, getEmployeeStatusTone } from '@/lib/status'
 import type { EmploymentType } from '@/types/hr'
+
+function getOffboardingTaskTone(status: string) {
+  if (status === 'COMPLETED') return 'success'
+  if (status === 'WAIVED') return 'info'
+  if (status === 'IN_PROGRESS') return 'warning'
+  return 'neutral'
+}
 
 export function EmployeeDetailPage() {
   const navigate = useNavigate()
@@ -40,9 +53,14 @@ export function EmployeeDetailPage() {
   const { data: managerOptions } = useEmployees({ status: 'ACTIVE', page: 1 })
   const { data: documentRequests } = useEmployeeDocumentRequests(employeeId)
   const { data: documents } = useEmployeeDocuments(employeeId)
+  const { data: fnfSettlements } = useOrgFullAndFinalSettlements()
   const updateMutation = useUpdateEmployee(employeeId)
   const markJoinedMutation = useMarkEmployeeJoined(employeeId)
   const endEmploymentMutation = useEndEmployeeEmployment(employeeId)
+  const updateOffboardingMutation = useUpdateEmployeeOffboarding(employeeId)
+  const updateOffboardingTaskMutation = useUpdateEmployeeOffboardingTask(employeeId)
+  const completeOffboardingMutation = useCompleteEmployeeOffboarding(employeeId)
+  const probationCompleteMutation = useMarkEmployeeProbationComplete(employeeId)
   const deleteEmployeeMutation = useDeleteEmployee(employeeId)
   const downloadDocumentMutation = useEmployeeDocumentDownload()
 
@@ -65,6 +83,8 @@ export function EmployeeDetailPage() {
   const [endEmploymentForm, setEndEmploymentForm] = useState({
     status: 'RESIGNED' as 'RESIGNED' | 'RETIRED' | 'TERMINATED',
     date_of_exit: '',
+    exit_reason: '',
+    exit_notes: '',
   })
 
   const employmentTypeOptions = ['FULL_TIME', 'PART_TIME', 'CONTRACT', 'INTERN'].map((type) => ({
@@ -122,6 +142,7 @@ export function EmployeeDetailPage() {
     value: status,
     label: startCase(status),
   }))
+  const fnfSettlement = fnfSettlements?.find((settlement) => settlement.employee_id === employeeId) ?? null
 
   const formValues = {
     designation: draft.designation ?? employee.designation ?? '',
@@ -181,8 +202,51 @@ export function EmployeeDetailPage() {
     }
   }
 
+  const handleOffboardingUpdate = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!employee.offboarding) return
+    try {
+      await updateOffboardingMutation.mutateAsync({
+        exit_reason: endEmploymentForm.exit_reason,
+        exit_notes: endEmploymentForm.exit_notes,
+      })
+      toast.success('Offboarding notes updated.')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to update offboarding notes.'))
+    }
+  }
+
+  const handleTaskStatus = async (taskId: string, status: 'PENDING' | 'COMPLETED' | 'WAIVED') => {
+    try {
+      await updateOffboardingTaskMutation.mutateAsync({
+        taskId,
+        payload: { status },
+      })
+      toast.success('Offboarding task updated.')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to update offboarding task.'))
+    }
+  }
+
+  const handleCompleteOffboarding = async () => {
+    try {
+      await completeOffboardingMutation.mutateAsync()
+      toast.success('Offboarding completed.')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to complete offboarding.'))
+    }
+  }
+
+  const handleProbationComplete = async () => {
+    try {
+      await probationCompleteMutation.mutateAsync()
+      toast.success('Probation marked as complete.')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to mark probation complete.'))
+    }
+  }
+
   const handleDelete = async () => {
-    if (!window.confirm('Delete this invited or pending employee record?')) return
     try {
       await deleteEmployeeMutation.mutateAsync()
       toast.success('Employee deleted.')
@@ -285,6 +349,18 @@ export function EmployeeDetailPage() {
 
           <div className="mt-6 grid gap-4 md:grid-cols-3">
             <div className="surface-muted rounded-[24px] p-5">
+              <p className="text-sm text-[hsl(var(--muted-foreground))]">Date of joining</p>
+              <p className="mt-2 font-medium text-[hsl(var(--foreground-strong))]">{employee.date_of_joining || 'Not set'}</p>
+            </div>
+            <div className="surface-muted rounded-[24px] p-5">
+              <p className="text-sm text-[hsl(var(--muted-foreground))]">Probation ends</p>
+              <p className="mt-2 font-medium text-[hsl(var(--foreground-strong))]">{employee.probation_end_date || 'Not on probation'}</p>
+            </div>
+            <div className="surface-muted rounded-[24px] p-5">
+              <p className="text-sm text-[hsl(var(--muted-foreground))]">Exit date</p>
+              <p className="mt-2 font-medium text-[hsl(var(--foreground-strong))]">{employee.date_of_exit || 'Active employment'}</p>
+            </div>
+            <div className="surface-muted rounded-[24px] p-5">
               <p className="text-sm text-[hsl(var(--muted-foreground))]">Effective leave workflow</p>
               <p className="mt-2 font-medium text-[hsl(var(--foreground-strong))]">{employee.effective_approval_workflows.leave.workflow_name}</p>
               <p className="mt-2 text-xs uppercase tracking-[0.12em] text-[hsl(var(--muted-foreground))]">
@@ -310,6 +386,29 @@ export function EmployeeDetailPage() {
           </div>
 
           <div className="mt-6 grid gap-4">
+            {employee.probation_end_date ? (
+              <div className="surface-muted flex flex-wrap items-center justify-between gap-4 rounded-[24px] p-5">
+                <div>
+                  <p className="font-semibold text-[hsl(var(--foreground-strong))]">Probation review</p>
+                  <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
+                    Probation ends on {employee.probation_end_date}. Mark this complete once the employee clears review.
+                  </p>
+                </div>
+                <ConfirmDialog
+                  trigger={
+                    <button type="button" className="btn-secondary text-sm" disabled={probationCompleteMutation.isPending}>
+                      Mark probation complete
+                    </button>
+                  }
+                  title="Mark probation complete?"
+                  description={`This will clear the probation end date for ${employee.full_name} and log the event. This cannot be undone.`}
+                  confirmLabel="Mark complete"
+                  variant="primary"
+                  onConfirm={handleProbationComplete}
+                />
+              </div>
+            ) : null}
+
             {employee.status === 'PENDING' ? (
               <form onSubmit={handleMarkJoined} className="surface-muted grid gap-4 rounded-[24px] p-5">
                 <p className="font-semibold text-[hsl(var(--foreground-strong))]">Mark employee as joined</p>
@@ -359,19 +458,206 @@ export function EmployeeDetailPage() {
                     placeholder="Select exit date"
                   />
                 </div>
+                <input
+                  className="field-input"
+                  value={endEmploymentForm.exit_reason}
+                  onChange={(event) => setEndEmploymentForm((current) => ({ ...current, exit_reason: event.target.value }))}
+                  placeholder="Exit reason summary"
+                />
+                <textarea
+                  className="field-input min-h-[120px]"
+                  value={endEmploymentForm.exit_notes}
+                  onChange={(event) => setEndEmploymentForm((current) => ({ ...current, exit_notes: event.target.value }))}
+                  placeholder="Exit notes, handover context, or settlement reminders"
+                />
                 <button type="submit" className="btn-danger" disabled={endEmploymentMutation.isPending}>
                   End employment
                 </button>
               </form>
             ) : null}
 
+            {employee.offboarding ? (
+              <div className="surface-muted grid gap-5 rounded-[24px] p-5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold text-[hsl(var(--foreground-strong))]">Offboarding checklist</p>
+                    <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
+                      Track exit tasks, payroll review, access removal, and final acknowledgements before closing the employee record.
+                    </p>
+                  </div>
+                  <StatusBadge tone={employee.offboarding.status === 'COMPLETED' ? 'success' : 'warning'}>
+                    {employee.offboarding.status}
+                  </StatusBadge>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="rounded-[20px] border border-[hsl(var(--border))] bg-white/70 px-4 py-3">
+                    <p className="text-sm text-[hsl(var(--muted-foreground))]">Exit date</p>
+                    <p className="mt-2 font-semibold text-[hsl(var(--foreground-strong))]">{employee.offboarding.date_of_exit}</p>
+                  </div>
+                  <div className="rounded-[20px] border border-[hsl(var(--border))] bg-white/70 px-4 py-3">
+                    <p className="text-sm text-[hsl(var(--muted-foreground))]">Required tasks</p>
+                    <p className="mt-2 font-semibold text-[hsl(var(--foreground-strong))]">
+                      {employee.offboarding.completed_required_task_count} / {employee.offboarding.required_task_count}
+                    </p>
+                  </div>
+                  <div className="rounded-[20px] border border-[hsl(var(--border))] bg-white/70 px-4 py-3">
+                    <p className="text-sm text-[hsl(var(--muted-foreground))]">Pending document follow-up</p>
+                    <p className="mt-2 font-semibold text-[hsl(var(--foreground-strong))]">{employee.offboarding.pending_document_requests}</p>
+                  </div>
+                </div>
+
+                <form onSubmit={handleOffboardingUpdate} className="grid gap-4">
+                  <input
+                    className="field-input"
+                    value={endEmploymentForm.exit_reason || employee.offboarding.exit_reason}
+                    onChange={(event) => setEndEmploymentForm((current) => ({ ...current, exit_reason: event.target.value }))}
+                    placeholder="Exit reason summary"
+                  />
+                  <textarea
+                    className="field-input min-h-[120px]"
+                    value={endEmploymentForm.exit_notes || employee.offboarding.exit_notes}
+                    onChange={(event) => setEndEmploymentForm((current) => ({ ...current, exit_notes: event.target.value }))}
+                    placeholder="Capture handover notes, settlement reminders, or investigation context"
+                  />
+                  <div className="flex flex-wrap items-center gap-3">
+                    <button type="submit" className="btn-secondary" disabled={updateOffboardingMutation.isPending}>
+                      Save offboarding notes
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-primary"
+                      disabled={employee.offboarding.status === 'COMPLETED' || completeOffboardingMutation.isPending}
+                      onClick={() => void handleCompleteOffboarding()}
+                    >
+                      Complete offboarding
+                    </button>
+                  </div>
+                </form>
+
+                <div className="space-y-3">
+                  {employee.offboarding.tasks.map((task) => (
+                    <div key={task.id} className="rounded-[20px] border border-[hsl(var(--border))] bg-white/70 px-4 py-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="font-semibold text-[hsl(var(--foreground-strong))]">{task.title}</p>
+                            <StatusBadge tone={getOffboardingTaskTone(task.status)}>{task.status}</StatusBadge>
+                            {task.is_required ? <StatusBadge tone="warning">Required</StatusBadge> : null}
+                          </div>
+                          <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">{task.description}</p>
+                          <p className="mt-2 text-xs uppercase tracking-[0.12em] text-[hsl(var(--muted-foreground))]">
+                            {startCase(task.owner)} • Due {task.due_date || employee.offboarding?.date_of_exit}
+                          </p>
+                          {task.completed_by_name ? (
+                            <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
+                              Completed by {task.completed_by_name}
+                            </p>
+                          ) : null}
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {task.status !== 'COMPLETED' ? (
+                            <button
+                              type="button"
+                              className="btn-secondary"
+                              disabled={updateOffboardingTaskMutation.isPending}
+                              onClick={() => void handleTaskStatus(task.id, 'COMPLETED')}
+                            >
+                              Mark done
+                            </button>
+                          ) : null}
+                          {task.status !== 'WAIVED' ? (
+                            <button
+                              type="button"
+                              className="btn-secondary"
+                              disabled={updateOffboardingTaskMutation.isPending}
+                              onClick={() => void handleTaskStatus(task.id, 'WAIVED')}
+                            >
+                              Waive
+                            </button>
+                          ) : null}
+                          {task.status === 'COMPLETED' || task.status === 'WAIVED' ? (
+                            <button
+                              type="button"
+                              className="btn-secondary"
+                              disabled={updateOffboardingTaskMutation.isPending}
+                              onClick={() => void handleTaskStatus(task.id, 'PENDING')}
+                            >
+                              Reopen
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {fnfSettlement ? (
+                  <div className="surface-card mt-1 rounded-[28px] p-5">
+                    <div className="flex items-center justify-between">
+                      <p className="font-semibold text-[hsl(var(--foreground-strong))]">Full &amp; Final Settlement</p>
+                      <StatusBadge
+                        tone={
+                          fnfSettlement.status === 'PAID'
+                            ? 'success'
+                            : fnfSettlement.status === 'APPROVED'
+                              ? 'info'
+                              : fnfSettlement.status === 'CANCELLED'
+                                ? 'danger'
+                                : 'warning'
+                        }
+                      >
+                        {fnfSettlement.status}
+                      </StatusBadge>
+                    </div>
+                    <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
+                      Last working day: {fnfSettlement.last_working_day}
+                    </p>
+                    <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                      {[
+                        { label: 'Prorated salary', value: fnfSettlement.prorated_salary },
+                        { label: 'Leave encashment', value: fnfSettlement.leave_encashment },
+                        { label: 'Gratuity', value: fnfSettlement.gratuity },
+                        { label: 'Arrears', value: fnfSettlement.arrears },
+                        { label: 'Other credits', value: fnfSettlement.other_credits },
+                        { label: 'TDS deduction', value: `-${fnfSettlement.tds_deduction}` },
+                        { label: 'PF deduction', value: `-${fnfSettlement.pf_deduction}` },
+                        { label: 'Loan recovery', value: `-${fnfSettlement.loan_recovery}` },
+                        { label: 'Other deductions', value: `-${fnfSettlement.other_deductions}` },
+                      ].map(({ label, value }) => (
+                        <div key={label} className="surface-muted rounded-[18px] p-3">
+                          <p className="text-xs text-[hsl(var(--muted-foreground))]">{label}</p>
+                          <p className="mt-1 font-semibold text-[hsl(var(--foreground-strong))]">₹{value}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-4 flex items-center justify-between rounded-[18px] bg-[hsl(var(--foreground-strong)_/_0.06)] px-4 py-3">
+                      <p className="text-sm font-semibold text-[hsl(var(--foreground-strong))]">Net payable</p>
+                      <p className="text-lg font-bold text-[hsl(var(--foreground-strong))]">₹{fnfSettlement.net_payable}</p>
+                    </div>
+                    {fnfSettlement.notes ? (
+                      <p className="mt-3 text-sm text-[hsl(var(--muted-foreground))]">{fnfSettlement.notes}</p>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
             {(employee.status === 'INVITED' || employee.status === 'PENDING') ? (
               <div className="surface-muted rounded-[24px] p-5">
                 <p className="font-semibold text-[hsl(var(--foreground-strong))]">Delete employee record</p>
                 <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">Invited and pending employees can be deleted to release the consumed licence seat.</p>
-                <button onClick={handleDelete} className="btn-danger mt-4" disabled={deleteEmployeeMutation.isPending}>
-                  Delete employee
-                </button>
+                <ConfirmDialog
+                  trigger={
+                    <button type="button" className="btn-danger mt-4" disabled={deleteEmployeeMutation.isPending}>
+                      Delete employee
+                    </button>
+                  }
+                  title="Delete employee record?"
+                  description="This permanently removes the invited or pending employee record and cannot be undone."
+                  confirmLabel="Delete employee"
+                  onConfirm={handleDelete}
+                />
               </div>
             ) : null}
           </div>

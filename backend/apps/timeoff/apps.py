@@ -5,4 +5,3 @@ class TimeoffConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'apps.timeoff'
     label = 'timeoff'
-

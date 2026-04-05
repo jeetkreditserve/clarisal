@@ -1,4 +1,3 @@
-import uuid
 from django.conf import settings
 from django.db import models
 from django.db.models import Q
@@ -65,6 +64,9 @@ class LifecycleEventType(models.TextChoices):
     ACCESS_RESTORED = 'ACCESS_RESTORED', 'Access Restored'
     MASTER_DATA_CONFIGURED = 'MASTER_DATA_CONFIGURED', 'Master Data Configured'
     EMPLOYEE_INVITED = 'EMPLOYEE_INVITED', 'Employee Invited'
+    ACT_AS_STARTED = 'ACT_AS_STARTED', 'Act As Started'
+    ACT_AS_REFRESHED = 'ACT_AS_REFRESHED', 'Act As Refreshed'
+    ACT_AS_STOPPED = 'ACT_AS_STOPPED', 'Act As Stopped'
 
 
 class OrganisationMembershipStatus(models.TextChoices):
@@ -128,6 +130,18 @@ class OrganisationTaxRegistrationType(models.TextChoices):
     OTHER = 'OTHER', 'Other'
 
 
+class OrganisationFeatureCode(models.TextChoices):
+    ATTENDANCE = 'ATTENDANCE', 'Attendance'
+    APPROVALS = 'APPROVALS', 'Approvals'
+    BIOMETRICS = 'BIOMETRICS', 'Biometric Devices'
+    NOTICES = 'NOTICES', 'Notices'
+    PAYROLL = 'PAYROLL', 'Payroll'
+    PERFORMANCE = 'PERFORMANCE', 'Performance'
+    RECRUITMENT = 'RECRUITMENT', 'Recruitment'
+    REPORTS = 'REPORTS', 'Reports'
+    TIMEOFF = 'TIMEOFF', 'Leave and On-duty'
+
+
 class Organisation(AuditedBaseModel):
     name = models.CharField(max_length=255)
     slug = models.SlugField(max_length=255, unique=True, blank=True)
@@ -160,6 +174,7 @@ class Organisation(AuditedBaseModel):
         default=OrganisationEntityType.PRIVATE_LIMITED,
     )
     pan_number = models.CharField(max_length=10, null=True, blank=True)
+    tan_number = models.CharField(max_length=10, null=True, blank=True)
     address = models.TextField(blank=True)
     phone = models.CharField(max_length=20, blank=True)
     email = models.EmailField(blank=True)
@@ -575,3 +590,81 @@ class OrganisationNote(AuditedBaseModel):
 
     def __str__(self):
         return f'Note for {self.organisation.name} by {self.created_by.email}'
+
+
+class ActAsSession(AuditedBaseModel):
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='act_as_sessions',
+    )
+    organisation = models.ForeignKey(
+        Organisation,
+        on_delete=models.CASCADE,
+        related_name='act_as_sessions',
+    )
+    target_org_admin = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='targeted_act_as_sessions',
+    )
+    reason = models.TextField()
+    started_at = models.DateTimeField(default=timezone.now)
+    refreshed_at = models.DateTimeField(default=timezone.now)
+    ended_at = models.DateTimeField(null=True, blank=True)
+    ended_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='ended_act_as_sessions',
+    )
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    revoked_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='revoked_act_as_sessions',
+    )
+    revoked_reason = models.TextField(blank=True)
+
+    class Meta:
+        db_table = 'organisation_act_as_sessions'
+        ordering = ['-started_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['actor'],
+                condition=Q(ended_at__isnull=True, revoked_at__isnull=True),
+                name='unique_active_act_as_session_per_actor',
+            ),
+        ]
+
+    @property
+    def is_active(self):
+        return self.ended_at is None and self.revoked_at is None
+
+
+class OrganisationFeatureFlag(AuditedBaseModel):
+    organisation = models.ForeignKey(
+        Organisation,
+        on_delete=models.CASCADE,
+        related_name='feature_flags',
+    )
+    feature_code = models.CharField(
+        max_length=32,
+        choices=OrganisationFeatureCode.choices,
+    )
+    is_enabled = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = 'organisation_feature_flags'
+        ordering = ['feature_code']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['organisation', 'feature_code'],
+                name='unique_feature_flag_per_org',
+            ),
+        ]

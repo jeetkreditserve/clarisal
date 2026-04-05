@@ -1,8 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { BriefcaseBusiness, Building2, UserRound } from 'lucide-react'
-
-import { AppSelect } from '@/components/ui/AppSelect'
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
+import { BriefcaseBusiness, Check, ChevronsUpDown, UserRound } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 
 interface WorkspaceSwitcherProps {
@@ -18,8 +17,15 @@ export function WorkspaceSwitcher({ currentMode }: WorkspaceSwitcherProps) {
     return null
   }
 
-  const activeAdmin = user.admin_organisations.find((workspace) => workspace.is_active_context) ?? user.admin_organisations[0]
-  const activeEmployee = user.employee_workspaces.find((workspace) => workspace.is_active_context) ?? user.employee_workspaces[0]
+  const activeAdmin = user.admin_organisations.find((ws) => ws.is_active_context) ?? user.admin_organisations[0]
+  const activeEmployee = user.employee_workspaces.find((ws) => ws.is_active_context) ?? user.employee_workspaces[0]
+
+  const currentLabel =
+    currentMode === 'ADMIN'
+      ? (activeAdmin?.organisation_name ?? 'Admin workspace')
+      : (activeEmployee?.organisation_name ?? 'My workspace')
+
+  const CurrentIcon = currentMode === 'ADMIN' ? BriefcaseBusiness : UserRound
 
   const handleSwitch = async (workspace_kind: 'ADMIN' | 'EMPLOYEE', organisation_id: string) => {
     setIsSwitching(true)
@@ -35,73 +41,80 @@ export function WorkspaceSwitcher({ currentMode }: WorkspaceSwitcherProps) {
       } else {
         navigate('/me/dashboard', { replace: true })
       }
-      return nextUser
     } finally {
       setIsSwitching(false)
     }
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-3">
-      {user.has_org_admin_access ? (
-        <label className="surface-shell flex items-center gap-2 rounded-[20px] px-3 py-2 text-sm text-[hsl(var(--muted-foreground-strong))]">
-          <BriefcaseBusiness className="h-4 w-4 text-[hsl(var(--brand))]" />
-          <span className="font-medium text-[hsl(var(--muted-foreground))]">Admin</span>
-          <AppSelect
-            value={activeAdmin?.organisation_id ?? ''}
-            onValueChange={(value) => void handleSwitch('ADMIN', value)}
-            disabled={isSwitching || user.admin_organisations.length === 0}
-            options={user.admin_organisations.map((workspace) => ({
-              value: workspace.organisation_id,
-              label: workspace.organisation_name,
-            }))}
-            triggerClassName="min-w-[12rem] border-0 bg-transparent px-0 py-0 shadow-none focus:translate-y-0 focus:bg-transparent focus:shadow-none"
-            contentClassName="min-w-[15rem]"
-          />
-        </label>
-      ) : null}
-
-      {user.has_employee_access ? (
-        <label className="surface-shell flex items-center gap-2 rounded-[20px] px-3 py-2 text-sm text-[hsl(var(--muted-foreground-strong))]">
-          <UserRound className="h-4 w-4 text-[hsl(var(--accent))]" />
-          <span className="font-medium text-[hsl(var(--muted-foreground))]">Employee</span>
-          <AppSelect
-            value={activeEmployee?.organisation_id ?? ''}
-            onValueChange={(value) => void handleSwitch('EMPLOYEE', value)}
-            disabled={isSwitching || user.employee_workspaces.length === 0}
-            options={user.employee_workspaces.map((workspace) => ({
-              value: workspace.organisation_id,
-              label: workspace.organisation_name,
-            }))}
-            triggerClassName="min-w-[12rem] border-0 bg-transparent px-0 py-0 shadow-none focus:translate-y-0 focus:bg-transparent focus:shadow-none"
-            contentClassName="min-w-[15rem]"
-          />
-        </label>
-      ) : null}
-
-      {currentMode === 'ADMIN' && user.has_employee_access && activeEmployee ? (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
         <button
           type="button"
-          onClick={() => void handleSwitch('EMPLOYEE', activeEmployee.organisation_id)}
           disabled={isSwitching}
-          className="btn-secondary"
+          className="surface-shell flex items-center gap-2 rounded-[20px] px-3 py-2 text-sm disabled:opacity-60"
         >
-          <UserRound className="h-4 w-4" />
-          Open employee workspace
+          <CurrentIcon className="h-4 w-4 flex-shrink-0 text-[hsl(var(--brand))]" />
+          <span className="max-w-[9rem] truncate font-medium text-[hsl(var(--foreground-strong))]">{currentLabel}</span>
+          <ChevronsUpDown className="h-3.5 w-3.5 flex-shrink-0 text-[hsl(var(--muted-foreground))]" />
         </button>
-      ) : null}
+      </DropdownMenu.Trigger>
 
-      {currentMode === 'EMPLOYEE' && user.has_org_admin_access && activeAdmin ? (
-        <button
-          type="button"
-          onClick={() => void handleSwitch('ADMIN', activeAdmin.organisation_id)}
-          disabled={isSwitching}
-          className="btn-secondary"
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          sideOffset={8}
+          align="end"
+          className="z-50 min-w-[14rem] rounded-[18px] border border-[hsl(var(--border))] bg-[hsl(var(--surface))] p-1.5 shadow-[var(--shadow-card)]"
         >
-          <Building2 className="h-4 w-4" />
-          Open admin workspace
-        </button>
-      ) : null}
-    </div>
+          {user.admin_organisations.length > 0 && (
+            <>
+              <DropdownMenu.Label className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-[hsl(var(--muted-foreground))]">
+                Admin workspaces
+              </DropdownMenu.Label>
+              {user.admin_organisations.map((ws) => {
+                const isActive = currentMode === 'ADMIN' && ws.organisation_id === activeAdmin?.organisation_id
+                return (
+                  <DropdownMenu.Item
+                    key={ws.organisation_id}
+                    onSelect={() => void handleSwitch('ADMIN', ws.organisation_id)}
+                    className="flex cursor-pointer items-center gap-2 rounded-[12px] px-2 py-2 text-sm outline-none hover:bg-[hsl(var(--surface-subtle))] focus:bg-[hsl(var(--surface-subtle))]"
+                  >
+                    <BriefcaseBusiness className="h-4 w-4 flex-shrink-0 text-[hsl(var(--brand))]" />
+                    <span className="flex-1 truncate font-medium">{ws.organisation_name}</span>
+                    {isActive && <Check className="h-3.5 w-3.5 flex-shrink-0 text-[hsl(var(--brand))]" />}
+                  </DropdownMenu.Item>
+                )
+              })}
+            </>
+          )}
+
+          {user.admin_organisations.length > 0 && user.employee_workspaces.length > 0 && (
+            <div className="my-1.5 border-t border-[hsl(var(--border))]" />
+          )}
+
+          {user.employee_workspaces.length > 0 && (
+            <>
+              <DropdownMenu.Label className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-[hsl(var(--muted-foreground))]">
+                Employee workspaces
+              </DropdownMenu.Label>
+              {user.employee_workspaces.map((ws) => {
+                const isActive = currentMode === 'EMPLOYEE' && ws.organisation_id === activeEmployee?.organisation_id
+                return (
+                  <DropdownMenu.Item
+                    key={ws.organisation_id}
+                    onSelect={() => void handleSwitch('EMPLOYEE', ws.organisation_id)}
+                    className="flex cursor-pointer items-center gap-2 rounded-[12px] px-2 py-2 text-sm outline-none hover:bg-[hsl(var(--surface-subtle))] focus:bg-[hsl(var(--surface-subtle))]"
+                  >
+                    <UserRound className="h-4 w-4 flex-shrink-0 text-[hsl(var(--accent))]" />
+                    <span className="flex-1 truncate font-medium">{ws.organisation_name}</span>
+                    {isActive && <Check className="h-3.5 w-3.5 flex-shrink-0 text-[hsl(var(--accent))]" />}
+                  </DropdownMenu.Item>
+                )
+              })}
+            </>
+          )}
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
   )
 }

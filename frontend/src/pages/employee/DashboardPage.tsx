@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { FileClock, FileWarning, ShieldCheck, UserRound } from 'lucide-react'
+import { FileClock, FileWarning, ShieldCheck, UserRound, UserX } from 'lucide-react'
 
 import { MonthCalendar } from '@/components/ui/MonthCalendar'
 import { MetricCard } from '@/components/ui/MetricCard'
@@ -80,6 +80,33 @@ export function EmployeeDashboardPage() {
             <MetricCard title="Verified documents" value={dashboard.verified_documents} hint="Approved by your organisation." icon={ShieldCheck} tone="success" />
             <MetricCard title="Rejected documents" value={dashboard.rejected_documents} hint="Upload corrected copies where needed." icon={FileWarning} tone="danger" />
           </div>
+
+          {dashboard.offboarding ? (
+            <SectionCard
+              title="Exit workflow"
+              description="Your organisation has started offboarding. Use this summary to track the final employment date and any remaining handover steps."
+            >
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <MetricCard title="Offboarding status" value={dashboard.offboarding.status} hint={dashboard.offboarding.exit_status} icon={UserX} tone={dashboard.offboarding.status === 'COMPLETED' ? 'success' : 'warning'} />
+                <MetricCard title="Exit date" value={dashboard.offboarding.date_of_exit} hint="Recorded last working date" tone="info" />
+                <MetricCard title="Required tasks done" value={`${dashboard.offboarding.completed_required_task_count}/${dashboard.offboarding.required_task_count}`} hint={`${dashboard.offboarding.pending_required_task_count} still open`} tone="primary" />
+                <MetricCard title="Pending document follow-up" value={dashboard.offboarding.pending_document_requests} hint={dashboard.offboarding.has_primary_bank_account ? 'Payroll account on file' : 'Primary bank account missing'} tone="warning" />
+              </div>
+              <div className="mt-5 space-y-3">
+                {dashboard.offboarding.tasks.map((task) => (
+                  <div key={task.id} className="surface-muted rounded-[20px] px-4 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="font-medium text-[hsl(var(--foreground-strong))]">{task.title}</p>
+                      <StatusBadge tone={task.status === 'COMPLETED' ? 'success' : task.status === 'WAIVED' ? 'info' : 'warning'}>
+                        {task.status}
+                      </StatusBadge>
+                    </div>
+                    <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">{task.description}</p>
+                  </div>
+                ))}
+              </div>
+            </SectionCard>
+          ) : null}
 
           <div className="grid gap-6 xl:grid-cols-2">
             <SectionCard title="Onboarding snapshot" description="Complete the remaining items until your record is fully ready.">

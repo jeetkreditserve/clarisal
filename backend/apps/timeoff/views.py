@@ -9,12 +9,23 @@ from apps.departments.models import Department
 from apps.employees.models import Employee
 from apps.locations.models import OfficeLocation
 
-from .models import HolidayCalendar, LeaveCycle, LeavePlan, LeaveRequest, LeaveType, OnDutyPolicy, OnDutyRequest
+from .models import (
+    HolidayCalendar,
+    LeaveCycle,
+    LeaveEncashmentRequest,
+    LeavePlan,
+    LeaveRequest,
+    LeaveType,
+    OnDutyPolicy,
+    OnDutyRequest,
+)
 from .serializers import (
     HolidayCalendarSerializer,
     HolidayCalendarWriteSerializer,
     LeaveCycleSerializer,
     LeaveCycleWriteSerializer,
+    LeaveEncashmentRequestCreateSerializer,
+    LeaveEncashmentRequestSerializer,
     LeavePlanSerializer,
     LeavePlanWriteSerializer,
     LeaveRequestCreateSerializer,
@@ -26,10 +37,10 @@ from .serializers import (
 )
 from .services import (
     create_holiday_calendar,
+    create_leave_encashment_request,
     create_leave_plan,
     create_leave_request,
     create_on_duty_request,
-    get_default_leave_cycle,
     get_employee_calendar_month,
     get_employee_leave_balances,
     publish_holiday_calendar,
@@ -288,6 +299,15 @@ class OrgOnDutyRequestListView(APIView):
         return Response(OnDutyRequestSerializer(requests, many=True).data)
 
 
+class OrgLeaveEncashmentListView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+
+    def get(self, request):
+        organisation = _get_admin_organisation(request)
+        queryset = LeaveEncashmentRequest.objects.filter(employee__organisation=organisation).select_related('employee__user', 'leave_type')
+        return Response(LeaveEncashmentRequestSerializer(queryset, many=True).data)
+
+
 class MyLeaveOverviewView(APIView):
     permission_classes = [IsEmployee, BelongsToActiveOrg]
 
@@ -348,6 +368,33 @@ class MyLeaveRequestWithdrawView(APIView):
         except ValueError as exc:
             return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(LeaveRequestSerializer(leave_request).data)
+
+
+class MyLeaveEncashmentListCreateView(APIView):
+    permission_classes = [IsEmployee, BelongsToActiveOrg]
+
+    def get(self, request):
+        employee = _get_employee(request)
+        queryset = LeaveEncashmentRequest.objects.filter(employee=employee).select_related('leave_type')
+        return Response(LeaveEncashmentRequestSerializer(queryset, many=True).data)
+
+    def post(self, request):
+        employee = _get_employee(request)
+        serializer = LeaveEncashmentRequestCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        leave_type = get_object_or_404(LeaveType, leave_plan__organisation=employee.organisation, id=serializer.validated_data['leave_type_id'])
+        try:
+            encashment = create_leave_encashment_request(
+                employee=employee,
+                leave_type=leave_type,
+                cycle_start=serializer.validated_data['cycle_start'],
+                cycle_end=serializer.validated_data['cycle_end'],
+                days_to_encash=serializer.validated_data['days_to_encash'],
+                actor=request.user,
+            )
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(LeaveEncashmentRequestSerializer(encashment).data, status=status.HTTP_201_CREATED)
 
 
 class MyOnDutyPolicyListView(APIView):

@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Employee, EmployeeBankAccount, EmployeeGovernmentId, EmployeeProfile, EducationRecord
+from .models import EducationRecord, Employee, EmployeeBankAccount, EmployeeGovernmentId, EmployeeProfile
 
 
 @admin.register(Employee)

@@ -9,6 +9,7 @@ import {
   useUpdateDepartment,
 } from '@/hooks/useOrgAdmin'
 import { AppCheckbox } from '@/components/ui/AppCheckbox'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { AppDialog } from '@/components/ui/AppDialog'
 import { AppSelect } from '@/components/ui/AppSelect'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -122,7 +123,6 @@ export function DepartmentsPage() {
   }
 
   const handleDeactivate = async (id: string) => {
-    if (!window.confirm('Deactivate this department?')) return
     try {
       await deactivateMutation.mutateAsync(id)
       toast.success('Department deactivated.')
@@ -187,9 +187,17 @@ export function DepartmentsPage() {
                       Edit
                     </button>
                     {department.is_active ? (
-                      <button type="button" onClick={() => handleDeactivate(department.id)} className="btn-danger">
-                        Deactivate
-                      </button>
+                      <ConfirmDialog
+                        trigger={
+                          <button type="button" className="btn-danger">
+                            Deactivate
+                          </button>
+                        }
+                        title="Deactivate department?"
+                        description="Inactive departments stay in history but can no longer receive active employees."
+                        confirmLabel="Deactivate"
+                        onConfirm={() => handleDeactivate(department.id)}
+                      />
                     ) : null}
                   </div>
                 </div>

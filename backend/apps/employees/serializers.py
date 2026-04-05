@@ -1,3 +1,4 @@
+from django.core.exceptions import ObjectDoesNotExist
 from rest_framework import serializers
 
 from .models import (
@@ -8,12 +9,13 @@ from .models import (
     EmployeeEmergencyContact,
     EmployeeFamilyMember,
     EmployeeGovernmentId,
-    EmployeeOnboardingStatus,
+    EmployeeOffboardingProcess,
+    EmployeeOffboardingTask,
     EmployeeProfile,
     EmployeeStatus,
     EmploymentType,
-    FamilyRelationChoice,
     GovernmentIdType,
+    OffboardingTaskStatus,
 )
 
 
@@ -33,6 +35,7 @@ class EmployeeListSerializer(serializers.ModelSerializer):
             'designation',
             'employment_type',
             'date_of_joining',
+            'probation_end_date',
             'status',
             'department_name',
             'office_location_name',
@@ -96,6 +99,96 @@ class EmployeeEndEmploymentSerializer(serializers.Serializer):
         ]
     )
     date_of_exit = serializers.DateField()
+    exit_reason = serializers.CharField(max_length=255, required=False, allow_blank=True, default='')
+    exit_notes = serializers.CharField(required=False, allow_blank=True, default='')
+
+
+class OffboardingTaskSerializer(serializers.ModelSerializer):
+    completed_by_name = serializers.CharField(source='completed_by.full_name', read_only=True)
+
+    class Meta:
+        model = EmployeeOffboardingTask
+        fields = [
+            'id',
+            'code',
+            'title',
+            'description',
+            'owner',
+            'status',
+            'note',
+            'due_date',
+            'is_required',
+            'completed_at',
+            'completed_by_name',
+            'created_at',
+            'modified_at',
+        ]
+
+
+class OffboardingTaskUpdateSerializer(serializers.Serializer):
+    status = serializers.ChoiceField(choices=OffboardingTaskStatus.choices)
+    note = serializers.CharField(required=False, allow_blank=True, default='')
+
+
+class OffboardingProcessSerializer(serializers.ModelSerializer):
+    tasks = OffboardingTaskSerializer(many=True, read_only=True)
+    required_task_count = serializers.SerializerMethodField()
+    completed_required_task_count = serializers.SerializerMethodField()
+    pending_required_task_count = serializers.SerializerMethodField()
+    pending_document_requests = serializers.SerializerMethodField()
+    has_primary_bank_account = serializers.SerializerMethodField()
+    fnf_settlement_id = serializers.SerializerMethodField()
+    fnf_status = serializers.SerializerMethodField()
+
+    class Meta:
+        model = EmployeeOffboardingProcess
+        fields = [
+            'id',
+            'status',
+            'exit_status',
+            'date_of_exit',
+            'exit_reason',
+            'exit_notes',
+            'started_at',
+            'completed_at',
+            'required_task_count',
+            'completed_required_task_count',
+            'pending_required_task_count',
+            'pending_document_requests',
+            'has_primary_bank_account',
+            'fnf_settlement_id',
+            'fnf_status',
+            'tasks',
+        ]
+
+    def get_required_task_count(self, obj):
+        return obj.tasks.filter(is_required=True).count()
+
+    def get_completed_required_task_count(self, obj):
+        return obj.tasks.filter(is_required=True, status__in=['COMPLETED', 'WAIVED']).count()
+
+    def get_pending_required_task_count(self, obj):
+        return max(self.get_required_task_count(obj) - self.get_completed_required_task_count(obj), 0)
+
+    def get_pending_document_requests(self, obj):
+        return obj.employee.document_requests.filter(status__in=['REQUESTED', 'REJECTED']).count()
+
+    def get_has_primary_bank_account(self, obj):
+        return obj.employee.bank_accounts.filter(is_primary=True).exists()
+
+    def _get_fnf_settlement(self, obj):
+        try:
+            return obj.fnf_settlement
+        except ObjectDoesNotExist:
+            return None
+
+    def get_fnf_settlement_id(self, obj):
+        fnf_settlement = self._get_fnf_settlement(obj)
+        return str(fnf_settlement.id) if fnf_settlement is not None else None
+
+    def get_fnf_status(self, obj):
+        fnf_settlement = self._get_fnf_settlement(obj)
+        return fnf_settlement.status if fnf_settlement is not None else None
 
 
 class EmployeeProfileSerializer(serializers.ModelSerializer):
@@ -232,19 +325,22 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
     bank_accounts = BankAccountSerializer(many=True, read_only=True)
     family_members = FamilyMemberSerializer(many=True, read_only=True)
     emergency_contacts = EmergencyContactSerializer(many=True, read_only=True)
-    leave_approval_workflow_id = serializers.UUIDField(source='leave_approval_workflow.id', read_only=True)
-    leave_approval_workflow_name = serializers.CharField(source='leave_approval_workflow.name', read_only=True)
-    on_duty_approval_workflow_id = serializers.UUIDField(source='on_duty_approval_workflow.id', read_only=True)
-    on_duty_approval_workflow_name = serializers.CharField(source='on_duty_approval_workflow.name', read_only=True)
+    leave_approval_workflow_id = serializers.UUIDField(source='leave_approval_workflow.id', read_only=True, allow_null=True)
+    leave_approval_workflow_name = serializers.CharField(source='leave_approval_workflow.name', read_only=True, allow_null=True)
+    on_duty_approval_workflow_id = serializers.UUIDField(source='on_duty_approval_workflow.id', read_only=True, allow_null=True)
+    on_duty_approval_workflow_name = serializers.CharField(source='on_duty_approval_workflow.name', read_only=True, allow_null=True)
     attendance_regularization_approval_workflow_id = serializers.UUIDField(
         source='attendance_regularization_approval_workflow.id',
         read_only=True,
+        allow_null=True,
     )
     attendance_regularization_approval_workflow_name = serializers.CharField(
         source='attendance_regularization_approval_workflow.name',
         read_only=True,
+        allow_null=True,
     )
     effective_approval_workflows = serializers.SerializerMethodField()
+    offboarding = serializers.SerializerMethodField()
 
     class Meta:
         model = Employee
@@ -257,6 +353,7 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
             'designation',
             'employment_type',
             'date_of_joining',
+            'probation_end_date',
             'date_of_exit',
             'status',
             'onboarding_status',
@@ -276,6 +373,7 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
             'attendance_regularization_approval_workflow_id',
             'attendance_regularization_approval_workflow_name',
             'effective_approval_workflows',
+            'offboarding',
         ]
 
     def get_suggested_employee_code(self, obj):
@@ -312,12 +410,19 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
             'attendance_regularization': serialize_effective(ApprovalRequestKind.ATTENDANCE_REGULARIZATION),
         }
 
+    def get_offboarding(self, obj):
+        try:
+            process = obj.offboarding_process
+        except EmployeeOffboardingProcess.DoesNotExist:
+            return None
+        return OffboardingProcessSerializer(process).data
+
 
 class CtEmployeeDetailSerializer(serializers.ModelSerializer):
     full_name = serializers.CharField(source='user.full_name', read_only=True)
-    department_name = serializers.CharField(source='department.name', read_only=True)
-    office_location_name = serializers.CharField(source='office_location.name', read_only=True)
-    reporting_to_name = serializers.CharField(source='reporting_to.user.full_name', read_only=True)
+    department_name = serializers.CharField(source='department.name', read_only=True, allow_null=True)
+    office_location_name = serializers.CharField(source='office_location.name', read_only=True, allow_null=True)
+    reporting_to_name = serializers.CharField(source='reporting_to.user.full_name', read_only=True, allow_null=True)
 
     class Meta:
         model = Employee

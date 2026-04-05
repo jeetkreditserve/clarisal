@@ -42,10 +42,10 @@ export function NoticeEditorPage() {
   const isEditing = Boolean(id)
   const isCtMode = Boolean(organisationId)
   const basePath = isCtMode ? `/ct/organisations/${organisationId}` : '/org'
-  const { data: orgNotice, isLoading } = useNotice(id ?? '')
-  const { data: departments } = useDepartments(true)
-  const { data: locations } = useLocations(true)
-  const { data: employees } = useEmployees({ page: 1 })
+  const { data: orgNotice, isLoading } = useNotice(id ?? '', !isCtMode)
+  const { data: departments } = useDepartments(true, !isCtMode)
+  const { data: locations } = useLocations(true, !isCtMode)
+  const { data: employees } = useEmployees({ page: 1 }, !isCtMode)
   const { data: configuration, isLoading: isCtLoading } = useCtOrgConfiguration(organisationId ?? '', isCtMode)
   const { data: ctEmployees } = useCtOrgEmployees(organisationId ?? '', { page: 1 }, isCtMode)
   const createMutation = useCreateNotice()
@@ -94,6 +94,12 @@ export function NoticeEditorPage() {
     () => NOTICE_STATUS_OPTIONS.map((value) => ({ value, label: startCase(value) })),
     [],
   )
+  const scheduleWarning =
+    form.status === 'SCHEDULED' && !form.scheduled_for
+      ? 'Scheduled notices need a publish time before they can be automated.'
+      : form.expires_at && form.scheduled_for && form.expires_at <= form.scheduled_for
+        ? 'Expiry must be later than the scheduled publish time.'
+        : null
 
   const saveNotice = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -241,6 +247,11 @@ export function NoticeEditorPage() {
       </SectionCard>
 
       <SectionCard title="Timing and targeting" description="Schedule, expire, and target notices precisely so employees only see what is relevant to them.">
+        {scheduleWarning ? (
+          <div className="mb-4 rounded-[18px] border border-[hsl(var(--warning)_/_0.24)] bg-[hsl(var(--warning)_/_0.12)] px-4 py-3 text-sm text-[hsl(var(--foreground-strong))]">
+            {scheduleWarning}
+          </div>
+        ) : null}
         <div className="grid gap-4 lg:grid-cols-2">
           <div>
             <label className="field-label">Scheduled publish</label>

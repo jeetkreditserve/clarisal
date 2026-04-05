@@ -8,12 +8,14 @@ import {
   createEmergencyContact,
   createEducation,
   createFamilyMember,
+  createMyLeaveEncashment,
   createMyLeaveRequest,
   createMyOnDutyRequest,
   deleteBankAccount,
   deleteEmergencyContact,
   deleteEducation,
   deleteFamilyMember,
+  downloadMyPayslip,
   fetchBankAccounts,
   fetchEducation,
   fetchGovernmentIds,
@@ -28,8 +30,10 @@ import {
   fetchMyDocumentRequests,
   fetchMyDocuments,
   fetchMyEvents,
+  fetchMyLeaveEncashments,
   fetchMyLeaveOverview,
   fetchMyNotices,
+  fetchMyOffboarding,
   fetchMyOnDutyPolicies,
   fetchMyOnDutyRequests,
   fetchMyOnboarding,
@@ -153,6 +157,11 @@ export function useWithdrawMyAttendanceRegularization() {
 export function useMyProfile() {
   const organisationId = useEmployeeScope()
   return useQuery({ queryKey: ['me', organisationId, 'profile'], queryFn: fetchMyProfile })
+}
+
+export function useMyOffboarding() {
+  const organisationId = useEmployeeScope()
+  return useQuery({ queryKey: ['me', organisationId, 'offboarding'], queryFn: fetchMyOffboarding })
 }
 
 export function useMyOnboarding() {
@@ -310,6 +319,12 @@ export function useMyPayslip(id: string) {
   })
 }
 
+export function useDownloadMyPayslip() {
+  return useMutation({
+    mutationFn: downloadMyPayslip,
+  })
+}
+
 export function useCreateBankAccount() {
   const queryClient = useQueryClient()
   return useMutation({
@@ -432,6 +447,24 @@ export function useWithdrawMyLeaveRequest() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: withdrawMyLeaveRequest,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['me'] })
+    },
+  })
+}
+
+export function useMyLeaveEncashments() {
+  const organisationId = useEmployeeScope()
+  return useQuery({
+    queryKey: ['me', organisationId, 'leave-encashments'],
+    queryFn: fetchMyLeaveEncashments,
+  })
+}
+
+export function useCreateMyLeaveEncashment() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: createMyLeaveEncashment,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['me'] })
     },

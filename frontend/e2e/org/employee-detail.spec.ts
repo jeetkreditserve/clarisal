@@ -4,8 +4,7 @@ test.describe('Org Admin — Employee Detail', () => {
   // Navigate to Priya Sharma's detail page before each test
   test.beforeEach(async ({ page }) => {
     await page.goto('/org/employees')
-    await expect(page.getByText('Employees')).toBeVisible({ timeout: 10000 })
-    // Wait for the table to populate
+    await expect(page.getByRole('heading', { name: 'Employees' })).toBeVisible({ timeout: 10000 })
     await expect(page.locator('tbody tr').first()).toBeVisible({ timeout: 10000 })
 
     // Search for Priya Sharma
@@ -26,10 +25,8 @@ test.describe('Org Admin — Employee Detail', () => {
   })
 
   test('employee name and email are displayed', async ({ page }) => {
-    // Name is in the PageHeader title
-    await expect(page.getByText('Priya Sharma')).toBeVisible()
-    // Email appears in the description line
-    await expect(page.getByText(/priya/i)).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Priya Sharma' })).toBeVisible()
+    await expect(page.getByText('priya.sharma@acmeworkforce.com')).toBeVisible()
   })
 
   test('employee status badge is visible', async ({ page }) => {
@@ -50,9 +47,8 @@ test.describe('Org Admin — Employee Detail', () => {
 
   test('employment info visible — employment type select and date field', async ({ page }) => {
     await expect(page.getByText('Employment settings')).toBeVisible()
-    // Employment type select
-    const employmentSelect = page.locator('select.field-select').filter({ hasText: /FULL.TIME|PART.TIME|CONTRACT|INTERN/ })
-    await expect(employmentSelect.first()).toBeVisible()
+    await expect(page.getByRole('button', { name: /Full Time|Part Time|Contract|Intern/i }).first()).toBeVisible()
+    await expect(page.getByRole('button', { name: /Select joining date|\d{2} \w{3} \d{4}/ }).first()).toBeVisible()
   })
 
   test('back to employees link visible', async ({ page }) => {

@@ -55,9 +55,10 @@ test.describe('Employee Approvals', () => {
   test('navigation to /me/approvals from sidebar works', async ({ page }) => {
     await page.goto('/me/dashboard')
     await page.waitForSelector('text=My dashboard', { timeout: 15000 })
-    const approvalsLink = page.locator('a[href="/me/approvals"]')
+    const approvalsLink = page.getByRole('navigation').getByRole('link', { name: 'Approvals' })
     await expect(approvalsLink).toBeVisible({ timeout: 10000 })
-    await approvalsLink.click()
+    await expect(approvalsLink).toHaveAttribute('href', '/me/approvals')
+    await approvalsLink.evaluate((element: HTMLAnchorElement) => element.click())
     await page.waitForURL('**/me/approvals', { timeout: 10000 })
     expect(page.url()).toContain('/me/approvals')
   })

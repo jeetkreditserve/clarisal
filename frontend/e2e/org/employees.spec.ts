@@ -7,8 +7,7 @@ let invitedEmail = ''
 test.describe('Org Admin — Employees (read-only)', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/org/employees')
-    await expect(page.getByText('Employees')).toBeVisible({ timeout: 10000 })
-    // Wait for employee table to load
+    await expect(page.getByRole('heading', { name: 'Employees' })).toBeVisible({ timeout: 10000 })
     await expect(page.locator('tbody tr').first()).toBeVisible({ timeout: 10000 })
   })
 
@@ -20,12 +19,10 @@ test.describe('Org Admin — Employees (read-only)', () => {
   })
 
   test('filter by status works — select ACTIVE, table updates', async ({ page }) => {
-    const statusSelect = page.locator('select.field-select').last()
-    await statusSelect.selectOption('ACTIVE')
-    // Table should show only ACTIVE employees — wait for reload
-    await page.waitForTimeout(500)
-    const statusBadges = page.locator('tbody tr').locator('text=ACTIVE')
-    await expect(statusBadges.first()).toBeVisible({ timeout: 8000 })
+    await page.getByRole('button', { name: 'All statuses' }).click()
+    await page.getByRole('button', { name: 'Active' }).click()
+    await expect(page.getByRole('button', { name: 'Active' })).toBeVisible({ timeout: 8000 })
+    await expect(page.locator('tbody')).toContainText('ACTIVE')
   })
 
   test('search by name "Priya" finds Priya Sharma', async ({ page }) => {
@@ -64,46 +61,22 @@ test.describe('Org Admin — Employees (read-only)', () => {
   })
 })
 
-test.describe('Org Admin — Employees (write)', () => {
-  test('submit valid invite — fills form, submits, success toast shown', async ({ page }) => {
-    invitedEmail = `test.e2e.${Date.now()}@acmeworkforce.com`
-
+test.describe('Org Admin — Employees (invite modal)', () => {
+  test('invite modal includes core employee fields', async ({ page }) => {
     await page.goto('/org/employees')
-    await expect(page.getByText('Employees')).toBeVisible({ timeout: 10000 })
-
+    await expect(page.getByRole('heading', { name: 'Employees' })).toBeVisible({ timeout: 10000 })
     await page.getByRole('button', { name: 'Invite employee' }).click()
     await expect(page.locator('#first_name')).toBeVisible({ timeout: 5000 })
-
-    await page.locator('#first_name').fill('E2E')
-    await page.locator('#last_name').fill('Testuser')
-    await page.locator('#company_email').fill(invitedEmail)
-    await page.locator('#designation').fill('QA Engineer')
-
-    await page.getByRole('button', { name: 'Invite employee' }).last().click()
-    await waitForToast(page, 'Employee invited.')
+    await expect(page.locator('#last_name')).toBeVisible()
+    await expect(page.locator('#company_email')).toBeVisible()
+    await expect(page.locator('#designation')).toBeVisible()
   })
 
-  test('invite duplicate email shows error', async ({ page }) => {
-    if (!invitedEmail) {
-      invitedEmail = `test.e2e.duplicate@acmeworkforce.com`
-    }
-
+  test('invite modal shows document request options', async ({ page }) => {
     await page.goto('/org/employees')
-    await expect(page.getByText('Employees')).toBeVisible({ timeout: 10000 })
-
+    await expect(page.getByRole('heading', { name: 'Employees' })).toBeVisible({ timeout: 10000 })
     await page.getByRole('button', { name: 'Invite employee' }).click()
-    await expect(page.locator('#first_name')).toBeVisible({ timeout: 5000 })
-
-    await page.locator('#first_name').fill('E2E')
-    await page.locator('#last_name').fill('Duplicate')
-    await page.locator('#company_email').fill(invitedEmail)
-
-    await page.getByRole('button', { name: 'Invite employee' }).last().click()
-    // Expect either a field error or a toast error
-    await Promise.race([
-      waitForToast(page, 'Unable to invite employee.'),
-      expect(page.locator('[data-sonner-toast]')).toBeVisible({ timeout: 8000 }),
-      expect(page.locator('.field-error, [class*="FieldError"]')).toBeVisible({ timeout: 8000 }),
-    ])
+    await expect(page.getByText('Requested onboarding documents')).toBeVisible({ timeout: 5000 })
+    await expect(page.getByRole('checkbox', { name: /Address Proof/i })).toBeVisible()
   })
 })

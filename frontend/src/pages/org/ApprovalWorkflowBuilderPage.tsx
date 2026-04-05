@@ -62,6 +62,10 @@ interface WorkflowStageForm {
   mode: string
   fallback_type: string
   fallback_employee_id?: string | null
+  reminder_after_hours?: number | null
+  escalate_after_hours?: number | null
+  escalation_target_type: string
+  escalation_employee_id?: string | null
   approvers: WorkflowApproverForm[]
 }
 
@@ -97,6 +101,10 @@ function createEmptyStage(sequence: number): WorkflowStageForm {
     mode: 'ALL',
     fallback_type: 'NONE',
     fallback_employee_id: null,
+    reminder_after_hours: null,
+    escalate_after_hours: null,
+    escalation_target_type: 'NONE',
+    escalation_employee_id: null,
     approvers: [{ approver_type: 'PRIMARY_ORG_ADMIN', approver_employee_id: null }],
   }
 }
@@ -128,6 +136,10 @@ function mapWorkflowToForm(workflow: ApprovalWorkflowConfig): WorkflowForm {
       mode: stage.mode,
       fallback_type: stage.fallback_type,
       fallback_employee_id: stage.fallback_employee_id,
+      reminder_after_hours: stage.reminder_after_hours,
+      escalate_after_hours: stage.escalate_after_hours,
+      escalation_target_type: stage.escalation_target_type,
+      escalation_employee_id: stage.escalation_employee_id,
       approvers: stage.approvers.map((approver) => ({
         id: approver.id,
         approver_type: approver.approver_type,
@@ -154,6 +166,10 @@ function buildPayload(form: WorkflowForm) {
       ...stage,
       sequence: index + 1,
       fallback_employee_id: stage.fallback_employee_id || null,
+      reminder_after_hours: stage.reminder_after_hours || null,
+      escalate_after_hours: stage.escalate_after_hours || null,
+      escalation_target_type: stage.escalation_target_type,
+      escalation_employee_id: stage.escalation_target_type === 'SPECIFIC_EMPLOYEE' ? stage.escalation_employee_id || null : null,
       approvers: stage.approvers.map((approver) => ({
         ...(approver.id ? { id: approver.id } : {}),
         approver_type: approver.approver_type,
@@ -169,11 +185,11 @@ export function ApprovalWorkflowBuilderPage() {
   const isEditing = Boolean(id)
   const isCtMode = Boolean(organisationId)
   const basePath = isCtMode ? `/ct/organisations/${organisationId}` : '/org'
-  const { data: orgWorkflow, isLoading } = useApprovalWorkflow(id ?? '')
-  const { data: departments } = useDepartments(true)
-  const { data: locations } = useLocations(true)
-  const { data: employees } = useEmployees({ page: 1 })
-  const { data: leavePlans } = useLeavePlans()
+  const { data: orgWorkflow, isLoading } = useApprovalWorkflow(id ?? '', !isCtMode)
+  const { data: departments } = useDepartments(true, !isCtMode)
+  const { data: locations } = useLocations(true, !isCtMode)
+  const { data: employees } = useEmployees({ page: 1 }, !isCtMode)
+  const { data: leavePlans } = useLeavePlans(!isCtMode)
   const { data: configuration, isLoading: isCtLoading } = useCtOrgConfiguration(organisationId ?? '', isCtMode)
   const { data: ctEmployees } = useCtOrgEmployees(organisationId ?? '', { page: 1 }, isCtMode)
   const createMutation = useCreateApprovalWorkflow()
@@ -659,6 +675,88 @@ export function ApprovalWorkflowBuilderPage() {
                           ...current,
                           stages: current.stages.map((item, itemIndex) =>
                             itemIndex === stageIndex ? { ...item, fallback_employee_id: value } : item,
+                          ),
+                        }))
+                      }
+                      options={employeeOptions}
+                    />
+                  </div>
+                ) : null}
+                <div>
+                  <label className="field-label">Reminder after hours</label>
+                  <input
+                    type="number"
+                    className="field-input"
+                    value={stage.reminder_after_hours ?? ''}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        stages: current.stages.map((item, itemIndex) =>
+                          itemIndex === stageIndex
+                            ? {
+                                ...item,
+                                reminder_after_hours: event.target.value ? Number(event.target.value) : null,
+                              }
+                            : item,
+                        ),
+                      }))
+                    }
+                    placeholder="Optional"
+                  />
+                </div>
+                <div>
+                  <label className="field-label">Escalate after hours</label>
+                  <input
+                    type="number"
+                    className="field-input"
+                    value={stage.escalate_after_hours ?? ''}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        stages: current.stages.map((item, itemIndex) =>
+                          itemIndex === stageIndex
+                            ? {
+                                ...item,
+                                escalate_after_hours: event.target.value ? Number(event.target.value) : null,
+                              }
+                            : item,
+                        ),
+                      }))
+                    }
+                    placeholder="Optional"
+                  />
+                </div>
+                <div>
+                  <label className="field-label">Escalation target</label>
+                  <AppSelect
+                    value={stage.escalation_target_type}
+                    onValueChange={(value) =>
+                      setForm((current) => ({
+                        ...current,
+                        stages: current.stages.map((item, itemIndex) =>
+                          itemIndex === stageIndex
+                            ? {
+                                ...item,
+                                escalation_target_type: value,
+                                escalation_employee_id: value === 'SPECIFIC_EMPLOYEE' ? item.escalation_employee_id : null,
+                              }
+                            : item,
+                        ),
+                      }))
+                    }
+                    options={fallbackTypeOptions}
+                  />
+                </div>
+                {stage.escalation_target_type === 'SPECIFIC_EMPLOYEE' ? (
+                  <div>
+                    <label className="field-label">Escalation employee</label>
+                    <AppSelect
+                      value={stage.escalation_employee_id ?? ''}
+                      onValueChange={(value) =>
+                        setForm((current) => ({
+                          ...current,
+                          stages: current.stages.map((item, itemIndex) =>
+                            itemIndex === stageIndex ? { ...item, escalation_employee_id: value } : item,
                           ),
                         }))
                       }

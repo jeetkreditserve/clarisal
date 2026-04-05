@@ -72,6 +72,27 @@ class EmployeeOnboardingStatus(models.TextChoices):
     COMPLETE = 'COMPLETE', 'Complete'
 
 
+class OffboardingProcessStatus(models.TextChoices):
+    IN_PROGRESS = 'IN_PROGRESS', 'In Progress'
+    COMPLETED = 'COMPLETED', 'Completed'
+    CANCELLED = 'CANCELLED', 'Cancelled'
+
+
+class OffboardingTaskStatus(models.TextChoices):
+    PENDING = 'PENDING', 'Pending'
+    IN_PROGRESS = 'IN_PROGRESS', 'In Progress'
+    COMPLETED = 'COMPLETED', 'Completed'
+    WAIVED = 'WAIVED', 'Waived'
+
+
+class OffboardingTaskOwner(models.TextChoices):
+    ORG_ADMIN = 'ORG_ADMIN', 'Org Admin'
+    MANAGER = 'MANAGER', 'Manager'
+    EMPLOYEE = 'EMPLOYEE', 'Employee'
+    PAYROLL = 'PAYROLL', 'Payroll'
+    IT = 'IT', 'IT'
+
+
 class SoftDeleteQuerySet(models.QuerySet):
     def active(self):
         return self.filter(is_deleted=False)
@@ -83,7 +104,7 @@ class SoftDeleteQuerySet(models.QuerySet):
         return self.update(is_deleted=True, deleted_at=timezone.now())
 
 
-class SoftDeleteManager(models.Manager.from_queryset(SoftDeleteQuerySet)):
+class SoftDeleteManager(models.Manager.from_queryset(SoftDeleteQuerySet)):  # type: ignore[misc]
     def get_queryset(self):
         return super().get_queryset().active()
 
@@ -140,6 +161,11 @@ class Employee(SoftDeleteModel):
         related_name='direct_reports',
     )
     date_of_joining = models.DateField(null=True, blank=True)
+    probation_end_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text='Date on which the employee completes their probation period.',
+    )
     date_of_exit = models.DateField(null=True, blank=True)
     employment_type = models.CharField(
         max_length=20,
@@ -198,6 +224,80 @@ class Employee(SoftDeleteModel):
         return f'{self.employee_code or "UNASSIGNED"} - {self.user.full_name}'
 
 
+class EmployeeOffboardingProcess(AuditedBaseModel):
+    organisation = models.ForeignKey(
+        'organisations.Organisation',
+        on_delete=models.CASCADE,
+        related_name='employee_offboarding_processes',
+    )
+    employee = models.OneToOneField(
+        Employee,
+        on_delete=models.CASCADE,
+        related_name='offboarding_process',
+    )
+    initiated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='initiated_offboarding_processes',
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=OffboardingProcessStatus.choices,
+        default=OffboardingProcessStatus.IN_PROGRESS,
+    )
+    exit_status = models.CharField(max_length=20, choices=EmployeeStatus.choices)
+    date_of_exit = models.DateField()
+    exit_reason = models.CharField(max_length=255, blank=True)
+    exit_notes = models.TextField(blank=True)
+    started_at = models.DateTimeField(default=timezone.now)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'employee_offboarding_processes'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['organisation', 'status']),
+            models.Index(fields=['employee', 'status']),
+        ]
+
+
+class EmployeeOffboardingTask(AuditedBaseModel):
+    process = models.ForeignKey(
+        EmployeeOffboardingProcess,
+        on_delete=models.CASCADE,
+        related_name='tasks',
+    )
+    code = models.CharField(max_length=64)
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    owner = models.CharField(max_length=20, choices=OffboardingTaskOwner.choices, default=OffboardingTaskOwner.ORG_ADMIN)
+    status = models.CharField(
+        max_length=20,
+        choices=OffboardingTaskStatus.choices,
+        default=OffboardingTaskStatus.PENDING,
+    )
+    note = models.TextField(blank=True)
+    due_date = models.DateField(null=True, blank=True)
+    is_required = models.BooleanField(default=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    completed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='completed_offboarding_tasks',
+    )
+
+    class Meta:
+        db_table = 'employee_offboarding_tasks'
+        ordering = ['created_at']
+        constraints = [
+            models.UniqueConstraint(fields=['process', 'code'], name='unique_offboarding_task_code_per_process'),
+        ]
+
+
 class EmployeeProfile(AuditedBaseModel):
     employee = models.OneToOneField(
         Employee,
@@ -221,6 +321,8 @@ class EmployeeProfile(AuditedBaseModel):
     country = models.CharField(max_length=100, blank=True)
     country_code = models.CharField(max_length=2, blank=True, default='')
     pincode = models.CharField(max_length=20, blank=True)
+    uan_number = models.CharField(max_length=12, blank=True)
+    esic_ip_number = models.CharField(max_length=20, blank=True)
 
     class Meta:
         db_table = 'employee_profiles'

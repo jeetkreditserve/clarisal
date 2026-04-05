@@ -37,6 +37,7 @@ export function AppDatePicker({
         <button
           id={id}
           type="button"
+          aria-label={placeholder}
           disabled={disabled}
           className={cn(
             'field-input flex items-center justify-between gap-3 text-left disabled:cursor-not-allowed disabled:opacity-60',
