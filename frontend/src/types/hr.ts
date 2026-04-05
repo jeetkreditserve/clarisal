@@ -1432,6 +1432,8 @@ export interface CtPayrollStatutoryMaster {
   wage_basis?: string
   deduction_frequency: string
   effective_from: string
+  is_active: boolean
+  source_label?: string
   slabs?: CtPayrollStatutoryMasterSlab[]
   contributions?: CtPayrollStatutoryMasterContribution[]
 }

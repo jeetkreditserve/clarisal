@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { Pencil, Trash2, Plus, X } from 'lucide-react'
+import { Pencil, Trash2, Plus, X, Eye } from 'lucide-react'
 import { toast } from 'sonner'
 
+import { AppDialog } from '@/components/ui/AppDialog'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { SkeletonPageHeader, SkeletonTable } from '@/components/ui/Skeleton'
@@ -14,7 +15,7 @@ import {
   useCtPayrollStatutoryMasters,
 } from '@/hooks/useCtOrganisations'
 import { getErrorMessage } from '@/lib/errors'
-import type { PayrollTaxSlabSet, TaxCategory } from '@/types/hr'
+import type { CtPayrollStatutoryMaster, PayrollTaxSlabSet, TaxCategory } from '@/types/hr'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -31,6 +32,11 @@ type EditingState =
   | { mode: 'none' }
   | { mode: 'create'; prefill?: Partial<MasterFormState> }
   | { mode: 'edit'; slabSet: PayrollTaxSlabSet }
+
+type ModalView =
+  | { kind: 'tax'; set: PayrollTaxSlabSet }
+  | { kind: 'pt'; rule: CtPayrollStatutoryMaster }
+  | { kind: 'lwf'; rule: CtPayrollStatutoryMaster }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -100,15 +106,16 @@ function SlabsTable({ slabs }: { slabs: PayrollTaxSlabSet['slabs'] }) {
 
 function MasterCard({
   slabSet,
+  onView,
   onEdit,
   onDelete,
 }: {
   slabSet: PayrollTaxSlabSet
+  onView: () => void
   onEdit: () => void
   onDelete: () => void
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
-  const [expanded, setExpanded] = useState(false)
 
   return (
     <div className="surface-shell rounded-[18px] px-4 py-4 space-y-3">
@@ -125,6 +132,14 @@ function MasterCard({
           </p>
         </div>
         <div className="flex items-center gap-1 shrink-0">
+          <button
+            type="button"
+            className="btn-icon-ghost"
+            title="View slabs"
+            onClick={onView}
+          >
+            <Eye className="size-3.5" />
+          </button>
           <button
             type="button"
             className="btn-icon-ghost"
@@ -155,16 +170,6 @@ function MasterCard({
           )}
         </div>
       </div>
-
-      <button
-        type="button"
-        className="text-xs text-[hsl(var(--muted-foreground))] underline-offset-2 hover:underline"
-        onClick={() => setExpanded((v) => !v)}
-      >
-        {expanded ? 'Hide slabs' : 'View slabs'}
-      </button>
-
-      {expanded && <SlabsTable slabs={slabSet.slabs} />}
     </div>
   )
 }
@@ -365,12 +370,14 @@ function MasterForm({
 function FiscalYearBlock({
   fiscal_year,
   sets,
+  onView,
   onEdit,
   onDelete,
   onCreatePrefill,
 }: {
   fiscal_year: string
   sets: PayrollTaxSlabSet[]
+  onView: (set: PayrollTaxSlabSet) => void
   onEdit: (set: PayrollTaxSlabSet) => void
   onDelete: (set: PayrollTaxSlabSet) => void
   onCreatePrefill: (prefill: Partial<MasterFormState>) => void
@@ -397,6 +404,7 @@ function FiscalYearBlock({
                 <MasterCard
                   key={cat}
                   slabSet={match}
+                  onView={() => onView(match)}
                   onEdit={() => onEdit(match)}
                   onDelete={() => onDelete(match)}
                 />
@@ -427,6 +435,7 @@ export function PayrollMastersPage() {
   const deleteMutation = useDeleteCtPayrollTaxSlabSet()
 
   const [editing, setEditing] = useState<EditingState>({ mode: 'none' })
+  const [modalView, setModalView] = useState<ModalView | null>(null)
 
   const allSets = data ?? []
 
@@ -584,6 +593,7 @@ export function PayrollMastersPage() {
                 key={fy}
                 fiscal_year={fy}
                 sets={byFiscalYear[fy]}
+                onView={(set) => setModalView({ kind: 'tax', set })}
                 onEdit={(set) => setEditing({ mode: 'edit', slabSet: set })}
                 onDelete={handleDelete}
                 onCreatePrefill={(prefill) => setEditing({ mode: 'create', prefill })}
@@ -623,12 +633,22 @@ export function PayrollMastersPage() {
                         <StatusBadge tone="neutral">Inactive</StatusBadge>
                       )}
                     </div>
-                    <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                      {rule.deduction_frequency} deduction · {rule.slabs?.length ?? 0} slab
-                      {(rule.slabs?.length ?? 0) !== 1 ? 's' : ''} · effective{' '}
-                      {rule.effective_from}
-                      {rule.source_label ? ` · ${rule.source_label}` : ''}
-                    </p>
+                    <div className="flex items-center gap-3">
+                      <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                        {rule.deduction_frequency} deduction · {rule.slabs?.length ?? 0} slab
+                        {(rule.slabs?.length ?? 0) !== 1 ? 's' : ''} · effective{' '}
+                        {rule.effective_from}
+                        {rule.source_label ? ` · ${rule.source_label}` : ''}
+                      </p>
+                      <button
+                        type="button"
+                        className="btn-icon-ghost shrink-0"
+                        title="View slabs"
+                        onClick={() => setModalView({ kind: 'pt', rule })}
+                      >
+                        <Eye className="size-3.5" />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -662,13 +682,23 @@ export function PayrollMastersPage() {
                         <StatusBadge tone="neutral">Inactive</StatusBadge>
                       )}
                     </div>
-                    <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                      {rule.deduction_frequency} deduction · {rule.contributions?.length ?? 0}{' '}
-                      contribution tier
-                      {(rule.contributions?.length ?? 0) !== 1 ? 's' : ''} · effective{' '}
-                      {rule.effective_from}
-                      {rule.source_label ? ` · ${rule.source_label}` : ''}
-                    </p>
+                    <div className="flex items-center gap-3">
+                      <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                        {rule.deduction_frequency} deduction · {rule.contributions?.length ?? 0}{' '}
+                        contribution tier
+                        {(rule.contributions?.length ?? 0) !== 1 ? 's' : ''} · effective{' '}
+                        {rule.effective_from}
+                        {rule.source_label ? ` · ${rule.source_label}` : ''}
+                      </p>
+                      <button
+                        type="button"
+                        className="btn-icon-ghost shrink-0"
+                        title="View contributions"
+                        onClick={() => setModalView({ kind: 'lwf', rule })}
+                      >
+                        <Eye className="size-3.5" />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -676,6 +706,88 @@ export function PayrollMastersPage() {
           </SectionCard>
         </>
       )}
+
+      {/* ── Detail modal ─────────────────────────────────────────────────── */}
+      <AppDialog
+        open={modalView !== null}
+        onOpenChange={(open) => { if (!open) setModalView(null) }}
+        title={
+          modalView?.kind === 'tax'
+            ? `${modalView.set.name}`
+            : modalView?.kind === 'pt'
+            ? `PT — ${modalView.rule.state_name} (${modalView.rule.state_code})`
+            : modalView?.kind === 'lwf'
+            ? `LWF — ${modalView.rule.state_name} (${modalView.rule.state_code})`
+            : ''
+        }
+        description={
+          modalView?.kind === 'tax'
+            ? `${modalView.set.fiscal_year} · ${modalView.set.is_old_regime ? 'Old Regime' : 'New Regime'} · ${CATEGORY_LABELS[modalView.set.tax_category]} (${CATEGORY_HINTS[modalView.set.tax_category]})`
+            : modalView?.kind === 'pt'
+            ? `${modalView.rule.deduction_frequency} deduction · effective ${modalView.rule.effective_from}${modalView.rule.source_label ? ` · ${modalView.rule.source_label}` : ''}`
+            : modalView?.kind === 'lwf'
+            ? `${modalView.rule.deduction_frequency} deduction · effective ${modalView.rule.effective_from}${modalView.rule.source_label ? ` · ${modalView.rule.source_label}` : ''}`
+            : undefined
+        }
+      >
+        {modalView?.kind === 'tax' && (
+          <SlabsTable slabs={modalView.set.slabs} />
+        )}
+
+        {modalView?.kind === 'pt' && (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs text-[hsl(var(--muted-foreground))] uppercase tracking-wide">
+                <th className="pb-1 pr-4 font-medium">Gender</th>
+                <th className="pb-1 pr-4 font-medium">Income from</th>
+                <th className="pb-1 pr-4 font-medium">Income up to</th>
+                <th className="pb-1 pr-4 font-medium">Deduction</th>
+                <th className="pb-1 font-medium">Months</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[hsl(var(--border)_/_0.5)]">
+              {(modalView.rule.slabs ?? []).map((slab, i) => (
+                <tr key={i}>
+                  <td className="py-1.5 pr-4 capitalize">{slab.gender.toLowerCase()}</td>
+                  <td className="py-1.5 pr-4 tabular-nums">{formatInr(slab.min_income)}</td>
+                  <td className="py-1.5 pr-4 tabular-nums">{slab.max_income ? formatInr(slab.max_income) : 'No limit'}</td>
+                  <td className="py-1.5 pr-4 tabular-nums font-medium">₹{slab.deduction_amount}</td>
+                  <td className="py-1.5 text-xs text-[hsl(var(--muted-foreground))]">
+                    {slab.applicable_months ? slab.applicable_months.join(', ') : 'All months'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+
+        {modalView?.kind === 'lwf' && (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs text-[hsl(var(--muted-foreground))] uppercase tracking-wide">
+                <th className="pb-1 pr-4 font-medium">Wage from</th>
+                <th className="pb-1 pr-4 font-medium">Wage up to</th>
+                <th className="pb-1 pr-4 font-medium">Employee</th>
+                <th className="pb-1 pr-4 font-medium">Employer</th>
+                <th className="pb-1 font-medium">Months</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[hsl(var(--border)_/_0.5)]">
+              {(modalView.rule.contributions ?? []).map((tier, i) => (
+                <tr key={i}>
+                  <td className="py-1.5 pr-4 tabular-nums">{formatInr(tier.min_wage)}</td>
+                  <td className="py-1.5 pr-4 tabular-nums">{tier.max_wage ? formatInr(tier.max_wage) : 'No limit'}</td>
+                  <td className="py-1.5 pr-4 tabular-nums font-medium">₹{tier.employee_amount}</td>
+                  <td className="py-1.5 pr-4 tabular-nums font-medium">₹{tier.employer_amount}</td>
+                  <td className="py-1.5 text-xs text-[hsl(var(--muted-foreground))]">
+                    {tier.applicable_months ? tier.applicable_months.join(', ') : 'All months'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </AppDialog>
     </div>
   )
 }
