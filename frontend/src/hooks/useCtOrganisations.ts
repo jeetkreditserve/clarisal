@@ -4,6 +4,8 @@ import {
   createCtApprovalWorkflow,
   fetchCtOrgAttendanceSummary,
   createCtPayrollTaxSlabSet,
+  updateCtPayrollTaxSlabSet,
+  deleteCtPayrollTaxSlabSet,
   fetchCtOrgApprovalSummary,
   fetchCtOrgOnboardingSummary,
   createCtHolidayCalendar,
@@ -75,6 +77,23 @@ export function useCreateCtPayrollTaxSlabSet() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: createCtPayrollTaxSlabSet,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['ct', 'payroll'] }),
+  })
+}
+
+export function useUpdateCtPayrollTaxSlabSet() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Record<string, unknown> }) =>
+      updateCtPayrollTaxSlabSet(id, payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['ct', 'payroll'] }),
+  })
+}
+
+export function useDeleteCtPayrollTaxSlabSet() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => deleteCtPayrollTaxSlabSet(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['ct', 'payroll'] }),
   })
 }

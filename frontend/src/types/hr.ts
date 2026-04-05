@@ -1214,6 +1214,8 @@ export interface PayrollTaxSlab {
   rate_percent: string
 }
 
+export type TaxCategory = 'INDIVIDUAL' | 'SENIOR_CITIZEN' | 'SUPER_SENIOR_CITIZEN'
+
 export interface PayrollTaxSlabSet {
   id: string
   name: string
@@ -1221,6 +1223,8 @@ export interface PayrollTaxSlabSet {
   fiscal_year: string
   is_active: boolean
   is_system_master: boolean
+  is_old_regime: boolean
+  tax_category: TaxCategory
   source_set_id: string | null
   slabs: PayrollTaxSlab[]
   created_at: string
@@ -1428,6 +1432,8 @@ export interface CtPayrollStatutoryMaster {
   wage_basis?: string
   deduction_frequency: string
   effective_from: string
+  is_active: boolean
+  source_label?: string
   slabs?: CtPayrollStatutoryMasterSlab[]
   contributions?: CtPayrollStatutoryMasterContribution[]
 }

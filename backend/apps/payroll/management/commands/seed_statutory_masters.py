@@ -14,6 +14,8 @@ class Command(BaseCommand):
         result = seed_statutory_master_data()
         self.stdout.write(
             self.style.SUCCESS(
-                f"Seeded {result['professional_tax_rules']} PT rules and {result['labour_welfare_fund_rules']} LWF rules."
+                f"Seeded {result['income_tax_masters']} income tax masters, "
+                f"{result['professional_tax_rules']} PT rules, and "
+                f"{result['labour_welfare_fund_rules']} LWF rules."
             )
         )

@@ -61,6 +61,7 @@ from .services import (
     create_compensation_template,
     create_payroll_run,
     create_tax_slab_set,
+    delete_tax_slab_set,
     download_statutory_filing_batch,
     ensure_org_payroll_setup,
     finalize_pay_run,
@@ -123,6 +124,26 @@ class CtPayrollTaxSlabSetListCreateView(APIView):
         return Response(PayrollTaxSlabSetSerializer(tax_slab_set).data, status=status.HTTP_201_CREATED)
 
 
+class CtPayrollTaxSlabSetDetailView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def patch(self, request, pk):
+        tax_slab_set = get_object_or_404(PayrollTaxSlabSet, organisation__isnull=True, id=pk)
+        serializer = PayrollTaxSlabSetWriteSerializer(data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        try:
+            tax_slab_set = update_tax_slab_set(tax_slab_set, actor=request.user, **serializer.validated_data)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        tax_slab_set.refresh_from_db()
+        return Response(PayrollTaxSlabSetSerializer(tax_slab_set).data)
+
+    def delete(self, request, pk):
+        tax_slab_set = get_object_or_404(PayrollTaxSlabSet, organisation__isnull=True, id=pk)
+        delete_tax_slab_set(tax_slab_set, actor=request.user)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
 class CtPayrollStatutoryMasterListView(APIView):
     permission_classes = [IsControlTowerUser]
 
@@ -137,7 +158,9 @@ class OrgPayrollSummaryView(APIView):
     def get(self, request):
         organisation = _get_admin_organisation(request)
         setup = ensure_org_payroll_setup(organisation, actor=request.user)
-        tax_slab_sets = PayrollTaxSlabSet.objects.filter(organisation=organisation).prefetch_related('slabs')
+        tax_slab_sets = PayrollTaxSlabSet.objects.filter(
+            organisation__isnull=True, is_system_master=True, country_code='IN', is_active=True,
+        ).prefetch_related('slabs').order_by('fiscal_year', 'is_old_regime', 'tax_category')
         templates = CompensationTemplate.objects.filter(organisation=organisation).prefetch_related('lines__component')
         assignments = CompensationAssignment.objects.filter(employee__organisation=organisation).select_related('employee__user', 'template')
         pay_runs = PayrollRun.objects.filter(organisation=organisation).prefetch_related('items__employee__user')
@@ -172,32 +195,19 @@ class OrgPayrollStatutoryMasterListView(APIView):
 
 
 class OrgPayrollTaxSlabSetListCreateView(APIView):
-    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
+    """Read-only view of CT-level statutory tax slab masters for org admins."""
+
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
 
     def get(self, request):
-        organisation = _get_admin_organisation(request)
-        ensure_org_payroll_setup(organisation, actor=request.user)
-        queryset = PayrollTaxSlabSet.objects.filter(organisation=organisation).prefetch_related('slabs')
+        _get_admin_organisation(request)
+        queryset = PayrollTaxSlabSet.objects.filter(
+            organisation__isnull=True,
+            is_system_master=True,
+            country_code='IN',
+            is_active=True,
+        ).prefetch_related('slabs').order_by('fiscal_year', 'is_old_regime', 'tax_category')
         return Response(PayrollTaxSlabSetSerializer(queryset, many=True).data)
-
-    def post(self, request):
-        organisation = _get_admin_organisation(request)
-        serializer = PayrollTaxSlabSetWriteSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        tax_slab_set = create_tax_slab_set(actor=request.user, organisation=organisation, **serializer.validated_data)
-        return Response(PayrollTaxSlabSetSerializer(tax_slab_set).data, status=status.HTTP_201_CREATED)
-
-
-class OrgPayrollTaxSlabSetDetailView(APIView):
-    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
-
-    def patch(self, request, pk):
-        organisation = _get_admin_organisation(request)
-        tax_slab_set = get_object_or_404(PayrollTaxSlabSet, organisation=organisation, id=pk)
-        serializer = PayrollTaxSlabSetWriteSerializer(data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        tax_slab_set = update_tax_slab_set(tax_slab_set, actor=request.user, **serializer.validated_data)
-        return Response(PayrollTaxSlabSetSerializer(tax_slab_set).data)
 
 
 class OrgPayrollTDSChallanListCreateView(APIView):

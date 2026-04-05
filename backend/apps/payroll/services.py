@@ -58,6 +58,7 @@ from .models import (
     StatutoryFilingStatus,
     StatutoryFilingType,
     StatutoryIncomeBasis,
+    TaxCategory,
     TaxRegime,
     tds_quarter_for_month,
 )
@@ -493,23 +494,10 @@ def get_employee_arrears_for_run(employee, pay_run) -> Decimal:
     return (_normalize_decimal(total) or ZERO).quantize(Decimal('0.01'))
 
 
-def _get_active_tax_slab_set(organisation, fiscal_year, *, tax_regime=TaxRegime.NEW):
+def _get_active_tax_slab_set(fiscal_year, *, tax_regime=TaxRegime.NEW, tax_category=TaxCategory.INDIVIDUAL):
+    """Return the CT-level system master for the given fiscal year, regime, and taxpayer category."""
     is_old_regime = tax_regime == TaxRegime.OLD
-    tax_slab_set = PayrollTaxSlabSet.objects.filter(
-        organisation=organisation,
-        fiscal_year=fiscal_year,
-        is_active=True,
-        is_old_regime=is_old_regime,
-    ).order_by('-created_at').first()
-    if tax_slab_set:
-        return tax_slab_set
-    tax_slab_set = PayrollTaxSlabSet.objects.filter(
-        organisation=organisation,
-        is_active=True,
-        is_old_regime=is_old_regime,
-    ).order_by('-created_at').first()
-    if tax_slab_set:
-        return tax_slab_set
+    # Exact match on all three dimensions
     tax_slab_set = PayrollTaxSlabSet.objects.filter(
         organisation__isnull=True,
         is_system_master=True,
@@ -517,37 +505,67 @@ def _get_active_tax_slab_set(organisation, fiscal_year, *, tax_regime=TaxRegime.
         fiscal_year=fiscal_year,
         is_active=True,
         is_old_regime=is_old_regime,
-    ).order_by('-created_at').first()
+        tax_category=tax_category,
+    ).first()
     if tax_slab_set:
         return tax_slab_set
+    # Fallback: any active CT master for this fiscal year + regime (covers legacy INDIVIDUAL masters)
     return PayrollTaxSlabSet.objects.filter(
         organisation__isnull=True,
         is_system_master=True,
         country_code='IN',
+        fiscal_year=fiscal_year,
         is_active=True,
         is_old_regime=is_old_regime,
-    ).order_by('-created_at').first()
+    ).order_by('tax_category').first()
+
+
+def tax_category_for_fiscal_year(employee, fiscal_year_str: str) -> str:
+    """Derive the TaxCategory for an employee based on their age at the start of the fiscal year."""
+    try:
+        start_year = int(fiscal_year_str.split('-')[0])
+    except (ValueError, IndexError):
+        return TaxCategory.INDIVIDUAL
+    dob = None
+    try:
+        dob = employee.profile.date_of_birth
+    except Exception:
+        pass
+    if not dob:
+        return TaxCategory.INDIVIDUAL
+    fy_start = date(start_year, 4, 1)
+    age_at_fy_start = (fy_start - dob).days // 365
+    if age_at_fy_start >= 80:
+        return TaxCategory.SUPER_SENIOR_CITIZEN
+    if age_at_fy_start >= 60:
+        return TaxCategory.SENIOR_CITIZEN
+    return TaxCategory.INDIVIDUAL
 
 
 def _ensure_global_default_tax_master(actor=None):
+    """Return any active CT new-regime INDIVIDUAL master, creating a fallback if none exists."""
     tax_slab_set = PayrollTaxSlabSet.objects.filter(
         organisation__isnull=True,
         is_system_master=True,
         is_active=True,
         country_code='IN',
         is_old_regime=False,
+        tax_category=TaxCategory.INDIVIDUAL,
     ).order_by('-created_at').first()
     if tax_slab_set:
         return tax_slab_set
+    # No CT master seeded yet — create a minimal fallback so payroll setup can proceed.
+    # The full set should be seeded via `python manage.py seed_statutory_masters`.
     return create_tax_slab_set(
         fiscal_year=_current_fiscal_year(),
-        name='Default India Payroll Master',
+        name='Default India New Regime (Individual)',
         country_code='IN',
         slabs=DEFAULT_TAX_SLABS,
         actor=actor,
         organisation=None,
         is_active=True,
         is_old_regime=False,
+        tax_category=TaxCategory.INDIVIDUAL,
     )
 
 
@@ -598,31 +616,8 @@ def ensure_org_payroll_setup(organisation, actor=None):
     from .statutory_seed import seed_statutory_master_data
 
     seed_statutory_master_data()
-    master = _ensure_global_default_tax_master(actor=actor)
-    org_tax_slab_set = PayrollTaxSlabSet.objects.filter(
-        organisation=organisation,
-        is_active=True,
-        is_old_regime=False,
-    ).order_by('-created_at').first()
-    if org_tax_slab_set is None:
-        org_tax_slab_set = create_tax_slab_set(
-            fiscal_year=master.fiscal_year,
-            name=f'{master.name} • {organisation.name}',
-            country_code=master.country_code,
-            slabs=[
-                {
-                    'min_income': slab.min_income,
-                    'max_income': slab.max_income,
-                    'rate_percent': slab.rate_percent,
-                }
-                for slab in master.slabs.all()
-            ],
-            actor=actor,
-            organisation=organisation,
-            source_set=master,
-            is_active=True,
-            is_old_regime=False,
-        )
+    # Ensure at least one CT master exists so payroll can proceed.
+    _ensure_global_default_tax_master(actor=actor)
 
     components = []
     for payload in DEFAULT_COMPONENTS:
@@ -637,13 +632,28 @@ def ensure_org_payroll_setup(organisation, actor=None):
             },
         )
         components.append(component)
-    return {'tax_slab_set': org_tax_slab_set, 'components': components}
+    return {'components': components}
 
 
-def create_tax_slab_set(*, fiscal_year, name, country_code, slabs, actor=None, organisation=None, source_set=None, is_active=True, is_old_regime=False):
+def create_tax_slab_set(*, fiscal_year, name, country_code, slabs, actor=None, organisation=None, source_set=None, is_active=True, is_old_regime=False, tax_category=TaxCategory.INDIVIDUAL):
     if not slabs:
         raise ValueError('At least one tax slab is required.')
     is_system_master = organisation is None
+    if organisation is None:
+        # Enforce one CT master per (country_code, fiscal_year, regime, category).
+        if PayrollTaxSlabSet.objects.filter(
+            organisation__isnull=True,
+            country_code=country_code,
+            fiscal_year=fiscal_year,
+            is_old_regime=is_old_regime,
+            tax_category=tax_category,
+        ).exists():
+            regime_label = 'Old Regime' if is_old_regime else 'New Regime'
+            category_label = dict(TaxCategory.choices).get(tax_category, tax_category)
+            raise ValueError(
+                f'A master already exists for {fiscal_year} {regime_label} — {category_label}. '
+                'Edit or delete the existing master instead.'
+            )
     with transaction.atomic():
         tax_slab_set = PayrollTaxSlabSet.objects.create(
             organisation=organisation,
@@ -654,6 +664,7 @@ def create_tax_slab_set(*, fiscal_year, name, country_code, slabs, actor=None, o
             is_active=is_active,
             is_system_master=is_system_master,
             is_old_regime=is_old_regime,
+            tax_category=tax_category,
         )
         for slab in slabs:
             PayrollTaxSlab.objects.create(
@@ -666,7 +677,7 @@ def create_tax_slab_set(*, fiscal_year, name, country_code, slabs, actor=None, o
     return tax_slab_set
 
 
-def update_tax_slab_set(tax_slab_set, *, name=None, fiscal_year=None, is_active=None, is_old_regime=None, slabs=None, actor=None):
+def update_tax_slab_set(tax_slab_set, *, name=None, fiscal_year=None, is_active=None, is_old_regime=None, tax_category=None, slabs=None, actor=None):
     if name is not None:
         tax_slab_set.name = name
     if fiscal_year is not None:
@@ -675,6 +686,8 @@ def update_tax_slab_set(tax_slab_set, *, name=None, fiscal_year=None, is_active=
         tax_slab_set.is_active = is_active
     if is_old_regime is not None:
         tax_slab_set.is_old_regime = is_old_regime
+    if tax_category is not None:
+        tax_slab_set.tax_category = tax_category
     tax_slab_set.save()
     if slabs is not None:
         tax_slab_set.slabs.all().delete()
@@ -687,6 +700,11 @@ def update_tax_slab_set(tax_slab_set, *, name=None, fiscal_year=None, is_active=
             )
     log_audit_event(actor, 'payroll.tax_slab_set.updated', organisation=tax_slab_set.organisation, target=tax_slab_set)
     return tax_slab_set
+
+
+def delete_tax_slab_set(tax_slab_set, *, actor=None):
+    log_audit_event(actor, 'payroll.tax_slab_set.deleted', organisation=tax_slab_set.organisation, target=tax_slab_set)
+    tax_slab_set.delete()
 
 
 def create_compensation_template(organisation, *, name, description='', lines, actor=None):
@@ -1090,9 +1108,9 @@ def calculate_pay_run(pay_run, *, actor=None):
                 )
                 continue
             tax_slab_set = _get_active_tax_slab_set(
-                pay_run.organisation,
                 fiscal_year,
                 tax_regime=assignment.tax_regime,
+                tax_category=tax_category_for_fiscal_year(employee, fiscal_year),
             )
             if tax_slab_set is None:
                 PayrollRunItem.objects.create(

@@ -29,6 +29,7 @@ from apps.payroll.models import (
     InvestmentDeclaration,
     InvestmentSection,
     PayrollTaxSlabSet,
+    TaxCategory,
     TaxRegime,
 )
 from apps.payroll.services import (
@@ -178,50 +179,30 @@ class TestPayrollServiceSetup:
         assert tax_master.is_old_regime is False
         assert tax_master.slabs.count() == 6
 
-    def test_get_active_tax_slab_set_prefers_org_year_then_org_then_global(self):
-        organisation = _create_active_organisation('Tax Resolution Org')
-        global_other_year = create_tax_slab_set(
-            fiscal_year='2025-2026',
-            name='Global Old Year',
+    def test_get_active_tax_slab_set_returns_ct_master_for_fiscal_year_and_regime(self):
+        ct_master = create_tax_slab_set(
+            fiscal_year='2026-2027',
+            name='CT Master 2026',
             country_code='IN',
             slabs=_slabs(),
             organisation=None,
         )
-        global_same_year = create_tax_slab_set(
+        old_regime_master = create_tax_slab_set(
             fiscal_year='2026-2027',
-            name='Global Same Year',
+            name='CT Master 2026 Old',
             country_code='IN',
             slabs=_slabs(),
             organisation=None,
-        )
-        org_other_year = create_tax_slab_set(
-            fiscal_year='2025-2026',
-            name='Org Old Year',
-            country_code='IN',
-            slabs=_slabs(),
-            organisation=organisation,
-        )
-        org_same_year = create_tax_slab_set(
-            fiscal_year='2026-2027',
-            name='Org Same Year',
-            country_code='IN',
-            slabs=_slabs(),
-            organisation=organisation,
+            is_old_regime=True,
         )
 
-        assert _get_active_tax_slab_set(organisation, '2026-2027') == org_same_year
+        assert _get_active_tax_slab_set('2026-2027') == ct_master
+        assert _get_active_tax_slab_set('2026-2027', tax_regime=TaxRegime.OLD) == old_regime_master
+        assert _get_active_tax_slab_set('2025-2026') is None
 
-        org_same_year.is_active = False
-        org_same_year.save(update_fields=['is_active'])
-        assert _get_active_tax_slab_set(organisation, '2026-2027') == org_other_year
-
-        org_other_year.is_active = False
-        org_other_year.save(update_fields=['is_active'])
-        assert _get_active_tax_slab_set(organisation, '2026-2027') == global_same_year
-
-        global_same_year.is_active = False
-        global_same_year.save(update_fields=['is_active'])
-        assert _get_active_tax_slab_set(organisation, '2026-2027') == global_other_year
+        ct_master.is_active = False
+        ct_master.save(update_fields=['is_active'])
+        assert _get_active_tax_slab_set('2026-2027') is None
 
     def test_resolve_payroll_requester_context_prefers_employee_and_validates_missing_args(self):
         organisation = _create_active_organisation('Requester Context Org')
@@ -539,7 +520,7 @@ class TestPayrollServiceSetup:
         assert approval_run.requested_by == requester_employee
         assert approval_run.actions.count() == 1
 
-    def test_ensure_org_payroll_setup_clones_default_tax_master_once(self):
+    def test_ensure_org_payroll_setup_provisions_components_idempotently(self):
         organisation = _create_active_organisation('Org Setup Clone Org')
         actor = User.objects.create_user(
             email='ct-clone@test.com',
@@ -548,22 +529,15 @@ class TestPayrollServiceSetup:
             role=UserRole.CONTROL_TOWER,
             is_active=True,
         )
-        master = create_tax_slab_set(
-            fiscal_year='2026-2027',
-            name='CT Master',
-            country_code='IN',
-            slabs=_slabs(),
-            actor=actor,
-            organisation=None,
-        )
 
         first_setup = ensure_org_payroll_setup(organisation, actor=actor)
         second_setup = ensure_org_payroll_setup(organisation, actor=actor)
 
-        assert first_setup['tax_slab_set'].source_set == master
-        assert first_setup['tax_slab_set'].id == second_setup['tax_slab_set'].id
-        assert PayrollTaxSlabSet.objects.filter(organisation=organisation, is_active=True).count() == 1
+        # Org-level tax slab sets are no longer created; CT masters are used directly.
+        assert PayrollTaxSlabSet.objects.filter(organisation=organisation).count() == 0
+        assert 'tax_slab_set' not in first_setup
         assert len(first_setup['components']) == 10
+        assert len(second_setup['components']) == 10
         assert {component.code for component in first_setup['components']} == {
             'BASIC',
             'HRA',

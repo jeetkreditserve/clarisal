@@ -32,6 +32,12 @@ class TaxRegime(models.TextChoices):
     OLD = 'OLD', 'Old Regime'
 
 
+class TaxCategory(models.TextChoices):
+    INDIVIDUAL = 'INDIVIDUAL', 'Individual (age < 60)'
+    SENIOR_CITIZEN = 'SENIOR_CITIZEN', 'Senior Citizen (age 60–79)'
+    SUPER_SENIOR_CITIZEN = 'SUPER_SENIOR_CITIZEN', 'Super Senior Citizen (age ≥ 80)'
+
+
 class StatutoryIncomeBasis(models.TextChoices):
     MONTHLY = 'MONTHLY', 'Monthly'
     HALF_YEARLY = 'HALF_YEARLY', 'Half Yearly'
@@ -169,15 +175,29 @@ class PayrollTaxSlabSet(AuditedBaseModel):
             'Old regime allows additional deductions such as HRA, 80C, and 80D.'
         ),
     )
+    tax_category = models.CharField(
+        max_length=24,
+        choices=TaxCategory.choices,
+        default=TaxCategory.INDIVIDUAL,
+        help_text=(
+            'Age-based taxpayer category. '
+            'Determines different basic exemption thresholds in the old regime.'
+        ),
+    )
 
     class Meta:
         db_table = 'payroll_tax_slab_sets'
-        ordering = ['organisation_id', 'fiscal_year', 'name']
+        ordering = ['organisation_id', 'fiscal_year', 'is_old_regime', 'tax_category']
         constraints = [
             models.UniqueConstraint(
                 fields=['organisation', 'name', 'fiscal_year'],
                 condition=Q(organisation__isnull=False),
                 name='unique_payroll_tax_slab_set_per_org_and_year',
+            ),
+            models.UniqueConstraint(
+                fields=['country_code', 'fiscal_year', 'is_old_regime', 'tax_category'],
+                condition=Q(organisation__isnull=True),
+                name='unique_ct_tax_slab_set_per_regime_category_year',
             ),
         ]
 

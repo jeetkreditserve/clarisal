@@ -273,6 +273,15 @@ export async function createCtPayrollTaxSlabSet(payload: Record<string, unknown>
   return data
 }
 
+export async function updateCtPayrollTaxSlabSet(id: string, payload: Record<string, unknown>): Promise<PayrollTaxSlabSet> {
+  const { data } = await api.patch(`/ct/payroll/tax-slab-sets/${id}/`, payload)
+  return data
+}
+
+export async function deleteCtPayrollTaxSlabSet(id: string): Promise<void> {
+  await api.delete(`/ct/payroll/tax-slab-sets/${id}/`)
+}
+
 export async function fetchCtOrgEmployees(
   id: string,
   params?: { status?: string; search?: string; page?: number }
