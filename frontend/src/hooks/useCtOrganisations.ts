@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { fetchCtAuditLogs } from '@/lib/api/audit'
 import {
+  createCtTenantDataExport,
   createCtApprovalWorkflow,
   fetchCtOrgAttendanceSummary,
   createCtPayrollTaxSlabSet,
@@ -19,6 +20,7 @@ import {
   createOrganisation,
   createOrganisationAddress,
   createCtDepartment,
+  extendLicenceBatchExpiry,
   deactivateCtDepartment,
   deactivateCtLocation,
   deactivateCtOrgAdmin,
@@ -63,6 +65,12 @@ import {
   updateOrganisationAddress,
   fetchCtPayrollStatutoryMasters,
   fetchCtOrgOnboardingChecklist,
+  fetchCtOrgOnboardingProgress,
+  fetchCtOrganisationAnalytics,
+  fetchCtTenantDataExportDownloadUrl,
+  fetchCtTenantDataExports,
+  postCtOrgOnboardingStepAction,
+  syncCtOrgOnboardingProgress,
 } from '@/lib/api/organisations'
 
 export function useCtStats() {
@@ -471,6 +479,19 @@ export function useMarkLicenceBatchPaid(orgId: string) {
   })
 }
 
+export function useExtendLicenceBatchExpiry(orgId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ batchId, payload }: { batchId: string; payload: { new_end_date: string; reason?: string } }) =>
+      extendLicenceBatchExpiry(orgId, batchId, payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ct', 'organisations', orgId] })
+      qc.invalidateQueries({ queryKey: ['ct', 'organisations'] })
+      qc.invalidateQueries({ queryKey: ['ct', 'organisations', orgId, 'licence-batches'] })
+    },
+  })
+}
+
 function invalidateCtConfiguration(qc: ReturnType<typeof useQueryClient>, orgId: string) {
   qc.invalidateQueries({ queryKey: ['ct', 'organisations', orgId] })
   qc.invalidateQueries({ queryKey: ['ct', 'organisations', orgId, 'configuration'] })
@@ -630,5 +651,73 @@ export function useCtOrgOnboardingChecklist(organisationId: string) {
   return useQuery({
     queryKey: ['ct', 'organisations', organisationId, 'onboarding-checklist'],
     queryFn: () => fetchCtOrgOnboardingChecklist(organisationId),
+  })
+}
+
+export function useCtOrgOnboardingProgress(orgId: string, enabled = true) {
+  return useQuery({
+    queryKey: ['ct', 'organisations', orgId, 'onboarding-progress'],
+    queryFn: () => fetchCtOrgOnboardingProgress(orgId),
+    enabled: Boolean(orgId && enabled),
+  })
+}
+
+export function useCtOrgAnalytics(orgId: string, enabled = true) {
+  return useQuery({
+    queryKey: ['ct', 'organisations', orgId, 'analytics'],
+    queryFn: () => fetchCtOrganisationAnalytics(orgId),
+    enabled: Boolean(orgId && enabled),
+  })
+}
+
+export function useCtTenantDataExports(orgId: string, enabled = true) {
+  return useQuery({
+    queryKey: ['ct', 'organisations', orgId, 'data-exports'],
+    queryFn: () => fetchCtTenantDataExports(orgId),
+    enabled: Boolean(orgId && enabled),
+    refetchInterval: (query) => {
+      const exports = query.state.data ?? []
+      return exports.some((item) => item.status === 'REQUESTED' || item.status === 'PROCESSING') ? 5000 : false
+    },
+  })
+}
+
+export function useCreateCtTenantDataExport(orgId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: { export_type: Parameters<typeof createCtTenantDataExport>[1]['export_type'] }) =>
+      createCtTenantDataExport(orgId, payload),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['ct', 'organisations', orgId, 'data-exports'] })
+    },
+  })
+}
+
+export function useCtTenantDataExportDownloadUrl(orgId: string) {
+  return useMutation({
+    mutationFn: (exportId: string) => fetchCtTenantDataExportDownloadUrl(orgId, exportId),
+  })
+}
+
+export function useSyncCtOrgOnboardingProgress(orgId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => syncCtOrgOnboardingProgress(orgId),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['ct', 'organisations', orgId, 'onboarding-progress'] })
+      void qc.invalidateQueries({ queryKey: ['ct', 'organisations', orgId] })
+    },
+  })
+}
+
+export function useCtOrgOnboardingStepAction(orgId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ step, action, reason }: { step: string; action: 'complete' | 'reset'; reason?: string }) =>
+      postCtOrgOnboardingStepAction(orgId, step, action, reason ? { reason } : undefined),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['ct', 'organisations', orgId, 'onboarding-progress'] })
+      void qc.invalidateQueries({ queryKey: ['ct', 'organisations', orgId] })
+    },
   })
 }

@@ -64,6 +64,17 @@ def is_control_tower_impersonating(request, user: User) -> bool:
     return get_active_impersonation_session(request, user) is not None
 
 
+CT_IMPERSONATION_ALLOWED_ACTIONS = frozenset({
+    "unlock_account",
+    "reset_onboarding_step",
+    "extend_licence_expiry",
+})
+
+
+def is_ct_action_allowed_during_impersonation(action_code: str) -> bool:
+    return action_code in CT_IMPERSONATION_ALLOWED_ACTIONS
+
+
 def list_admin_memberships(user: User):
     if user.account_type != AccountType.WORKFORCE:
         return []

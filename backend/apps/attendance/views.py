@@ -420,6 +420,7 @@ class MyAttendanceSummaryView(APIView):
                 'today': AttendanceDaySerializer(payload['today']).data,
                 'policy': AttendancePolicySerializer(payload['policy']).data,
                 'shift': ShiftSerializer(payload['shift']).data if payload['shift'] else None,
+                'shift_source': payload.get('shift_source', 'POLICY_DEFAULT'),
                 'pending_regularizations': AttendanceRegularizationSerializer(payload['pending_regularizations'], many=True).data,
             }
         )

@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Outlet, useNavigate } from 'react-router-dom'
+import { Link, Outlet, useNavigate } from 'react-router-dom'
 import { BarChart3, Bell, BriefcaseBusiness, Building, Building2, CalendarDays, ClipboardCheck, Clock3, Fingerprint, Landmark, LayoutDashboard, LogOut, MapPin, PlaneTakeoff, Repeat, ScrollText, Target, Users } from 'lucide-react'
 import { SidebarNav, type NavGroup } from './SidebarNav'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
@@ -110,11 +110,15 @@ export function OrgLayout() {
       <SidebarNav groups={navGroups} title="Clarisal" subtitle="Organisation Console" />
       <div className="flex min-w-0 flex-1 flex-col px-4 pb-6 lg:pl-0 lg:pr-6">
         <header className="shell-topbar sticky top-4 z-20 mt-0 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-base font-semibold tracking-tight text-[hsl(var(--foreground-strong))]">{user?.organisation_name || 'Organisation'}</h1>
-            <StatusBadge tone={getAccessStateTone(user?.organisation_access_state)}>
-              {user?.organisation_access_state || 'Provisioning'}
-            </StatusBadge>
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[hsl(var(--muted-foreground))]">Organisation workspace</p>
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="text-base font-semibold tracking-tight text-[hsl(var(--foreground-strong))]">{user?.organisation_name || 'Organisation'}</h1>
+              <StatusBadge tone={getAccessStateTone(user?.organisation_access_state)}>
+                {user?.organisation_access_state || 'Provisioning'}
+              </StatusBadge>
+              {isFeatureEnabled(user?.feature_flags, 'ATTENDANCE') ? <StatusBadge tone="success">Attendance live</StatusBadge> : null}
+            </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <NotificationBell />
@@ -132,7 +136,7 @@ export function OrgLayout() {
                 <div>
                   <p className="font-semibold">Control Tower impersonation is active.</p>
                   <p className="mt-1 text-[hsl(var(--muted-foreground))]">
-                    Viewing {user.impersonation.organisation_name} in read-only mode. Started {formatDateTime(user.impersonation.started_at)}.
+                    Viewing {user.impersonation.organisation_name} in an act-as session. Most writes stay blocked. Started {formatDateTime(user.impersonation.started_at)}.
                   </p>
                   <p className="mt-1 text-[hsl(var(--muted-foreground))]">Reason: {user.impersonation.reason}</p>
                   {user.impersonation.target_org_admin ? (
@@ -140,6 +144,20 @@ export function OrgLayout() {
                       Target admin: {user.impersonation.target_org_admin.full_name} ({user.impersonation.target_org_admin.email})
                     </p>
                   ) : null}
+                  <p className="mt-2 text-[hsl(var(--muted-foreground))]">
+                    Allowed CT writes in this session: reactivate inactive admins, reset onboarding steps, and extend paid licence expiry.
+                  </p>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Link className="btn-secondary" to={`/ct/organisations/${user.impersonation.organisation_id}?tab=admins`}>
+                      Reactivate admin
+                    </Link>
+                    <Link className="btn-secondary" to={`/ct/organisations/${user.impersonation.organisation_id}?tab=onboarding`}>
+                      Reset onboarding step
+                    </Link>
+                    <Link className="btn-secondary" to={`/ct/organisations/${user.impersonation.organisation_id}?tab=licences`}>
+                      Extend licence expiry
+                    </Link>
+                  </div>
                 </div>
                 <button
                   type="button"

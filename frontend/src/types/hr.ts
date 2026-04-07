@@ -63,7 +63,7 @@ export type NoticeCategory = 'GENERAL' | 'HR_POLICY' | 'OPERATIONS' | 'CELEBRATI
 export type NoticeAudienceType = 'ALL_EMPLOYEES' | 'DEPARTMENTS' | 'OFFICE_LOCATIONS' | 'SPECIFIC_EMPLOYEES'
 export type AttendanceImportMode = 'ATTENDANCE_SHEET' | 'PUNCH_SHEET'
 export type AttendanceImportStatus = 'FAILED' | 'READY_FOR_REVIEW' | 'POSTED'
-export type AttendanceDayStatus = 'PRESENT' | 'HALF_DAY' | 'ABSENT' | 'INCOMPLETE' | 'HOLIDAY' | 'WEEK_OFF' | 'ON_LEAVE' | 'ON_DUTY'
+export type AttendanceDayStatus = 'PRESENT' | 'HALF_DAY' | 'ABSENT' | 'INCOMPLETE' | 'HOLIDAY' | 'WEEK_OFF' | 'ON_LEAVE' | 'ON_DUTY' | 'WFH'
 export type AttendanceRegularizationStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED' | 'WITHDRAWN'
 export type BiometricProtocol = 'ZK_ADMS' | 'ESSL_EBIOSERVER' | 'MATRIX_COSEC' | 'SUPREMA_BIOSTAR' | 'HIKVISION_ISAPI'
 export type OffboardingProcessStatus = 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED'
@@ -424,6 +424,7 @@ export interface CtOrganisationAttendanceSupportSummary {
     incomplete_count: number
     on_leave_count: number
     on_duty_count: number
+    wfh_count: number
   }
   recent_imports: Array<{
     id: string
@@ -641,6 +642,10 @@ export interface AttendancePolicy {
   full_day_min_minutes: number
   half_day_min_minutes: number
   overtime_after_minutes: number
+  overtime_approval_required: boolean
+  overtime_threshold_minutes: number
+  overtime_multiplier: string
+  overtime_max_payable_minutes: number | null
   week_off_days: number[]
   allow_web_punch: boolean
   restrict_by_ip: boolean
@@ -914,6 +919,7 @@ export interface EmployeeAttendanceSummary {
   today: AttendanceDayRecord
   policy: AttendancePolicy
   shift: AttendanceShift | null
+  shift_source: string
   pending_regularizations: AttendanceRegularization[]
 }
 
@@ -926,6 +932,10 @@ export interface EmployeeAttendanceCalendar {
     needs_regularization: boolean
     worked_minutes: number
     overtime_minutes: number
+    wfh_status: string
+    effective_shift_source: string
+    overtime_status: string
+    lwp_units: string
   }>
 }
 
@@ -937,7 +947,7 @@ export interface EmployeeEvent {
 
 export interface CalendarEntry {
   date: string
-  kind: 'HOLIDAY' | 'LEAVE' | 'ON_DUTY'
+  kind: 'HOLIDAY' | 'LEAVE' | 'ON_DUTY' | 'WFH' | 'COMP_OFF' | 'LWP'
   label: string
   status: string
   color: string
@@ -1044,6 +1054,19 @@ export interface LeaveRequestRecord {
 
 export interface LeaveOverview {
   balances: LeaveBalanceSnapshot[]
+  comp_off: {
+    available: string
+    earned: string
+    used: string
+    history: Array<{
+      id: string
+      date: string
+      units: string
+      expires_on: string | null
+      status: string
+      reason: string
+    }>
+  }
   requests: LeaveRequestRecord[]
   leave_plan: LeavePlan | null
 }
@@ -1461,4 +1484,24 @@ export interface CtOnboardingChecklist {
   stages: CtOnboardingChecklistStage[]
   can_activate: boolean
   activation_blockers: string[]
+}
+
+export interface OnboardingProgressStep {
+  step: string
+  label: string
+  is_completed: boolean
+  completed_at: string | null
+  completion_source: string
+  blockers: string[]
+  can_reset: boolean
+  is_actionable: boolean
+  action: string | null
+}
+
+export interface OnboardingProgress {
+  current_stage: string
+  steps: OnboardingProgressStep[]
+  completed_count: number
+  total_count: number
+  percent_complete: number
 }

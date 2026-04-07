@@ -129,7 +129,7 @@ test.describe('CT Organisations', () => {
 
     await page.getByRole('button', { name: 'Payroll Support' }).click()
     await expect(page.getByText('Needs CT attention')).toBeVisible({ timeout: 10000 })
-    await expect(page.getByText('Payroll tax slab set missing')).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText('No compensation templates configured')).toBeVisible({ timeout: 10000 })
   })
 
   test('CT attendance support tab explains missing attendance setup', async ({ page }) => {

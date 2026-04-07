@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from calendar import monthrange
 from datetime import date
 from decimal import Decimal
@@ -12,6 +13,8 @@ INDIA_STANDARD_DEDUCTION = Decimal('75000.00')
 INDIA_CESS_RATE = Decimal('0.04')
 INDIA_REBATE_87A_MAX = Decimal('25000.00')
 INDIA_REBATE_87A_THRESHOLD = Decimal('700000.00')
+OLD_REGIME_REBATE_87A_MAX = Decimal('12500.00')
+OLD_REGIME_REBATE_87A_THRESHOLD = Decimal('500000.00')
 PF_RATE = Decimal('0.12')
 PF_WAGE_CEILING = Decimal('15000.00')
 ESI_EMPLOYEE_RATE = Decimal('0.0075')
@@ -29,6 +32,50 @@ OLD_REGIME_SURCHARGE_TIERS = (
     (Decimal('20000000.00'), Decimal('0.25')),
     (Decimal('50000000.00'), Decimal('0.37')),
 )
+REBATE_87A_PARAMS: dict[tuple[str, str], tuple[Decimal, Decimal]] = {
+    ('2024-2025', 'NEW'): (INDIA_REBATE_87A_THRESHOLD, INDIA_REBATE_87A_MAX),
+    ('2024-2025', 'OLD'): (OLD_REGIME_REBATE_87A_THRESHOLD, OLD_REGIME_REBATE_87A_MAX),
+    ('2025-2026', 'NEW'): (Decimal('1200000.00'), Decimal('60000.00')),
+    ('2025-2026', 'OLD'): (OLD_REGIME_REBATE_87A_THRESHOLD, OLD_REGIME_REBATE_87A_MAX),
+}
+
+
+def normalize_fiscal_year_label(fiscal_year: str) -> str:
+    value = str(fiscal_year or '').strip().replace('/', '-')
+    match = re.fullmatch(r'(?P<start>\d{4})-(?P<end>\d{2}|\d{4})', value)
+    if not match:
+        return value
+    start_year = int(match.group('start'))
+    end_token = match.group('end')
+    if len(end_token) == 2:
+        century = (start_year // 100) * 100
+        end_year = century + int(end_token)
+        if end_year <= start_year:
+            end_year += 100
+    else:
+        end_year = int(end_token)
+    return f'{start_year}-{end_year}'
+
+
+def fiscal_year_label_aliases(fiscal_year: str) -> tuple[str, ...]:
+    normalized = normalize_fiscal_year_label(fiscal_year)
+    if not normalized:
+        return tuple()
+    aliases = {normalized}
+    match = re.fullmatch(r'(?P<start>\d{4})-(?P<end>\d{4})', normalized)
+    if match:
+        aliases.add(f'{match.group("start")}-{match.group("end")[-2:]}')
+    return tuple(sorted(aliases))
+
+
+def get_rebate_87a_params(fiscal_year: str, regime: str) -> tuple[Decimal, Decimal]:
+    normalized_fiscal_year = normalize_fiscal_year_label(fiscal_year)
+    regime_key = str(regime or 'NEW').upper()
+    if regime_key == 'OLD':
+        default = (OLD_REGIME_REBATE_87A_THRESHOLD, OLD_REGIME_REBATE_87A_MAX)
+    else:
+        default = (INDIA_REBATE_87A_THRESHOLD, INDIA_REBATE_87A_MAX)
+    return REBATE_87A_PARAMS.get((normalized_fiscal_year, regime_key), default)
 
 def normalize_decimal(value):
     if value is None:
@@ -82,12 +129,19 @@ def surcharge_tiers_for_regime(tax_regime: str):
     return OLD_REGIME_SURCHARGE_TIERS if str(tax_regime).upper() == 'OLD' else NEW_REGIME_SURCHARGE_TIERS
 
 
-def calculate_income_tax_with_rebate(*, taxable_income, tax_slab_set, surcharge_tiers=None):
+def calculate_income_tax_with_rebate(*, taxable_income, tax_slab_set, surcharge_tiers=None, rebate_threshold=None, rebate_max=None):
     annual_taxable_income = normalize_decimal(taxable_income) or ZERO
+    if rebate_threshold is None or rebate_max is None:
+        rebate_threshold, rebate_max = get_rebate_87a_params(
+            getattr(tax_slab_set, 'fiscal_year', ''),
+            'OLD' if getattr(tax_slab_set, 'is_old_regime', False) else 'NEW',
+        )
+    rebate_threshold = normalize_decimal(rebate_threshold) or ZERO
+    rebate_max = normalize_decimal(rebate_max) or ZERO
     tax_before_rebate = calculate_annual_tax(tax_slab_set, annual_taxable_income)
     rebate_87a = ZERO
-    if annual_taxable_income <= INDIA_REBATE_87A_THRESHOLD:
-        rebate_87a = min(tax_before_rebate, INDIA_REBATE_87A_MAX).quantize(Decimal('0.01'))
+    if annual_taxable_income <= rebate_threshold:
+        rebate_87a = min(tax_before_rebate, rebate_max).quantize(Decimal('0.01'))
     tax_after_rebate = max(ZERO, tax_before_rebate - rebate_87a).quantize(Decimal('0.01'))
     surcharge = calculate_surcharge(
         taxable_income=annual_taxable_income,
@@ -104,8 +158,8 @@ def calculate_income_tax_with_rebate(*, taxable_income, tax_slab_set, surcharge_
         threshold, _rate = current_tier
         threshold_tax_before_rebate = calculate_annual_tax(tax_slab_set, threshold)
         threshold_rebate = ZERO
-        if threshold <= INDIA_REBATE_87A_THRESHOLD:
-            threshold_rebate = min(threshold_tax_before_rebate, INDIA_REBATE_87A_MAX).quantize(Decimal('0.01'))
+        if threshold <= rebate_threshold:
+            threshold_rebate = min(threshold_tax_before_rebate, rebate_max).quantize(Decimal('0.01'))
         threshold_tax_after_rebate = max(ZERO, threshold_tax_before_rebate - threshold_rebate).quantize(Decimal('0.01'))
         threshold_surcharge = calculate_surcharge(
             taxable_income=threshold,

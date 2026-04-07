@@ -316,6 +316,7 @@ class OrgCompensationAssignmentListCreateView(APIView):
             auto_approve=serializer.validated_data.get('auto_approve', False),
             tax_regime=serializer.validated_data.get('tax_regime'),
             is_pf_opted_out=serializer.validated_data.get('is_pf_opted_out', False),
+            is_epf_exempt=serializer.validated_data.get('is_epf_exempt', False),
             vpf_rate_percent=serializer.validated_data.get('vpf_rate_percent'),
         )
         return Response(CompensationAssignmentSerializer(assignment).data, status=status.HTTP_201_CREATED)

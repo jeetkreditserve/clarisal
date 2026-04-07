@@ -1,6 +1,14 @@
 import type { CalendarMonthView } from '@/types/hr'
 
 const weekdayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+const entryThemes: Record<string, string> = {
+  HOLIDAY: 'border-[#0f766e]/20 bg-[#0f766e]/10 text-[#115e59]',
+  LEAVE: 'border-[#2563eb]/20 bg-[#2563eb]/10 text-[#1d4ed8]',
+  ON_DUTY: 'border-[#4f46e5]/20 bg-[#4f46e5]/10 text-[#4338ca]',
+  WFH: 'border-[#0284c7]/20 bg-[#0284c7]/10 text-[#0369a1]',
+  COMP_OFF: 'border-[#0f766e]/20 bg-[#14b8a6]/10 text-[#0f766e]',
+  LWP: 'border-[#dc2626]/20 bg-[#dc2626]/10 text-[#b91c1c]',
+}
 
 function getGridPrefix(month: CalendarMonthView) {
   if (!month.days.length) return 0
@@ -38,11 +46,11 @@ export function MonthCalendar({ month }: { month: CalendarMonthView }) {
                 {day.entries.map((entry, index) => (
                   <div
                     key={`${entry.kind}-${entry.date}-${index}`}
-                    className="rounded-[16px] px-2 py-2 text-[11px] font-medium leading-4 text-white shadow-sm"
-                    style={{ backgroundColor: entry.color }}
+                    className={`rounded-[16px] border px-2 py-2 text-[11px] font-medium leading-4 shadow-sm ${entryThemes[entry.kind] ?? 'border-[hsl(var(--border))] bg-[hsl(var(--surface-subtle))] text-[hsl(var(--foreground-strong))]'}`}
+                    style={entryThemes[entry.kind] ? undefined : { borderColor: entry.color, backgroundColor: `${entry.color}15`, color: entry.color }}
                   >
                     <p>{entry.label}</p>
-                    <p className="mt-1 text-[10px] uppercase tracking-[0.12em] text-white/80">{entry.status}</p>
+                    <p className="mt-1 text-[10px] uppercase tracking-[0.12em] opacity-70">{entry.status}</p>
                   </div>
                 ))}
               </div>

@@ -218,6 +218,10 @@ class Employee(SoftDeleteModel):
         indexes = [
             models.Index(fields=['organisation', 'status', 'is_deleted']),
             models.Index(fields=['user', 'organisation', 'is_deleted']),
+            models.Index(
+                fields=['organisation', 'status', 'date_of_joining'],
+                name='employee_org_status_doj_idx',
+            ),
         ]
 
     def __str__(self):

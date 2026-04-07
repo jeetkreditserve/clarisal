@@ -21,6 +21,8 @@ export type OrganisationAddressType =
   | 'CUSTOM'
 export type LicenceBatchPaymentStatus = 'DRAFT' | 'PAID'
 export type LicenceBatchLifecycleState = 'DRAFT' | 'PAID_PENDING_START' | 'ACTIVE' | 'EXPIRED'
+export type TenantDataExportType = 'EMPLOYEES' | 'PAYSLIPS' | 'LEAVE_HISTORY' | 'AUDIT_LOG'
+export type TenantDataExportStatus = 'REQUESTED' | 'PROCESSING' | 'COMPLETED' | 'FAILED'
 export type OrganisationOnboardingStage =
   | 'ORG_CREATED'
   | 'LICENCES_ASSIGNED'
@@ -150,11 +152,66 @@ export interface LicenceBatch {
   payment_status: LicenceBatchPaymentStatus
   lifecycle_state: LicenceBatchLifecycleState
   note: string
+  payment_provider: string
+  payment_reference: string
+  invoice_reference: string
   created_by_email: string | null
   paid_by_email: string | null
   paid_at: string | null
   created_at: string
   modified_at: string
+}
+
+export interface TenantDataExportBatch {
+  id: string
+  export_type: TenantDataExportType
+  status: TenantDataExportStatus
+  file_name: string | null
+  content_type: string | null
+  file_size_bytes: number | null
+  generated_at: string | null
+  failure_reason: string
+  metadata: Record<string, unknown>
+  requested_by: {
+    id: string
+    full_name: string
+    email: string
+  } | null
+  created_at: string
+  modified_at: string
+}
+
+export interface TenantDataExportDownloadResponse {
+  download_url: string
+  file_name: string | null
+}
+
+export interface CtOrganisationAnalyticsPoint {
+  date: string
+  value: number
+}
+
+export interface CtOrganisationAnalyticsLatest {
+  snapshot_date: string
+  active_employees: number
+  active_users: number
+  attendance_days_count: number
+  leave_requests_count: number
+  payroll_runs_count: number
+  pending_approvals_count: number
+  metadata: Record<string, unknown>
+}
+
+export interface CtOrganisationAnalytics {
+  latest: CtOrganisationAnalyticsLatest
+  series: {
+    active_employees: CtOrganisationAnalyticsPoint[]
+    active_users: CtOrganisationAnalyticsPoint[]
+    attendance_days_count: CtOrganisationAnalyticsPoint[]
+    leave_requests_count: CtOrganisationAnalyticsPoint[]
+    payroll_runs_count: CtOrganisationAnalyticsPoint[]
+    pending_approvals_count: CtOrganisationAnalyticsPoint[]
+  }
 }
 
 export interface LicenceBatchDefaults {
@@ -186,6 +243,7 @@ export interface OrganisationDetail {
   entity_type: OrganisationEntityType
   entity_type_label: string
   pan_number: string | null
+  esi_branch_code: string
   address: string
   phone: string
   email: string

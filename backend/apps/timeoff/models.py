@@ -61,6 +61,29 @@ class LeaveRequestStatus(models.TextChoices):
     WITHDRAWN = 'WITHDRAWN', 'Withdrawn'
 
 
+class CompOffStatus(models.TextChoices):
+    PENDING = 'PENDING', 'Pending Approval'
+    APPROVED = 'APPROVED', 'Approved'
+    REJECTED = 'REJECTED', 'Rejected'
+    REDEEMED = 'REDEEMED', 'Redeemed'
+    EXPIRED = 'EXPIRED', 'Expired'
+    CANCELLED = 'CANCELLED', 'Cancelled'
+
+
+class LeaveWithoutPayEntrySource(models.TextChoices):
+    MANUAL = 'MANUAL', 'Manual'
+    ATTENDANCE = 'ATTENDANCE', 'Attendance'
+    LEAVE_LAPSE = 'LEAVE_LAPSE', 'Leave Lapse'
+    PAYROLL = 'PAYROLL', 'Payroll'
+
+
+class LeaveWithoutPayEntryStatus(models.TextChoices):
+    PENDING = 'PENDING', 'Pending Approval'
+    APPROVED = 'APPROVED', 'Approved'
+    REJECTED = 'REJECTED', 'Rejected'
+    CANCELLED = 'CANCELLED', 'Cancelled'
+
+
 class OnDutyRequestStatus(models.TextChoices):
     PENDING = 'PENDING', 'Pending Approval'
     APPROVED = 'APPROVED', 'Approved'
@@ -383,6 +406,84 @@ class LeaveBalanceLedgerEntry(AuditedBaseModel):
         ordering = ['-effective_date', '-created_at']
 
 
+class CompOffAccrual(AuditedBaseModel):
+    employee = models.ForeignKey(
+        'employees.Employee',
+        on_delete=models.CASCADE,
+        related_name='comp_off_accruals',
+    )
+    accrual_date = models.DateField()
+    units = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+    expires_on = models.DateField(null=True, blank=True)
+    status = models.CharField(max_length=20, choices=CompOffStatus.choices, default=CompOffStatus.PENDING)
+    reason = models.TextField(blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        db_table = 'comp_off_accruals'
+        ordering = ['-accrual_date', '-created_at']
+        indexes = [
+            models.Index(fields=['employee', 'status']),
+            models.Index(fields=['employee', 'accrual_date']),
+        ]
+
+
+class CompOffRedemption(AuditedBaseModel):
+    employee = models.ForeignKey(
+        'employees.Employee',
+        on_delete=models.CASCADE,
+        related_name='comp_off_redemptions',
+    )
+    accrual = models.ForeignKey(
+        CompOffAccrual,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='redemptions',
+    )
+    redemption_date = models.DateField()
+    units = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+    status = models.CharField(max_length=20, choices=CompOffStatus.choices, default=CompOffStatus.PENDING)
+    reason = models.TextField(blank=True)
+    leave_request = models.ForeignKey(
+        'timeoff.LeaveRequest',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='comp_off_redemptions',
+    )
+
+    class Meta:
+        db_table = 'comp_off_redemptions'
+        ordering = ['-redemption_date', '-created_at']
+        indexes = [
+            models.Index(fields=['employee', 'status']),
+            models.Index(fields=['employee', 'redemption_date']),
+        ]
+
+
+class LeaveWithoutPayEntry(AuditedBaseModel):
+    employee = models.ForeignKey(
+        'employees.Employee',
+        on_delete=models.CASCADE,
+        related_name='leave_without_pay_entries',
+    )
+    entry_date = models.DateField()
+    units = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+    reason = models.TextField(blank=True)
+    source = models.CharField(max_length=20, choices=LeaveWithoutPayEntrySource.choices, default=LeaveWithoutPayEntrySource.MANUAL)
+    status = models.CharField(max_length=20, choices=LeaveWithoutPayEntryStatus.choices, default=LeaveWithoutPayEntryStatus.PENDING)
+    metadata = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        db_table = 'leave_without_pay_entries'
+        ordering = ['-entry_date', '-created_at']
+        indexes = [
+            models.Index(fields=['employee', 'status']),
+            models.Index(fields=['employee', 'entry_date']),
+        ]
+
+
 class LeaveRequest(AuditedBaseModel):
     employee = models.ForeignKey(
         'employees.Employee',
@@ -416,6 +517,11 @@ class LeaveRequest(AuditedBaseModel):
             # Composite index for leave balance aggregate queries
             models.Index(fields=['employee', 'leave_type', 'status', 'start_date'], name='leave_req_balance_idx'),
         ]
+
+    def handle_approval_status_change(self, new_status: str, rejection_reason=''):
+        from apps.timeoff.services import sync_comp_off_redemptions_for_leave_request
+
+        sync_comp_off_redemptions_for_leave_request(self, new_status=new_status)
 
 
 class OnDutyPolicy(AuditedBaseModel):

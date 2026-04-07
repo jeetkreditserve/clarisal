@@ -12,6 +12,8 @@ from apps.organisations.models import (
     OrganisationStatus,
 )
 from apps.payroll.services import assign_employee_compensation, create_compensation_template
+from apps.timeoff.models import LeaveBalance, LeaveCycle, LeaveCycleType, LeavePlan, LeaveType
+from apps.timeoff.services import get_cycle_window
 
 
 def _create_employee(*, date_of_joining=None):
@@ -135,3 +137,122 @@ class TestFullAndFinalSettlement:
         assert fnf.gratuity == Decimal('75000.00')
         assert fnf.gross_payable == Decimal('101000.00')
         assert fnf.net_payable == Decimal('101000.00')
+
+    def test_fnf_uses_encashable_leave_balance_and_respects_cap(self):
+        from apps.payroll.services import create_full_and_final_settlement
+
+        employee = _create_employee(date_of_joining=date(2021, 1, 1))
+        template = create_compensation_template(
+            employee.organisation,
+            name='Encashment Basic',
+            actor=employee.user,
+            lines=[
+                {
+                    'component_code': 'BASIC',
+                    'name': 'Basic Pay',
+                    'component_type': 'EARNING',
+                    'monthly_amount': '50000.00',
+                    'is_taxable': True,
+                },
+            ],
+        )
+        assign_employee_compensation(
+            employee,
+            template,
+            effective_from=date(2026, 1, 1),
+            actor=employee.user,
+            auto_approve=True,
+        )
+        cycle = LeaveCycle.objects.create(
+            organisation=employee.organisation,
+            name='Calendar Year',
+            cycle_type=LeaveCycleType.CALENDAR_YEAR,
+            is_default=True,
+        )
+        plan = LeavePlan.objects.create(
+            organisation=employee.organisation,
+            leave_cycle=cycle,
+            name='Default Leave Plan',
+            is_default=True,
+            is_active=True,
+        )
+        encashable_leave = LeaveType.objects.create(
+            leave_plan=plan,
+            code='PL',
+            name='Privilege Leave',
+            annual_entitlement=Decimal('0.00'),
+            allows_encashment=True,
+            max_encashment_days_per_year=Decimal('7.00'),
+        )
+        non_encashable_leave = LeaveType.objects.create(
+            leave_plan=plan,
+            code='SL',
+            name='Sick Leave',
+            annual_entitlement=Decimal('0.00'),
+            allows_encashment=False,
+        )
+        cycle_start, cycle_end = get_cycle_window(cycle, employee, as_of=date(2026, 1, 31))
+        LeaveBalance.objects.create(
+            employee=employee,
+            leave_type=encashable_leave,
+            cycle_start=cycle_start,
+            cycle_end=cycle_end,
+            opening_balance=Decimal('10.00'),
+            credited_amount=Decimal('0.00'),
+            used_amount=Decimal('0.00'),
+            pending_amount=Decimal('0.00'),
+            carried_forward_amount=Decimal('0.00'),
+        )
+        LeaveBalance.objects.create(
+            employee=employee,
+            leave_type=non_encashable_leave,
+            cycle_start=cycle_start,
+            cycle_end=cycle_end,
+            opening_balance=Decimal('5.00'),
+            credited_amount=Decimal('0.00'),
+            used_amount=Decimal('0.00'),
+            pending_amount=Decimal('0.00'),
+            carried_forward_amount=Decimal('0.00'),
+        )
+
+        fnf = create_full_and_final_settlement(
+            employee=employee,
+            last_working_day=date(2026, 1, 31),
+            initiated_by=employee.user,
+        )
+
+        assert fnf.leave_encashment == Decimal('13461.56')
+
+    def test_fnf_keeps_leave_encashment_zero_without_encashable_balance(self):
+        from apps.payroll.services import create_full_and_final_settlement
+
+        employee = _create_employee(date_of_joining=date(2021, 1, 1))
+        template = create_compensation_template(
+            employee.organisation,
+            name='No Encashment Basic',
+            actor=employee.user,
+            lines=[
+                {
+                    'component_code': 'BASIC',
+                    'name': 'Basic Pay',
+                    'component_type': 'EARNING',
+                    'monthly_amount': '50000.00',
+                    'is_taxable': True,
+                },
+            ],
+        )
+        assign_employee_compensation(
+            employee,
+            template,
+            effective_from=date(2026, 1, 1),
+            actor=employee.user,
+            auto_approve=True,
+        )
+
+        fnf = create_full_and_final_settlement(
+            employee=employee,
+            last_working_day=date(2026, 1, 31),
+            initiated_by=employee.user,
+        )
+
+        assert fnf.leave_encashment == Decimal('0.00')

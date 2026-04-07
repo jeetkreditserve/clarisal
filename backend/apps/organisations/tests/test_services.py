@@ -1,11 +1,24 @@
+import io
+import zipfile
+
 import pytest
 
-from apps.accounts.models import User, UserRole
+from apps.accounts.models import AccountType, User, UserRole
 from apps.audit.models import AuditLog
-from apps.organisations.models import Organisation, OrganisationStateTransition, OrganisationStatus
+from apps.employees.models import Employee
+from apps.organisations.models import (
+    Organisation,
+    OrganisationStateTransition,
+    OrganisationStatus,
+    TenantDataExportStatus,
+    TenantDataExportType,
+)
 from apps.organisations.services import (
     create_organisation,
+    generate_tenant_data_export_batch,
+    generate_tenant_data_export_download_url,
     get_ct_dashboard_stats,
+    request_tenant_data_export,
     transition_organisation_state,
     update_licence_count,
 )
@@ -188,3 +201,71 @@ class TestGetCtDashboardStats:
         assert stats['paid_organisations'] == 0
         assert stats['suspended_organisations'] == 0
         assert stats['total_employees'] == 0
+
+
+@pytest.mark.django_db
+class TestTenantDataExportServices:
+    def test_generate_tenant_data_export_batch_uploads_zip_and_download_url(self, ct_user, pending_org, monkeypatch):
+        workforce_user = User.objects.create_user(
+            email='export.employee@test.com',
+            password='pass123!',
+            account_type=AccountType.WORKFORCE,
+            role=UserRole.EMPLOYEE,
+            organisation=pending_org,
+            is_active=True,
+        )
+        Employee.objects.create(
+            organisation=pending_org,
+            user=workforce_user,
+            employee_code='EMP-EXPORT-1',
+            designation='Analyst',
+            status='ACTIVE',
+        )
+        uploaded = {}
+
+        def fake_upload(file_obj, key, content_type):
+            uploaded['payload'] = file_obj.getvalue()
+            uploaded['key'] = key
+            uploaded['content_type'] = content_type
+
+        monkeypatch.setattr('apps.organisations.services.upload_file', fake_upload)
+        monkeypatch.setattr(
+            'apps.organisations.services.generate_presigned_url',
+            lambda key, expiry=900: f'https://downloads.test/{key}?expiry={expiry}',
+        )
+
+        batch = request_tenant_data_export(
+            pending_org,
+            export_type=TenantDataExportType.EMPLOYEES,
+            requested_by=ct_user,
+        )
+
+        generated = generate_tenant_data_export_batch(batch)
+        download_url = generate_tenant_data_export_download_url(generated, actor=ct_user)
+
+        assert generated.status == TenantDataExportStatus.COMPLETED
+        assert generated.metadata['row_count'] == 1
+        assert uploaded['content_type'] == 'application/zip'
+        assert generated.artifact_key == uploaded['key']
+        assert download_url == f'https://downloads.test/{generated.artifact_key}?expiry=900'
+        with zipfile.ZipFile(io.BytesIO(uploaded['payload'])) as archive:
+            exported_csv = archive.read('employees.csv').decode('utf-8')
+        assert 'export.employee@test.com' in exported_csv
+        assert 'EMP-EXPORT-1' in exported_csv
+
+    def test_generate_tenant_data_export_batch_marks_failure_when_upload_fails(self, ct_user, pending_org, monkeypatch):
+        def boom(*args, **kwargs):
+            raise RuntimeError('upload failed')
+
+        monkeypatch.setattr('apps.organisations.services.upload_file', boom)
+
+        batch = request_tenant_data_export(
+            pending_org,
+            export_type=TenantDataExportType.EMPLOYEES,
+            requested_by=ct_user,
+        )
+
+        generated = generate_tenant_data_export_batch(batch)
+
+        assert generated.status == TenantDataExportStatus.FAILED
+        assert generated.failure_reason == 'upload failed'

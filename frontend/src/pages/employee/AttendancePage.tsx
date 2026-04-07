@@ -128,24 +128,35 @@ export function AttendancePage() {
             <p className="text-2xl font-semibold text-[hsl(var(--foreground-strong))]">{summary.today.status}</p>
             <StatusBadge tone={getAttendanceDayStatusTone(summary.today.status)}>{summary.today.status}</StatusBadge>
           </div>
-          <p className="mt-2 text-xs text-[hsl(var(--muted-foreground))]">{summary.today.attendance_date}</p>
+          <p className="mt-2 text-xs text-[hsl(var(--muted-foreground))]">
+            {summary.today.attendance_date}
+            {summary.today.metadata?.wfh_status ? ` • WFH ${String(summary.today.metadata.wfh_status)}` : ''}
+          </p>
         </div>
         <div className="surface-card rounded-[28px] p-5">
           <p className="text-sm text-[hsl(var(--muted-foreground))]">Worked minutes</p>
           <p className="mt-3 text-3xl font-semibold text-[hsl(var(--foreground-strong))]">{summary.today.worked_minutes}</p>
-          <p className="mt-2 text-xs text-[hsl(var(--muted-foreground))]">OT {summary.today.overtime_minutes} mins</p>
+          <p className="mt-2 text-xs text-[hsl(var(--muted-foreground))]">
+            OT {summary.today.overtime_minutes} mins
+            {summary.today.metadata?.overtime_status ? ` • ${String(summary.today.metadata.overtime_status)}` : ''}
+          </p>
         </div>
         <div className="surface-card rounded-[28px] p-5">
-          <p className="text-sm text-[hsl(var(--muted-foreground))]">Shift</p>
+          <p className="text-sm text-[hsl(var(--muted-foreground))]">Effective shift</p>
           <p className="mt-3 text-xl font-semibold text-[hsl(var(--foreground-strong))]">{summary.shift?.name ?? 'Default policy timing'}</p>
           <p className="mt-2 text-xs text-[hsl(var(--muted-foreground))]">
             {summary.shift ? `${summary.shift.start_time.slice(0, 5)} to ${summary.shift.end_time.slice(0, 5)}` : `${summary.policy.default_start_time.slice(0, 5)} to ${summary.policy.default_end_time.slice(0, 5)}`}
           </p>
+          <p className="mt-2 text-xs text-[hsl(var(--muted-foreground))]">Source: {summary.shift_source.replace(/_/g, ' ')}</p>
         </div>
         <div className="surface-card rounded-[28px] p-5">
-          <p className="text-sm text-[hsl(var(--muted-foreground))]">Pending regularizations</p>
-          <p className="mt-3 text-3xl font-semibold text-[hsl(var(--foreground-strong))]">{summary.pending_regularizations.length}</p>
-          <p className="mt-2 text-xs text-[hsl(var(--muted-foreground))]">Week off days: {(summary.policy.week_off_days ?? []).join(', ') || '6'}</p>
+          <p className="text-sm text-[hsl(var(--muted-foreground))]">Overtime policy</p>
+          <p className="mt-3 text-xl font-semibold text-[hsl(var(--foreground-strong))]">
+            {summary.policy.overtime_approval_required ? 'Approval required' : 'Directly payable'}
+          </p>
+          <p className="mt-2 text-xs text-[hsl(var(--muted-foreground))]">
+            Threshold {summary.policy.overtime_threshold_minutes} mins • Multiplier {summary.policy.overtime_multiplier}x
+          </p>
         </div>
       </div>
 
@@ -199,11 +210,17 @@ export function AttendancePage() {
           <input className="field-input" type="month" value={currentMonth} onChange={(event) => setCurrentMonth(event.target.value)} />
         </div>
         {calendarLoading ? null : calendar?.days?.length ? (
-          <div className="mb-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="mb-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
             <div className="surface-muted rounded-[18px] px-4 py-3 text-sm text-[hsl(var(--muted-foreground))]">
               Present days
               <p className="mt-1 text-xl font-semibold text-[hsl(var(--foreground-strong))]">
                 {calendar.days.filter((item) => item.status === 'PRESENT' || item.status === 'ON_DUTY').length}
+              </p>
+            </div>
+            <div className="surface-muted rounded-[18px] px-4 py-3 text-sm text-[hsl(var(--muted-foreground))]">
+              WFH days
+              <p className="mt-1 text-xl font-semibold text-[hsl(var(--foreground-strong))]">
+                {calendar.days.filter((item) => item.status === 'WFH' || item.wfh_status === 'APPROVED').length}
               </p>
             </div>
             <div className="surface-muted rounded-[18px] px-4 py-3 text-sm text-[hsl(var(--muted-foreground))]">
@@ -222,6 +239,10 @@ export function AttendancePage() {
                 {calendar.days.reduce((sum, item) => sum + item.overtime_minutes, 0)}
               </p>
             </div>
+            <div className="surface-muted rounded-[18px] px-4 py-3 text-sm text-[hsl(var(--muted-foreground))]">
+              Pending regularizations
+              <p className="mt-1 text-xl font-semibold text-[hsl(var(--foreground-strong))]">{summary.pending_regularizations.length}</p>
+            </div>
           </div>
         ) : null}
         {historyLoading ? (
@@ -235,6 +256,11 @@ export function AttendancePage() {
                   <p className="text-sm text-[hsl(var(--muted-foreground))]">
                     {day.check_in_at ? new Date(day.check_in_at).toLocaleTimeString() : 'No check-in'} • {day.check_out_at ? new Date(day.check_out_at).toLocaleTimeString() : 'No check-out'} • Worked {day.worked_minutes} mins
                   </p>
+                  {day.metadata?.wfh_status ? (
+                    <p className="mt-2 text-xs text-[hsl(var(--muted-foreground))]">
+                      WFH {String(day.metadata.wfh_status)} • Shift source {String(day.metadata.effective_shift_source ?? 'POLICY_DEFAULT')}
+                    </p>
+                  ) : null}
                 </div>
                 <div className="flex items-center gap-3">
                   <StatusBadge tone={getAttendanceDayStatusTone(day.status)}>{day.status}</StatusBadge>

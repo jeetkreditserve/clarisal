@@ -147,6 +147,11 @@ describe('OrgLayout', () => {
 
     expect(screen.getByText('Control Tower impersonation is active.')).toBeInTheDocument()
     expect(screen.getByText(/Investigating payroll issue/)).toBeInTheDocument()
+    expect(screen.getByText('Organisation workspace')).toBeInTheDocument()
+    expect(screen.getByText('Attendance live')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Reactivate admin' })).toHaveAttribute('href', '/ct/organisations/org-1?tab=admins')
+    expect(screen.getByRole('link', { name: 'Reset onboarding step' })).toHaveAttribute('href', '/ct/organisations/org-1?tab=onboarding')
+    expect(screen.getByRole('link', { name: 'Extend licence expiry' })).toHaveAttribute('href', '/ct/organisations/org-1?tab=licences')
     expect(screen.queryByText('Notices')).not.toBeInTheDocument()
     expect(screen.queryByText('Job postings')).not.toBeInTheDocument()
     expect(screen.queryByText('Goal cycles')).not.toBeInTheDocument()

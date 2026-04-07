@@ -36,6 +36,7 @@ from apps.payroll.models import (
     TaxRegime,
 )
 from apps.payroll.services import (
+    _months_remaining_in_fiscal_year,
     assign_employee_compensation,
     calculate_pay_run,
     create_compensation_template,
@@ -743,3 +744,90 @@ class TestPayrollServices:
         assert notification.title == 'Your payslip for April 2026 is ready'
         assert notification.object_id == str(pay_run.id)
         mock_delay.assert_called_once()
+
+    def test_pay_run_allocates_tds_across_remaining_months_in_fiscal_year(self):
+        organisation = _create_active_organisation('Remaining Months Org')
+        requester_user = _create_workforce_user('remaining-months-admin@test.com', role=UserRole.ORG_ADMIN, organisation=organisation)
+        employee_user = _create_workforce_user('remaining-months-employee@test.com', organisation=organisation)
+        employee = Employee.objects.create(
+            organisation=organisation,
+            user=employee_user,
+            employee_code='EMP202',
+            designation='Senior Analyst',
+            status=EmployeeStatus.ACTIVE,
+            date_of_joining=date(2026, 10, 1),
+        )
+        OrganisationMembership.objects.create(
+            user=requester_user,
+            organisation=organisation,
+            is_org_admin=True,
+            status=OrganisationMembershipStatus.ACTIVE,
+        )
+        create_tax_slab_set(
+            fiscal_year='2026-2027',
+            name='FY 2026 Master',
+            country_code='IN',
+            slabs=[
+                {'min_income': '0', 'max_income': '300000', 'rate_percent': '0'},
+                {'min_income': '300000', 'max_income': '700000', 'rate_percent': '10'},
+                {'min_income': '700000', 'max_income': None, 'rate_percent': '20'},
+            ],
+            actor=requester_user,
+            organisation=None,
+        )
+        ensure_org_payroll_setup(organisation, actor=requester_user)
+        template = create_compensation_template(
+            organisation,
+            name='Remaining Months Template',
+            description='TDS divisor check',
+            lines=[
+                {
+                    'component_code': 'BASIC',
+                    'name': 'Basic Pay',
+                    'component_type': PayrollComponentType.EARNING,
+                    'monthly_amount': '200000',
+                    'is_taxable': True,
+                }
+            ],
+            actor=requester_user,
+        )
+        assign_employee_compensation(
+            employee,
+            template,
+            effective_from=date(2026, 10, 1),
+            actor=requester_user,
+            auto_approve=True,
+        )
+        pay_run = create_payroll_run(
+            organisation,
+            period_year=2026,
+            period_month=10,
+            actor=requester_user,
+            requester_user=requester_user,
+        )
+
+        calculate_pay_run(pay_run, actor=requester_user)
+
+        item = pay_run.items.get(employee=employee)
+        annual_tax_total = Decimal(item.snapshot['annual_tax_total'])
+        assert item.income_tax == (annual_tax_total / Decimal('6')).quantize(Decimal('0.01'))
+
+
+class TestTdsMonthlyAllocation:
+    """Unit tests for _months_remaining_in_fiscal_year (pure function, no DB needed)."""
+
+    def test_april_returns_12_months_remaining(self):
+        # April is month 4 — start of fiscal year, all 12 months remain
+        assert _months_remaining_in_fiscal_year(4) == 12
+
+    def test_october_returns_6_months_remaining(self):
+        # October is month 10 — mid fiscal year, 6 months remain (Oct–Mar)
+        assert _months_remaining_in_fiscal_year(10) == 6
+
+    def test_february_returns_2_months_remaining(self):
+        # February is month 2 — near end of fiscal year, Feb and Mar remain
+        assert _months_remaining_in_fiscal_year(2) == 2
+
+    def test_march_returns_1_month_remaining(self):
+        # March is month 3 — last month of fiscal year, only Mar remains
+        assert _months_remaining_in_fiscal_year(3) == 1

@@ -46,39 +46,39 @@
 
 ## Task 1: Add Overtime Pay Configuration
 
-- [ ] Add overtime pay-rate configuration to attendance policy or shift policy, including threshold and multiplier rules.
-- [ ] Persist overtime payout inputs separately from raw overtime minutes so payroll can consume approved, policy-compliant values.
-- [ ] Update payroll integration to create OT earning lines only from approved attendance outputs.
+- [x] Add overtime pay-rate configuration to attendance policy or shift policy, including threshold and multiplier rules.
+- [x] Persist overtime payout inputs separately from raw overtime minutes so payroll can consume approved, policy-compliant values.
+- [x] Update payroll integration to create OT earning lines only from approved attendance outputs.
 
 ## Task 2: Implement Comp-Off / TOIL
 
 - [ ] Add comp-off accrual models linked to overtime or approved special-duty events.
-- [ ] Add expiry, approval, and redemption rules so comp-off behaves differently from generic leave types.
-- [ ] Integrate comp-off consumption into leave balance checks and employee-facing leave calendars.
+- [x] Add expiry, approval, and redemption rules so comp-off behaves differently from generic leave types.
+- [x] Integrate comp-off consumption into leave balance checks and employee-facing leave calendars.
 
 ## Task 3: Add WFH Tracking
 
-- [ ] Add WFH request or designation entities with approval and status tracking.
-- [ ] Reflect WFH in attendance day summaries and employee calendars without pretending a WFH day is a physical punch day.
-- [ ] Expose WFH counts and statuses to org and employee views.
+- [x] Add WFH request or designation entities with approval and status tracking.
+- [x] Reflect WFH in attendance day summaries and employee calendars without pretending a WFH day is a physical punch day.
+- [x] Expose WFH counts and statuses to org and employee views.
 
 ## Task 4: Add Shift Rotation Patterns
 
 - [ ] Add rotation templates, assignment rules, and scheduler logic rather than forcing manual shift assignment churn.
 - [ ] Support common patterns such as weekly rotation, cyclic rotation, and rostered team rotation.
-- [ ] Recalculate attendance expectations against the effective rotated shift for each day.
+- [x] Recalculate attendance expectations against the effective rotated shift for each day.
 
 ## Task 5: Automate Annual Leave Lapse and LWP Handling
 
 - [ ] Create explicit cycle-end tasks to lapse leave where carry-forward is disabled.
-- [ ] Add a dedicated LWP representation instead of relying only on downstream payroll proration.
+- [x] Add a dedicated LWP representation instead of relying only on downstream payroll proration.
 - [ ] Ensure leave, attendance, and payroll all agree on the same LWP semantics.
 
 ## Task 6: Add Employee Calendar UX
 
-- [ ] Upgrade `frontend/src/components/ui/MonthCalendar.tsx` and employee attendance/leave pages to show day-level states such as Present, Absent, Leave, Holiday, WFH, Comp-Off, and Incomplete.
-- [ ] Add leave-calendar withdrawal actions where policy allows it.
-- [ ] Add OD and comp-off history visibility instead of form-only flows.
+- [x] Upgrade `frontend/src/components/ui/MonthCalendar.tsx` and employee attendance/leave pages to show day-level states such as Present, Absent, Leave, Holiday, WFH, Comp-Off, and Incomplete.
+- [x] Add leave-calendar withdrawal actions where policy allows it.
+- [x] Add OD and comp-off history visibility instead of form-only flows.
 
 ## Task 7: Cleanup and Full Coverage
 

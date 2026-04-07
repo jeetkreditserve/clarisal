@@ -20,6 +20,7 @@ from apps.payroll.statutory import (
     calculate_taxable_income_after_standard_deduction,
     ensure_non_negative_net_pay,
     get_esi_contribution_period_bounds,
+    get_rebate_87a_params,
     normalize_decimal,
 )
 
@@ -66,6 +67,34 @@ def india_old_regime_slabs(db):
         (250000, 500000, Decimal('5')),
         (500000, 1000000, Decimal('20')),
         (1000000, None, Decimal('30')),
+    ]
+    for min_income, max_income, rate in slabs:
+        PayrollTaxSlab.objects.create(
+            slab_set=slab_set,
+            min_income=Decimal(str(min_income)),
+            max_income=Decimal(str(max_income)) if max_income is not None else None,
+            rate_percent=rate,
+        )
+    return slab_set
+
+
+@pytest.fixture
+def india_new_regime_fy2025_26_slabs(db):
+    slab_set = PayrollTaxSlabSet.objects.create(
+        name='India New Regime FY2025-26',
+        country_code='IN',
+        fiscal_year='2025-26',
+        is_active=True,
+        is_system_master=True,
+    )
+    slabs = [
+        (0, 400000, Decimal('0')),
+        (400000, 800000, Decimal('5')),
+        (800000, 1200000, Decimal('10')),
+        (1200000, 1600000, Decimal('15')),
+        (1600000, 2000000, Decimal('20')),
+        (2000000, 2400000, Decimal('25')),
+        (2400000, None, Decimal('30')),
     ]
     for min_income, max_income, rate in slabs:
         PayrollTaxSlab.objects.create(
@@ -195,6 +224,37 @@ class TestSection87ARebate:
         assert result['tax_after_rebate'] == Decimal('24403125.00')
         assert result['cess'] == Decimal('976125.00')
         assert result['annual_tax'] == Decimal('25379250.00')
+
+    def test_fy25_26_new_regime_uses_12_lakh_rebate_threshold(self, india_new_regime_fy2025_26_slabs):
+        result = calculate_income_tax_with_rebate(
+            taxable_income=Decimal('1000000.00'),
+            tax_slab_set=india_new_regime_fy2025_26_slabs,
+        )
+
+        assert result['rebate_87a'] == Decimal('40000.00')
+        assert result['annual_tax'] == Decimal('0.00')
+
+    def test_fy25_26_new_regime_zeroes_tax_at_12_lakh(self, india_new_regime_fy2025_26_slabs):
+        result = calculate_income_tax_with_rebate(
+            taxable_income=Decimal('1200000.00'),
+            tax_slab_set=india_new_regime_fy2025_26_slabs,
+        )
+
+        assert result['rebate_87a'] == Decimal('60000.00')
+        assert result['annual_tax'] == Decimal('0.00')
+
+    def test_fy25_26_new_regime_removes_rebate_above_12_lakh(self, india_new_regime_fy2025_26_slabs):
+        result = calculate_income_tax_with_rebate(
+            taxable_income=Decimal('1200001.00'),
+            tax_slab_set=india_new_regime_fy2025_26_slabs,
+        )
+
+        assert result['rebate_87a'] == Decimal('0.00')
+        assert result['annual_tax'] > Decimal('0.00')
+
+    def test_get_rebate_87a_params_keeps_old_regime_threshold_unchanged(self):
+        assert get_rebate_87a_params('2024-2025', 'OLD') == (Decimal('500000.00'), Decimal('12500.00'))
+        assert get_rebate_87a_params('2025-2026', 'OLD') == (Decimal('500000.00'), Decimal('12500.00'))
 
 
 class TestTaxHelpers:

@@ -77,18 +77,28 @@ from .statutory import (
     calculate_leave_encashment_amount,
     calculate_taxable_income_after_standard_deduction,
     ensure_non_negative_net_pay,
+    fiscal_year_label_aliases,
     get_esi_contribution_period_bounds,
+    get_rebate_87a_params,
+    normalize_fiscal_year_label,
     surcharge_tiers_for_regime,
 )
 
 ZERO = Decimal('0.00')
+PF_OPT_OUT_NEW_JOINER_CUTOFF = date(2014, 9, 1)
+PAYROLL_STATE_CODE_ALIASES = {
+    'OR': 'OD',
+    'OD': 'OD',
+    'CG': 'CT',
+    'CT': 'CT',
+}
 
 
 def _current_fiscal_year():
     today = date.today()
     if today.month >= 4:
-        return f'{today.year}-{today.year + 1}'
-    return f'{today.year - 1}-{today.year}'
+        return normalize_fiscal_year_label(f'{today.year}-{today.year + 1}')
+    return normalize_fiscal_year_label(f'{today.year - 1}-{today.year}')
 
 
 DEFAULT_COMPONENTS = [
@@ -122,10 +132,42 @@ def _normalize_decimal(value):
     return Decimal(str(value)).quantize(Decimal('0.01'))
 
 
+def _canonicalize_payroll_state_code(state_code):
+    normalized = (state_code or '').strip().upper()
+    if not normalized:
+        return ''
+    return PAYROLL_STATE_CODE_ALIASES.get(normalized, normalized)
+
+
+def _validate_pf_opt_out_eligibility(employee, *, is_pf_opted_out, is_epf_exempt):
+    if not is_pf_opted_out or is_epf_exempt:
+        return
+    # EPFO's September 2014 wage-ceiling change grandfathered existing members into continued PF coverage.
+    if employee.date_of_joining is None or employee.date_of_joining < PF_OPT_OUT_NEW_JOINER_CUTOFF:
+        raise ValueError(
+            'PF opt-out is only allowed for post-September 2014 joiners or employees explicitly marked as EPF-exempt.'
+        )
+
+
 def _fiscal_year_for_period(period_year, period_month):
     if period_month >= 4:
-        return f'{period_year}-{period_year + 1}'
-    return f'{period_year - 1}-{period_year}'
+        return normalize_fiscal_year_label(f'{period_year}-{period_year + 1}')
+    return normalize_fiscal_year_label(f'{period_year - 1}-{period_year}')
+
+
+def _fiscal_year_query(fiscal_year):
+    aliases = fiscal_year_label_aliases(fiscal_year)
+    if aliases:
+        return Q(fiscal_year__in=aliases)
+    return Q(fiscal_year=normalize_fiscal_year_label(fiscal_year))
+
+
+def _months_remaining_in_fiscal_year(period_month: int) -> int:
+    if period_month < 1 or period_month > 12:
+        raise ValueError('period_month must be between 1 and 12.')
+    if period_month <= 3:
+        return 4 - period_month
+    return 16 - period_month
 
 
 def _get_or_create_component(organisation, payload):
@@ -332,7 +374,8 @@ def get_total_80c_deduction(employee, fiscal_year):
     total = (
         InvestmentDeclaration.objects.filter(
             employee=employee,
-            fiscal_year=fiscal_year,
+        ).filter(
+            _fiscal_year_query(fiscal_year),
             section=InvestmentSection.SECTION_80C,
         ).aggregate(total=Sum('declared_amount'))['total']
         or ZERO
@@ -351,7 +394,8 @@ def calculate_taxable_income_with_investments(*, employee, annual_gross, fiscal_
         section_total = (
             InvestmentDeclaration.objects.filter(
                 employee=employee,
-                fiscal_year=fiscal_year,
+            ).filter(
+                _fiscal_year_query(fiscal_year),
                 section=section,
             ).aggregate(total=Sum('declared_amount'))['total']
             or ZERO
@@ -409,8 +453,30 @@ def _calculate_fnf_totals(employee, last_working_day, *, settlement=None):
     )
     leave_encashment = ZERO
     if monthly_basic_salary > ZERO:
+        from apps.timeoff.services import get_or_create_leave_balance, resolve_employee_leave_plan
+
+        leave_plan = resolve_employee_leave_plan(employee)
+        encashable_days = ZERO
+        if leave_plan is not None:
+            encashable_leave_types = leave_plan.leave_types.filter(is_active=True, allows_encashment=True).order_by('name', 'created_at')
+            for leave_type in encashable_leave_types:
+                balance = get_or_create_leave_balance(employee, leave_type, as_of=last_working_day)
+                available_units = (
+                    balance.opening_balance
+                    + balance.carried_forward_amount
+                    + balance.credited_amount
+                    - balance.used_amount
+                    - balance.pending_amount
+                )
+                available_units = max(ZERO, _normalize_decimal(available_units) or ZERO)
+                if leave_type.max_encashment_days_per_year is not None:
+                    available_units = min(
+                        available_units,
+                        _normalize_decimal(leave_type.max_encashment_days_per_year) or ZERO,
+                    )
+                encashable_days += available_units
         leave_encashment = calculate_leave_encashment_amount(
-            leave_days=ZERO,
+            leave_days=encashable_days,
             monthly_basic_salary=monthly_basic_salary,
         )
     gratuity = ZERO
@@ -494,30 +560,40 @@ def get_employee_arrears_for_run(employee, pay_run) -> Decimal:
     return (_normalize_decimal(total) or ZERO).quantize(Decimal('0.01'))
 
 
-def _get_active_tax_slab_set(fiscal_year, *, tax_regime=TaxRegime.NEW, tax_category=TaxCategory.INDIVIDUAL):
+def _get_active_tax_slab_set(fiscal_year, *, organisation=None, tax_regime=TaxRegime.NEW, tax_category=TaxCategory.INDIVIDUAL):
     """Return the CT-level system master for the given fiscal year, regime, and taxpayer category."""
+    normalized_fiscal_year = normalize_fiscal_year_label(fiscal_year)
+    fiscal_year_filter = _fiscal_year_query(normalized_fiscal_year)
     is_old_regime = tax_regime == TaxRegime.OLD
     # Exact match on all three dimensions
     tax_slab_set = PayrollTaxSlabSet.objects.filter(
         organisation__isnull=True,
         is_system_master=True,
         country_code='IN',
-        fiscal_year=fiscal_year,
         is_active=True,
         is_old_regime=is_old_regime,
         tax_category=tax_category,
-    ).first()
+    ).filter(fiscal_year_filter).first()
     if tax_slab_set:
         return tax_slab_set
+    if organisation is not None:
+        org_tax_slab_set = PayrollTaxSlabSet.objects.filter(
+            organisation=organisation,
+            country_code='IN',
+            is_active=True,
+            is_old_regime=is_old_regime,
+            tax_category=tax_category,
+        ).filter(fiscal_year_filter).first()
+        if org_tax_slab_set:
+            return org_tax_slab_set
     # Fallback: any active CT master for this fiscal year + regime (covers legacy INDIVIDUAL masters)
     return PayrollTaxSlabSet.objects.filter(
         organisation__isnull=True,
         is_system_master=True,
         country_code='IN',
-        fiscal_year=fiscal_year,
         is_active=True,
         is_old_regime=is_old_regime,
-    ).order_by('tax_category').first()
+    ).filter(fiscal_year_filter).order_by('tax_category').first()
 
 
 def tax_category_for_fiscal_year(employee, fiscal_year_str: str) -> str:
@@ -542,13 +618,15 @@ def tax_category_for_fiscal_year(employee, fiscal_year_str: str) -> str:
     return TaxCategory.INDIVIDUAL
 
 
-def _ensure_global_default_tax_master(actor=None):
-    """Return any active CT new-regime INDIVIDUAL master, creating a fallback if none exists."""
+def _ensure_global_default_tax_master(actor=None, *, fiscal_year=None):
+    """Return the active CT new-regime INDIVIDUAL master for a fiscal year, creating a fallback if none exists."""
+    target_fiscal_year = normalize_fiscal_year_label(fiscal_year or _current_fiscal_year())
     tax_slab_set = PayrollTaxSlabSet.objects.filter(
         organisation__isnull=True,
         is_system_master=True,
         is_active=True,
         country_code='IN',
+        fiscal_year=target_fiscal_year,
         is_old_regime=False,
         tax_category=TaxCategory.INDIVIDUAL,
     ).order_by('-created_at').first()
@@ -557,7 +635,7 @@ def _ensure_global_default_tax_master(actor=None):
     # No CT master seeded yet — create a minimal fallback so payroll setup can proceed.
     # The full set should be seeded via `python manage.py seed_statutory_masters`.
     return create_tax_slab_set(
-        fiscal_year=_current_fiscal_year(),
+        fiscal_year=target_fiscal_year,
         name='Default India New Regime (Individual)',
         country_code='IN',
         slabs=DEFAULT_TAX_SLABS,
@@ -617,7 +695,7 @@ def ensure_org_payroll_setup(organisation, actor=None):
 
     seed_statutory_master_data()
     # Ensure at least one CT master exists so payroll can proceed.
-    _ensure_global_default_tax_master(actor=actor)
+    _ensure_global_default_tax_master(actor=actor, fiscal_year=_current_fiscal_year())
 
     components = []
     for payload in DEFAULT_COMPONENTS:
@@ -638,20 +716,20 @@ def ensure_org_payroll_setup(organisation, actor=None):
 def create_tax_slab_set(*, fiscal_year, name, country_code, slabs, actor=None, organisation=None, source_set=None, is_active=True, is_old_regime=False, tax_category=TaxCategory.INDIVIDUAL):
     if not slabs:
         raise ValueError('At least one tax slab is required.')
+    normalized_fiscal_year = normalize_fiscal_year_label(fiscal_year)
     is_system_master = organisation is None
     if organisation is None:
         # Enforce one CT master per (country_code, fiscal_year, regime, category).
         if PayrollTaxSlabSet.objects.filter(
             organisation__isnull=True,
             country_code=country_code,
-            fiscal_year=fiscal_year,
             is_old_regime=is_old_regime,
             tax_category=tax_category,
-        ).exists():
+        ).filter(_fiscal_year_query(normalized_fiscal_year)).exists():
             regime_label = 'Old Regime' if is_old_regime else 'New Regime'
             category_label = dict(TaxCategory.choices).get(tax_category, tax_category)
             raise ValueError(
-                f'A master already exists for {fiscal_year} {regime_label} — {category_label}. '
+                f'A master already exists for {normalized_fiscal_year} {regime_label} — {category_label}. '
                 'Edit or delete the existing master instead.'
             )
     with transaction.atomic():
@@ -660,7 +738,7 @@ def create_tax_slab_set(*, fiscal_year, name, country_code, slabs, actor=None, o
             source_set=source_set,
             name=name,
             country_code=country_code,
-            fiscal_year=fiscal_year,
+            fiscal_year=normalized_fiscal_year,
             is_active=is_active,
             is_system_master=is_system_master,
             is_old_regime=is_old_regime,
@@ -681,7 +759,7 @@ def update_tax_slab_set(tax_slab_set, *, name=None, fiscal_year=None, is_active=
     if name is not None:
         tax_slab_set.name = name
     if fiscal_year is not None:
-        tax_slab_set.fiscal_year = fiscal_year
+        tax_slab_set.fiscal_year = normalize_fiscal_year_label(fiscal_year)
     if is_active is not None:
         tax_slab_set.is_active = is_active
     if is_old_regime is not None:
@@ -783,8 +861,14 @@ def assign_employee_compensation(
     auto_approve=False,
     tax_regime=TaxRegime.NEW,
     is_pf_opted_out=False,
+    is_epf_exempt=False,
     vpf_rate_percent=Decimal('12.00'),
 ):
+    _validate_pf_opt_out_eligibility(
+        employee,
+        is_pf_opted_out=is_pf_opted_out,
+        is_epf_exempt=is_epf_exempt,
+    )
     normalized_vpf_rate_percent = Decimal('0.00') if is_pf_opted_out else Decimal(str(vpf_rate_percent)).quantize(Decimal('0.01'))
     if not is_pf_opted_out and normalized_vpf_rate_percent < Decimal('12.00'):
         raise ValueError('Employee PF/VPF rate cannot be below 12% unless PF is opted out.')
@@ -799,6 +883,7 @@ def assign_employee_compensation(
             version=version,
             tax_regime=tax_regime,
             is_pf_opted_out=is_pf_opted_out,
+            is_epf_exempt=is_epf_exempt,
             vpf_rate_percent=normalized_vpf_rate_percent,
             status=CompensationAssignmentStatus.APPROVED if auto_approve else CompensationAssignmentStatus.DRAFT,
         )
@@ -915,10 +1000,11 @@ def _resolve_organisation_payroll_state_code(organisation):
 
 
 def _get_active_professional_tax_rule(state_code, *, as_of_date):
+    canonical_state_code = _canonicalize_payroll_state_code(state_code)
     return (
         ProfessionalTaxRule.objects.filter(
             country_code='IN',
-            state_code=state_code,
+            state_code=canonical_state_code,
             is_active=True,
             effective_from__lte=as_of_date,
         )
@@ -929,8 +1015,38 @@ def _get_active_professional_tax_rule(state_code, *, as_of_date):
     )
 
 
-def _resolve_professional_tax_amount(*, employee, state_code, gross_pay, period_year, period_month):
-    rule = _get_active_professional_tax_rule(state_code, as_of_date=date(period_year, period_month, 1))
+def _prefetch_professional_tax_rules(*, state_codes, as_of_date):
+    canonical_state_codes = {
+        _canonicalize_payroll_state_code(state_code)
+        for state_code in state_codes
+        if _canonicalize_payroll_state_code(state_code)
+    }
+    if not canonical_state_codes:
+        return {}
+    rule_cache = {state_code: None for state_code in canonical_state_codes}
+    rules = (
+        ProfessionalTaxRule.objects.filter(
+            country_code='IN',
+            state_code__in=canonical_state_codes,
+            is_active=True,
+            effective_from__lte=as_of_date,
+        )
+        .filter(Q(effective_to__isnull=True) | Q(effective_to__gte=as_of_date))
+        .prefetch_related('slabs')
+        .order_by('state_code', '-effective_from', '-created_at')
+    )
+    for rule in rules:
+        if rule_cache.get(rule.state_code) is None:
+            rule_cache[rule.state_code] = rule
+    return rule_cache
+
+
+def _resolve_professional_tax_amount(*, employee, state_code, gross_pay, period_year, period_month, rule_cache=None):
+    canonical_state_code = _canonicalize_payroll_state_code(state_code)
+    if rule_cache is not None:
+        rule = rule_cache.get(canonical_state_code)
+    else:
+        rule = _get_active_professional_tax_rule(canonical_state_code, as_of_date=date(period_year, period_month, 1))
     if rule is None:
         raise ValueError(f'No active professional tax rule is configured for state {state_code}.')
 
@@ -968,10 +1084,11 @@ def _resolve_professional_tax_amount(*, employee, state_code, gross_pay, period_
 
 
 def _get_active_labour_welfare_fund_rule(state_code, *, as_of_date):
+    canonical_state_code = _canonicalize_payroll_state_code(state_code)
     return (
         LabourWelfareFundRule.objects.filter(
             country_code='IN',
-            state_code=state_code,
+            state_code=canonical_state_code,
             is_active=True,
             effective_from__lte=as_of_date,
         )
@@ -982,12 +1099,42 @@ def _get_active_labour_welfare_fund_rule(state_code, *, as_of_date):
     )
 
 
-def _resolve_labour_welfare_fund_amount(*, state_code, gross_pay, period_year, period_month):
-    rule = _get_active_labour_welfare_fund_rule(state_code, as_of_date=date(period_year, period_month, 1))
+def _prefetch_labour_welfare_fund_rules(*, state_codes, as_of_date):
+    canonical_state_codes = {
+        _canonicalize_payroll_state_code(state_code)
+        for state_code in state_codes
+        if _canonicalize_payroll_state_code(state_code)
+    }
+    if not canonical_state_codes:
+        return {}
+    rule_cache = {state_code: None for state_code in canonical_state_codes}
+    rules = (
+        LabourWelfareFundRule.objects.filter(
+            country_code='IN',
+            state_code__in=canonical_state_codes,
+            is_active=True,
+            effective_from__lte=as_of_date,
+        )
+        .filter(Q(effective_to__isnull=True) | Q(effective_to__gte=as_of_date))
+        .prefetch_related('contributions')
+        .order_by('state_code', '-effective_from', '-created_at')
+    )
+    for rule in rules:
+        if rule_cache.get(rule.state_code) is None:
+            rule_cache[rule.state_code] = rule
+    return rule_cache
+
+
+def _resolve_labour_welfare_fund_amount(*, state_code, gross_pay, period_year, period_month, rule_cache=None):
+    canonical_state_code = _canonicalize_payroll_state_code(state_code)
+    if rule_cache is not None:
+        rule = rule_cache.get(canonical_state_code)
+    else:
+        rule = _get_active_labour_welfare_fund_rule(canonical_state_code, as_of_date=date(period_year, period_month, 1))
     gross = _normalize_decimal(gross_pay) or ZERO
     if rule is None:
         return calculate_labour_welfare_fund(
-            state_code=state_code,
+            state_code=canonical_state_code,
             payroll_month=period_month,
             gross_pay=gross,
             contributions=[],
@@ -1002,7 +1149,7 @@ def _resolve_labour_welfare_fund_amount(*, state_code, gross_pay, period_year, p
 
     return (
         calculate_labour_welfare_fund(
-            state_code=state_code,
+            state_code=canonical_state_code,
             payroll_month=period_month,
             gross_pay=wage_basis,
             contributions=rule.contributions.all(),
@@ -1025,7 +1172,7 @@ def calculate_pay_run(pay_run, *, actor=None):
     period_end = date(pay_run.period_year, pay_run.period_month, monthrange(pay_run.period_year, pay_run.period_month)[1])
     total_days_in_period = period_end.day
     fiscal_year = _fiscal_year_for_period(pay_run.period_year, pay_run.period_month)
-    from apps.timeoff.models import LeaveRequest, LeaveRequestStatus
+    from apps.timeoff.models import LeaveRequest, LeaveRequestStatus, LeaveWithoutPayEntry, LeaveWithoutPayEntryStatus
     try:
         org_state_code = _resolve_organisation_payroll_state_code(pay_run.organisation)
         org_state_resolution_error = None
@@ -1051,10 +1198,33 @@ def calculate_pay_run(pay_run, *, actor=None):
         total_attendance_paid_days = ZERO
         total_lop_days = ZERO
         total_overtime_minutes = 0
-        employees = Employee.objects.filter(
+        employees = list(Employee.objects.filter(
             organisation=pay_run.organisation,
             status=EmployeeStatus.ACTIVE,
-        ).select_related('user', 'office_location__organisation_address', 'profile')
+        ).select_related('user', 'office_location__organisation_address', 'profile'))
+        employee_states_by_id = {}
+        relevant_state_codes = set()
+        if org_state_code:
+            relevant_state_codes.add(org_state_code)
+        for employee in employees:
+            employee_state = org_state_code
+            if (
+                employee.office_location_id
+                and employee.office_location.organisation_address_id
+                and employee.office_location.organisation_address.state_code
+            ):
+                employee_state = employee.office_location.organisation_address.state_code
+            employee_states_by_id[employee.id] = employee_state
+            if employee_state:
+                relevant_state_codes.add(employee_state)
+        professional_tax_rule_cache = _prefetch_professional_tax_rules(
+            state_codes=relevant_state_codes,
+            as_of_date=period_start,
+        ) if not org_state_resolution_error else {}
+        labour_welfare_fund_rule_cache = _prefetch_labour_welfare_fund_rules(
+            state_codes=relevant_state_codes,
+            as_of_date=period_start,
+        ) if not org_state_resolution_error else {}
         assignments_by_employee = {}
         assignments = (
             CompensationAssignment.objects.filter(
@@ -1109,9 +1279,18 @@ def calculate_pay_run(pay_run, *, actor=None):
                 continue
             tax_slab_set = _get_active_tax_slab_set(
                 fiscal_year,
+                organisation=employee.organisation,
                 tax_regime=assignment.tax_regime,
                 tax_category=tax_category_for_fiscal_year(employee, fiscal_year),
             )
+            if tax_slab_set is None and assignment.tax_regime == TaxRegime.NEW:
+                _ensure_global_default_tax_master(fiscal_year=fiscal_year)
+                tax_slab_set = _get_active_tax_slab_set(
+                    fiscal_year,
+                    organisation=employee.organisation,
+                    tax_regime=assignment.tax_regime,
+                    tax_category=tax_category_for_fiscal_year(employee, fiscal_year),
+                )
             if tax_slab_set is None:
                 PayrollRunItem.objects.create(
                     pay_run=pay_run,
@@ -1298,13 +1477,7 @@ def calculate_pay_run(pay_run, *, actor=None):
                 })
 
             # ── Step 4: Professional Tax ─────────────────────────────────────
-            employee_state = org_state_code
-            if (
-                employee.office_location_id
-                and employee.office_location.organisation_address_id
-                and employee.office_location.organisation_address.state_code
-            ):
-                employee_state = employee.office_location.organisation_address.state_code
+            employee_state = employee_states_by_id.get(employee.id, org_state_code)
             try:
                 pt_monthly, pt_rule, pt_taxable_basis = _resolve_professional_tax_amount(
                     employee=employee,
@@ -1312,6 +1485,7 @@ def calculate_pay_run(pay_run, *, actor=None):
                     gross_pay=gross_pay,
                     period_year=pay_run.period_year,
                     period_month=pay_run.period_month,
+                    rule_cache=professional_tax_rule_cache,
                 )
             except ValueError as exc:
                 PayrollRunItem.objects.create(
@@ -1352,6 +1526,7 @@ def calculate_pay_run(pay_run, *, actor=None):
                 gross_pay=gross_pay,
                 period_year=pay_run.period_year,
                 period_month=pay_run.period_month,
+                rule_cache=labour_welfare_fund_rule_cache,
             )
             if lwf_result['is_applicable']:
                 lwf_employee = lwf_result['employee']
@@ -1429,9 +1604,17 @@ def calculate_pay_run(pay_run, *, actor=None):
                 start_date__lte=period_end,
             ).aggregate(total=Sum('total_units'))
             leave_only_lop_days = _normalize_decimal(lop_result['total']) or ZERO
+            explicit_lwp_result = LeaveWithoutPayEntry.objects.filter(
+                employee=employee,
+                status=LeaveWithoutPayEntryStatus.APPROVED,
+                entry_date__gte=period_start,
+                entry_date__lte=period_end,
+            ).aggregate(total=Sum('units'))
+            explicit_lwp_days = _normalize_decimal(explicit_lwp_result['total']) or ZERO
+            policy_lwp_days = (leave_only_lop_days + explicit_lwp_days).quantize(Decimal('0.01'))
             expected_paid_days = Decimal(str(paid_days))
             attendance_based_lop = max(ZERO, expected_paid_days - attendance_paid_days) if pay_run.use_attendance_inputs else ZERO
-            lop_days = max(leave_only_lop_days, attendance_based_lop)
+            lop_days = max(policy_lwp_days, attendance_based_lop)
             lop_deduction = ZERO
             if lop_days > ZERO and gross_pay > ZERO and total_days_in_period > 0:
                 daily_gross = (gross_pay / Decimal(total_days_in_period)).quantize(Decimal('0.01'))
@@ -1446,6 +1629,8 @@ def calculate_pay_run(pay_run, *, actor=None):
                 'expected_paid_days': str(expected_paid_days),
                 'attendance_paid_days': str(attendance_paid_days),
                 'leave_only_lop_days': str(leave_only_lop_days),
+                'explicit_lwp_days': str(explicit_lwp_days),
+                'policy_lwp_days': str(policy_lwp_days),
                 'attendance_based_lop_days': str(attendance_based_lop),
                 'effective_lop_days': str(lop_days),
                 'attendance_overtime_minutes': attendance_overtime_minutes,
@@ -1487,6 +1672,8 @@ def calculate_pay_run(pay_run, *, actor=None):
                 taxable_income=annual_taxable_after_sd,
                 tax_slab_set=tax_slab_set,
                 surcharge_tiers=surcharge_tiers_for_regime(assignment.tax_regime),
+                rebate_threshold=get_rebate_87a_params(fiscal_year, assignment.tax_regime)[0],
+                rebate_max=get_rebate_87a_params(fiscal_year, assignment.tax_regime)[1],
             )
             annual_tax_before_rebate = annual_tax_breakdown['tax_before_rebate']
             annual_rebate_87a = annual_tax_breakdown['rebate_87a']
@@ -1494,7 +1681,7 @@ def calculate_pay_run(pay_run, *, actor=None):
             annual_tax_before_cess = annual_tax_breakdown['tax_after_rebate']
             annual_cess = annual_tax_breakdown['cess']
             annual_tax_total = annual_tax_breakdown['annual_tax']
-            income_tax = (annual_tax_total / Decimal('12.00')).quantize(Decimal('0.01'))
+            income_tax = (annual_tax_total / Decimal(str(_months_remaining_in_fiscal_year(pay_run.period_month)))).quantize(Decimal('0.01'))
 
             # ── Step 8: Final totals ─────────────────────────────────────────
             total_deductions = (employee_deductions + income_tax + lop_deduction).quantize(Decimal('0.01'))

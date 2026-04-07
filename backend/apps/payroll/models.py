@@ -416,6 +416,10 @@ class CompensationAssignment(AuditedBaseModel):
         default=False,
         help_text='Use only for eligible higher-wage new joiners whose EPF membership can be lawfully opted out.',
     )
+    is_epf_exempt = models.BooleanField(
+        default=False,
+        help_text='Explicitly mark employees who are not required to continue EPF membership despite a PF opt-out request.',
+    )
     vpf_rate_percent = models.DecimalField(
         max_digits=5,
         decimal_places=2,
@@ -434,6 +438,12 @@ class CompensationAssignment(AuditedBaseModel):
     class Meta:
         db_table = 'compensation_assignments'
         ordering = ['-effective_from', '-version', '-created_at']
+        indexes = [
+            models.Index(
+                fields=['employee', 'status', 'effective_from'],
+                name='comp_assign_emp_status_eff_idx',
+            ),
+        ]
 
 
 class CompensationAssignmentLine(AuditedBaseModel):

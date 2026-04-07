@@ -18,6 +18,7 @@ from .country_metadata import (
 )
 from .models import (
     ActAsSession,
+    OnboardingChecklist,
     OrgAdminSetupStep,
     Organisation,
     OrganisationAddress,
@@ -32,6 +33,8 @@ from .models import (
     OrganisationNote,
     OrganisationStateTransition,
     OrganisationTaxRegistration,
+    TenantDataExportBatch,
+    TenantDataExportType,
 )
 from .services import normalize_pan_number
 
@@ -241,6 +244,9 @@ class LicenceBatchSerializer(serializers.ModelSerializer):
             'end_date',
             'billing_months',
             'total_amount',
+            'payment_provider',
+            'invoice_reference',
+            'payment_reference',
             'payment_status',
             'lifecycle_state',
             'note',
@@ -378,6 +384,40 @@ class OrganisationFeatureFlagWriteSerializer(serializers.Serializer):
     is_enabled = serializers.BooleanField()
 
 
+class TenantDataExportBatchSerializer(serializers.ModelSerializer):
+    requested_by = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TenantDataExportBatch
+        fields = [
+            'id',
+            'export_type',
+            'status',
+            'file_name',
+            'content_type',
+            'file_size_bytes',
+            'generated_at',
+            'failure_reason',
+            'metadata',
+            'requested_by',
+            'created_at',
+            'modified_at',
+        ]
+
+    def get_requested_by(self, obj):
+        if obj.requested_by is None:
+            return None
+        return {
+            'id': str(obj.requested_by.id),
+            'full_name': obj.requested_by.full_name,
+            'email': obj.requested_by.email,
+        }
+
+
+class TenantDataExportBatchRequestSerializer(serializers.Serializer):
+    export_type = serializers.ChoiceField(choices=TenantDataExportType.choices)  # type: ignore[arg-type]
+
+
 class OrganisationDetailSerializer(serializers.ModelSerializer):
     created_by_email = serializers.EmailField(source='created_by.email', read_only=True)
     primary_admin_email = serializers.EmailField(source='primary_admin_user.email', read_only=True)
@@ -407,7 +447,7 @@ class OrganisationDetailSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'slug', 'status', 'billing_status', 'access_state', 'onboarding_stage',
             'licence_count', 'country_code', 'currency', 'entity_type', 'entity_type_label', 'pan_number',
-            'address', 'phone', 'email', 'logo_url',
+            'address', 'phone', 'email', 'logo_url', 'esi_branch_code',
             'primary_admin_email', 'primary_admin', 'bootstrap_admin', 'paid_marked_at', 'activated_at', 'suspended_at',
             'created_by_email', 'created_at', 'modified_at',
             'admin_count', 'employee_count', 'holiday_calendar_count', 'note_count', 'configuration_summary',
@@ -554,6 +594,7 @@ class UpdateOrganisationSerializer(serializers.Serializer):
     currency = serializers.CharField(max_length=3, required=False)
     entity_type = serializers.ChoiceField(choices=OrganisationEntityType.choices, required=False)
     logo_url = serializers.URLField(required=False, allow_blank=True)
+    esi_branch_code = serializers.CharField(max_length=20, required=False, allow_blank=True)
     primary_admin = PrimaryAdminWriteSerializer(required=False)
 
     def validate_pan_number(self, value):
@@ -623,6 +664,11 @@ class LicenceBatchMarkPaidSerializer(serializers.Serializer):
     paid_at = serializers.DateField(required=False)
 
 
+class LicenceBatchExtendExpirySerializer(serializers.Serializer):
+    new_end_date = serializers.DateField()
+    reason = serializers.CharField(required=False, allow_blank=True, default='')
+
+
 class OrgAdminSerializer(serializers.ModelSerializer):
     id = serializers.UUIDField(source='user.id', read_only=True)
     email = serializers.EmailField(source='user.email', read_only=True)
@@ -683,3 +729,9 @@ class OrgDashboardStatsSerializer(serializers.Serializer):
     onboarding_stage = serializers.CharField()
     pending_approvals = serializers.IntegerField()
     documents_awaiting_review = serializers.IntegerField()
+
+
+class OnboardingChecklistSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = OnboardingChecklist
+        fields = ["step", "is_completed", "completed_at"]

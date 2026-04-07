@@ -9,6 +9,7 @@ from .workspaces import (
     get_active_employee,
     get_workspace_state,
     is_control_tower_impersonating,
+    is_ct_action_allowed_during_impersonation,
 )
 
 MODULE_FEATURE_FLAG_MAP = {
@@ -37,10 +38,27 @@ def _resolve_feature_flag_code(view):
 
 class IsControlTowerUser(BasePermission):
     def has_permission(self, request, view):
-        return (
+        if not (
             request.user.is_authenticated
             and request.user.account_type == AccountType.CONTROL_TOWER
-        )
+        ):
+            return False
+        if request.method in SAFE_METHODS:
+            return True
+        if not is_control_tower_impersonating(request, request.user):
+            return True
+        if getattr(view, 'ct_impersonation_passthrough', False):
+            return True
+
+        action_code = getattr(view, 'ct_impersonation_action_code', None)
+        resolver = getattr(view, 'get_ct_impersonation_action_code', None)
+        if action_code is None and callable(resolver):
+            action_code = resolver()
+        if action_code and is_ct_action_allowed_during_impersonation(action_code):
+            return True
+
+        self.message = 'Control Tower impersonation only allows a limited set of write actions.'
+        return False
 
 
 class IsOrgAdmin(BasePermission):

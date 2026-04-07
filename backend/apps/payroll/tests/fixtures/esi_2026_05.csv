@@ -1,2 +1,2 @@
-employee_code,employee_name,esic_ip_number,gross_wages,employee_contribution,employer_contribution,eligibility_mode,contribution_period_start,contribution_period_end
-EMP001,Priya Sharma,1234567890,25000.00,187.50,812.50,CONTINUED,2026-04-01,2026-09-30
+employee_code,employee_name,esi_branch_code,esic_ip_number,gross_wages,employee_contribution,employer_contribution,eligibility_mode,contribution_period_start,contribution_period_end
+EMP001,Priya Sharma,,1234567890,25000.00,187.50,812.50,CONTINUED,2026-04-01,2026-09-30

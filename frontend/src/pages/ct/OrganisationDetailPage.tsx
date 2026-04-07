@@ -33,6 +33,7 @@ import {
 } from '@/components/ui/Skeleton'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import {
+  useCreateCtTenantDataExport,
   useCreateCtApprovalWorkflow,
   useCreateCtDepartment,
   useCreateCtHolidayCalendar,
@@ -45,19 +46,26 @@ import {
   useCreateLicenceBatch,
   useCreateOrganisationAddress,
   useCtAuditLogs,
+  useCtOrgAnalytics,
   useCtHolidayCalendars,
   useCtOrgAttendanceSummary,
   useCtOrgApprovalSummary,
   useCtOrgConfiguration,
   useCtOrgEmployeeDetail,
   useCtOrgEmployees,
+  useCtOrgPayrollSummary,
+  useCtOrgOnboardingProgress,
   useCtOrgOnboardingSummary,
   useCtOrgOnboardingChecklist,
+  useCtOrgOnboardingStepAction,
   useCtOrgNotes,
+  useCtTenantDataExportDownloadUrl,
+  useCtTenantDataExports,
   useDeactivateCtDepartment,
   useDeactivateCtLocation,
   useDeactivateCtOrgAdmin,
   useDeactivateOrganisationAddress,
+  useExtendLicenceBatchExpiry,
   useInviteOrgAdmin,
   useMarkLicenceBatchPaid,
   useOrganisation,
@@ -69,6 +77,7 @@ import {
   useResendOrgAdminInvite,
   useRestoreOrganisation,
   useSuspendOrganisation,
+  useSyncCtOrgOnboardingProgress,
   useStartCtImpersonation,
   useUpdateCtOrganisationFeatureFlags,
   useUpdateCtApprovalWorkflow,
@@ -118,8 +127,8 @@ import {
   validatePhoneForCountry,
 } from '@/lib/organisationMetadata'
 import { ORG_ONBOARDING_STEPS } from '@/lib/status'
-import type { ApprovalRequestKind, ApprovalWorkflowConfig, CtOrganisationApprovalSupportSummary, CtOrganisationAttendanceSupportSummary, CtOrganisationOnboardingSupportSummary, Department, HolidayCalendar, LeaveCycle, LeavePlan, Location, NoticeItem, OnDutyPolicy } from '@/types/hr'
-import type { LicenceBatch, OrganisationAddress, OrganisationAddressType, OrganisationDetail, OrganisationEntityType } from '@/types/organisation'
+import type { ApprovalRequestKind, ApprovalWorkflowConfig, CtOrganisationApprovalSupportSummary, CtOrganisationAttendanceSupportSummary, CtOrganisationOnboardingSupportSummary, CtOrganisationPayrollSupportSummary, Department, HolidayCalendar, LeaveCycle, LeavePlan, Location, NoticeItem, OnDutyPolicy } from '@/types/hr'
+import type { LicenceBatch, OrganisationAddress, OrganisationAddressType, OrganisationDetail, OrganisationEntityType, TenantDataExportBatch, TenantDataExportType } from '@/types/organisation'
 
 type DetailTabKey =
   | 'overview'
@@ -128,6 +137,7 @@ type DetailTabKey =
   | 'admins'
   | 'employees'
   | 'onboarding'
+  | 'payroll'
   | 'attendance'
   | 'approvals'
   | 'holidays'
@@ -250,6 +260,14 @@ type ActAsDialogState = {
   target_org_admin_id: string
 }
 
+type ExtendExpiryDialogState = {
+  open: boolean
+  batchId: string
+  batchLabel: string
+  new_end_date: string
+  reason: string
+}
+
 const mandatoryAddressTypes: OrganisationAddressType[] = ['REGISTERED', 'BILLING']
 const COUNTRY_SELECT_OPTIONS = COUNTRY_OPTIONS.map((country) => ({
   value: country.code,
@@ -285,12 +303,24 @@ const TAB_OPTIONS: Array<{
   { key: 'admins', label: 'Org Admins', icon: Users },
   { key: 'employees', label: 'Employees', icon: Users },
   { key: 'onboarding', label: 'Onboarding Support', icon: UserPlus },
+  { key: 'payroll', label: 'Payroll Support', icon: BadgeDollarSign },
   { key: 'attendance', label: 'Attendance Support', icon: Clock3 },
   { key: 'approvals', label: 'Approval Support', icon: FileText },
   { key: 'holidays', label: 'Org Holidays', icon: CalendarDays },
   { key: 'configuration', label: 'Configuration', icon: FileText },
   { key: 'audit', label: 'Audit Timeline', icon: History },
   { key: 'notes', label: 'Notes', icon: MessageSquare },
+]
+
+const TENANT_EXPORT_OPTIONS: Array<{
+  exportType: TenantDataExportType
+  label: string
+  description: string
+}> = [
+  { exportType: 'EMPLOYEES', label: 'Employees CSV', description: 'Directory, employment state, department, and location data.' },
+  { exportType: 'LEAVE_HISTORY', label: 'Leave history CSV', description: 'Leave request history with dates, units, and statuses.' },
+  { exportType: 'AUDIT_LOG', label: 'Audit log CSV', description: 'Audit trail metadata for tenant actions and actor references.' },
+  { exportType: 'PAYSLIPS', label: 'Payslips metadata CSV', description: 'Payslip identifiers, periods, and net-pay metadata only.' },
 ]
 
 function calculateBillingMonths(startDate: string, endDate: string) {
@@ -310,6 +340,24 @@ function formatMoney(value: string | number, currency = 'INR') {
     currency,
     maximumFractionDigits: 2,
   }).format(Number.isFinite(numeric) ? numeric : 0)
+}
+
+function formatFileSize(bytes: number | null) {
+  if (!bytes || bytes <= 0) return 'Pending'
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${bytes} B`
+}
+
+function getExportStatusTone(status: TenantDataExportBatch['status']) {
+  if (status === 'COMPLETED') return 'success'
+  if (status === 'FAILED') return 'danger'
+  if (status === 'PROCESSING') return 'warning'
+  return 'info'
+}
+
+function getExportLabel(exportType: TenantDataExportType) {
+  return TENANT_EXPORT_OPTIONS.find((option) => option.exportType === exportType)?.label ?? startCase(exportType)
 }
 
 function emptyBatchForm(): BatchFormState {
@@ -705,6 +753,13 @@ export function OrganisationDetailPage() {
     reason: '',
     target_org_admin_id: '',
   })
+  const [extendExpiryDialog, setExtendExpiryDialog] = useState<ExtendExpiryDialogState>({
+    open: false,
+    batchId: '',
+    batchLabel: '',
+    new_end_date: '',
+    reason: '',
+  })
   const [inviteForm, setInviteForm] = useState({ email: '', first_name: '', last_name: '' })
   const [noteBody, setNoteBody] = useState('')
   const [employeesPage, setEmployeesPage] = useState(1)
@@ -762,6 +817,19 @@ export function OrganisationDetailPage() {
     activeTab === 'onboarding',
   )
   const { data: onboardingChecklist } = useCtOrgOnboardingChecklist(organisationId)
+  const { data: onboardingProgress, isLoading: onboardingProgressLoading } = useCtOrgOnboardingProgress(
+    organisationId,
+    activeTab === 'onboarding',
+  )
+  const { data: analytics, isLoading: analyticsLoading } = useCtOrgAnalytics(
+    organisationId,
+    activeTab === 'overview' || activeTab === 'licences',
+  )
+  const { data: dataExports, isLoading: dataExportsLoading } = useCtTenantDataExports(
+    organisationId,
+    activeTab === 'overview' || activeTab === 'licences',
+  )
+  const { data: payrollSummary, isLoading: payrollSummaryLoading } = useCtOrgPayrollSummary(organisationId, activeTab === 'payroll')
   const { data: attendanceSummary, isLoading: attendanceSummaryLoading } = useCtOrgAttendanceSummary(organisationId, activeTab === 'attendance')
   const { data: approvalSummary, isLoading: approvalSummaryLoading } = useCtOrgApprovalSummary(organisationId, activeTab === 'approvals')
   const { data: auditLogs } = useCtAuditLogs(organisationId, activeTab === 'audit')
@@ -783,6 +851,7 @@ export function OrganisationDetailPage() {
   const createBatchMutation = useCreateLicenceBatch(organisationId)
   const updateBatchMutation = useUpdateLicenceBatch(organisationId)
   const markBatchPaidMutation = useMarkLicenceBatchPaid(organisationId)
+  const extendBatchExpiryMutation = useExtendLicenceBatchExpiry(organisationId)
   const createHolidayMutation = useCreateCtHolidayCalendar(organisationId)
   const updateHolidayMutation = useUpdateCtHolidayCalendar(organisationId)
   const publishHolidayMutation = usePublishCtHolidayCalendar(organisationId)
@@ -804,6 +873,11 @@ export function OrganisationDetailPage() {
   const createNoticeMutation = useCreateCtNotice(organisationId)
   const updateNoticeMutation = useUpdateCtNotice(organisationId)
   const publishNoticeMutation = usePublishCtNotice(organisationId)
+  const syncOnboardingProgressMutation = useSyncCtOrgOnboardingProgress(organisationId)
+  const onboardingStepActionMutation = useCtOrgOnboardingStepAction(organisationId)
+  const createDataExportMutation = useCreateCtTenantDataExport(organisationId)
+  const dataExportDownloadMutation = useCtTenantDataExportDownloadUrl(organisationId)
+  const isImpersonatingThisOrg = user?.impersonation?.organisation_id === organisationId
 
   const bootstrapAdmin = organisation?.bootstrap_admin ?? organisation?.primary_admin ?? null
   const additionalAdmins = useMemo(
@@ -1042,6 +1116,16 @@ export function OrganisationDetailPage() {
     setSelectedBatchId(batchId)
     setBatchPaidAt('')
     setMarkPaidDialogOpen(true)
+  }
+
+  const openExtendExpiryDialog = (batch: LicenceBatch) => {
+    setExtendExpiryDialog({
+      open: true,
+      batchId: batch.id,
+      batchLabel: `${batch.quantity} licences • ${formatDate(batch.end_date)}`,
+      new_end_date: batch.end_date,
+      reason: isImpersonatingThisOrg ? 'Control Tower act-as licence extension support' : '',
+    })
   }
 
   const openHolidayDialog = (calendar?: HolidayCalendar) => {
@@ -1357,6 +1441,30 @@ export function OrganisationDetailPage() {
     }
   }
 
+  const handleExtendBatchExpiry = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!extendExpiryDialog.batchId || !extendExpiryDialog.new_end_date) return
+    try {
+      await extendBatchExpiryMutation.mutateAsync({
+        batchId: extendExpiryDialog.batchId,
+        payload: {
+          new_end_date: extendExpiryDialog.new_end_date,
+          reason: extendExpiryDialog.reason.trim() || undefined,
+        },
+      })
+      toast.success('Licence batch expiry extended.')
+      setExtendExpiryDialog({
+        open: false,
+        batchId: '',
+        batchLabel: '',
+        new_end_date: '',
+        reason: '',
+      })
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to extend this licence batch.'))
+    }
+  }
+
   const handleSuspend = async (event: React.FormEvent) => {
     event.preventDefault()
     if (!organisation) return
@@ -1434,11 +1542,30 @@ export function OrganisationDetailPage() {
         target_org_admin_id: actAsDialog.target_org_admin_id || null,
       })
       await refreshUser()
-      toast.success('Read-only organisation workspace opened.')
+      toast.success('Organisation workspace opened.')
       setActAsDialog((current) => ({ ...current, open: false }))
       navigate('/org/dashboard')
     } catch (error) {
       toast.error(getErrorMessage(error, 'Unable to start Control Tower impersonation.'))
+    }
+  }
+
+  const handleRequestTenantExport = async (exportType: TenantDataExportType) => {
+    try {
+      await createDataExportMutation.mutateAsync({ export_type: exportType })
+      toast.success(`${getExportLabel(exportType)} requested.`)
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to request the tenant export.'))
+    }
+  }
+
+  const handleDownloadTenantExport = async (exportBatch: TenantDataExportBatch) => {
+    try {
+      const response = await dataExportDownloadMutation.mutateAsync(exportBatch.id)
+      window.open(response.download_url, '_blank', 'noopener,noreferrer')
+      toast.success(`${getExportLabel(exportBatch.export_type)} download prepared.`)
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to prepare the export download.'))
     }
   }
 
@@ -1552,6 +1679,59 @@ export function OrganisationDetailPage() {
         </div>
       </SectionCard>
 
+      <SectionCard title="Usage analytics" description="Latest activity snapshot plus short trends for workforce and operations health.">
+        {analyticsLoading ? (
+          <SkeletonFormBlock rows={3} />
+        ) : analytics ? (
+          <>
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <DetailMetric label="Active employees" value={String(analytics.latest.active_employees)} helper={`Snapshot ${formatDate(analytics.latest.snapshot_date)}`} />
+              <DetailMetric label="Active users" value={String(analytics.latest.active_users)} helper="Admins plus active employee users" />
+              <DetailMetric label="Attendance days" value={String(analytics.latest.attendance_days_count)} helper="Captured on the snapshot date" />
+              <DetailMetric label="Pending approvals" value={String(analytics.latest.pending_approvals_count)} helper="Operational backlog needing follow-up" />
+            </div>
+            <div className="mt-5 grid gap-4 xl:grid-cols-3">
+              {[
+                { label: 'Employees', points: analytics.series.active_employees },
+                { label: 'Leave requests', points: analytics.series.leave_requests_count },
+                { label: 'Payroll runs', points: analytics.series.payroll_runs_count },
+              ].map(({ label, points }) => {
+                const series = points
+                const maxValue = Math.max(...series.map((point) => point.value), 1)
+                return (
+                  <div key={label} className="surface-muted rounded-[22px] px-4 py-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-semibold text-[hsl(var(--foreground-strong))]">{label}</p>
+                      <p className="text-sm text-[hsl(var(--muted-foreground))]">Last {series.length} snapshots</p>
+                    </div>
+                    <div className="mt-4 flex h-20 items-end gap-2">
+                      {series.map((point) => (
+                        <div key={`${label}-${point.date}`} className="flex min-w-0 flex-1 flex-col items-center gap-2">
+                          <div
+                            className="w-full rounded-t-[10px] bg-[hsl(var(--brand)_/_0.7)]"
+                            style={{ height: `${Math.max((point.value / maxValue) * 100, 10)}%` }}
+                            title={`${point.date}: ${point.value}`}
+                          />
+                          <span className="text-[10px] uppercase tracking-[0.12em] text-[hsl(var(--muted-foreground))]">
+                            {point.date.slice(8, 10)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </>
+        ) : (
+          <EmptyState
+            title="Usage analytics unavailable"
+            description="Analytics snapshots will appear here once the organisation aggregation job records usage."
+            icon={Activity}
+          />
+        )}
+      </SectionCard>
+
       {onboardingChecklist && (
         <SectionCard
           title="Setup checklist"
@@ -1600,6 +1780,91 @@ export function OrganisationDetailPage() {
           )}
         </SectionCard>
       )}
+
+      <SectionCard
+        title="Data & Compliance"
+        description="Generate signed tenant export archives for offboarding, audits, or customer portability requests."
+      >
+        <div className="grid gap-4 md:grid-cols-2">
+          {TENANT_EXPORT_OPTIONS.map((option) => {
+            const activeExport = (dataExports ?? []).find(
+              (item) => item.export_type === option.exportType && (item.status === 'REQUESTED' || item.status === 'PROCESSING'),
+            )
+            return (
+              <div key={option.exportType} className="surface-muted rounded-[22px] p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold text-[hsl(var(--foreground-strong))]">{option.label}</p>
+                    <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">{option.description}</p>
+                  </div>
+                  {activeExport ? <StatusBadge tone={getExportStatusTone(activeExport.status)}>{activeExport.status}</StatusBadge> : null}
+                </div>
+                <button
+                  type="button"
+                  className="btn-secondary mt-4"
+                  disabled={createDataExportMutation.isPending || Boolean(activeExport)}
+                  onClick={() => void handleRequestTenantExport(option.exportType)}
+                >
+                  {activeExport ? 'Export running' : 'Request export'}
+                </button>
+              </div>
+            )
+          })}
+        </div>
+
+        <div className="mt-6">
+          {dataExportsLoading ? (
+            <SkeletonTable rows={4} />
+          ) : dataExports?.length ? (
+            <div className="space-y-3">
+              {dataExports.map((item) => (
+                <div key={item.id} className="surface-muted rounded-[22px] p-4">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold text-[hsl(var(--foreground-strong))]">{getExportLabel(item.export_type)}</p>
+                        <StatusBadge tone={getExportStatusTone(item.status)}>{item.status}</StatusBadge>
+                      </div>
+                      <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
+                        Requested {formatDateTime(item.created_at)}
+                        {item.requested_by ? ` • ${item.requested_by.full_name || item.requested_by.email}` : ''}
+                      </p>
+                      <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
+                        {item.file_name || 'Archive pending'} • {formatFileSize(item.file_size_bytes)}
+                        {typeof item.metadata?.row_count === 'number' ? ` • ${item.metadata.row_count} row(s)` : ''}
+                      </p>
+                      {item.failure_reason ? <p className="mt-2 text-sm text-[hsl(var(--danger))]">{item.failure_reason}</p> : null}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-3">
+                      {item.generated_at ? (
+                        <p className="text-xs uppercase tracking-[0.16em] text-[hsl(var(--muted-foreground))]">
+                          Ready {formatDateTime(item.generated_at)}
+                        </p>
+                      ) : null}
+                      {item.status === 'COMPLETED' ? (
+                        <button
+                          type="button"
+                          className="btn-primary"
+                          disabled={dataExportDownloadMutation.isPending}
+                          onClick={() => void handleDownloadTenantExport(item)}
+                        >
+                          Download
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              title="No export batches yet"
+              description="Requested exports will appear here with status, row counts, and signed download actions."
+              icon={FileText}
+            />
+          )}
+        </div>
+      </SectionCard>
     </div>
   )
 
@@ -1788,6 +2053,13 @@ export function OrganisationDetailPage() {
                     <p className="text-sm text-[hsl(var(--muted-foreground))]">
                       {formatMoney(batch.price_per_licence_per_month, organisation.currency)} per licence per month
                     </p>
+                    {batch.payment_reference || batch.invoice_reference ? (
+                      <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                        {batch.payment_provider ? `${startCase(batch.payment_provider)} • ` : ''}
+                        {batch.payment_reference ? `Payment ref ${batch.payment_reference}` : 'Payment ref unavailable'}
+                        {batch.invoice_reference ? ` • Invoice ${batch.invoice_reference}` : ''}
+                      </p>
+                    ) : null}
                     {batch.note ? <p className="text-sm text-[hsl(var(--muted-foreground))]">{batch.note}</p> : null}
                   </div>
                   <div className="flex flex-wrap gap-3">
@@ -1801,9 +2073,14 @@ export function OrganisationDetailPage() {
                         </button>
                       </>
                     ) : (
-                      <div className="text-xs uppercase tracking-[0.16em] text-[hsl(var(--muted-foreground))]">
-                        Paid {formatDate(batch.paid_at)}
-                      </div>
+                      <>
+                        <button type="button" className="btn-secondary" onClick={() => openExtendExpiryDialog(batch)}>
+                          Extend expiry
+                        </button>
+                        <div className="text-xs uppercase tracking-[0.16em] text-[hsl(var(--muted-foreground))]">
+                          Paid {formatDate(batch.paid_at)}
+                        </div>
+                      </>
                     )}
                   </div>
                 </div>
@@ -2070,8 +2347,30 @@ export function OrganisationDetailPage() {
     </div>
   )
 
+  const handleSyncOnboardingProgress = async () => {
+    try {
+      await syncOnboardingProgressMutation.mutateAsync()
+      toast.success('Onboarding progress resynced.')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to resync onboarding progress.'))
+    }
+  }
+
+  const handleOnboardingStepAction = async (step: string, action: 'complete' | 'reset') => {
+    try {
+      await onboardingStepActionMutation.mutateAsync({
+        step,
+        action,
+        reason: action === 'reset' ? 'Control Tower support reset' : undefined,
+      })
+      toast.success(action === 'reset' ? 'Onboarding step reset.' : 'Onboarding step marked complete.')
+    } catch (error) {
+      toast.error(getErrorMessage(error, `Unable to ${action} the onboarding step.`))
+    }
+  }
+
   const renderOnboardingTab = () => {
-    if (onboardingSummaryLoading) {
+    if (onboardingSummaryLoading || onboardingProgressLoading) {
       return <SkeletonTable rows={5} />
     }
 
@@ -2100,6 +2399,75 @@ export function OrganisationDetailPage() {
           <DetailMetric label="Open document blockers" value={String(openDocumentBlockers)} helper={`${summary.document_request_status_counts.REJECTED ?? 0} rejected submissions`} />
           <DetailMetric label="Blocked employees" value={String(summary.blocked_employees.length)} helper="Highest-friction onboarding cases" />
         </div>
+
+        {onboardingProgress ? (
+          <SectionCard
+            title="Provisioning checklist"
+            description="This is the persisted onboarding state. Resync recalculates the step state from the organisation configuration."
+            action={
+              <button type="button" className="btn-secondary" onClick={() => void handleSyncOnboardingProgress()} disabled={syncOnboardingProgressMutation.isPending}>
+                {syncOnboardingProgressMutation.isPending ? 'Resyncing...' : 'Resync progress'}
+              </button>
+            }
+          >
+            <div className="grid gap-4 md:grid-cols-2">
+              {onboardingProgress.steps.map((step) => (
+                <div
+                  key={step.step}
+                  className={`rounded-[22px] border px-4 py-4 ${step.is_completed ? 'border-[hsl(var(--success)_/_0.28)] bg-[hsl(var(--success)_/_0.06)]' : 'border-[hsl(var(--border))] bg-[hsl(var(--surface-subtle))]'}`}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-[hsl(var(--foreground-strong))]">{step.label}</p>
+                      <p className="mt-1 text-xs uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">
+                        {step.is_completed ? `Completed via ${step.completion_source}` : 'Pending'}
+                      </p>
+                    </div>
+                    <StatusBadge tone={step.is_completed ? 'success' : step.blockers.length ? 'warning' : 'info'}>
+                      {step.is_completed ? 'Complete' : `${step.blockers.length} blocker${step.blockers.length === 1 ? '' : 's'}`}
+                    </StatusBadge>
+                  </div>
+                  {step.blockers.length ? (
+                    <div className="mt-3 space-y-2 text-sm text-[hsl(var(--muted-foreground))]">
+                      {step.blockers.map((blocker) => (
+                        <p key={blocker}>• {blocker}</p>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-3 text-sm text-[hsl(var(--muted-foreground))]">No blockers are currently preventing this step from being completed.</p>
+                  )}
+                  <div className="mt-4 flex flex-wrap gap-3">
+                    {step.action ? (
+                      <button type="button" className="btn-secondary" onClick={() => setActiveTab(step.action as DetailTabKey)}>
+                        Go to {startCase(step.action)}
+                      </button>
+                    ) : null}
+                    {!step.is_completed ? (
+                      <button
+                        type="button"
+                        className="btn-primary"
+                        disabled={onboardingStepActionMutation.isPending || step.blockers.length > 0}
+                        onClick={() => void handleOnboardingStepAction(step.step, 'complete')}
+                      >
+                        Mark complete
+                      </button>
+                    ) : null}
+                    {step.is_completed && step.can_reset ? (
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        disabled={onboardingStepActionMutation.isPending}
+                        onClick={() => void handleOnboardingStepAction(step.step, 'reset')}
+                      >
+                        Reset step
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </SectionCard>
+        ) : null}
 
         <SectionCard
           title="Onboarding blockers"
@@ -2220,11 +2588,12 @@ export function OrganisationDetailPage() {
           title="Today attendance health"
           description="Sanitized daily summary for Control Tower support. This shows org-level operational status without exposing detailed employee movement data."
         >
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
             <DetailMetric label="Present" value={String(summary.today_summary.present_count)} helper={summary.today_summary.date} />
             <DetailMetric label="Half day" value={String(summary.today_summary.half_day_count)} helper="Requires attendance or leave review" />
             <DetailMetric label="On leave" value={String(summary.today_summary.on_leave_count)} helper="Approved leave impact" />
             <DetailMetric label="On duty" value={String(summary.today_summary.on_duty_count)} helper="Approved duty travel / field work" />
+            <DetailMetric label="WFH" value={String(summary.today_summary.wfh_count)} helper="Approved work-from-home days" />
           </div>
         </SectionCard>
 
@@ -2258,6 +2627,101 @@ export function OrganisationDetailPage() {
               title="No attendance imports yet"
               description="Once the organisation begins uploading attendance or punch workbooks, CT can inspect recent import health here."
               icon={Clock3}
+            />
+          )}
+        </SectionCard>
+      </div>
+    )
+  }
+
+  const renderPayrollTab = () => {
+    if (payrollSummaryLoading) {
+      return <SkeletonTable rows={5} />
+    }
+
+    const summary = payrollSummary as CtOrganisationPayrollSupportSummary | undefined
+    if (!summary) {
+      return (
+        <EmptyState
+          title="Payroll support data unavailable"
+          description="This tab will show sanitized payroll support health for Control Tower without exposing employee pay."
+          icon={BadgeDollarSign}
+        />
+      )
+    }
+
+    return (
+      <div className="space-y-6">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+          <DetailMetric label="Tax slab sets" value={String(summary.tax_slab_set_count)} helper="Org-scoped preview masters" />
+          <DetailMetric label="Templates" value={String(summary.compensation_template_count)} helper="Reusable structures" />
+          <DetailMetric label="Approved assignments" value={String(summary.approved_assignment_count)} helper="Salary records ready" />
+          <DetailMetric label="Pending assignments" value={String(summary.pending_assignment_count)} helper="Waiting on approval" />
+          <DetailMetric label="Payslips" value={String(summary.payslip_count)} helper="Generated preview slips" />
+        </div>
+
+        <SupportDiagnostics diagnostics={summary.diagnostics} />
+
+        <SectionCard
+          title="Payroll run history"
+          description="Control Tower can inspect run state, exception counts, and attendance-linked payable day summaries here without seeing salary amounts."
+        >
+          {summary.payroll_runs.length ? (
+            <div className="space-y-3">
+              {summary.payroll_runs.map((run) => (
+                <div key={run.id} className="surface-muted rounded-[24px] p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold text-[hsl(var(--foreground-strong))]">{run.name}</p>
+                        <StatusBadge tone={run.status === 'FINALIZED' ? 'success' : run.status === 'REJECTED' ? 'danger' : 'info'}>
+                          {run.status}
+                        </StatusBadge>
+                        {run.exception_count ? <StatusBadge tone="warning">{run.exception_count} exceptions</StatusBadge> : null}
+                      </div>
+                      <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
+                        {run.period_month}/{run.period_year} • {run.run_type} • {run.ready_count} ready items
+                      </p>
+                      <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
+                        Attendance-linked payable days: {run.attendance_snapshot_summary.use_attendance_inputs ? 'enabled' : 'not applied'}
+                      </p>
+                      {run.attendance_snapshot_summary.attendance_source && run.attendance_snapshot_summary.use_attendance_inputs ? (
+                        <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
+                          Attendance inputs: {run.attendance_snapshot_summary.total_attendance_paid_days} paid days •{' '}
+                          {run.attendance_snapshot_summary.total_lop_days} LOP days •{' '}
+                          {run.attendance_snapshot_summary.total_overtime_minutes} overtime minutes
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="text-right text-sm text-[hsl(var(--muted-foreground))]">
+                      <p>Created {formatDateTime(run.created_at)}</p>
+                      <p>
+                        {run.finalized_at
+                          ? `Finalized ${formatDateTime(run.finalized_at)}`
+                          : run.calculated_at
+                            ? `Calculated ${formatDateTime(run.calculated_at)}`
+                            : 'Not finalized yet'}
+                      </p>
+                    </div>
+                  </div>
+                  {run.exception_messages.length ? (
+                    <div className="mt-4 rounded-[18px] border border-[hsl(var(--warning)_/_0.32)] bg-[hsl(var(--warning)_/_0.12)] px-4 py-3 text-sm text-[hsl(var(--foreground-strong))]">
+                      <p className="font-medium">Why this run is blocked</p>
+                      <ul className="mt-2 space-y-1 text-[hsl(var(--muted-foreground))]">
+                        {run.exception_messages.map((message) => (
+                          <li key={message}>{message}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              title="No payroll runs yet"
+              description="Once this organisation starts payroll preview processing, CT can inspect run status here without seeing salary amounts."
+              icon={BadgeDollarSign}
             />
           )}
         </SectionCard>
@@ -2769,7 +3233,7 @@ export function OrganisationDetailPage() {
               </button>
             ) : (
               <button type="button" className="btn-secondary" onClick={openActAsDialog}>
-                Open read-only org view
+                Open org workspace
               </button>
             )}
             {onlyDraftBatch ? (
@@ -2804,6 +3268,27 @@ export function OrganisationDetailPage() {
         <DetailMetric label="Holiday calendars" value={String(organisation.holiday_calendar_count)} helper={`${organisation.note_count} CT notes`} />
       </div>
 
+      {isImpersonatingThisOrg ? (
+        <div className="rounded-[24px] border border-[hsl(var(--warning)_/_0.32)] bg-[hsl(var(--warning)_/_0.12)] px-5 py-4 text-sm text-[hsl(var(--foreground-strong))]">
+          <p className="font-semibold">This Control Tower act-as session allows a narrow write set only.</p>
+          <p className="mt-1 text-[hsl(var(--muted-foreground))]">
+            Allowed CT writes during impersonation: reactivate inactive admins, reset completed onboarding steps, and extend paid licence expiry.
+            All other CT write actions remain blocked until the session stops.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <button type="button" className="btn-secondary" onClick={() => setActiveTab('admins')}>
+              Reactivate admin
+            </button>
+            <button type="button" className="btn-secondary" onClick={() => setActiveTab('onboarding')}>
+              Reset onboarding step
+            </button>
+            <button type="button" className="btn-secondary" onClick={() => setActiveTab('licences')}>
+              Extend licence expiry
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       <div className="md:hidden">
         <AppSelect value={activeTab} onValueChange={(value) => setActiveTab(value as DetailTabKey)} options={tabSelectOptions} />
       </div>
@@ -2836,6 +3321,7 @@ export function OrganisationDetailPage() {
       {activeTab === 'admins' ? renderAdminsTab() : null}
       {activeTab === 'employees' ? renderEmployeesTab() : null}
       {activeTab === 'onboarding' ? renderOnboardingTab() : null}
+      {activeTab === 'payroll' ? renderPayrollTab() : null}
       {activeTab === 'attendance' ? renderAttendanceTab() : null}
       {activeTab === 'approvals' ? renderApprovalsTab() : null}
       {activeTab === 'holidays' ? renderHolidaysTab() : null}
@@ -2847,7 +3333,7 @@ export function OrganisationDetailPage() {
         open={actAsDialog.open}
         onOpenChange={(open) => setActAsDialog((current) => ({ ...current, open }))}
         title="Start Control Tower impersonation"
-        description="This opens the organisation admin workspace in read-only mode. Every start, refresh, and stop action is audit logged."
+        description="This opens the organisation admin workspace in an act-as session. Start, refresh, stop, and every allowed CT write action are audit logged."
         footer={
           <div className="flex flex-wrap justify-end gap-3">
             <button type="button" className="btn-secondary" onClick={() => setActAsDialog((current) => ({ ...current, open: false }))}>
@@ -2859,7 +3345,7 @@ export function OrganisationDetailPage() {
               onClick={() => void handleStartImpersonation()}
               disabled={startImpersonationMutation.isPending || !actAsDialog.reason.trim()}
             >
-              Start read-only session
+              Start support session
             </button>
           </div>
         }
@@ -2891,8 +3377,8 @@ export function OrganisationDetailPage() {
             />
           </label>
           <div className="rounded-[20px] border border-[hsl(var(--warning)_/_0.32)] bg-[hsl(var(--warning)_/_0.12)] px-4 py-3 text-sm text-[hsl(var(--foreground-strong))]">
-            <p className="font-semibold">Writes stay blocked while this session is active.</p>
-            <p className="mt-1 text-[hsl(var(--muted-foreground))]">Use this mode to inspect org configuration safely, then stop the session to return to Control Tower.</p>
+            <p className="font-semibold">Most writes stay blocked while this session is active.</p>
+            <p className="mt-1 text-[hsl(var(--muted-foreground))]">The only CT writes allowed during impersonation are admin reactivation, onboarding step reset, and licence expiry extension.</p>
           </div>
         </div>
       </AppDialog>
@@ -4014,6 +4500,64 @@ export function OrganisationDetailPage() {
             </button>
             <button type="submit" className="btn-primary" disabled={markBatchPaidMutation.isPending}>
               Mark paid
+            </button>
+          </div>
+        </form>
+      </AppDialog>
+
+      <AppDialog
+        open={extendExpiryDialog.open}
+        onOpenChange={(open) => {
+          setExtendExpiryDialog((current) => (
+            open
+              ? { ...current, open: true }
+              : { open: false, batchId: '', batchLabel: '', new_end_date: '', reason: '' }
+          ))
+        }}
+        title="Extend licence expiry"
+        description="Use this for paid batches when a short commercial extension is approved. This action stays available during CT act-as sessions."
+      >
+        <form onSubmit={handleExtendBatchExpiry} className="grid gap-4">
+          {extendExpiryDialog.batchLabel ? (
+            <div className="surface-muted rounded-[22px] p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[hsl(var(--muted-foreground))]">Selected batch</p>
+              <p className="mt-2 text-sm text-[hsl(var(--foreground-strong))]">{extendExpiryDialog.batchLabel}</p>
+            </div>
+          ) : null}
+          <div>
+            <label className="field-label">New end date</label>
+            <AppDatePicker
+              value={extendExpiryDialog.new_end_date}
+              onValueChange={(value) => setExtendExpiryDialog((current) => ({ ...current, new_end_date: value }))}
+              placeholder="Select new end date"
+            />
+          </div>
+          <div>
+            <label className="field-label" htmlFor="batch-extend-reason">
+              Reason
+            </label>
+            <textarea
+              id="batch-extend-reason"
+              className="field-textarea"
+              value={extendExpiryDialog.reason}
+              onChange={(event) => setExtendExpiryDialog((current) => ({ ...current, reason: event.target.value }))}
+              placeholder="Why is this batch being extended?"
+            />
+          </div>
+          <div className="flex flex-wrap justify-end gap-3">
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => setExtendExpiryDialog({ open: false, batchId: '', batchLabel: '', new_end_date: '', reason: '' })}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="btn-primary"
+              disabled={extendBatchExpiryMutation.isPending || !extendExpiryDialog.new_end_date}
+            >
+              Extend expiry
             </button>
           </div>
         </form>

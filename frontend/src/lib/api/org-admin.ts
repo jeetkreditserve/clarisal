@@ -78,6 +78,7 @@ export async function updateOrgProfile(payload: Partial<{
   currency: string
   entity_type: OrganisationEntityType
   logo_url: string
+  esi_branch_code: string
 }>) {
   const { data } = await api.patch<OrganisationDetail>('/org/profile/', payload)
   return data

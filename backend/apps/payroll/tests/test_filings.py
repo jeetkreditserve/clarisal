@@ -233,6 +233,35 @@ class TestStatutoryFilings:
         assert batch.artifact_text == _read_fixture('esi_2026_05.csv')
         assert batch.structured_payload['rows'][0]['eligibility_mode'] == 'CONTINUED'
 
+    def test_esi_export_surfaces_branch_code_warnings_and_includes_configured_value(self, filing_fixture):
+        blank_branch_batch = generate_statutory_filing_batch(
+            filing_fixture['organisation'],
+            filing_type='ESI_MONTHLY',
+            actor=filing_fixture['admin'],
+            period_year=2026,
+            period_month=5,
+        )
+
+        assert blank_branch_batch.status == StatutoryFilingStatus.GENERATED
+        assert blank_branch_batch.metadata['warnings'] == ['Organisation ESI branch code is blank for this filing.']
+        assert blank_branch_batch.structured_payload['rows'][0]['esi_branch_code'] == ''
+
+        filing_fixture['organisation'].esi_branch_code = 'ESI-BLR-001'
+        filing_fixture['organisation'].save(update_fields=['esi_branch_code', 'modified_at'])
+
+        configured_branch_batch = generate_statutory_filing_batch(
+            filing_fixture['organisation'],
+            filing_type='ESI_MONTHLY',
+            actor=filing_fixture['admin'],
+            period_year=2026,
+            period_month=5,
+        )
+
+        assert configured_branch_batch.status == StatutoryFilingStatus.GENERATED
+        assert configured_branch_batch.metadata.get('warnings', []) == []
+        assert configured_branch_batch.structured_payload['rows'][0]['esi_branch_code'] == 'ESI-BLR-001'
+        assert 'ESI-BLR-001' in configured_branch_batch.artifact_text
+
     def test_professional_tax_export_matches_fixture(self, filing_fixture):
         batch = generate_statutory_filing_batch(
             filing_fixture['organisation'],

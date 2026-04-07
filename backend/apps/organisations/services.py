@@ -1,5 +1,12 @@
+import csv
+import hashlib
+import hmac
+import io
+import json
 import math
 import re
+import zipfile
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 from django.conf import settings
@@ -10,7 +17,9 @@ from django.utils import timezone
 from apps.accounts.contact_services import normalize_email_address, resolve_person_contacts
 from apps.accounts.models import AccountType
 from apps.accounts.workspaces import ACTIVE_EMPLOYEE_STATUSES, sync_user_role
+from apps.audit.models import AuditLog
 from apps.audit.services import log_audit_event
+from apps.documents.s3 import generate_presigned_url, upload_file
 from apps.employees.models import Employee, EmployeeStatus
 
 from .address_metadata import (
@@ -34,11 +43,16 @@ from .models import (
     LicenceBatchPaymentStatus,
     LicenceLedgerReason,
     LifecycleEventType,
+    OnboardingChecklist,
+    OnboardingStepCode,
     OrgAdminSetupStep,
     Organisation,
     OrganisationAccessState,
     OrganisationAddress,
     OrganisationAddressType,
+    OrganisationBillingEvent,
+    OrganisationBillingEventStatus,
+    OrganisationBillingProvider,
     OrganisationBillingStatus,
     OrganisationBootstrapAdmin,
     OrganisationEntityType,
@@ -57,6 +71,10 @@ from .models import (
     OrganisationStatus,
     OrganisationTaxRegistration,
     OrganisationTaxRegistrationType,
+    OrgUsageStat,
+    TenantDataExportBatch,
+    TenantDataExportStatus,
+    TenantDataExportType,
 )
 
 PAN_PATTERN = re.compile(r'^[A-Z]{5}[0-9]{4}[A-Z]$')
@@ -1081,6 +1099,7 @@ def create_organisation(
                 'primary_admin_email': normalized_primary_admin['email'],
             },
         )
+        initialize_onboarding_checklist(organisation)
     return organisation
 
 
@@ -1273,6 +1292,7 @@ def create_licence_batch(
         billing_months=billing_months,
         total_amount=total_amount,
         payment_status=LicenceBatchPaymentStatus.DRAFT,
+        payment_provider=OrganisationBillingProvider.MANUAL,
         created_by=created_by,
         note=note,
     )
@@ -1321,16 +1341,62 @@ def update_licence_batch(batch, actor=None, **fields):
     return batch
 
 
-def mark_licence_batch_paid(batch, paid_by=None, paid_at=None):
+def extend_licence_batch_expiry(batch, *, new_end_date, actor=None, reason=''):
+    if batch.payment_status != LicenceBatchPaymentStatus.PAID:
+        raise ValueError('Only paid licence batches can be extended.')
+    if new_end_date <= batch.end_date:
+        raise ValueError('New expiry date must be after the current expiry date.')
+
+    previous_end_date = batch.end_date
+    batch.end_date = new_end_date
+    batch.save(update_fields=['end_date', 'modified_at'])
+    log_audit_event(
+        actor,
+        'organisation.licence_batch.expiry_extended',
+        organisation=batch.organisation,
+        target=batch,
+        payload={
+            'previous_end_date': previous_end_date.isoformat(),
+            'new_end_date': new_end_date.isoformat(),
+            'reason': reason,
+        },
+    )
+    return batch
+
+
+def mark_licence_batch_paid(
+    batch,
+    paid_by=None,
+    paid_at=None,
+    payment_provider=None,
+    payment_reference='',
+    invoice_reference='',
+):
     if batch.payment_status != LicenceBatchPaymentStatus.DRAFT:
         raise ValueError('Licence batch is already marked as paid.')
 
     resolved_paid_at = paid_at or timezone.localdate()
     with transaction.atomic():
         batch.payment_status = LicenceBatchPaymentStatus.PAID
+        if payment_provider:
+            batch.payment_provider = payment_provider
+        if payment_reference:
+            batch.payment_reference = payment_reference
+        if invoice_reference:
+            batch.invoice_reference = invoice_reference
         batch.paid_at = resolved_paid_at
         batch.paid_by = paid_by
-        batch.save(update_fields=['payment_status', 'paid_at', 'paid_by', 'modified_at'])
+        batch.save(
+            update_fields=[
+                'payment_status',
+                'payment_provider',
+                'payment_reference',
+                'invoice_reference',
+                'paid_at',
+                'paid_by',
+                'modified_at',
+            ]
+        )
 
         first_paid_batch = batch.organisation.status == OrganisationStatus.PENDING
         if batch.organisation.status == OrganisationStatus.PENDING:
@@ -1348,9 +1414,419 @@ def mark_licence_batch_paid(batch, paid_by=None, paid_at=None):
         'organisation.licence_batch.paid',
         organisation=batch.organisation,
         target=batch,
-        payload={'paid_at': resolved_paid_at.isoformat()},
+        payload={
+            'paid_at': resolved_paid_at.isoformat(),
+            'payment_provider': batch.payment_provider,
+            'payment_reference': batch.payment_reference,
+            'invoice_reference': batch.invoice_reference,
+        },
     )
     return batch
+
+
+def aggregate_org_usage_stat(organisation: Organisation, *, snapshot_date: date | None = None) -> OrgUsageStat:
+    from apps.approvals.models import ApprovalRun, ApprovalRunStatus
+    from apps.attendance.models import AttendanceDay
+    from apps.payroll.models import PayrollRun
+    from apps.timeoff.models import LeaveRequest
+
+    resolved_date = snapshot_date or timezone.localdate()
+    employee_user_ids = set(
+        Employee.objects.filter(organisation=organisation, status=EmployeeStatus.ACTIVE)
+        .exclude(user__isnull=True)
+        .values_list('user_id', flat=True)
+    )
+    admin_user_ids = set(
+        OrganisationMembership.objects.filter(
+            organisation=organisation,
+            is_org_admin=True,
+            status=OrganisationMembershipStatus.ACTIVE,
+        ).exclude(user__isnull=True).values_list('user_id', flat=True)
+    )
+    usage_stat, _ = OrgUsageStat.objects.update_or_create(
+        organisation=organisation,
+        snapshot_date=resolved_date,
+        defaults={
+            'active_employees': Employee.objects.filter(organisation=organisation, status=EmployeeStatus.ACTIVE).count(),
+            'active_users': len(employee_user_ids | admin_user_ids),
+            'attendance_days_count': AttendanceDay.objects.filter(
+                organisation=organisation,
+                attendance_date=resolved_date,
+            ).count(),
+            'leave_requests_count': LeaveRequest.objects.filter(
+                employee__organisation=organisation,
+                created_at__date=resolved_date,
+            ).count(),
+            'payroll_runs_count': PayrollRun.objects.filter(
+                organisation=organisation,
+                created_at__date=resolved_date,
+            ).count(),
+            'pending_approvals_count': ApprovalRun.objects.filter(
+                organisation=organisation,
+                status=ApprovalRunStatus.PENDING,
+            ).count(),
+            'metadata': {'source': 'aggregation'},
+        },
+    )
+    return usage_stat
+
+
+def get_org_usage_analytics(organisation: Organisation, *, days: int = 30) -> dict:
+    end_date = timezone.localdate()
+    start_date = end_date - timedelta(days=max(days - 1, 0))
+    stats = list(
+        OrgUsageStat.objects.filter(
+            organisation=organisation,
+            snapshot_date__gte=start_date,
+            snapshot_date__lte=end_date,
+        ).order_by('snapshot_date')
+    )
+    if not stats:
+        latest_existing = (
+            OrgUsageStat.objects.filter(organisation=organisation)
+            .order_by('-snapshot_date')
+            .first()
+        )
+        stats = [latest_existing] if latest_existing is not None else [aggregate_org_usage_stat(organisation, snapshot_date=end_date)]
+    latest = stats[-1]
+    series_fields = [
+        'active_employees',
+        'active_users',
+        'attendance_days_count',
+        'leave_requests_count',
+        'payroll_runs_count',
+        'pending_approvals_count',
+    ]
+    return {
+        'latest': {
+            'snapshot_date': latest.snapshot_date.isoformat(),
+            'active_employees': latest.active_employees,
+            'active_users': latest.active_users,
+            'attendance_days_count': latest.attendance_days_count,
+            'leave_requests_count': latest.leave_requests_count,
+            'payroll_runs_count': latest.payroll_runs_count,
+            'pending_approvals_count': latest.pending_approvals_count,
+            'metadata': latest.metadata,
+        },
+        'series': {
+            field: [
+                {'date': stat.snapshot_date.isoformat(), 'value': getattr(stat, field)}
+                for stat in stats
+            ]
+            for field in series_fields
+        },
+    }
+
+
+def request_tenant_data_export(organisation: Organisation, *, export_type: str, requested_by=None) -> TenantDataExportBatch:
+    batch = TenantDataExportBatch.objects.create(
+        organisation=organisation,
+        requested_by=requested_by,
+        export_type=export_type,
+        status=TenantDataExportStatus.REQUESTED,
+    )
+    log_audit_event(
+        requested_by,
+        'organisation.data_export.requested',
+        organisation=organisation,
+        target=batch,
+        payload={'export_type': export_type},
+    )
+    return batch
+
+
+def list_tenant_data_exports(organisation: Organisation):
+    return TenantDataExportBatch.objects.filter(organisation=organisation).select_related('requested_by')
+
+
+def get_tenant_data_export(organisation: Organisation, export_batch_id) -> TenantDataExportBatch:
+    return list_tenant_data_exports(organisation).get(id=export_batch_id)
+
+
+def _write_csv_to_archive(archive: zipfile.ZipFile, file_name: str, fieldnames: list[str], rows: list[dict]) -> int:
+    csv_buffer = io.StringIO()
+    writer = csv.DictWriter(csv_buffer, fieldnames=fieldnames)
+    writer.writeheader()
+    for row in rows:
+        writer.writerow(row)
+    archive.writestr(file_name, csv_buffer.getvalue().encode('utf-8'))
+    return len(rows)
+
+
+def _build_employee_export_rows(organisation: Organisation) -> list[dict]:
+    employees = (
+        Employee.all_objects.select_related('user', 'department', 'office_location')
+        .filter(organisation=organisation)
+        .order_by('employee_code', 'created_at')
+    )
+    return [
+        {
+            'employee_id': str(employee.id),
+            'employee_code': employee.employee_code or '',
+            'full_name': employee.user.full_name,
+            'email': employee.user.email,
+            'designation': employee.designation,
+            'employment_type': employee.employment_type,
+            'status': employee.status,
+            'date_of_joining': employee.date_of_joining.isoformat() if employee.date_of_joining else '',
+            'date_of_exit': employee.date_of_exit.isoformat() if employee.date_of_exit else '',
+            'department': employee.department.name if employee.department_id else '',
+            'office_location': employee.office_location.name if employee.office_location_id else '',
+        }
+        for employee in employees
+    ]
+
+
+def _build_leave_history_export_rows(organisation: Organisation) -> list[dict]:
+    from apps.timeoff.models import LeaveRequest
+
+    requests = (
+        LeaveRequest.objects.select_related('employee__user', 'leave_type')
+        .filter(employee__organisation=organisation)
+        .order_by('-start_date', '-created_at')
+    )
+    return [
+        {
+            'leave_request_id': str(item.id),
+            'employee_code': item.employee.employee_code or '',
+            'employee_name': item.employee.user.full_name,
+            'leave_type': item.leave_type.name,
+            'start_date': item.start_date.isoformat(),
+            'end_date': item.end_date.isoformat(),
+            'total_units': str(item.total_units),
+            'status': item.status,
+            'reason': item.reason,
+        }
+        for item in requests
+    ]
+
+
+def _build_audit_log_export_rows(organisation: Organisation) -> list[dict]:
+    logs = (
+        AuditLog.objects.select_related('actor')
+        .filter(organisation=organisation)
+        .order_by('-created_at')
+    )
+    return [
+        {
+            'created_at': item.created_at.isoformat(),
+            'action': item.action,
+            'actor_email': item.actor.email if item.actor_id else '',
+            'target_type': item.target_type,
+            'target_id': str(item.target_id) if item.target_id else '',
+            'ip_address': item.ip_address or '',
+        }
+        for item in logs
+    ]
+
+
+def _build_payslip_export_rows(organisation: Organisation) -> list[dict]:
+    from apps.payroll.models import Payslip
+
+    payslips = (
+        Payslip.objects.select_related('employee__user', 'pay_run')
+        .filter(organisation=organisation)
+        .order_by('-period_year', '-period_month', '-created_at')
+    )
+    return [
+        {
+            'payslip_id': str(item.id),
+            'slip_number': item.slip_number,
+            'employee_code': item.employee.employee_code or '',
+            'employee_name': item.employee.user.full_name,
+            'period_year': item.period_year,
+            'period_month': item.period_month,
+            'pay_run': item.pay_run.name,
+            'net_pay': item.snapshot.get('net_pay', ''),
+            'rendered_text_present': bool(item.rendered_text),
+        }
+        for item in payslips
+    ]
+
+
+def _build_tenant_data_export_payload(batch: TenantDataExportBatch) -> tuple[io.BytesIO, str, dict]:
+    export_builders = {
+        TenantDataExportType.EMPLOYEES: (
+            'employees.csv',
+            ['employee_id', 'employee_code', 'full_name', 'email', 'designation', 'employment_type', 'status', 'date_of_joining', 'date_of_exit', 'department', 'office_location'],
+            _build_employee_export_rows,
+        ),
+        TenantDataExportType.LEAVE_HISTORY: (
+            'leave_history.csv',
+            ['leave_request_id', 'employee_code', 'employee_name', 'leave_type', 'start_date', 'end_date', 'total_units', 'status', 'reason'],
+            _build_leave_history_export_rows,
+        ),
+        TenantDataExportType.AUDIT_LOG: (
+            'audit_log.csv',
+            ['created_at', 'action', 'actor_email', 'target_type', 'target_id', 'ip_address'],
+            _build_audit_log_export_rows,
+        ),
+        TenantDataExportType.PAYSLIPS: (
+            'payslips.csv',
+            ['payslip_id', 'slip_number', 'employee_code', 'employee_name', 'period_year', 'period_month', 'pay_run', 'net_pay', 'rendered_text_present'],
+            _build_payslip_export_rows,
+        ),
+    }
+    inner_file_name, fieldnames, builder = export_builders[batch.export_type]
+    rows = builder(batch.organisation)
+    file_buffer = io.BytesIO()
+    with zipfile.ZipFile(file_buffer, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
+        row_count = _write_csv_to_archive(archive, inner_file_name, fieldnames, rows)
+    file_buffer.seek(0)
+    timestamp = timezone.now().strftime('%Y%m%d%H%M%S')
+    export_name = f'{batch.organisation.slug}-{batch.export_type.lower()}-{timestamp}.zip'
+    return file_buffer, export_name, {'row_count': row_count, 'inner_file_name': inner_file_name}
+
+
+def generate_tenant_data_export_batch(export_batch: TenantDataExportBatch) -> TenantDataExportBatch:
+    with transaction.atomic():
+        batch = TenantDataExportBatch.objects.select_for_update().select_related('organisation').get(id=export_batch.id)
+        if batch.status == TenantDataExportStatus.COMPLETED and batch.artifact_key:
+            return batch
+        batch.status = TenantDataExportStatus.PROCESSING
+        batch.failure_reason = ''
+        batch.save(update_fields=['status', 'failure_reason', 'modified_at'])
+
+    try:
+        file_buffer, file_name, metadata = _build_tenant_data_export_payload(batch)
+        artifact_key = f'organisations/{batch.organisation.slug}/exports/{batch.id}/{file_name}'
+        upload_file(file_buffer, artifact_key, 'application/zip')
+        batch.status = TenantDataExportStatus.COMPLETED
+        batch.artifact_key = artifact_key
+        batch.file_name = file_name
+        batch.content_type = 'application/zip'
+        batch.file_size_bytes = len(file_buffer.getvalue())
+        batch.generated_at = timezone.now()
+        batch.failure_reason = ''
+        batch.metadata = metadata
+        batch.save(
+            update_fields=[
+                'status',
+                'artifact_key',
+                'file_name',
+                'content_type',
+                'file_size_bytes',
+                'generated_at',
+                'failure_reason',
+                'metadata',
+                'modified_at',
+            ]
+        )
+        log_audit_event(
+            batch.requested_by,
+            'organisation.data_export.completed',
+            organisation=batch.organisation,
+            target=batch,
+            payload={'export_type': batch.export_type, 'artifact_key': batch.artifact_key},
+        )
+    except Exception as exc:  # noqa: BLE001
+        batch.status = TenantDataExportStatus.FAILED
+        batch.failure_reason = str(exc)
+        batch.save(update_fields=['status', 'failure_reason', 'modified_at'])
+        log_audit_event(
+            batch.requested_by,
+            'organisation.data_export.failed',
+            organisation=batch.organisation,
+            target=batch,
+            payload={'export_type': batch.export_type, 'failure_reason': str(exc)},
+        )
+    return batch
+
+
+def generate_tenant_data_export_download_url(batch: TenantDataExportBatch, *, actor=None, request=None, expiry=900) -> str:
+    if batch.status != TenantDataExportStatus.COMPLETED or not batch.artifact_key:
+        raise ValueError('Export is not ready for download.')
+    url = generate_presigned_url(batch.artifact_key, expiry=expiry)
+    log_audit_event(
+        actor,
+        'organisation.data_export.download_url_generated',
+        organisation=batch.organisation,
+        target=batch,
+        payload={'export_type': batch.export_type, 'expires_in_seconds': expiry},
+        request=request,
+    )
+    return url
+
+
+def _get_razorpay_signature(raw_body: bytes, secret: str) -> str:
+    return hmac.new(secret.encode('utf-8'), raw_body, hashlib.sha256).hexdigest()
+
+
+def process_razorpay_webhook(raw_body: bytes, signature: str) -> OrganisationBillingEvent:
+    secret = getattr(settings, 'RAZORPAY_WEBHOOK_SECRET', '')
+    if not secret:
+        raise ValueError('Razorpay webhook secret is not configured.')
+    if not signature or not hmac.compare_digest(_get_razorpay_signature(raw_body, secret), signature):
+        raise ValueError('Invalid Razorpay signature.')
+
+    payload = json.loads(raw_body.decode('utf-8'))
+    event_type = payload.get('event', '')
+    payment_entity = ((payload.get('payload') or {}).get('payment') or {}).get('entity') or {}
+    notes = payment_entity.get('notes') or {}
+    organisation_id = notes.get('organisation_id')
+    batch_id = notes.get('licence_batch_id')
+    payment_id = payment_entity.get('id', '')
+    invoice_reference = payment_entity.get('invoice_id', '') or notes.get('invoice_reference', '')
+    provider_event_id = f'{event_type}:{payment_id or payload.get("id") or payload.get("created_at")}'
+
+    if not organisation_id or not batch_id:
+        raise ValueError('Razorpay payload must include organisation_id and licence_batch_id notes.')
+
+    organisation = Organisation.objects.get(id=organisation_id)
+    batch = OrganisationLicenceBatch.objects.get(id=batch_id, organisation=organisation)
+    billing_event, created = OrganisationBillingEvent.objects.get_or_create(
+        provider_event_id=provider_event_id,
+        defaults={
+            'organisation': organisation,
+            'licence_batch': batch,
+            'provider': OrganisationBillingProvider.RAZORPAY,
+            'event_type': event_type,
+            'provider_payment_id': payment_id,
+            'invoice_reference': invoice_reference,
+            'status': OrganisationBillingEventStatus.RECEIVED,
+            'payload': payload,
+        },
+    )
+    if not created:
+        return billing_event
+
+    billing_event.payload = payload
+    billing_event.provider_payment_id = payment_id
+    billing_event.invoice_reference = invoice_reference
+
+    event_created_at = payload.get('created_at')
+    paid_at = (
+        datetime.fromtimestamp(event_created_at, tz=UTC).date()
+        if event_created_at
+        else timezone.localdate()
+    )
+
+    if event_type in {'payment.captured', 'order.paid'}:
+        if batch.payment_status == LicenceBatchPaymentStatus.DRAFT:
+            mark_licence_batch_paid(
+                batch,
+                paid_at=paid_at,
+                payment_provider=OrganisationBillingProvider.RAZORPAY,
+                payment_reference=payment_id,
+                invoice_reference=invoice_reference,
+            )
+        billing_event.status = OrganisationBillingEventStatus.PROCESSED
+        billing_event.processed_at = timezone.now()
+    else:
+        billing_event.status = OrganisationBillingEventStatus.IGNORED
+        billing_event.processed_at = timezone.now()
+
+    billing_event.save(
+        update_fields=[
+            'payload',
+            'provider_payment_id',
+            'invoice_reference',
+            'status',
+            'processed_at',
+            'modified_at',
+        ]
+    )
+    return billing_event
 
 
 def get_ct_dashboard_stats():
@@ -1582,7 +2058,18 @@ def revoke_org_admin_membership_invitation(organisation, user, actor=None):
 
 
 def mark_master_data_configured(organisation, actor=None):
-    if organisation.locations.filter(is_active=True).exists() and organisation.departments.filter(is_active=True).exists():
+    step_states = _build_onboarding_step_states(organisation)
+    if all(
+        step_states[step]["is_complete"]
+        for step in (
+            OnboardingStepCode.DEPARTMENTS,
+            OnboardingStepCode.LOCATIONS,
+            OnboardingStepCode.LEAVE,
+            OnboardingStepCode.PAYROLL,
+            OnboardingStepCode.POLICIES,
+            OnboardingStepCode.HOLIDAYS,
+        )
+    ):
         if organisation.onboarding_stage != OrganisationOnboardingStage.MASTER_DATA_CONFIGURED:
             organisation.onboarding_stage = OrganisationOnboardingStage.MASTER_DATA_CONFIGURED
             organisation.save(update_fields=['onboarding_stage', 'modified_at'])
@@ -1629,6 +2116,124 @@ def create_organisation_note(organisation, body, created_by):
         payload={'body_preview': note.body[:120]},
     )
     return note
+
+
+ONBOARDING_STEP_ACTIONS = {
+    OnboardingStepCode.ADMINS: 'admins',
+    OnboardingStepCode.DEPARTMENTS: 'configuration',
+    OnboardingStepCode.LOCATIONS: 'configuration',
+    OnboardingStepCode.LEAVE: 'configuration',
+    OnboardingStepCode.PAYROLL: 'configuration',
+    OnboardingStepCode.POLICIES: 'approvals',
+    OnboardingStepCode.HOLIDAYS: 'holidays',
+    OnboardingStepCode.FIRST_EMPLOYEE: 'employees',
+}
+
+ONBOARDING_STEP_ORDER = [step for step, _label in OnboardingStepCode.choices]
+
+
+def _build_onboarding_step_states(organisation: Organisation) -> dict[str, dict]:
+    from apps.approvals.models import ApprovalWorkflow
+    from apps.attendance.models import AttendancePolicy
+    from apps.departments.models import Department
+    from apps.locations.models import OfficeLocation
+    from apps.payroll.models import PayrollTaxSlabSet
+    from apps.timeoff.models import HolidayCalendar, LeaveCycle, LeavePlan
+
+    has_active_admin = OrganisationMembership.objects.filter(
+        organisation=organisation,
+        is_org_admin=True,
+        status=OrganisationMembershipStatus.ACTIVE,
+    ).exists()
+    has_departments = Department.objects.filter(organisation=organisation, is_active=True).exists()
+    has_locations = OfficeLocation.objects.filter(organisation=organisation, is_active=True).exists()
+    has_leave_policy = (
+        LeaveCycle.objects.filter(organisation=organisation, is_active=True).exists()
+        or LeavePlan.objects.filter(organisation=organisation, is_active=True).exists()
+    )
+    has_payroll_setup = PayrollTaxSlabSet.objects.filter(organisation=organisation, is_active=True).exists()
+    has_attendance_policy = AttendancePolicy.objects.filter(organisation=organisation, is_active=True).exists()
+    has_approval_workflow = ApprovalWorkflow.objects.filter(organisation=organisation, is_active=True).exists()
+    has_published_holidays = HolidayCalendar.objects.filter(
+        organisation=organisation,
+        status='PUBLISHED',
+        holidays__isnull=False,
+    ).distinct().exists()
+    has_first_employee = Employee.objects.filter(organisation=organisation).exists()
+
+    return {
+        OnboardingStepCode.ADMINS: {
+            'is_complete': has_active_admin,
+            'blockers': [] if has_active_admin else ['No active organisation admin'],
+            'action': ONBOARDING_STEP_ACTIONS[OnboardingStepCode.ADMINS],
+        },
+        OnboardingStepCode.DEPARTMENTS: {
+            'is_complete': has_departments,
+            'blockers': [] if has_departments else ['No department configured'],
+            'action': ONBOARDING_STEP_ACTIONS[OnboardingStepCode.DEPARTMENTS],
+        },
+        OnboardingStepCode.LOCATIONS: {
+            'is_complete': has_locations,
+            'blockers': [] if has_locations else ['No office location configured'],
+            'action': ONBOARDING_STEP_ACTIONS[OnboardingStepCode.LOCATIONS],
+        },
+        OnboardingStepCode.LEAVE: {
+            'is_complete': has_leave_policy,
+            'blockers': [] if has_leave_policy else ['No leave cycle or leave plan configured'],
+            'action': ONBOARDING_STEP_ACTIONS[OnboardingStepCode.LEAVE],
+        },
+        OnboardingStepCode.PAYROLL: {
+            'is_complete': has_payroll_setup,
+            'blockers': [] if has_payroll_setup else ['No active payroll tax slab set'],
+            'action': ONBOARDING_STEP_ACTIONS[OnboardingStepCode.PAYROLL],
+        },
+        OnboardingStepCode.POLICIES: {
+            'is_complete': has_attendance_policy and has_approval_workflow,
+            'blockers': [
+                *([] if has_attendance_policy else ['No attendance policy configured']),
+                *([] if has_approval_workflow else ['No approval workflow configured']),
+            ],
+            'action': ONBOARDING_STEP_ACTIONS[OnboardingStepCode.POLICIES],
+        },
+        OnboardingStepCode.HOLIDAYS: {
+            'is_complete': has_published_holidays,
+            'blockers': [] if has_published_holidays else ['No published holiday calendar with holidays'],
+            'action': ONBOARDING_STEP_ACTIONS[OnboardingStepCode.HOLIDAYS],
+        },
+        OnboardingStepCode.FIRST_EMPLOYEE: {
+            'is_complete': has_first_employee,
+            'blockers': [] if has_first_employee else ['No employee invited'],
+            'action': ONBOARDING_STEP_ACTIONS[OnboardingStepCode.FIRST_EMPLOYEE],
+        },
+    }
+
+
+def _completion_source(item: OnboardingChecklist) -> str | None:
+    if not item.is_completed:
+        return None
+    if item.completed_by_id is None:
+        return 'SYSTEM'
+    if getattr(item.completed_by, 'account_type', None) == AccountType.CONTROL_TOWER:
+        return 'CONTROL_TOWER'
+    return 'WORKFORCE'
+
+
+def _sync_onboarding_stage(organisation: Organisation, step_states: dict[str, dict], *, actor=None) -> None:
+    master_data_complete = all(
+        step_states[step]['is_complete']
+        for step in (
+            OnboardingStepCode.DEPARTMENTS,
+            OnboardingStepCode.LOCATIONS,
+            OnboardingStepCode.LEAVE,
+            OnboardingStepCode.PAYROLL,
+            OnboardingStepCode.POLICIES,
+            OnboardingStepCode.HOLIDAYS,
+        )
+    )
+    if master_data_complete:
+        mark_master_data_configured(organisation, actor=actor)
+    if step_states[OnboardingStepCode.FIRST_EMPLOYEE]['is_complete']:
+        mark_employee_invited(organisation, actor=actor)
 
 
 def get_ct_onboarding_checklist(organisation):
@@ -1747,4 +2352,116 @@ def get_ct_onboarding_checklist(organisation):
         'stages': stages,
         'can_activate': len(mandatory_blockers) == 0,
         'activation_blockers': mandatory_blockers,
+    }
+
+
+def initialize_onboarding_checklist(organisation: Organisation) -> None:
+    """Create 8 onboarding checklist items for a new organisation."""
+    steps = [code for code, _ in OnboardingStepCode.choices]
+    OnboardingChecklist.objects.bulk_create([
+        OnboardingChecklist(organisation=organisation, step=step)
+        for step in steps
+    ], ignore_conflicts=True)
+
+
+def sync_onboarding_progress(organisation: Organisation, *, actor=None) -> dict:
+    initialize_onboarding_checklist(organisation)
+    items = {
+        item.step: item
+        for item in OnboardingChecklist.objects.filter(organisation=organisation).select_related('completed_by')
+    }
+    step_states = _build_onboarding_step_states(organisation)
+    now = timezone.now()
+
+    for step in ONBOARDING_STEP_ORDER:
+        item = items[step]
+        state = step_states[step]
+        if state['is_complete'] and not item.is_completed:
+            item.is_completed = True
+            item.completed_at = now
+            item.completed_by = None
+            item.save(update_fields=['is_completed', 'completed_at', 'completed_by', 'modified_at'])
+        elif not state['is_complete'] and item.is_completed:
+            item.is_completed = False
+            item.completed_at = None
+            item.completed_by = None
+            item.save(update_fields=['is_completed', 'completed_at', 'completed_by', 'modified_at'])
+
+    _sync_onboarding_stage(organisation, step_states, actor=actor)
+    return get_onboarding_progress(organisation)
+
+
+def mark_onboarding_step_complete(
+    organisation: Organisation, step: str, *, actor
+) -> OnboardingChecklist:
+    initialize_onboarding_checklist(organisation)
+    step_states = _build_onboarding_step_states(organisation)
+    state = step_states[step]
+    if not state['is_complete']:
+        raise ValueError(state['blockers'][0] if state['blockers'] else 'Cannot complete onboarding step.')
+
+    from django.utils import timezone as tz
+    item = OnboardingChecklist.objects.get(organisation=organisation, step=step)
+    item.is_completed = True
+    item.completed_at = tz.now()
+    item.completed_by = actor
+    item.save(update_fields=["is_completed", "completed_at", "completed_by", "modified_at"])
+    log_audit_event(
+        actor,
+        'organisation.onboarding.step.completed',
+        organisation=organisation,
+        target=organisation,
+        payload={'step': step},
+    )
+    _sync_onboarding_stage(organisation, step_states, actor=actor)
+    return item
+
+
+def reset_onboarding_step(
+    organisation: Organisation, step: str, *, actor, reason: str = ''
+) -> OnboardingChecklist:
+    initialize_onboarding_checklist(organisation)
+    item = OnboardingChecklist.objects.get(organisation=organisation, step=step)
+    item.is_completed = False
+    item.completed_at = None
+    item.completed_by = None
+    item.save(update_fields=["is_completed", "completed_at", "completed_by", "modified_at"])
+    log_audit_event(
+        actor,
+        'organisation.onboarding.step.reset',
+        organisation=organisation,
+        target=organisation,
+        payload={'step': step, 'reason': reason},
+    )
+    return item
+
+
+def get_onboarding_progress(organisation: Organisation) -> dict:
+    initialize_onboarding_checklist(organisation)
+    items_by_step = {
+        item.step: item
+        for item in OnboardingChecklist.objects.filter(organisation=organisation).select_related('completed_by')
+    }
+    step_states = _build_onboarding_step_states(organisation)
+    items = [items_by_step[step] for step in ONBOARDING_STEP_ORDER]
+    completed = sum(1 for i in items if i.is_completed)
+    return {
+        'current_stage': organisation.onboarding_stage,
+        "steps": [
+            {
+                'step': i.step,
+                'label': dict(OnboardingStepCode.choices)[i.step],
+                'is_completed': i.is_completed,
+                'completed_at': i.completed_at,
+                'completion_source': _completion_source(i),
+                'blockers': step_states[i.step]['blockers'],
+                'can_reset': i.is_completed,
+                'is_actionable': True,
+                'action': step_states[i.step]['action'],
+            }
+            for i in items
+        ],
+        "completed_count": completed,
+        "total_count": len(items),
+        "percent_complete": round(completed / len(items) * 100) if items else 0,
     }

@@ -3,6 +3,7 @@ from __future__ import annotations
 import ipaddress
 import math
 from collections import defaultdict
+from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from io import BytesIO
@@ -37,6 +38,8 @@ from .models import (
     AttendanceImportRow,
     AttendanceImportRowStatus,
     AttendanceImportStatus,
+    AttendanceOvertimeApproval,
+    AttendanceOvertimeApprovalStatus,
     AttendancePolicy,
     AttendancePunch,
     AttendancePunchActionType,
@@ -49,6 +52,8 @@ from .models import (
     AttendanceSourceConfigKind,
     Shift,
     ShiftAssignment,
+    WFHRequest,
+    WFHRequestStatus,
 )
 
 ATTENDANCE_HEADERS = ['employee_code', 'date', 'check_in', 'check_out']
@@ -58,6 +63,19 @@ ZERO = Decimal('0.00')
 HALF = Decimal('0.50')
 FULL = Decimal('1.00')
 DEFAULT_WEEK_OFF_DAYS = [6]
+
+
+@dataclass(frozen=True)
+class ResolvedShiftAssignment:
+    shift: Shift
+    source: str
+    direct_assignment_id: str | None = None
+    rotation_assignment_id: str | None = None
+    rotation_template_id: str | None = None
+
+    @property
+    def shift_id(self):
+        return self.shift.id
 
 
 def _decimal(value):
@@ -430,14 +448,59 @@ def assign_shift(employee, shift, *, start_date, end_date=None, actor=None):
     return assignment
 
 
+def _resolve_rotation_shift(rotation_assignment, attendance_date):
+    if rotation_assignment is None:
+        return None
+    shift_sequence = list(rotation_assignment.template.shift_sequence or [])
+    if not shift_sequence:
+        return None
+    rotation_interval = max(1, int(rotation_assignment.template.rotation_interval_days or 1))
+    days_elapsed = (attendance_date - rotation_assignment.start_date).days
+    if days_elapsed < 0:
+        return None
+    sequence_index = (days_elapsed // rotation_interval) % len(shift_sequence)
+    shift_id = shift_sequence[sequence_index]
+    shift = Shift.objects.filter(
+        organisation=rotation_assignment.organisation,
+        id=shift_id,
+        is_active=True,
+    ).first()
+    if shift is None:
+        return None
+    return ResolvedShiftAssignment(
+        shift=shift,
+        source='ROTATION',
+        rotation_assignment_id=str(rotation_assignment.id),
+        rotation_template_id=str(rotation_assignment.template_id),
+    )
+
+
 def _get_effective_shift(employee, attendance_date):
-    return employee.shift_assignments.filter(
+    rotation_assignment = employee.shift_rotation_assignments.filter(
+        organisation=employee.organisation,
+        is_active=True,
+        start_date__lte=attendance_date,
+    ).filter(
+        Q(end_date__isnull=True) | Q(end_date__gte=attendance_date)
+    ).select_related('template').order_by('-start_date', '-created_at').first()
+    resolved_rotation = _resolve_rotation_shift(rotation_assignment, attendance_date)
+    if resolved_rotation is not None:
+        return resolved_rotation
+
+    direct_assignment = employee.shift_assignments.filter(
         organisation=employee.organisation,
         is_active=True,
         start_date__lte=attendance_date,
     ).filter(
         Q(end_date__isnull=True) | Q(end_date__gte=attendance_date)
     ).select_related('shift').order_by('-start_date', '-created_at').first()
+    if direct_assignment is None:
+        return None
+    return ResolvedShiftAssignment(
+        shift=direct_assignment.shift,
+        source='DIRECT',
+        direct_assignment_id=str(direct_assignment.id),
+    )
 
 
 def _get_shift_windows(policy, shift, attendance_date):
@@ -545,6 +608,25 @@ def _get_on_duty_fraction(employee, attendance_date, half_day_minutes):
     return min(total, FULL)
 
 
+def _get_wfh_request(employee, attendance_date):
+    return (
+        WFHRequest.objects.filter(
+            employee=employee,
+            status=WFHRequestStatus.APPROVED,
+            start_date__lte=attendance_date,
+            end_date__gte=attendance_date,
+        )
+        .order_by('-created_at')
+        .first()
+    )
+
+
+def _get_wfh_fraction(wfh_request):
+    if wfh_request is None:
+        return ZERO
+    return FULL if wfh_request.session == DaySession.FULL_DAY else HALF
+
+
 def _get_day_bounds(policy, shift, attendance_date):
     shift_start, shift_end = _get_shift_windows(policy, shift, attendance_date)
     if shift and shift.is_overnight:
@@ -582,6 +664,30 @@ def _get_attendance_override(employee, attendance_date):
     ).first()
 
 
+def _get_payable_overtime_minutes(attendance_day):
+    policy = get_default_attendance_policy(attendance_day.organisation)
+    assignment = _get_effective_shift(attendance_day.employee, attendance_day.attendance_date)
+    shift = assignment.shift if assignment else None
+    overtime_requires_approval = bool(_get_threshold(policy, shift, 'overtime_approval_required'))
+    overtime_approval = getattr(attendance_day, 'overtime_approval', None)
+    if overtime_approval and overtime_approval.status == AttendanceOvertimeApprovalStatus.APPROVED:
+        return overtime_approval.approved_minutes
+    if overtime_requires_approval:
+        return 0
+    return attendance_day.overtime_minutes
+
+
+def _get_overtime_approval(employee, attendance_date):
+    return (
+        AttendanceOvertimeApproval.objects.filter(
+            employee=employee,
+            attendance_day__attendance_date=attendance_date,
+        )
+        .order_by('-created_at')
+        .first()
+    )
+
+
 def _summarize_day(employee, attendance_date):
     policy = get_default_attendance_policy(employee.organisation)
     assignment = _get_effective_shift(employee, attendance_date)
@@ -595,6 +701,9 @@ def _summarize_day(employee, attendance_date):
     holiday = _get_holiday_for_date(employee, attendance_date)
     leave_fraction = _get_leave_fraction(employee, attendance_date)
     on_duty_fraction = _get_on_duty_fraction(employee, attendance_date, half_day_min_minutes)
+    wfh_request = _get_wfh_request(employee, attendance_date)
+    wfh_fraction = _get_wfh_fraction(wfh_request)
+    overtime_approval = _get_overtime_approval(employee, attendance_date)
     override_record = _get_attendance_override(employee, attendance_date)
     punches = list(
         AttendancePunch.objects.filter(
@@ -660,6 +769,9 @@ def _summarize_day(employee, attendance_date):
         elif _weekday_week_off(policy, attendance_date):
             status = AttendanceDayStatus.WEEK_OFF
             paid_fraction = FULL
+        elif wfh_fraction >= FULL:
+            status = AttendanceDayStatus.WFH
+            paid_fraction = FULL
 
     if leave_fraction >= FULL:
         status = AttendanceDayStatus.ON_LEAVE
@@ -676,6 +788,14 @@ def _summarize_day(employee, attendance_date):
     elif on_duty_fraction == HALF and status in {AttendanceDayStatus.ABSENT, AttendanceDayStatus.HALF_DAY, AttendanceDayStatus.INCOMPLETE}:
         paid_fraction = min(FULL, paid_fraction + HALF)
         status = AttendanceDayStatus.PRESENT if paid_fraction >= FULL else AttendanceDayStatus.HALF_DAY
+        needs_regularization = False
+    elif wfh_fraction >= FULL and status in {AttendanceDayStatus.ABSENT, AttendanceDayStatus.INCOMPLETE}:
+        status = AttendanceDayStatus.WFH
+        paid_fraction = FULL
+        needs_regularization = False
+    elif wfh_fraction == HALF and status in {AttendanceDayStatus.ABSENT, AttendanceDayStatus.HALF_DAY, AttendanceDayStatus.INCOMPLETE}:
+        paid_fraction = min(FULL, paid_fraction + HALF)
+        status = AttendanceDayStatus.PRESENT if paid_fraction >= FULL else AttendanceDayStatus.WFH
         needs_regularization = False
 
     return {
@@ -698,8 +818,13 @@ def _summarize_day(employee, attendance_date):
         'raw_punch_count': len(punches),
         'note': note,
         'metadata': {
+            'effective_shift_source': assignment.source if assignment else 'POLICY_DEFAULT',
             'holiday_name': holiday.name if holiday else '',
             'override_source': override_record.source if override_record else '',
+            'overtime_status': overtime_approval.status if overtime_approval else '',
+            'approved_overtime_minutes': overtime_approval.approved_minutes if overtime_approval else 0,
+            'wfh_status': wfh_request.status if wfh_request else '',
+            'wfh_session': wfh_request.session if wfh_request else '',
         },
     }
 
@@ -735,6 +860,7 @@ def get_employee_attendance_summary(employee):
         'today': attendance_day,
         'policy': policy,
         'shift': shift_assignment.shift if shift_assignment else None,
+        'shift_source': shift_assignment.source if shift_assignment else 'POLICY_DEFAULT',
         'pending_regularizations': list(pending_regularizations),
     }
 
@@ -773,6 +899,10 @@ def get_employee_attendance_calendar(employee, *, month=None):
                 'needs_regularization': day.needs_regularization,
                 'worked_minutes': day.worked_minutes,
                 'overtime_minutes': day.overtime_minutes,
+                'wfh_status': day.metadata.get('wfh_status', ''),
+                'effective_shift_source': day.metadata.get('effective_shift_source', 'POLICY_DEFAULT'),
+                'overtime_status': getattr(getattr(day, 'overtime_approval', None), 'status', ''),
+                'lwp_units': '0.00',
             }
             for day in days
         ],
@@ -1241,7 +1371,7 @@ def get_payroll_attendance_summary(employee, *, period_start, period_end):
     while current <= period_end:
         day = recalculate_attendance_day(employee, current)
         total_paid_fraction += _decimal(day.paid_fraction)
-        total_overtime_minutes += day.overtime_minutes
+        total_overtime_minutes += _get_payable_overtime_minutes(day)
         current += timedelta(days=1)
     total_days = Decimal((period_end - period_start).days + 1)
     lop_days = max(ZERO, total_days - total_paid_fraction)

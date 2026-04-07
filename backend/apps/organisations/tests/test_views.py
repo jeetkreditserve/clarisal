@@ -1,18 +1,27 @@
+import hashlib
+import hmac
+import json
 
 import pytest
 from django.contrib.contenttypes.models import ContentType
+from django.test import override_settings
 from rest_framework.test import APIClient
 
 from apps.accounts.models import AccountType, User, UserRole
 from apps.approvals.models import ApprovalRun, ApprovalWorkflow
 from apps.attendance.models import (
+    AttendanceDay,
+    AttendanceDayStatus,
     AttendanceImportJob,
     AttendanceImportStatus,
     AttendancePolicy,
     AttendanceRegularizationRequest,
     AttendanceRegularizationStatus,
     AttendanceSourceConfig,
+    WFHRequest,
 )
+from apps.audit.models import AuditLog
+from apps.departments.models import Department
 from apps.documents.models import Document, EmployeeDocumentRequest, OnboardingDocumentType
 from apps.employees.models import (
     Employee,
@@ -22,18 +31,23 @@ from apps.employees.models import (
     EmployeeGovernmentId,
     EmployeeProfile,
 )
+from apps.locations.models import OfficeLocation
 from apps.organisations.models import (
     ActAsSession,
+    OnboardingChecklist,
+    OnboardingStepCode,
     Organisation,
     OrganisationAccessState,
     OrganisationAddress,
     OrganisationAddressType,
+    OrganisationBillingEvent,
     OrganisationBillingStatus,
     OrganisationFeatureFlag,
     OrganisationMembership,
     OrganisationMembershipStatus,
     OrganisationNote,
     OrganisationStatus,
+    OrgUsageStat,
 )
 from apps.payroll.models import (
     CompensationAssignment,
@@ -42,6 +56,15 @@ from apps.payroll.models import (
     PayrollRun,
     PayrollRunItem,
     PayrollTaxSlabSet,
+)
+from apps.timeoff.models import (
+    DaySession,
+    HolidayCalendar,
+    HolidayCalendarStatus,
+    LeaveCycle,
+    LeaveCycleType,
+    LeaveRequest,
+    LeaveRequestStatus,
 )
 
 
@@ -387,6 +410,78 @@ class TestCtImpersonationViews:
         assert second_response.status_code == 201
         assert second_response.data['organisation_id'] == str(second_org.id)
         assert ActAsSession.objects.filter(actor=ct_user, ended_at__isnull=True).count() == 1
+
+    def test_impersonating_control_tower_blocks_non_whitelisted_ct_writes(self, ct_client, org):
+        client, _ = ct_client
+        start_response = client.post(
+            f'/api/ct/organisations/{org.id}/act-as/',
+            {'reason': 'Reviewing a tenant issue'},
+            format='json',
+        )
+        assert start_response.status_code == 201
+
+        response = client.post(
+            f'/api/ct/organisations/{org.id}/notes/',
+            {'body': 'This should be blocked while impersonating.'},
+            format='json',
+        )
+
+        assert response.status_code == 403
+
+    def test_whitelisted_reactivation_during_impersonation_emits_act_as_audit_entry(self, ct_client, org):
+        client, ct_user = ct_client
+        primary = User.objects.create_user(
+            email='active-primary@test.com',
+            password='pass123!',
+            account_type=AccountType.WORKFORCE,
+            role=UserRole.ORG_ADMIN,
+            is_active=True,
+        )
+        locked_user = User.objects.create_user(
+            email='locked-admin@test.com',
+            password='pass123!',
+            account_type=AccountType.WORKFORCE,
+            role=UserRole.ORG_ADMIN,
+            is_active=True,
+        )
+        org.primary_admin_user = primary
+        org.save(update_fields=['primary_admin_user', 'modified_at'])
+        OrganisationMembership.objects.create(
+            user=primary,
+            organisation=org,
+            is_org_admin=True,
+            status=OrganisationMembershipStatus.ACTIVE,
+            invited_by=ct_user,
+        )
+        OrganisationMembership.objects.create(
+            user=locked_user,
+            organisation=org,
+            is_org_admin=True,
+            status=OrganisationMembershipStatus.INACTIVE,
+            invited_by=ct_user,
+        )
+        start_response = client.post(
+            f'/api/ct/organisations/{org.id}/act-as/',
+            {'reason': 'Investigating a locked admin account'},
+            format='json',
+        )
+        assert start_response.status_code == 201
+
+        response = client.post(
+            f'/api/ct/organisations/{org.id}/admins/{locked_user.id}/reactivate/',
+            {'reason': 'Unlocking the org admin account during support'},
+            format='json',
+        )
+
+        assert response.status_code == 200
+        assert response.data['membership_status'] == 'ACTIVE'
+        assert AuditLog.objects.filter(
+            action='organisation.act_as.allowed_action',
+            organisation=org,
+            actor=ct_user,
+            payload__action_code='unlock_account',
+            payload__reason='Unlocking the org admin account during support',
+        ).exists()
 
 
 @pytest.mark.django_db
@@ -923,6 +1018,114 @@ class TestCtOrganisationDetailTabsSupport:
         assert response.status_code == 200
         assert 'NO_ACTIVE_ATTENDANCE_SOURCE' in {item['code'] for item in response.data['diagnostics']}
 
+    def test_ct_attendance_support_summary_includes_wfh_counts(self, ct_client, org):
+        client, _ = ct_client
+        workforce_user = User.objects.create_user(
+            email='attendance-wfh@test.com',
+            password='pass123!',
+            account_type=AccountType.WORKFORCE,
+            role=UserRole.EMPLOYEE,
+            is_active=True,
+            first_name='Aarav',
+            last_name='Kapoor',
+        )
+        employee = Employee.objects.create(
+            organisation=org,
+            user=workforce_user,
+            employee_code='EMPW01',
+            designation='Analyst',
+            employment_type='FULL_TIME',
+            status='ACTIVE',
+        )
+        AttendancePolicy.objects.create(
+            organisation=org,
+            name='Default Attendance Policy',
+            is_default=True,
+            is_active=True,
+        )
+        WFHRequest.objects.create(
+            employee=employee,
+            start_date='2026-04-07',
+            end_date='2026-04-07',
+            session='FULL_DAY',
+            reason='Remote day',
+            status='APPROVED',
+        )
+
+        response = client.get(f'/api/ct/organisations/{org.id}/attendance/')
+
+        assert response.status_code == 200
+        assert response.data['today_summary']['wfh_count'] == 1
+
+
+@pytest.mark.django_db
+class TestTenantDataExports:
+    def test_control_tower_can_request_and_list_tenant_data_exports(self, ct_client, org, monkeypatch):
+        client, _ = ct_client
+        captured = {}
+
+        def fake_delay(batch_id):
+            captured['batch_id'] = str(batch_id)
+
+        monkeypatch.setattr('apps.organisations.views.generate_tenant_data_export.delay', fake_delay)
+
+        create_response = client.post(
+            f'/api/ct/organisations/{org.id}/exports/',
+            {'export_type': 'EMPLOYEES'},
+            format='json',
+        )
+
+        assert create_response.status_code == 201
+        assert create_response.data['export_type'] == 'EMPLOYEES'
+        assert create_response.data['status'] == 'REQUESTED'
+        assert captured['batch_id'] == create_response.data['id']
+
+        list_response = client.get(f'/api/ct/organisations/{org.id}/exports/')
+
+        assert list_response.status_code == 200
+        assert list_response.data[0]['id'] == create_response.data['id']
+
+    def test_org_admin_can_request_own_tenant_data_export(self, db, ct_client, org, monkeypatch):
+        _, ct_user = ct_client
+        org.status = OrganisationStatus.ACTIVE
+        org.billing_status = OrganisationBillingStatus.PAID
+        org.access_state = OrganisationAccessState.ACTIVE
+        org.save(update_fields=['status', 'billing_status', 'access_state', 'modified_at'])
+        admin_user = User.objects.create_user(
+            email='self-serve-admin@test.com',
+            password='pass123!',
+            role=UserRole.ORG_ADMIN,
+            account_type=AccountType.WORKFORCE,
+            is_active=True,
+        )
+        OrganisationMembership.objects.create(
+            user=admin_user,
+            organisation=org,
+            is_org_admin=True,
+            status=OrganisationMembershipStatus.ACTIVE,
+            invited_by=ct_user,
+        )
+        captured = {}
+
+        def fake_delay(batch_id):
+            captured['batch_id'] = str(batch_id)
+
+        monkeypatch.setattr('apps.organisations.views.generate_tenant_data_export.delay', fake_delay)
+
+        client = APIClient()
+        client.force_authenticate(user=admin_user)
+
+        response = client.post(
+            '/api/org/exports/',
+            {'export_type': 'AUDIT_LOG'},
+            format='json',
+        )
+
+        assert response.status_code == 201
+        assert response.data['export_type'] == 'AUDIT_LOG'
+        assert response.data['status'] == 'REQUESTED'
+        assert captured['batch_id'] == response.data['id']
+
     def test_ct_onboarding_support_summary_is_sanitized(self, ct_client, org):
         client, _ = ct_client
         document_type = OnboardingDocumentType.objects.create(
@@ -997,6 +1200,296 @@ class TestCtOrganisationDetailTabsSupport:
         assert response.data['top_blocker_types'][0]['blocked_employee_count'] == 1
         assert 'rejection_note' not in response.data['blocked_employees'][0]
         assert 'metadata' not in response.data['blocked_employees'][0]
+
+
+@pytest.mark.django_db
+class TestCtOrganisationOnboardingProgress:
+    def test_marking_onboarding_step_complete_requires_matching_configuration(self, ct_client, org):
+        client, _ = ct_client
+        OnboardingChecklist.objects.create(organisation=org, step=OnboardingStepCode.ADMINS)
+
+        blocked_response = client.post(
+            f'/api/ct/organisations/{org.id}/onboarding/ADMINS/complete/',
+            {},
+            format='json',
+        )
+
+        assert blocked_response.status_code == 400
+        assert blocked_response.data == {
+            'detail': 'Cannot complete onboarding step.',
+            'blockers': ['No active organisation admin'],
+        }
+
+        admin_user = User.objects.create_user(
+            email='onboarding-admin@test.com',
+            password='pass123!',
+            role=UserRole.ORG_ADMIN,
+            account_type=AccountType.WORKFORCE,
+            is_active=True,
+        )
+        OrganisationMembership.objects.create(
+            organisation=org,
+            user=admin_user,
+            is_org_admin=True,
+            status=OrganisationMembershipStatus.ACTIVE,
+        )
+
+        allowed_response = client.post(
+            f'/api/ct/organisations/{org.id}/onboarding/ADMINS/complete/',
+            {},
+            format='json',
+        )
+
+        assert allowed_response.status_code == 200
+        assert allowed_response.data['step'] == 'ADMINS'
+        assert allowed_response.data['is_completed'] is True
+
+    def test_onboarding_progress_sync_returns_blockers_completion_source_and_stage(self, ct_client, org):
+        client, _ = ct_client
+        OnboardingChecklist.objects.bulk_create(
+            [
+                OnboardingChecklist(organisation=org, step=step)
+                for step, _label in OnboardingStepCode.choices
+            ],
+            ignore_conflicts=True,
+        )
+        admin_user = User.objects.create_user(
+            email='sync-admin@test.com',
+            password='pass123!',
+            role=UserRole.ORG_ADMIN,
+            account_type=AccountType.WORKFORCE,
+            is_active=True,
+        )
+        OrganisationMembership.objects.create(
+            organisation=org,
+            user=admin_user,
+            is_org_admin=True,
+            status=OrganisationMembershipStatus.ACTIVE,
+        )
+        Department.objects.create(organisation=org, name='Engineering', is_active=True)
+        OfficeLocation.objects.create(organisation=org, name='HQ', is_active=True)
+        LeaveCycle.objects.create(
+            organisation=org,
+            name='Calendar Year',
+            cycle_type=LeaveCycleType.CALENDAR_YEAR,
+            is_default=True,
+            is_active=True,
+        )
+        PayrollTaxSlabSet.objects.create(
+            organisation=org,
+            name='FY 2026-27',
+            fiscal_year='2026-2027',
+            country_code='IN',
+            is_active=True,
+        )
+        AttendancePolicy.objects.create(
+            organisation=org,
+            name='Default Attendance Policy',
+            is_default=True,
+            is_active=True,
+        )
+        ApprovalWorkflow.objects.create(
+            organisation=org,
+            name='Default Workflow',
+            is_default=True,
+            is_active=True,
+        )
+        holiday_calendar = HolidayCalendar.objects.create(
+            organisation=org,
+            name='FY 2026 Calendar',
+            year=2026,
+            is_default=True,
+            status=HolidayCalendarStatus.PUBLISHED,
+        )
+        holiday_calendar.holidays.create(
+            name='Founders Day',
+            holiday_date='2026-05-01',
+            classification='PUBLIC',
+            session='FULL_DAY',
+        )
+        employee_user = User.objects.create_user(
+            email='sync-employee@test.com',
+            password='pass123!',
+            role=UserRole.EMPLOYEE,
+            account_type=AccountType.WORKFORCE,
+            is_active=True,
+            first_name='Diya',
+            last_name='Sen',
+        )
+        Employee.objects.create(
+            organisation=org,
+            user=employee_user,
+            employee_code='EMPONB1',
+            designation='Engineer',
+            employment_type='FULL_TIME',
+            status='ACTIVE',
+        )
+
+        response = client.post(f'/api/ct/organisations/{org.id}/onboarding/', {}, format='json')
+
+        assert response.status_code == 200
+        assert response.data['completed_count'] == 8
+        assert response.data['current_stage'] == 'EMPLOYEES_INVITED'
+        steps = {step['step']: step for step in response.data['steps']}
+        assert steps['ADMINS'] == {
+            'step': 'ADMINS',
+            'label': 'Admin Users',
+            'is_completed': True,
+            'completed_at': steps['ADMINS']['completed_at'],
+            'completion_source': 'SYSTEM',
+            'blockers': [],
+            'can_reset': True,
+            'is_actionable': True,
+            'action': 'admins',
+        }
+        assert steps['FIRST_EMPLOYEE']['completion_source'] == 'SYSTEM'
+        assert steps['FIRST_EMPLOYEE']['blockers'] == []
+        assert steps['PAYROLL']['action'] == 'configuration'
+
+
+@pytest.mark.django_db
+class TestCtOrganisationAnalyticsAndBilling:
+    def test_ct_analytics_returns_latest_kpis_and_series(self, ct_client, org):
+        client, _ = ct_client
+        employee_user = User.objects.create_user(
+            email='analytics-employee@test.com',
+            password='pass123!',
+            role=UserRole.EMPLOYEE,
+            account_type=AccountType.WORKFORCE,
+            is_active=True,
+        )
+        employee = Employee.objects.create(
+            organisation=org,
+            user=employee_user,
+            employee_code='EMPAN01',
+            designation='Analyst',
+            employment_type='FULL_TIME',
+            status='ACTIVE',
+        )
+        AttendanceDay.objects.create(
+            organisation=org,
+            employee=employee,
+            attendance_date='2026-05-07',
+            status=AttendanceDayStatus.PRESENT,
+            paid_fraction='1.00',
+            worked_minutes=480,
+        )
+        leave_cycle = LeaveCycle.objects.create(
+            organisation=org,
+            name='Calendar Year',
+            cycle_type=LeaveCycleType.CALENDAR_YEAR,
+            is_default=True,
+            is_active=True,
+        )
+        leave_plan = leave_cycle.leave_plans.create(
+            organisation=org,
+            name='Default Leave Plan',
+            is_default=True,
+            is_active=True,
+        )
+        leave_type = leave_plan.leave_types.create(
+            code='AL',
+            name='Annual Leave',
+            annual_entitlement='12.00',
+            is_active=True,
+        )
+        LeaveRequest.objects.create(
+            employee=employee,
+            leave_type=leave_type,
+            start_date='2026-05-10',
+            end_date='2026-05-10',
+            start_session=DaySession.FULL_DAY,
+            end_session=DaySession.FULL_DAY,
+            total_units='1.00',
+            reason='Vacation',
+            status=LeaveRequestStatus.PENDING,
+        )
+        PayrollRun.objects.create(
+            organisation=org,
+            name='May Payroll',
+            period_year=2026,
+            period_month=5,
+            status='CALCULATED',
+        )
+        OrgUsageStat.objects.create(
+            organisation=org,
+            snapshot_date='2026-05-07',
+            active_employees=1,
+            active_users=1,
+            attendance_days_count=1,
+            leave_requests_count=1,
+            payroll_runs_count=1,
+            pending_approvals_count=1,
+            metadata={'source': 'unit-test'},
+        )
+
+        response = client.get(f'/api/ct/organisations/{org.id}/analytics/')
+
+        assert response.status_code == 200
+        assert response.data['latest'] == {
+            'snapshot_date': '2026-05-07',
+            'active_employees': 1,
+            'active_users': 1,
+            'attendance_days_count': 1,
+            'leave_requests_count': 1,
+            'payroll_runs_count': 1,
+            'pending_approvals_count': 1,
+            'metadata': {'source': 'unit-test'},
+        }
+        assert response.data['series']['active_employees'] == [{'date': '2026-05-07', 'value': 1}]
+        assert response.data['series']['pending_approvals_count'] == [{'date': '2026-05-07', 'value': 1}]
+
+    @override_settings(RAZORPAY_WEBHOOK_SECRET='razorpay-test-secret')
+    def test_razorpay_webhook_marks_batch_paid_and_is_idempotent(self, ct_client, org):
+        client, ct_user = ct_client
+        batch = org.licence_batches.create(
+            quantity=5,
+            price_per_licence_per_month='99.00',
+            start_date='2026-05-01',
+            end_date='2026-05-31',
+            billing_months=1,
+            total_amount='495.00',
+            payment_status='DRAFT',
+            created_by=ct_user,
+        )
+        payload = {
+            'event': 'payment.captured',
+            'created_at': 1772908800,
+            'payload': {
+                'payment': {
+                    'entity': {
+                        'id': 'pay_test_123',
+                        'notes': {
+                            'organisation_id': str(org.id),
+                            'licence_batch_id': str(batch.id),
+                        },
+                    }
+                }
+            },
+        }
+        body = json.dumps(payload).encode()
+        signature = hmac.new(b'razorpay-test-secret', body, hashlib.sha256).hexdigest()
+
+        first_response = client.post(
+            '/api/ct/billing/webhooks/razorpay/',
+            data=body,
+            content_type='application/json',
+            HTTP_X_RAZORPAY_SIGNATURE=signature,
+        )
+        second_response = client.post(
+            '/api/ct/billing/webhooks/razorpay/',
+            data=body,
+            content_type='application/json',
+            HTTP_X_RAZORPAY_SIGNATURE=signature,
+        )
+
+        batch.refresh_from_db()
+
+        assert first_response.status_code == 200
+        assert second_response.status_code == 200
+        assert batch.payment_status == 'PAID'
+        assert batch.payment_reference == 'pay_test_123'
+        assert OrganisationBillingEvent.objects.filter(provider_event_id='payment.captured:pay_test_123').count() == 1
 
 
 @pytest.mark.django_db

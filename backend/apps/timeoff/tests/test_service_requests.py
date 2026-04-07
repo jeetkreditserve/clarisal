@@ -16,6 +16,9 @@ from apps.approvals.models import (
 )
 from apps.employees.models import Employee, EmployeeStatus
 from apps.timeoff.models import (
+    CompOffAccrual,
+    CompOffRedemption,
+    CompOffStatus,
     DaySession,
     LeaveRequestStatus,
     OnDutyDurationType,
@@ -159,6 +162,43 @@ def test_withdraw_leave_request_cancels_approval_run():
 
     assert leave_request.status == LeaveRequestStatus.WITHDRAWN
     assert approval_run.status == ApprovalRunStatus.CANCELLED
+
+
+@pytest.mark.django_db
+def test_create_comp_off_leave_request_creates_redemption_and_withdraw_cancels_it():
+    organisation = _create_organisation('Comp Off Leave Org')
+    employee = _create_employee(organisation, email='comp-off@test.com')
+    _create_default_workflow(organisation, ApprovalRequestKind.LEAVE)
+    leave_type = _create_leave_type(organisation, code='COMP_OFF')
+    accrual = CompOffAccrual.objects.create(
+        employee=employee,
+        accrual_date=date(2026, 7, 1),
+        units=Decimal('1.00'),
+        expires_on=date(2026, 12, 31),
+        status=CompOffStatus.APPROVED,
+        reason='Weekend deployment support',
+    )
+
+    leave_request = create_leave_request(
+        employee,
+        leave_type,
+        date(2026, 7, 10),
+        date(2026, 7, 10),
+        DaySession.FULL_DAY,
+        DaySession.FULL_DAY,
+        reason='Using earned comp off',
+        actor=employee.user,
+    )
+
+    redemption = CompOffRedemption.objects.get(leave_request=leave_request)
+    assert redemption.accrual_id == accrual.id
+    assert redemption.status == CompOffStatus.PENDING
+    assert redemption.units == Decimal('1.00')
+
+    withdraw_leave_request(leave_request, actor=employee.user)
+    redemption.refresh_from_db()
+
+    assert redemption.status == CompOffStatus.CANCELLED
 
 
 @pytest.mark.django_db

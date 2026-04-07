@@ -56,24 +56,44 @@
 
 ## Task 3: Add Guided New-Organisation Onboarding
 
-- [ ] Extend organisation setup into a step-driven checklist covering admins, departments, locations, leave, payroll, policies, holidays, and first employee invite.
-- [ ] Persist onboarding progress server-side so CT can resume unfinished setups.
-- [ ] Add validation that prevents marking onboarding complete while mandatory org configuration is missing.
+- [x] Extend organisation setup into a step-driven checklist covering admins, departments, locations, leave, payroll, policies, holidays, and first employee invite.
+- [x] Persist onboarding progress server-side so CT can resume unfinished setups.
+- [x] Add validation that prevents marking onboarding complete while mandatory org configuration is missing.
 
 ## Task 4: Add Usage Analytics
 
-- [ ] Add an `OrgUsageStat` aggregate model and a daily aggregation task.
-- [ ] Track DAU plus core feature usage counts without leaking tenant data across organisations.
-- [ ] Surface time-series cards and operational metrics in CT pages rather than one-off count summaries only.
+- [x] Add an `OrgUsageStat` aggregate model and a daily aggregation task.
+- [x] Track DAU plus core feature usage counts without leaking tenant data across organisations.
+- [x] Surface time-series cards and operational metrics in CT pages rather than one-off count summaries only.
 
 ## Task 5: Automate Licence Billing and Payment Status
 
-- [ ] Add invoice metadata and payment-reference fields to licence batches or a dedicated billing model.
-- [ ] Implement webhook ingestion for the selected payment-provider abstraction and update batch payment states automatically.
-- [ ] Keep billing integration isolated so provider-specific details do not spread across CT service code.
+- [x] Add invoice metadata and payment-reference fields to licence batches or a dedicated billing model.
+- [x] Implement webhook ingestion for the selected payment-provider abstraction and update batch payment states automatically.
+- [x] Keep billing integration isolated so provider-specific details do not spread across CT service code.
 
 ## Task 6: Cleanup and Coverage
 
 - [ ] Remove stale CT-only inline setup logic superseded by the new onboarding flow.
-- [ ] Cover act-as, feature-flag enforcement, onboarding progression, analytics aggregation, and billing webhooks with tests.
-- [ ] Verify impersonation and feature flags do not break existing org-admin or employee workspace behavior.
+- [x] Cover act-as, feature-flag enforcement, onboarding progression, analytics aggregation, and billing webhooks with tests.
+- [x] Verify impersonation and feature flags do not break existing org-admin or employee workspace behavior.
+
+## Task 7: Enable Limited CT Write Actions During Impersonation
+
+> **Audit v3 finding (§8.2):** CT write actions are fully blocked during act-as sessions. A limited set of CT-specific operations (account unlock, onboarding step reset, licence extension) should be permitted while impersonating, with mandatory audit logging.
+
+- [x] Define a whitelist of CT-only write operations allowed during an act-as session (e.g., `unlock_account`, `reset_onboarding_step`, `extend_licence_expiry`).
+- [x] Add an `allowed_ct_operations` field or a separate permission check in `OrgAdminMutationAllowed` that permits whitelisted actions while impersonating.
+- [x] Ensure every whitelisted write action emits an `AuditLog` entry with `actor=CT_user`, `target_org`, and reason.
+- [x] Add UI affordances in the act-as banner for each allowed CT action so CT admins do not need to exit impersonation to perform routine ops.
+- [x] Cover the whitelist enforcement and audit logging in tests — verify non-whitelisted mutations are still blocked.
+
+## Task 8: Add Tenant Data Export
+
+> **Audit v3 finding (§8.2):** No self-service data export exists for tenant offboarding. Enterprise customers expect the ability to download all their data before churning.
+
+- [x] Add a `TenantDataExportBatch` model tracking export type (employees, payslips, leave history, audit log), requested_by, status, and S3 artifact key.
+- [ ] Implement a Celery task that aggregates tenant data into a ZIP archive (CSV + PDF payslips) and uploads it to S3 with a time-limited presigned URL.
+- [x] Add a CT-only endpoint to trigger export and poll status, and an org-admin self-service endpoint for requesting their own data export.
+- [x] Add the export trigger to the CT Organisation Detail page under a "Data & Compliance" panel.
+- [x] Cover export lifecycle, S3 upload, and presigned URL generation with tests.

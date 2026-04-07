@@ -1,6 +1,7 @@
 import api from '@/lib/api'
 import type { ImpersonationSession } from '@/types/auth'
 import type {
+  CtOrganisationAnalytics,
   CtDashboardStats,
   LicenceBatch,
   OrganisationFeatureFlag,
@@ -11,6 +12,9 @@ import type {
   OrganisationDetail,
   OrganisationListItem,
   PaginatedResponse,
+  TenantDataExportBatch,
+  TenantDataExportDownloadResponse,
+  TenantDataExportType,
 } from '@/types/organisation'
 import type {
   CtOrganisationAttendanceSupportSummary,
@@ -30,6 +34,8 @@ import type {
   OnDutyPolicy,
   CtPayrollStatutoryMastersResponse,
   CtOnboardingChecklist,
+  OnboardingProgress,
+  OnboardingProgressStep,
 } from '@/types/hr'
 
 export interface OrganisationAddressInput {
@@ -255,6 +261,39 @@ export async function markLicenceBatchPaid(
   payload?: { paid_at?: string }
 ): Promise<LicenceBatch> {
   const { data } = await api.post(`/ct/organisations/${id}/licence-batches/${batchId}/mark-paid/`, payload ?? {})
+  return data
+}
+
+export async function extendLicenceBatchExpiry(
+  id: string,
+  batchId: string,
+  payload: {
+    new_end_date: string
+    reason?: string
+  },
+): Promise<LicenceBatch> {
+  const { data } = await api.post(`/ct/organisations/${id}/licence-batches/${batchId}/extend-expiry/`, payload)
+  return data
+}
+
+export async function fetchCtTenantDataExports(id: string): Promise<TenantDataExportBatch[]> {
+  const { data } = await api.get(`/ct/organisations/${id}/exports/`)
+  return data
+}
+
+export async function createCtTenantDataExport(
+  id: string,
+  payload: { export_type: TenantDataExportType },
+): Promise<TenantDataExportBatch> {
+  const { data } = await api.post(`/ct/organisations/${id}/exports/`, payload)
+  return data
+}
+
+export async function fetchCtTenantDataExportDownloadUrl(
+  id: string,
+  exportId: string,
+): Promise<TenantDataExportDownloadResponse> {
+  const { data } = await api.post(`/ct/organisations/${id}/exports/${exportId}/download-url/`)
   return data
 }
 
@@ -513,5 +552,30 @@ export async function updateCtNotice(id: string, noticeId: string, payload: Reco
 
 export async function publishCtNotice(id: string, noticeId: string): Promise<NoticeItem> {
   const { data } = await api.post(`/ct/organisations/${id}/notices/${noticeId}/publish/`)
+  return data
+}
+
+export async function fetchCtOrgOnboardingProgress(id: string): Promise<OnboardingProgress> {
+  const { data } = await api.get(`/ct/organisations/${id}/onboarding/`)
+  return data
+}
+
+export async function syncCtOrgOnboardingProgress(id: string): Promise<OnboardingProgress> {
+  const { data } = await api.post(`/ct/organisations/${id}/onboarding/`)
+  return data
+}
+
+export async function postCtOrgOnboardingStepAction(
+  id: string,
+  step: string,
+  action: 'complete' | 'reset',
+  payload?: { reason?: string },
+): Promise<OnboardingProgressStep> {
+  const { data } = await api.post(`/ct/organisations/${id}/onboarding/${step}/${action}/`, payload ?? {})
+  return data
+}
+
+export async function fetchCtOrganisationAnalytics(id: string): Promise<CtOrganisationAnalytics> {
+  const { data } = await api.get(`/ct/organisations/${id}/analytics/`)
   return data
 }

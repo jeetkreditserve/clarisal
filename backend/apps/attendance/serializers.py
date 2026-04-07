@@ -62,6 +62,10 @@ class AttendancePolicySerializer(serializers.ModelSerializer):
             'full_day_min_minutes',
             'half_day_min_minutes',
             'overtime_after_minutes',
+            'overtime_approval_required',
+            'overtime_threshold_minutes',
+            'overtime_multiplier',
+            'overtime_max_payable_minutes',
             'week_off_days',
             'allow_web_punch',
             'restrict_by_ip',
@@ -84,6 +88,10 @@ class AttendancePolicyWriteSerializer(serializers.Serializer):
     full_day_min_minutes = serializers.IntegerField(required=False, min_value=1)
     half_day_min_minutes = serializers.IntegerField(required=False, min_value=1)
     overtime_after_minutes = serializers.IntegerField(required=False, min_value=1)
+    overtime_approval_required = serializers.BooleanField(required=False)
+    overtime_threshold_minutes = serializers.IntegerField(required=False, min_value=0)
+    overtime_multiplier = serializers.DecimalField(required=False, max_digits=6, decimal_places=2)
+    overtime_max_payable_minutes = serializers.IntegerField(required=False, allow_null=True, min_value=1)
     week_off_days = serializers.ListField(child=serializers.IntegerField(min_value=0, max_value=6), required=False)
     allow_web_punch = serializers.BooleanField(required=False)
     restrict_by_ip = serializers.BooleanField(required=False)

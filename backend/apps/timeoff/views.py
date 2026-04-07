@@ -42,6 +42,7 @@ from .services import (
     create_leave_request,
     create_on_duty_request,
     get_employee_calendar_month,
+    get_employee_comp_off_summary,
     get_employee_leave_balances,
     publish_holiday_calendar,
     resolve_employee_leave_plan,
@@ -316,6 +317,7 @@ class MyLeaveOverviewView(APIView):
         return Response(
             {
                 'balances': get_employee_leave_balances(employee),
+                'comp_off': get_employee_comp_off_summary(employee),
                 'requests': LeaveRequestSerializer(
                     LeaveRequest.objects.filter(employee=employee).select_related('leave_type'),
                     many=True,

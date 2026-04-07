@@ -140,6 +140,13 @@ export function LeavePage() {
             </p>
           </div>
         ))}
+        <div className="surface-card rounded-[28px] p-5">
+          <p className="text-sm text-[hsl(var(--muted-foreground))]">Comp off balance</p>
+          <p className="mt-3 text-3xl font-semibold text-[hsl(var(--foreground-strong))]">{data.comp_off.available}</p>
+          <p className="mt-2 text-xs text-[hsl(var(--muted-foreground))]">
+            Earned {data.comp_off.earned} • Used {data.comp_off.used}
+          </p>
+        </div>
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
@@ -231,7 +238,7 @@ export function LeavePage() {
           )}
         </SectionCard>
 
-        <SectionCard title="Leave calendar" description="Calendar shows approved and pending leave, on-duty entries, and published holidays.">
+        <SectionCard title="Leave calendar" description="Calendar shows leave, on-duty, holidays, WFH, comp-off accruals, and explicit LWP days in one timeline.">
           {calendar ? <MonthCalendar month={calendar} /> : null}
         </SectionCard>
       </div>
@@ -257,6 +264,30 @@ export function LeavePage() {
             </div>
           ))}
         </div>
+      </SectionCard>
+
+      <SectionCard title="Comp off history" description="Approved comp-off accruals appear here with expiry visibility before they are redeemed or lapsed.">
+        {data.comp_off.history.length ? (
+          <div className="space-y-3">
+            {data.comp_off.history.map((item) => (
+              <div key={item.id} className="surface-muted rounded-[22px] px-4 py-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="font-semibold text-[hsl(var(--foreground-strong))]">{item.units} day(s)</p>
+                    <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
+                      Accrued {item.date}
+                      {item.expires_on ? ` • Expires ${item.expires_on}` : ''}
+                    </p>
+                  </div>
+                  <StatusBadge tone={item.status === 'APPROVED' ? 'success' : 'warning'}>{item.status}</StatusBadge>
+                </div>
+                {item.reason ? <p className="mt-3 text-sm text-[hsl(var(--muted-foreground))]">{item.reason}</p> : null}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <EmptyState title="No comp off history yet" description="Approved extra-work accruals will appear here once your organisation starts recording them." />
+        )}
       </SectionCard>
 
       <SectionCard title="Leave encashment" description="Submit encashment requests for leave types that allow payouts instead of carry-forward or time off.">

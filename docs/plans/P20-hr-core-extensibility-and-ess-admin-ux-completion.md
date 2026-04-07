@@ -84,3 +84,26 @@
 - [ ] Remove stale fixed-field assumptions from serializers, forms, and employee detail screens once dynamic fields are introduced.
 - [ ] Add full coverage for dynamic-field validation, org-chart projections, exit interviews, bulk actions, and ESS flows.
 - [ ] Run UI interaction tests for the new employee-detail, org-chart, dashboard, and payslip behaviors.
+
+## Task 8: Add Transfer and Promotion Event Models
+
+> **Audit v3 finding (Gap #9, §2 Feature Matrix):** No transfer or promotion event model exists. Only ad-hoc field edits are possible. Darwinbox has a full lifecycle event timeline. This is a High-priority gap.
+
+- [ ] Add `EmployeeTransferEvent` model: employee, from_department, to_department, from_location, to_location, from_designation, to_designation, effective_date, reason, requested_by, approval status.
+- [ ] Add `EmployeePromotionEvent` model: employee, from_designation, to_designation, revised_compensation_assignment FK (nullable), effective_date, reason, approval status.
+- [ ] When an approved transfer event becomes effective, auto-update the employee's department, location, and designation fields.
+- [ ] When an approved promotion event becomes effective, optionally trigger a new CompensationAssignment draft if salary revision is linked.
+- [ ] Add approval workflow hooks (using existing `approvals` app) for both event types so org admins can configure multi-level approval.
+- [ ] Expose transfer and promotion history as a timeline in `EmployeeDetailPage.tsx` alongside the existing compensation history.
+- [ ] Cover event creation, approval transitions, effective-date application, and compensation linkage with tests.
+
+## Task 9: Add Designation Master
+
+> **Audit v3 finding (Gap #12, §4.1):** `Employee.designation` is a free-text `CharField`. This causes divergence (e.g., "Sr. Engineer" vs "Senior Engineer"). Darwinbox and Keka use locked designation masters.
+
+- [ ] Add a `Designation` model with `organisation` FK, `name`, `level` (integer for hierarchy ordering), and `is_active`.
+- [ ] Add a migration to create the table and a data migration script to populate unique designation values from existing `Employee.designation` strings per org.
+- [ ] Add `Employee.designation_ref` FK to `Designation` (nullable initially); write a migration to backfill `designation_ref` from the string field using the seeded master data.
+- [ ] Once backfill is validated, add `Designation` CRUD endpoints (org admin) and update employee create/update serializers to accept `designation_id` instead of free-text.
+- [ ] Update `EmployeesPage.tsx` and `EmployeeDetailPage.tsx` to use an `AppSelect` backed by the designation list rather than a text input.
+- [ ] Cover designation CRUD, employee assignment, and backfill correctness with tests.

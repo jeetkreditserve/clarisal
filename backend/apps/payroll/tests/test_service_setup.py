@@ -29,7 +29,6 @@ from apps.payroll.models import (
     InvestmentDeclaration,
     InvestmentSection,
     PayrollTaxSlabSet,
-    TaxCategory,
     TaxRegime,
 )
 from apps.payroll.services import (

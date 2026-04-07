@@ -81,6 +81,7 @@ export function OrgProfilePage() {
   const [profileDraft, setProfileDraft] = useState<Partial<{
     name: string
     pan_number: string
+    esi_branch_code: string
     country_code: string
     currency: string
     entity_type: OrganisationEntityType
@@ -103,6 +104,7 @@ export function OrgProfilePage() {
   const profileForm = {
     name: profileDraft.name ?? data.name,
     pan_number: profileDraft.pan_number ?? data.pan_number ?? '',
+    esi_branch_code: profileDraft.esi_branch_code ?? data.esi_branch_code ?? '',
     country_code: profileDraft.country_code ?? data.country_code,
     currency: profileDraft.currency ?? data.currency,
     entity_type: profileDraft.entity_type ?? data.entity_type,
@@ -256,6 +258,20 @@ export function OrgProfilePage() {
                 value={profileForm.pan_number}
                 onChange={(event) => setProfileDraft((current) => ({ ...current, pan_number: event.target.value }))}
                 required
+              />
+            </div>
+            <div>
+              <label className="field-label" htmlFor="esi_branch_code">
+                ESI branch code
+              </label>
+              <input
+                id="esi_branch_code"
+                className="field-input"
+                value={profileForm.esi_branch_code}
+                onChange={(event) =>
+                  setProfileDraft((current) => ({ ...current, esi_branch_code: event.target.value }))
+                }
+                placeholder="Optional"
               />
             </div>
             <div className="grid gap-4 md:grid-cols-2">

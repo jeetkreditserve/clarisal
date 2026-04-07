@@ -329,9 +329,14 @@ export function LeavePlanBuilderPage() {
         title={isEditing ? 'Edit leave plan' : 'Create leave plan'}
         description="Build the plan step by step: define the policy, configure leave types, then validate applicability before saving."
         actions={
-          <button type="button" className="btn-secondary" onClick={() => navigate(`${basePath}/leave-plans`)}>
-            Back to plans
-          </button>
+          <>
+            <button type="button" className="btn-secondary" onClick={() => navigate(`${basePath}/leave-plans`)}>
+              Back to plans
+            </button>
+            <button type="submit" className="btn-primary" disabled={isSaving}>
+              {isSaving ? 'Saving...' : isEditing ? 'Save changes' : 'Create leave plan'}
+            </button>
+          </>
         }
       />
 
@@ -367,7 +372,6 @@ export function LeavePlanBuilderPage() {
         </ol>
       </nav>
 
-      {currentStep === 1 ? (
       <SectionCard title="Plan basics" description="Anchor the plan to a leave cycle and define whether it is the default active policy.">
         <div className="grid gap-4 lg:grid-cols-2">
           <div>
@@ -437,9 +441,7 @@ export function LeavePlanBuilderPage() {
           />
         </div>
       </SectionCard>
-      ) : null}
 
-      {currentStep === 2 ? (
       <SectionCard
         title="Leave types"
         description="Bundle multiple leave types into one policy and define accrual, balance, attachment, and request constraints for each one."
@@ -845,7 +847,6 @@ export function LeavePlanBuilderPage() {
           ))}
         </div>
       </SectionCard>
-      ) : null}
 
       {currentStep === 3 ? (
       <>
@@ -1072,11 +1073,7 @@ export function LeavePlanBuilderPage() {
           >
             Next
           </button>
-        ) : (
-          <button type="submit" className="btn-primary" disabled={isSaving}>
-            {isSaving ? 'Saving...' : isEditing ? 'Save changes' : 'Create leave plan'}
-          </button>
-        )}
+        ) : <span className="text-sm text-[hsl(var(--muted-foreground))]">Ready to save</span>}
       </div>
     </form>
   )

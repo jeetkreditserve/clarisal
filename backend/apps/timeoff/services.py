@@ -4,14 +4,19 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from django.db import transaction
+from django.db.models import Sum
 from django.utils import timezone
 
 from apps.approvals.models import ApprovalRequestKind
 from apps.approvals.services import cancel_approval_run, create_approval_run
+from apps.attendance.models import WFHRequest
 from apps.audit.services import log_audit_event
 
 from .models import (
     CarryForwardMode,
+    CompOffAccrual,
+    CompOffRedemption,
+    CompOffStatus,
     DaySession,
     Holiday,
     HolidayCalendar,
@@ -30,6 +35,8 @@ from .models import (
     LeaveRequest,
     LeaveRequestStatus,
     LeaveType,
+    LeaveWithoutPayEntry,
+    LeaveWithoutPayEntryStatus,
     OnDutyDurationType,
     OnDutyPolicy,
     OnDutyRequest,
@@ -511,6 +518,97 @@ def validate_leave_balance(*, employee, leave_type, requested_units, cycle_start
         )
 
 
+def _is_comp_off_leave_type(leave_type) -> bool:
+    return (leave_type.code or '').strip().upper() == 'COMP_OFF'
+
+
+def _comp_off_reserved_statuses():
+    return [CompOffStatus.PENDING, CompOffStatus.APPROVED, CompOffStatus.REDEEMED]
+
+
+def get_available_comp_off_units(employee) -> Decimal:
+    today = timezone.localdate()
+    approved_accruals = CompOffAccrual.objects.filter(
+        employee=employee,
+        status=CompOffStatus.APPROVED,
+    )
+    available = ZERO
+    for accrual in approved_accruals:
+        if accrual.expires_on and accrual.expires_on < today:
+            continue
+        available += _decimal(accrual.units)
+    reserved = _decimal(
+        CompOffRedemption.objects.filter(
+            employee=employee,
+            status__in=_comp_off_reserved_statuses(),
+        ).aggregate(total=Sum('units'))['total'] or ZERO
+    )
+    return max(ZERO, _decimal(available - reserved))
+
+
+def validate_comp_off_balance(*, employee, requested_units):
+    available = get_available_comp_off_units(employee)
+    if _decimal(requested_units) > available:
+        raise ValueError(
+            f'Insufficient comp off balance. Available: {available} days, '
+            f'Requested: {_decimal(requested_units)} days.'
+        )
+
+
+def _reserve_comp_off_redemption(*, leave_request, actor=None):
+    remaining_units = _decimal(leave_request.total_units)
+    today = timezone.localdate()
+    accruals = CompOffAccrual.objects.filter(
+        employee=leave_request.employee,
+        status=CompOffStatus.APPROVED,
+    ).order_by('expires_on', 'accrual_date', 'created_at')
+    for accrual in accruals:
+        if accrual.expires_on and accrual.expires_on < today:
+            continue
+        used_units = _decimal(
+            accrual.redemptions.filter(status__in=_comp_off_reserved_statuses()).aggregate(total=Sum('units'))['total'] or ZERO
+        )
+        available_units = max(ZERO, _decimal(accrual.units - used_units))
+        if available_units <= ZERO:
+            continue
+        redeem_units = min(remaining_units, available_units)
+        CompOffRedemption.objects.create(
+            employee=leave_request.employee,
+            accrual=accrual,
+            redemption_date=leave_request.start_date,
+            units=redeem_units,
+            status=CompOffStatus.PENDING,
+            reason=leave_request.reason,
+            leave_request=leave_request,
+            created_by=actor,
+            modified_by=actor,
+        )
+        remaining_units = _decimal(remaining_units - redeem_units)
+        if remaining_units <= ZERO:
+            break
+    if remaining_units > ZERO:
+        raise ValueError(
+            f'Insufficient comp off balance. Available: {get_available_comp_off_units(leave_request.employee)} days, '
+            f'Requested: {_decimal(leave_request.total_units)} days.'
+        )
+
+
+def sync_comp_off_redemptions_for_leave_request(leave_request, *, new_status: str):
+    if not _is_comp_off_leave_type(leave_request.leave_type):
+        return
+    if new_status == LeaveRequestStatus.APPROVED:
+        target_status = CompOffStatus.APPROVED
+    elif new_status == LeaveRequestStatus.WITHDRAWN:
+        target_status = CompOffStatus.CANCELLED
+    elif new_status == LeaveRequestStatus.REJECTED:
+        target_status = CompOffStatus.REJECTED
+    elif new_status == LeaveRequestStatus.CANCELLED:
+        target_status = CompOffStatus.CANCELLED
+    else:
+        target_status = CompOffStatus.PENDING
+    leave_request.comp_off_redemptions.exclude(status=target_status).update(status=target_status, modified_at=timezone.now())
+
+
 @transaction.atomic
 def create_leave_encashment_request(*, employee, leave_type, cycle_start, cycle_end, days_to_encash, actor=None):
     if not leave_type.allows_encashment:
@@ -611,7 +709,10 @@ def create_leave_request(employee, leave_type, start_date, end_date, start_sessi
         if _leave_requests_overlap(existing_request, start_date, end_date, start_session, end_session):
             raise ValueError('A leave request already exists for the selected dates.')
     total_units = _leave_request_units(start_date, end_date, start_session, end_session)
-    validate_leave_balance(employee=employee, leave_type=leave_type, requested_units=total_units, as_of=start_date)
+    if _is_comp_off_leave_type(leave_type):
+        validate_comp_off_balance(employee=employee, requested_units=total_units)
+    else:
+        validate_leave_balance(employee=employee, leave_type=leave_type, requested_units=total_units, as_of=start_date)
 
     leave_request = LeaveRequest.objects.create(
         employee=employee,
@@ -624,6 +725,8 @@ def create_leave_request(employee, leave_type, start_date, end_date, start_sessi
         reason=reason,
         status=LeaveRequestStatus.PENDING,
     )
+    if _is_comp_off_leave_type(leave_type):
+        _reserve_comp_off_redemption(leave_request=leave_request, actor=actor)
     create_approval_run(
         leave_request,
         ApprovalRequestKind.LEAVE,
@@ -632,7 +735,8 @@ def create_leave_request(employee, leave_type, start_date, end_date, start_sessi
         leave_type=leave_type,
         subject_label=f'{leave_type.name}: {start_date.isoformat()} to {end_date.isoformat()}',
     )
-    get_or_create_leave_balance(employee, leave_type)
+    if not _is_comp_off_leave_type(leave_type):
+        get_or_create_leave_balance(employee, leave_type)
     log_audit_event(actor or employee.user, 'leave.request.created', organisation=employee.organisation, target=leave_request)
     return leave_request
 
@@ -651,7 +755,9 @@ def withdraw_leave_request(leave_request, actor=None):
     ).first()
     if approval_run:
         cancel_approval_run(approval_run, actor=actor, subject_status=LeaveRequestStatus.WITHDRAWN)
-    get_or_create_leave_balance(leave_request.employee, leave_request.leave_type)
+    sync_comp_off_redemptions_for_leave_request(leave_request, new_status=LeaveRequestStatus.WITHDRAWN)
+    if not _is_comp_off_leave_type(leave_request.leave_type):
+        get_or_create_leave_balance(leave_request.employee, leave_request.leave_type)
     log_audit_event(actor, 'leave.request.withdrawn', organisation=leave_request.employee.organisation, target=leave_request)
     return leave_request
 
@@ -810,6 +916,50 @@ def get_employee_holiday_entries(employee, year, month):
     return entries
 
 
+def get_employee_comp_off_summary(employee):
+    today = timezone.localdate()
+    approved_accruals = CompOffAccrual.objects.filter(
+        employee=employee,
+        status=CompOffStatus.APPROVED,
+    ).order_by('-accrual_date', '-created_at')
+    approved_redemptions = CompOffRedemption.objects.filter(
+        employee=employee,
+        status__in=[CompOffStatus.APPROVED, CompOffStatus.REDEEMED],
+    )
+    total_earned = _decimal(approved_accruals.aggregate(total=Sum('units'))['total'] or ZERO)
+    total_used = _decimal(approved_redemptions.aggregate(total=Sum('units'))['total'] or ZERO)
+    pending_redemptions = _decimal(
+        CompOffRedemption.objects.filter(
+            employee=employee,
+            status=CompOffStatus.PENDING,
+        ).aggregate(total=Sum('units'))['total'] or ZERO
+    )
+    available = ZERO
+    history = []
+    for accrual in approved_accruals:
+        if accrual.expires_on and accrual.expires_on < today:
+            continue
+        available += _decimal(accrual.units)
+        history.append(
+            {
+                'id': str(accrual.id),
+                'date': accrual.accrual_date.isoformat(),
+                'units': str(_decimal(accrual.units)),
+                'expires_on': accrual.expires_on.isoformat() if accrual.expires_on else None,
+                'status': accrual.status,
+                'reason': accrual.reason,
+            }
+        )
+    available = max(ZERO, _decimal(available - total_used - pending_redemptions))
+    return {
+        'available': str(available),
+        'earned': str(total_earned),
+        'used': str(total_used),
+        'pending': str(pending_redemptions),
+        'history': history,
+    }
+
+
 def get_employee_calendar_month(employee, calendar_month=None):
     if calendar_month:
         year, month = [int(part) for part in calendar_month.split('-')]
@@ -869,6 +1019,64 @@ def get_employee_calendar_month(employee, calendar_month=None):
                     }
                 )
             current += timedelta(days=1)
+
+    wfh_requests = WFHRequest.objects.filter(
+        employee=employee,
+        start_date__lte=last_day,
+        end_date__gte=first_day,
+        status='APPROVED',
+    )
+    for request in wfh_requests:
+        current = request.start_date
+        while current <= request.end_date:
+            if current.month == month and current.year == year:
+                day_map[current.day].append(
+                    {
+                        'date': current.isoformat(),
+                        'kind': 'WFH',
+                        'label': 'Work From Home',
+                        'status': request.status,
+                        'color': '#0284c7',
+                        'session': request.session,
+                    }
+                )
+            current += timedelta(days=1)
+
+    comp_off_accruals = CompOffAccrual.objects.filter(
+        employee=employee,
+        accrual_date__gte=first_day,
+        accrual_date__lte=last_day,
+        status=CompOffStatus.APPROVED,
+    )
+    for accrual in comp_off_accruals:
+        day_map[accrual.accrual_date.day].append(
+            {
+                'date': accrual.accrual_date.isoformat(),
+                'kind': 'COMP_OFF',
+                'label': 'Comp Off',
+                'status': accrual.status,
+                'color': '#0f766e',
+                'session': DaySession.FULL_DAY,
+            }
+        )
+
+    lwp_entries = LeaveWithoutPayEntry.objects.filter(
+        employee=employee,
+        entry_date__gte=first_day,
+        entry_date__lte=last_day,
+        status=LeaveWithoutPayEntryStatus.APPROVED,
+    )
+    for entry in lwp_entries:
+        day_map[entry.entry_date.day].append(
+            {
+                'date': entry.entry_date.isoformat(),
+                'kind': 'LWP',
+                'label': 'Loss Of Pay',
+                'status': entry.status,
+                'color': '#dc2626',
+                'session': DaySession.FULL_DAY,
+            }
+        )
 
     days = [
         {

@@ -7,6 +7,7 @@ from . import FilingGenerationResult, build_csv, decimal_to_string
 ESI_FIELDNAMES = [
     'employee_code',
     'employee_name',
+    'esi_branch_code',
     'esic_ip_number',
     'gross_wages',
     'employee_contribution',
@@ -20,6 +21,11 @@ ESI_FIELDNAMES = [
 def generate_esi_export(*, organisation, payslips, period_year: int, period_month: int) -> FilingGenerationResult:
     rows: list[dict[str, str]] = []
     blockers: list[str] = []
+    warnings: list[str] = []
+    branch_code = (organisation.esi_branch_code or '').strip()
+
+    if not branch_code:
+        warnings.append('Organisation ESI branch code is blank for this filing.')
 
     for payslip in payslips:
         snapshot = {**(payslip.pay_run_item.snapshot or {}), **(payslip.snapshot or {})}
@@ -39,6 +45,7 @@ def generate_esi_export(*, organisation, payslips, period_year: int, period_mont
             {
                 'employee_code': employee.employee_code or '',
                 'employee_name': employee.user.full_name,
+                'esi_branch_code': branch_code,
                 'esic_ip_number': ip_number,
                 'gross_wages': decimal_to_string(snapshot.get('gross_pay', '0')),
                 'employee_contribution': decimal_to_string(esi_employee),
@@ -60,10 +67,12 @@ def generate_esi_export(*, organisation, payslips, period_year: int, period_mont
             'filing_type': 'ESI_MONTHLY',
             'period_year': period_year,
             'period_month': period_month,
+            'warnings': warnings,
             'rows': rows,
         },
         metadata={
             'row_count': len(rows),
+            'warnings': warnings,
             'employee_contribution_total': decimal_to_string(sum(Decimal(row['employee_contribution']) for row in rows), places='0.00'),
             'employer_contribution_total': decimal_to_string(sum(Decimal(row['employer_contribution']) for row in rows), places='0.00'),
         },

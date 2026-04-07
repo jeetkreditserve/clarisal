@@ -5,6 +5,7 @@ from django.db import models
 from django.db.models import Q
 
 from apps.common.models import AuditedBaseModel
+from apps.timeoff.models import DaySession
 
 
 class AttendanceDayStatus(models.TextChoices):
@@ -16,6 +17,7 @@ class AttendanceDayStatus(models.TextChoices):
     WEEK_OFF = 'WEEK_OFF', 'Week Off'
     ON_LEAVE = 'ON_LEAVE', 'On Leave'
     ON_DUTY = 'ON_DUTY', 'On Duty'
+    WFH = 'WFH', 'Work From Home'
 
 
 class AttendancePunchActionType(models.TextChoices):
@@ -85,6 +87,10 @@ class AttendancePolicy(AuditedBaseModel):
     full_day_min_minutes = models.PositiveIntegerField(default=480)
     half_day_min_minutes = models.PositiveIntegerField(default=240)
     overtime_after_minutes = models.PositiveIntegerField(default=540)
+    overtime_approval_required = models.BooleanField(default=False)
+    overtime_threshold_minutes = models.PositiveIntegerField(default=0)
+    overtime_multiplier = models.DecimalField(max_digits=6, decimal_places=2, default=1)
+    overtime_max_payable_minutes = models.PositiveIntegerField(null=True, blank=True)
     week_off_days = models.JSONField(default=list, blank=True)
     allow_web_punch = models.BooleanField(default=True)
     restrict_by_ip = models.BooleanField(default=False)
@@ -162,6 +168,56 @@ class ShiftAssignment(AuditedBaseModel):
 
     def __str__(self):
         return f'{self.employee} - {self.shift.name}'
+
+
+class ShiftRotationTemplate(AuditedBaseModel):
+    organisation = models.ForeignKey(
+        'organisations.Organisation',
+        on_delete=models.CASCADE,
+        related_name='shift_rotation_templates',
+    )
+    name = models.CharField(max_length=255)
+    rotation_interval_days = models.PositiveIntegerField(default=7)
+    shift_sequence = models.JSONField(default=list, blank=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = 'attendance_shift_rotation_templates'
+        ordering = ['name']
+
+    def __str__(self):
+        return f'{self.organisation.name} - {self.name}'
+
+
+class ShiftRotationAssignment(AuditedBaseModel):
+    organisation = models.ForeignKey(
+        'organisations.Organisation',
+        on_delete=models.CASCADE,
+        related_name='shift_rotation_assignments',
+    )
+    employee = models.ForeignKey(
+        'employees.Employee',
+        on_delete=models.CASCADE,
+        related_name='shift_rotation_assignments',
+    )
+    template = models.ForeignKey(
+        ShiftRotationTemplate,
+        on_delete=models.CASCADE,
+        related_name='assignments',
+    )
+    start_date = models.DateField()
+    end_date = models.DateField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = 'attendance_shift_rotation_assignments'
+        ordering = ['-start_date', 'employee__employee_code']
+        indexes = [
+            models.Index(fields=['organisation', 'employee', 'start_date']),
+        ]
+
+    def __str__(self):
+        return f'{self.employee} - {self.template.name}'
 
 
 class AttendanceSourceConfig(AuditedBaseModel):
@@ -398,6 +454,76 @@ class AttendanceDay(AuditedBaseModel):
 
     def __str__(self):
         return f'{self.employee.employee_code} • {self.attendance_date} • {self.status}'
+
+
+class WFHRequestStatus(models.TextChoices):
+    PENDING = 'PENDING', 'Pending Approval'
+    APPROVED = 'APPROVED', 'Approved'
+    REJECTED = 'REJECTED', 'Rejected'
+    CANCELLED = 'CANCELLED', 'Cancelled'
+    WITHDRAWN = 'WITHDRAWN', 'Withdrawn'
+
+
+class WFHRequest(AuditedBaseModel):
+    employee = models.ForeignKey(
+        'employees.Employee',
+        on_delete=models.CASCADE,
+        related_name='wfh_requests',
+    )
+    start_date = models.DateField()
+    end_date = models.DateField()
+    session = models.CharField(max_length=20, choices=DaySession.choices, default=DaySession.FULL_DAY)
+    reason = models.TextField(blank=True)
+    status = models.CharField(max_length=20, choices=WFHRequestStatus.choices, default=WFHRequestStatus.PENDING)
+    rejection_reason = models.TextField(blank=True)
+
+    class Meta:
+        db_table = 'attendance_wfh_requests'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['employee', 'status']),
+            models.Index(fields=['employee', 'start_date', 'end_date']),
+        ]
+
+    def __str__(self):
+        return f'{self.employee.employee_code} • {self.start_date} • {self.status}'
+
+
+class AttendanceOvertimeApprovalStatus(models.TextChoices):
+    PENDING = 'PENDING', 'Pending Approval'
+    APPROVED = 'APPROVED', 'Approved'
+    REJECTED = 'REJECTED', 'Rejected'
+    CANCELLED = 'CANCELLED', 'Cancelled'
+
+
+class AttendanceOvertimeApproval(AuditedBaseModel):
+    attendance_day = models.OneToOneField(
+        AttendanceDay,
+        on_delete=models.CASCADE,
+        related_name='overtime_approval',
+    )
+    employee = models.ForeignKey(
+        'employees.Employee',
+        on_delete=models.CASCADE,
+        related_name='attendance_overtime_approvals',
+    )
+    approved_minutes = models.PositiveIntegerField(default=0)
+    status = models.CharField(
+        max_length=20,
+        choices=AttendanceOvertimeApprovalStatus.choices,
+        default=AttendanceOvertimeApprovalStatus.PENDING,
+    )
+    rejection_reason = models.TextField(blank=True)
+
+    class Meta:
+        db_table = 'attendance_overtime_approvals'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['employee', 'status']),
+        ]
+
+    def __str__(self):
+        return f'{self.employee.employee_code} • {self.attendance_day.attendance_date} • {self.status}'
 
 
 class AttendanceRegularizationRequest(AuditedBaseModel):

@@ -192,6 +192,7 @@ export function getAttendanceDayStatusTone(status?: string | null): Tone {
   switch (status) {
     case 'PRESENT':
     case 'ON_DUTY':
+    case 'WFH':
       return 'success'
     case 'HALF_DAY':
     case 'HOLIDAY':

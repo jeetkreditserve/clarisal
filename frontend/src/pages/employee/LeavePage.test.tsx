@@ -63,6 +63,12 @@ describe('LeavePage', () => {
             pending: '1.00',
           },
         ],
+        comp_off: {
+          available: '1.50',
+          earned: '2.00',
+          used: '0.50',
+          history: [],
+        },
         leave_plan: {
           leave_types: [{ id: 'leave-1', name: 'Casual Leave', is_active: true, allows_encashment: true }],
         },
@@ -90,6 +96,7 @@ describe('LeavePage', () => {
     expect(screen.getByRole('heading', { name: 'Leave management' })).toBeInTheDocument()
     expect(screen.getAllByText('Casual Leave')).toHaveLength(2)
     expect(screen.getByText('5.00')).toBeInTheDocument()
+    expect(screen.getByText('Comp off balance')).toBeInTheDocument()
     expect(screen.getByText('My leave requests')).toBeInTheDocument()
   })
 

@@ -58,6 +58,18 @@ Vendor priority is based on current official vendor positioning and product pres
 
 - [ ] Extend `BiometricDevice` with vendor, product family, middleware mode, and capability flags instead of overloading protocol alone.
 - [ ] Create a vendor registry mapping devices to supported transport, auth, and payload normalization strategies.
+
+## Task 6: Mobile Punch-In and GPS Geo-Fencing
+
+> **Audit v3 finding (Gap #28, §2 Feature Matrix):** No mobile punch-in or location-based attendance exists. Darwinbox has a mobile app with GPS punch-in. This is a Medium-priority gap for field/remote workforces.
+
+- [ ] Add a `MobileAttendancePunch` model capturing employee, timestamp, latitude, longitude, accuracy, punch type (IN/OUT), and device fingerprint.
+- [ ] Add a `GeoFencePolicy` model per `Location` with centre coordinates, allowed radius (metres), and enforcement mode (WARN / BLOCK).
+- [ ] Add a self-service API endpoint for submitting a mobile punch; validate coordinates against the employee's assigned location geo-fence.
+- [ ] Return a clear error if the punch is outside the allowed radius when enforcement mode is BLOCK; log a warning when in WARN mode.
+- [ ] Reflect mobile punches in the attendance day summary alongside biometric punches — they share the same daily resolution logic.
+- [ ] Add org-admin UI in `BiometricDevicesPage.tsx` (or a new `GeoFencePoliciesPage.tsx`) to configure geo-fence radius per location.
+- [ ] Cover geo-fence distance calculation, punch validation, and day-summary merging with unit and API tests.
 - [ ] Record which vendors are natively supported and which are supported through shared transport families such as ADMS or push-data middleware.
 
 ## Task 2: Add Missing High-Priority Vendor Adapters

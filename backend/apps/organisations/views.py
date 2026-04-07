@@ -1,7 +1,9 @@
+from django.core.exceptions import PermissionDenied
 from django.db.models import Count, F, Max, Q
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.pagination import PageNumberPagination
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -21,6 +23,7 @@ from apps.attendance.models import (
     AttendanceRegularizationRequest,
     AttendanceRegularizationStatus,
     AttendanceSourceConfig,
+    WFHRequest,
 )
 from apps.attendance.services import get_org_attendance_dashboard
 from apps.communications.models import Notice
@@ -81,10 +84,12 @@ from .serializers import (
     ActAsSessionStartSerializer,
     CreateOrganisationSerializer,
     CTDashboardStatsSerializer,
+    LicenceBatchExtendExpirySerializer,
     LicenceBatchMarkPaidSerializer,
     LicenceBatchSerializer,
     LicenceBatchUpdateSerializer,
     LicenceBatchWriteSerializer,
+    OnboardingChecklistSerializer,
     OrgAdminSerializer,
     OrgAdminSetupStateSerializer,
     OrgAdminSetupUpdateSerializer,
@@ -97,6 +102,8 @@ from .serializers import (
     OrganisationNoteSerializer,
     OrganisationNoteWriteSerializer,
     OrgDashboardStatsSerializer,
+    TenantDataExportBatchRequestSerializer,
+    TenantDataExportBatchSerializer,
     UpdateOrganisationSerializer,
 )
 from .services import (
@@ -106,25 +113,36 @@ from .services import (
     create_organisation_note,
     deactivate_org_admin_membership,
     deactivate_organisation_address,
+    extend_licence_batch_expiry,
+    generate_tenant_data_export_download_url,
     get_ct_dashboard_stats,
     get_ct_onboarding_checklist,
     get_org_admin_setup_state,
     get_org_dashboard_stats,
     get_org_licence_summary,
+    get_org_usage_analytics,
+    get_tenant_data_export,
     list_org_feature_flags,
+    list_tenant_data_exports,
     mark_licence_batch_paid,
+    mark_onboarding_step_complete,
+    process_razorpay_webhook,
     reactivate_org_admin_membership,
     refresh_act_as_session,
+    request_tenant_data_export,
+    reset_onboarding_step,
     revoke_org_admin_membership_invitation,
     set_org_feature_flag,
     start_act_as_session,
     stop_act_as_session,
+    sync_onboarding_progress,
     transition_organisation_state,
     update_licence_batch,
     update_org_admin_setup_state,
     update_organisation_address,
     update_organisation_profile,
 )
+from .tasks import generate_tenant_data_export
 
 
 def _get_ct_organisation(pk):
@@ -139,6 +157,36 @@ def _set_impersonation_session(request, session):
 def _clear_impersonation_session(request):
     request.session.pop('ct_act_as_session_id', None)
     request.session.modified = True
+
+
+def _require_ct_action_allowed(request, action_code: str, *, reason: str = '', extra_payload: dict | None = None):
+    """Raises PermissionDenied if a non-whitelisted action is attempted during impersonation."""
+    from apps.accounts.workspaces import is_ct_action_allowed_during_impersonation
+    session = get_active_impersonation_session(request, request.user)
+    if session and not is_ct_action_allowed_during_impersonation(action_code):
+        raise PermissionDenied(f"Action '{action_code}' is not allowed during impersonation.")
+    if session:
+        from apps.audit.services import log_audit_event
+        payload = {
+            "action_code": action_code,
+            "impersonation_session_id": str(session.id),
+            "reason": reason,
+        }
+        if extra_payload:
+            payload.update(extra_payload)
+        log_audit_event(
+            request.user,
+            'organisation.act_as.allowed_action',
+            organisation=session.organisation,
+            payload=payload,
+        )
+
+
+def _get_org_admin_workspace_or_error(request):
+    organisation = get_active_admin_organisation(request, request.user)
+    if organisation is None:
+        return None, Response({'error': 'Select an administrator organisation workspace to continue.'}, status=status.HTTP_400_BAD_REQUEST)
+    return organisation, None
 
 
 def _resolve_leave_plan_rules(organisation, rules_payload):
@@ -354,6 +402,7 @@ class OrganisationDetailView(APIView):
 
 class CtOrganisationActAsStartView(APIView):
     permission_classes = [IsControlTowerUser]
+    ct_impersonation_passthrough = True
 
     def post(self, request, pk):
         organisation = _get_ct_organisation(pk)
@@ -390,6 +439,7 @@ class CtActAsCurrentView(APIView):
 
 class CtActAsRefreshView(APIView):
     permission_classes = [IsControlTowerUser]
+    ct_impersonation_passthrough = True
 
     def post(self, request):
         session = get_active_impersonation_session(request, request.user)
@@ -404,6 +454,7 @@ class CtActAsRefreshView(APIView):
 
 class CtActAsStopView(APIView):
     permission_classes = [IsControlTowerUser]
+    ct_impersonation_passthrough = True
 
     def post(self, request):
         session = get_active_impersonation_session(request, request.user)
@@ -561,6 +612,7 @@ class CtOrganisationAdminDeactivateView(APIView):
 
 class CtOrganisationAdminReactivateView(APIView):
     permission_classes = [IsControlTowerUser]
+    ct_impersonation_action_code = 'unlock_account'
 
     def post(self, request, pk, admin_id):
         organisation = _get_ct_organisation(pk)
@@ -570,6 +622,8 @@ class CtOrganisationAdminReactivateView(APIView):
             is_org_admin=True,
         )
         try:
+            reason = str(request.data.get('reason', '') or '').strip()
+            _require_ct_action_allowed(request, 'unlock_account', reason=reason, extra_payload={'admin_id': str(admin_id)})
             membership = reactivate_org_admin_membership(organisation, membership.user, actor=request.user)
         except ValueError as exc:
             return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -708,9 +762,16 @@ class CtOrganisationAttendanceSupportView(APIView):
         policy_count = AttendancePolicy.objects.filter(organisation=organisation).count()
         source_count = AttendanceSourceConfig.objects.filter(organisation=organisation).count()
         active_source_count = AttendanceSourceConfig.objects.filter(organisation=organisation, is_active=True).count()
+        today = dashboard['date']
         pending_regularizations = AttendanceRegularizationRequest.objects.filter(
             organisation=organisation,
             status=AttendanceRegularizationStatus.PENDING,
+        ).count()
+        wfh_count = WFHRequest.objects.filter(
+            employee__organisation=organisation,
+            start_date__lte=today,
+            end_date__gte=today,
+            status='APPROVED',
         ).count()
         return Response(
             {
@@ -727,6 +788,7 @@ class CtOrganisationAttendanceSupportView(APIView):
                     'incomplete_count': dashboard['incomplete_count'],
                     'on_leave_count': dashboard['on_leave_count'],
                     'on_duty_count': dashboard['on_duty_count'],
+                    'wfh_count': wfh_count,
                 },
                 'recent_imports': [
                     {
@@ -834,6 +896,87 @@ class CtOrganisationOnboardingChecklistView(APIView):
     def get(self, request, pk):
         org = get_object_or_404(Organisation, id=pk)
         return Response(get_ct_onboarding_checklist(org))
+
+
+class CtOrganisationOnboardingProgressView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def get(self, request, pk):
+        org = get_object_or_404(Organisation, id=pk)
+        progress = sync_onboarding_progress(org)
+        return Response(progress)
+
+    def post(self, request, pk):
+        org = get_object_or_404(Organisation, id=pk)
+        progress = sync_onboarding_progress(org, actor=request.user)
+        return Response(progress)
+
+
+class CtOrganisationOnboardingStepView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def get_ct_impersonation_action_code(self):
+        return 'reset_onboarding_step' if self.kwargs.get('action') == 'reset' else None
+
+    def post(self, request, pk, step, action):
+        org = get_object_or_404(Organisation, id=pk)
+        if action == "complete":
+            try:
+                item = mark_onboarding_step_complete(org, step, actor=request.user)
+            except ValueError as exc:
+                return Response(
+                    {
+                        'detail': 'Cannot complete onboarding step.',
+                        'blockers': [str(exc)],
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        elif action == "reset":
+            reason = str(request.data.get('reason', '') or '').strip()
+            _require_ct_action_allowed(
+                request,
+                "reset_onboarding_step",
+                reason=reason,
+                extra_payload={'step': step},
+            )
+            item = reset_onboarding_step(
+                org,
+                step,
+                actor=request.user,
+                reason=reason,
+            )
+        else:
+            return Response({"detail": "Invalid action."}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(OnboardingChecklistSerializer(item).data)
+
+
+class CtOrganisationAnalyticsView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def get(self, request, pk):
+        org = get_object_or_404(Organisation, id=pk)
+        return Response(get_org_usage_analytics(org))
+
+
+class CtRazorpayWebhookView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        try:
+            billing_event = process_razorpay_webhook(
+                request.body,
+                request.headers.get('X-Razorpay-Signature', ''),
+            )
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(
+            {
+                'provider_event_id': billing_event.provider_event_id,
+                'status': billing_event.status,
+            }
+        )
 
 
 class CtOrganisationApprovalSupportView(APIView):
@@ -1230,6 +1373,57 @@ class OrgDashboardStatsView(APIView):
         return Response(OrgDashboardStatsSerializer(stats).data)
 
 
+class OrgDataExportListCreateView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+
+    def get(self, request):
+        organisation, error_response = _get_org_admin_workspace_or_error(request)
+        if error_response is not None:
+            return error_response
+        exports = list_tenant_data_exports(organisation)
+        return Response(TenantDataExportBatchSerializer(exports, many=True).data)
+
+    def post(self, request):
+        organisation, error_response = _get_org_admin_workspace_or_error(request)
+        if error_response is not None:
+            return error_response
+        serializer = TenantDataExportBatchRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        export_batch = request_tenant_data_export(
+            organisation,
+            export_type=serializer.validated_data['export_type'],
+            requested_by=request.user,
+        )
+        generate_tenant_data_export.delay(str(export_batch.id))
+        return Response(TenantDataExportBatchSerializer(export_batch).data, status=status.HTTP_201_CREATED)
+
+
+class OrgDataExportDetailView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+
+    def get(self, request, export_id):
+        organisation, error_response = _get_org_admin_workspace_or_error(request)
+        if error_response is not None:
+            return error_response
+        export_batch = get_tenant_data_export(organisation, export_id)
+        return Response(TenantDataExportBatchSerializer(export_batch).data)
+
+
+class OrgDataExportDownloadUrlView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+
+    def post(self, request, export_id):
+        organisation, error_response = _get_org_admin_workspace_or_error(request)
+        if error_response is not None:
+            return error_response
+        export_batch = get_tenant_data_export(organisation, export_id)
+        try:
+            download_url = generate_tenant_data_export_download_url(export_batch, actor=request.user, request=request)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'download_url': download_url, 'file_name': export_batch.file_name})
+
+
 class OrgProfileView(APIView):
     permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
 
@@ -1361,6 +1555,34 @@ class OrganisationLicenceBatchDetailView(APIView):
         return Response(LicenceBatchSerializer(batch).data)
 
 
+class OrganisationLicenceBatchExtendExpiryView(APIView):
+    permission_classes = [IsControlTowerUser]
+    ct_impersonation_action_code = 'extend_licence_expiry'
+
+    def post(self, request, pk, batch_id):
+        org = get_object_or_404(Organisation, id=pk)
+        batch = get_object_or_404(OrganisationLicenceBatch, organisation=org, id=batch_id)
+        serializer = LicenceBatchExtendExpirySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        reason = serializer.validated_data.get('reason', '')
+        try:
+            _require_ct_action_allowed(
+                request,
+                'extend_licence_expiry',
+                reason=reason,
+                extra_payload={'batch_id': str(batch.id), 'new_end_date': serializer.validated_data['new_end_date'].isoformat()},
+            )
+            batch = extend_licence_batch_expiry(
+                batch,
+                new_end_date=serializer.validated_data['new_end_date'],
+                actor=request.user,
+                reason=reason,
+            )
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(LicenceBatchSerializer(batch).data)
+
+
 class OrganisationLicenceBatchMarkPaidView(APIView):
     permission_classes = [IsControlTowerUser]
 
@@ -1378,3 +1600,46 @@ class OrganisationLicenceBatchMarkPaidView(APIView):
         except ValueError as exc:
             return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(LicenceBatchSerializer(batch).data)
+
+
+class CtOrganisationDataExportListCreateView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def get(self, request, pk):
+        organisation = _get_ct_organisation(pk)
+        exports = list_tenant_data_exports(organisation)
+        return Response(TenantDataExportBatchSerializer(exports, many=True).data)
+
+    def post(self, request, pk):
+        organisation = _get_ct_organisation(pk)
+        serializer = TenantDataExportBatchRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        export_batch = request_tenant_data_export(
+            organisation,
+            export_type=serializer.validated_data['export_type'],
+            requested_by=request.user,
+        )
+        generate_tenant_data_export.delay(str(export_batch.id))
+        return Response(TenantDataExportBatchSerializer(export_batch).data, status=status.HTTP_201_CREATED)
+
+
+class CtOrganisationDataExportDetailView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def get(self, request, pk, export_id):
+        organisation = _get_ct_organisation(pk)
+        export_batch = get_tenant_data_export(organisation, export_id)
+        return Response(TenantDataExportBatchSerializer(export_batch).data)
+
+
+class CtOrganisationDataExportDownloadUrlView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def post(self, request, pk, export_id):
+        organisation = _get_ct_organisation(pk)
+        export_batch = get_tenant_data_export(organisation, export_id)
+        try:
+            download_url = generate_tenant_data_export_download_url(export_batch, actor=request.user, request=request)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'download_url': download_url, 'file_name': export_batch.file_name})

@@ -313,6 +313,7 @@ class CompensationAssignmentSerializer(serializers.ModelSerializer):
             'version',
             'tax_regime',
             'is_pf_opted_out',
+            'is_epf_exempt',
             'vpf_rate_percent',
             'status',
             'approval_run_id',
@@ -328,6 +329,7 @@ class CompensationAssignmentWriteSerializer(serializers.Serializer):
     effective_from = serializers.DateField()
     tax_regime = serializers.ChoiceField(choices=TaxRegime.choices, required=False, default=TaxRegime.NEW)
     is_pf_opted_out = serializers.BooleanField(required=False, default=False)
+    is_epf_exempt = serializers.BooleanField(required=False, default=False)
     vpf_rate_percent = serializers.DecimalField(max_digits=5, decimal_places=2, required=False, default=Decimal('12.00'))
     auto_approve = serializers.BooleanField(required=False, default=False)
 

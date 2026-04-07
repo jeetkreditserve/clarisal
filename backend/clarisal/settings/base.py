@@ -211,6 +211,7 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'UTC'
 CELERY_TASK_TRACK_STARTED = True
+CELERY_TASK_ACKS_LATE = True
 
 # Cache (Redis — use DB 1 to avoid collision with Celery broker on DB 0)
 CACHES = {
@@ -246,6 +247,10 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'performance.auto_schedule_probation_reviews',
         'schedule': 86400,
     },
+    'aggregate-organisation-usage-daily': {
+        'task': 'organisations.aggregate_daily_usage_stats',
+        'schedule': 86400,
+    },
 }
 
 # Email
@@ -275,3 +280,4 @@ FRONTEND_URL = env('FRONTEND_URL', default='http://localhost:8080')
 INVITE_TOKEN_EXPIRY_HOURS = env.int('INVITE_TOKEN_EXPIRY_HOURS', default=48)
 PASSWORD_RESET_TOKEN_EXPIRY_MINUTES = env.int('PASSWORD_RESET_TOKEN_EXPIRY_MINUTES', default=30)
 DEFAULT_LICENCE_PRICE_PER_MONTH = Decimal(str(env('DEFAULT_LICENCE_PRICE_PER_MONTH', default='50.00')))
+RAZORPAY_WEBHOOK_SECRET = env('RAZORPAY_WEBHOOK_SECRET', default='')

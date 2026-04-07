@@ -15,6 +15,7 @@ from apps.organisations.models import (
 )
 from apps.organisations.services import create_licence_batch, mark_licence_batch_paid
 from apps.payroll.services import create_payroll_run
+from apps.payroll.tasks import calculate_pay_run_task
 
 from .test_service_setup import _attach_registered_and_billing_addresses
 
@@ -108,3 +109,23 @@ class TestOrgPayrollRunCalculateViewAsync:
         assert response.status_code == 200
         assert response.data['state'] == 'PENDING'
         assert response.data['task_id'] == 'celery-task-uuid-abc'
+
+
+@pytest.mark.django_db
+class TestCalculatePayRunTaskIdempotency:
+    @patch('apps.payroll.tasks.calculate_pay_run')
+    @patch('apps.payroll.tasks.cache')
+    def test_duplicate_delivery_is_skipped_when_lock_already_held(self, mock_cache, mock_calculate_pay_run, async_payroll_setup):
+        """When a lock is already held (cache.add returns False), the task returns SKIPPED
+        without invoking the calculation service."""
+        mock_cache.add.return_value = False
+
+        result = calculate_pay_run_task.apply(
+            args=[str(async_payroll_setup['pay_run'].id), str(async_payroll_setup['org_admin_user'].id)],
+        ).get()
+
+        assert result['status'] == 'SKIPPED'
+        assert result['reason'] == 'duplicate_delivery'
+        mock_calculate_pay_run.assert_not_called()
+        # cache.delete should NOT be called since add returned False (no lock was acquired)
+        mock_cache.delete.assert_not_called()

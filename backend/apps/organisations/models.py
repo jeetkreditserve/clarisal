@@ -54,6 +54,18 @@ class LicenceBatchLifecycleState(models.TextChoices):
     EXPIRED = 'EXPIRED', 'Expired'
 
 
+class OrganisationBillingProvider(models.TextChoices):
+    MANUAL = 'MANUAL', 'Manual'
+    RAZORPAY = 'RAZORPAY', 'Razorpay'
+
+
+class OrganisationBillingEventStatus(models.TextChoices):
+    RECEIVED = 'RECEIVED', 'Received'
+    PROCESSED = 'PROCESSED', 'Processed'
+    IGNORED = 'IGNORED', 'Ignored'
+    FAILED = 'FAILED', 'Failed'
+
+
 class LifecycleEventType(models.TextChoices):
     ORGANISATION_CREATED = 'ORGANISATION_CREATED', 'Organisation Created'
     LICENCES_UPDATED = 'LICENCES_UPDATED', 'Licences Updated'
@@ -142,6 +154,20 @@ class OrganisationFeatureCode(models.TextChoices):
     TIMEOFF = 'TIMEOFF', 'Leave and On-duty'
 
 
+class TenantDataExportType(models.TextChoices):
+    EMPLOYEES = 'EMPLOYEES', 'Employees'
+    PAYSLIPS = 'PAYSLIPS', 'Payslips'
+    LEAVE_HISTORY = 'LEAVE_HISTORY', 'Leave History'
+    AUDIT_LOG = 'AUDIT_LOG', 'Audit Log'
+
+
+class TenantDataExportStatus(models.TextChoices):
+    REQUESTED = 'REQUESTED', 'Requested'
+    PROCESSING = 'PROCESSING', 'Processing'
+    COMPLETED = 'COMPLETED', 'Completed'
+    FAILED = 'FAILED', 'Failed'
+
+
 class Organisation(AuditedBaseModel):
     name = models.CharField(max_length=255)
     slug = models.SlugField(max_length=255, unique=True, blank=True)
@@ -175,6 +201,7 @@ class Organisation(AuditedBaseModel):
     )
     pan_number = models.CharField(max_length=10, null=True, blank=True)
     tan_number = models.CharField(max_length=10, null=True, blank=True)
+    esi_branch_code = models.CharField(max_length=20, blank=True)
     address = models.TextField(blank=True)
     phone = models.CharField(max_length=20, blank=True)
     email = models.EmailField(blank=True)
@@ -466,6 +493,13 @@ class OrganisationLicenceBatch(AuditedBaseModel):
     end_date = models.DateField()
     billing_months = models.PositiveIntegerField()
     total_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    payment_provider = models.CharField(
+        max_length=20,
+        choices=OrganisationBillingProvider.choices,
+        default=OrganisationBillingProvider.MANUAL,
+    )
+    invoice_reference = models.CharField(max_length=255, blank=True)
+    payment_reference = models.CharField(max_length=255, blank=True)
     payment_status = models.CharField(
         max_length=20,
         choices=LicenceBatchPaymentStatus.choices,
@@ -502,6 +536,67 @@ class OrganisationLicenceBatch(AuditedBaseModel):
         if self.start_date <= today <= self.end_date:
             return LicenceBatchLifecycleState.ACTIVE
         return LicenceBatchLifecycleState.EXPIRED
+
+
+class OrganisationBillingEvent(AuditedBaseModel):
+    organisation = models.ForeignKey(
+        Organisation,
+        on_delete=models.CASCADE,
+        related_name='billing_events',
+    )
+    licence_batch = models.ForeignKey(
+        OrganisationLicenceBatch,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='billing_events',
+    )
+    provider = models.CharField(max_length=20, choices=OrganisationBillingProvider.choices)
+    event_type = models.CharField(max_length=100)
+    provider_event_id = models.CharField(max_length=255, unique=True)
+    provider_payment_id = models.CharField(max_length=255, blank=True)
+    invoice_reference = models.CharField(max_length=255, blank=True)
+    status = models.CharField(
+        max_length=20,
+        choices=OrganisationBillingEventStatus.choices,
+        default=OrganisationBillingEventStatus.RECEIVED,
+    )
+    payload = models.JSONField(default=dict, blank=True)
+    processed_at = models.DateTimeField(null=True, blank=True)
+    failure_reason = models.TextField(blank=True)
+
+    class Meta:
+        db_table = 'organisation_billing_events'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['organisation', 'provider', 'status']),
+        ]
+
+
+class OrgUsageStat(AuditedBaseModel):
+    organisation = models.ForeignKey(
+        Organisation,
+        on_delete=models.CASCADE,
+        related_name='usage_stats',
+    )
+    snapshot_date = models.DateField()
+    active_employees = models.PositiveIntegerField(default=0)
+    active_users = models.PositiveIntegerField(default=0)
+    attendance_days_count = models.PositiveIntegerField(default=0)
+    leave_requests_count = models.PositiveIntegerField(default=0)
+    payroll_runs_count = models.PositiveIntegerField(default=0)
+    pending_approvals_count = models.PositiveIntegerField(default=0)
+    metadata = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        db_table = 'organisation_usage_stats'
+        ordering = ['-snapshot_date', 'organisation__name']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['organisation', 'snapshot_date'],
+                name='unique_usage_stat_per_org_date',
+            ),
+        ]
 
 
 class OrganisationLifecycleEvent(AuditedBaseModel):
@@ -668,3 +763,67 @@ class OrganisationFeatureFlag(AuditedBaseModel):
                 name='unique_feature_flag_per_org',
             ),
         ]
+
+
+class TenantDataExportBatch(AuditedBaseModel):
+    organisation = models.ForeignKey(
+        Organisation,
+        on_delete=models.CASCADE,
+        related_name='tenant_data_exports',
+    )
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='requested_tenant_data_exports',
+    )
+    export_type = models.CharField(max_length=20, choices=TenantDataExportType.choices)
+    status = models.CharField(
+        max_length=20,
+        choices=TenantDataExportStatus.choices,
+        default=TenantDataExportStatus.REQUESTED,
+    )
+    artifact_key = models.CharField(max_length=500, blank=True)
+    file_name = models.CharField(max_length=255, blank=True)
+    content_type = models.CharField(max_length=120, blank=True)
+    file_size_bytes = models.PositiveIntegerField(default=0)
+    generated_at = models.DateTimeField(null=True, blank=True)
+    failure_reason = models.TextField(blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        db_table = 'tenant_data_export_batches'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['organisation', 'status']),
+            models.Index(fields=['organisation', 'export_type']),
+        ]
+
+
+class OnboardingStepCode(models.TextChoices):
+    ADMINS = "ADMINS", "Admin Users"
+    DEPARTMENTS = "DEPARTMENTS", "Departments"
+    LOCATIONS = "LOCATIONS", "Locations"
+    LEAVE = "LEAVE", "Leave Configuration"
+    PAYROLL = "PAYROLL", "Payroll Configuration"
+    POLICIES = "POLICIES", "Attendance Policies"
+    HOLIDAYS = "HOLIDAYS", "Holiday Calendar"
+    FIRST_EMPLOYEE = "FIRST_EMPLOYEE", "First Employee Invite"
+
+
+class OnboardingChecklist(AuditedBaseModel):
+    organisation = models.ForeignKey(
+        Organisation, on_delete=models.CASCADE, related_name="onboarding_checklist"
+    )
+    step = models.CharField(max_length=30, choices=OnboardingStepCode.choices)
+    is_completed = models.BooleanField(default=False)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    completed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="+"
+    )
+
+    class Meta:
+        db_table = "organisation_onboarding_checklist"
+        unique_together = [("organisation", "step")]

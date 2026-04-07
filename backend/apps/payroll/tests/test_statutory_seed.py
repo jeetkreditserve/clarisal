@@ -13,16 +13,23 @@ class TestStatutorySeedCommand:
 
         call_command('seed_statutory_masters', stdout=out)
 
-        assert ProfessionalTaxRule.objects.count() == 7
-        assert LabourWelfareFundRule.objects.count() == 2
-        assert set(ProfessionalTaxRule.objects.values_list('state_code', flat=True)) == {'MH', 'KA', 'TN', 'WB', 'AP', 'TG', 'MP'}
-        assert set(LabourWelfareFundRule.objects.values_list('state_code', flat=True)) == {'MH', 'KA'}
+        # Payroll uses GST subdivision codes, so Odisha/Chhattisgarh are seeded as OD/CT.
+        assert ProfessionalTaxRule.objects.count() == 15
+        assert LabourWelfareFundRule.objects.count() == 7
+        assert set(ProfessionalTaxRule.objects.values_list('state_code', flat=True)) == {
+            'MH', 'KA', 'TN', 'WB', 'AP', 'TG', 'MP', 'GJ', 'HR', 'PB', 'OD', 'RJ', 'HP', 'CT', 'JH',
+        }
+        assert set(LabourWelfareFundRule.objects.values_list('state_code', flat=True)) == {'MH', 'KA', 'AP', 'TG', 'MP', 'HR', 'OD'}
         mh_rule = ProfessionalTaxRule.objects.get(state_code='MH')
         assert mh_rule.slabs.filter(gender=ProfessionalTaxGender.MALE, deduction_amount='300.00', applicable_months=[2]).exists()
+        rj_rule = ProfessionalTaxRule.objects.get(state_code='RJ')
+        assert rj_rule.slabs.filter(deduction_amount='0.00').exists()
         ka_lwf_rule = LabourWelfareFundRule.objects.get(state_code='KA')
         assert ka_lwf_rule.contributions.filter(employee_amount='20.00', employer_amount='40.00', applicable_months=[12]).exists()
-        assert '7 PT rules' in out.getvalue()
-        assert '2 LWF rules' in out.getvalue()
+        ap_lwf_rule = LabourWelfareFundRule.objects.get(state_code='AP')
+        assert ap_lwf_rule.contributions.filter(employee_amount='40.00', employer_amount='60.00', applicable_months=[12]).exists()
+        assert '15 PT rules' in out.getvalue()
+        assert '7 LWF rules' in out.getvalue()
         assert 'income tax masters' in out.getvalue()
         # 2 fiscal years × 2 regimes × 3 categories = 12 CT income tax masters
         assert PayrollTaxSlabSet.objects.filter(organisation__isnull=True, is_system_master=True).count() == 12
@@ -31,7 +38,8 @@ class TestStatutorySeedCommand:
         call_command('seed_statutory_masters')
         call_command('seed_statutory_masters')
 
-        assert ProfessionalTaxRule.objects.count() == 7
-        assert LabourWelfareFundRule.objects.count() == 2
+        assert ProfessionalTaxRule.objects.count() == 15
+        assert LabourWelfareFundRule.objects.count() == 7
         assert ProfessionalTaxRule.objects.get(state_code='TG').slabs.count() == 3
+        assert ProfessionalTaxRule.objects.get(state_code='RJ').slabs.count() == 1
         assert PayrollTaxSlabSet.objects.filter(organisation__isnull=True, is_system_master=True).count() == 12
