@@ -487,6 +487,63 @@ def process_cycle_end_carry_forward(
     return new_balance
 
 
+@transaction.atomic
+def process_cycle_end_lapse(employee, balance):
+    """Expire remaining leave balance for a LeaveBalance record with carry_forward_mode=NONE.
+
+    Args:
+        employee: Employee instance (used for clarity; must match balance.employee).
+        balance: LeaveBalance instance whose cycle has ended and whose leave_type
+                 has carry_forward_mode=NONE.
+    """
+    remaining = (
+        balance.opening_balance
+        + balance.carried_forward_amount
+        + balance.credited_amount
+        - balance.used_amount
+        - balance.pending_amount
+    )
+    if remaining <= ZERO:
+        return
+
+    # Avoid double-lapsing: skip if an EXPIRY entry already exists for this balance
+    if LeaveBalanceLedgerEntry.objects.filter(
+        leave_balance=balance,
+        entry_type=LeaveBalanceEntryType.EXPIRY,
+    ).exists():
+        return
+
+    amount_to_expire = _decimal(remaining)
+    LeaveBalanceLedgerEntry.objects.create(
+        leave_balance=balance,
+        entry_type=LeaveBalanceEntryType.EXPIRY,
+        amount=amount_to_expire,
+        effective_date=balance.cycle_end,
+        note=f'Cycle end lapse: {balance.cycle_start.isoformat()} – {balance.cycle_end.isoformat()}',
+    )
+    # Reduce credited_amount so available balance reflects the expiry
+    balance.credited_amount = max(ZERO, _decimal(balance.credited_amount - amount_to_expire))
+    balance.save(update_fields=['credited_amount', 'modified_at'])
+
+
+def get_lwp_days_for_period(employee, period_start, period_end):
+    """Return total Loss of Pay (LWP) leave days approved within a payroll period.
+
+    This covers approved LeaveRequests against leave types flagged is_loss_of_pay=True
+    that overlap the given date range.
+    """
+    from django.db.models import Sum
+
+    lop_result = LeaveRequest.objects.filter(
+        employee=employee,
+        leave_type__is_loss_of_pay=True,
+        status=LeaveRequestStatus.APPROVED,
+        start_date__lte=period_end,
+        end_date__gte=period_start,
+    ).aggregate(total=Sum('total_units'))
+    return _decimal(lop_result['total'] or ZERO)
+
+
 def validate_leave_balance(*, employee, leave_type, requested_units, cycle_start=None, cycle_end=None, as_of=None):
     if leave_type.is_loss_of_pay:
         return

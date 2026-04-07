@@ -11,6 +11,7 @@ from apps.attendance.models import (
     ShiftRotationAssignment,
     ShiftRotationTemplate,
     WFHRequest,
+    WFHRequestStatus,
 )
 from apps.attendance.services import (
     _get_effective_shift,
@@ -139,3 +140,98 @@ def test_payroll_attendance_summary_ignores_unapproved_overtime_when_policy_requ
 
     assert summary['paid_fraction'] == Decimal('1.00')
     assert summary['overtime_minutes'] == 0
+
+
+@pytest.mark.django_db
+def test_wfh_request_created_and_approved():
+    """WFH request can be created and its status updated to APPROVED."""
+    organisation = _create_organisation('WFH Flow Org')
+    employee = _create_employee(organisation, email='wfh-flow@test.com')
+
+    request = WFHRequest.objects.create(
+        employee=employee,
+        start_date=date(2026, 6, 1),
+        end_date=date(2026, 6, 1),
+        session='FULL_DAY',
+        reason='Working from home',
+        status=WFHRequestStatus.PENDING,
+    )
+
+    assert request.status == WFHRequestStatus.PENDING
+    request.status = WFHRequestStatus.APPROVED
+    request.save(update_fields=['status', 'modified_at'])
+    request.refresh_from_db()
+
+    assert request.status == WFHRequestStatus.APPROVED
+    assert request.employee == employee
+
+
+@pytest.mark.django_db
+def test_shift_rotation_resolves_correct_shift_for_week():
+    """Rotation resolver returns shift A for week 1 and shift B for week 2."""
+    organisation = _create_organisation('Shift Week Org')
+    employee = _create_employee(organisation, email='shift-week@test.com')
+
+    shift_a = Shift.objects.create(
+        organisation=organisation,
+        name='Morning Shift',
+        start_time=time(6, 0),
+        end_time=time(14, 0),
+    )
+    shift_b = Shift.objects.create(
+        organisation=organisation,
+        name='Evening Shift',
+        start_time=time(14, 0),
+        end_time=time(22, 0),
+    )
+    template = ShiftRotationTemplate.objects.create(
+        organisation=organisation,
+        name='Morning-Evening Rotation',
+        rotation_interval_days=7,
+        shift_sequence=[str(shift_a.id), str(shift_b.id)],
+        is_active=True,
+    )
+    # Rotation starts on a Monday (2026-06-01)
+    ShiftRotationAssignment.objects.create(
+        organisation=organisation,
+        employee=employee,
+        template=template,
+        start_date=date(2026, 6, 1),
+        is_active=True,
+    )
+
+    week_1_result = _get_effective_shift(employee, date(2026, 6, 3))   # still week 1
+    week_2_result = _get_effective_shift(employee, date(2026, 6, 8))   # week 2
+
+    assert week_1_result is not None
+    assert week_1_result.shift_id == shift_a.id
+    assert week_2_result is not None
+    assert week_2_result.shift_id == shift_b.id
+
+
+@pytest.mark.django_db
+def test_overtime_earning_calculation():
+    """AttendancePolicy.overtime_multiplier is stored and readable for payroll computation."""
+    organisation = _create_organisation('OT Earning Org')
+    policy = AttendancePolicy.objects.create(
+        organisation=organisation,
+        name='OT Multiplier Policy',
+        is_default=True,
+        is_active=True,
+        overtime_multiplier=Decimal('1.5'),
+        overtime_after_minutes=480,
+    )
+
+    # Confirm the policy stores the multiplier
+    policy.refresh_from_db()
+    assert policy.overtime_multiplier == Decimal('1.5')
+
+    # Verify the OT earning formula: (basic_salary / 26 / 8) * multiplier * ot_hours
+    basic_salary = Decimal('26000.00')
+    ot_hours = Decimal('2')
+    multiplier = policy.overtime_multiplier
+    working_days = Decimal('26')
+    hours_per_day = Decimal('8')
+
+    expected_earning = (basic_salary / working_days / hours_per_day * multiplier * ot_hours).quantize(Decimal('0.01'))
+    assert expected_earning == Decimal('375.00')

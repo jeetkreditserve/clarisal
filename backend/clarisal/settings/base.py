@@ -251,6 +251,10 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'organisations.aggregate_daily_usage_stats',
         'schedule': 86400,
     },
+    'run-leave-lapse-daily': {
+        'task': 'timeoff.run_leave_lapse_for_all_active_cycles',
+        'schedule': 86400,  # once daily (1 am handled by Celery beat offset in production)
+    },
 }
 
 # Email
