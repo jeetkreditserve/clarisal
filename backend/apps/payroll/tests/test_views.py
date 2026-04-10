@@ -19,7 +19,7 @@ from apps.organisations.models import (
     OrganisationStatus,
 )
 from apps.organisations.services import create_licence_batch, mark_licence_batch_paid
-from apps.payroll.models import PayrollRunItemStatus, Payslip
+from apps.payroll.models import CostCentre, PayrollRunItemStatus, Payslip
 from apps.payroll.services import (
     assign_employee_compensation,
     calculate_pay_run,
@@ -196,6 +196,84 @@ class TestPayrollViews:
         assert response.data['id'] in slab_set_ids
         assert summary_response.data['professional_tax_rules']
         assert summary_response.data['labour_welfare_fund_rules']
+
+    def test_org_summary_and_run_items_include_cost_centre_metadata(self, payroll_setup):
+        organisation = payroll_setup['organisation']
+        org_admin_user = payroll_setup['org_admin_user']
+        org_admin_client = payroll_setup['org_admin_client']
+        employee = payroll_setup['employee']
+
+        cost_centre = CostCentre.objects.create(
+            organisation=organisation,
+            code='ENG-100',
+            name='Engineering',
+            gl_code='5001-SALARY',
+        )
+        create_tax_slab_set(
+            fiscal_year='2026-2027',
+            name='FY 2026 Master',
+            country_code='IN',
+            slabs=[
+                {'min_income': '0', 'max_income': '300000', 'rate_percent': '0'},
+                {'min_income': '300000', 'max_income': '700000', 'rate_percent': '10'},
+                {'min_income': '700000', 'max_income': None, 'rate_percent': '20'},
+            ],
+            actor=org_admin_user,
+        )
+        ensure_org_payroll_setup(organisation, actor=org_admin_user)
+        template = create_compensation_template(
+            organisation,
+            name='Cost Centre Template',
+            description='Template with accounting mapping',
+            lines=[
+                {
+                    'component_code': 'BASIC',
+                    'name': 'Basic Pay',
+                    'component_type': 'EARNING',
+                    'monthly_amount': '40000',
+                    'is_taxable': True,
+                    'cost_centre_id': cost_centre.id,
+                },
+                {
+                    'component_code': 'PF_EMPLOYEE',
+                    'name': 'Employee PF',
+                    'component_type': 'EMPLOYEE_DEDUCTION',
+                    'monthly_amount': '1800',
+                    'is_taxable': False,
+                },
+            ],
+            actor=org_admin_user,
+        )
+        assign_employee_compensation(
+            employee,
+            template,
+            effective_from=date(2026, 4, 1),
+            actor=org_admin_user,
+            auto_approve=True,
+        )
+        pay_run = create_payroll_run(
+            organisation,
+            period_year=2026,
+            period_month=4,
+            actor=org_admin_user,
+            requester_user=org_admin_user,
+        )
+        calculate_pay_run(pay_run, actor=org_admin_user)
+
+        summary_response = org_admin_client.get('/api/v1/org/payroll/summary/')
+        assert summary_response.status_code == 200
+        assert summary_response.data['cost_centres'][0]['code'] == 'ENG-100'
+        assert summary_response.data['compensation_templates'][0]['lines'][0]['cost_centre_name'] == 'Engineering'
+        assert summary_response.data['compensation_assignments'][0]['lines'][0]['cost_centre_code'] == 'ENG-100'
+
+        items_response = org_admin_client.get(f'/api/v1/org/payroll/runs/{pay_run.id}/items/')
+        assert items_response.status_code == 200
+        basic_line = next(
+            line for line in items_response.data['results'][0]['snapshot']['lines']
+            if line['component_code'] == 'BASIC'
+        )
+        assert basic_line['cost_centre_name'] == 'Engineering'
+        assert basic_line['cost_centre_code'] == 'ENG-100'
 
     def test_ct_and_org_can_read_seeded_statutory_masters(self, payroll_setup):
         call_command('seed_statutory_masters')

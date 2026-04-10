@@ -1,15 +1,38 @@
 from rest_framework import serializers
 
 from .models import (
+    ExpenseCategory,
     ExpenseClaim,
     ExpenseClaimLine,
     ExpenseClaimStatus,
     ExpensePolicy,
+    ExpenseReceipt,
     ExpenseReimbursementStatus,
 )
+from .services import build_receipt_download_url
+
+
+class ExpenseReceiptSerializer(serializers.ModelSerializer):
+    download_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ExpenseReceipt
+        fields = [
+            'id',
+            'file_name',
+            'file_size',
+            'mime_type',
+            'download_url',
+            'created_at',
+        ]
+
+    def get_download_url(self, obj):
+        return build_receipt_download_url(obj)
 
 
 class ExpenseClaimLineSerializer(serializers.ModelSerializer):
+    receipts = ExpenseReceiptSerializer(many=True, read_only=True)
+
     class Meta:
         model = ExpenseClaimLine
         fields = [
@@ -21,8 +44,39 @@ class ExpenseClaimLineSerializer(serializers.ModelSerializer):
             'description',
             'amount',
             'currency',
+            'receipts',
         ]
         read_only_fields = ['id']
+
+
+class ExpenseCategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ExpenseCategory
+        fields = [
+            'id',
+            'code',
+            'name',
+            'per_claim_limit',
+            'requires_receipt',
+            'is_active',
+        ]
+
+
+class ExpensePolicySerializer(serializers.ModelSerializer):
+    categories = ExpenseCategorySerializer(many=True, read_only=True)
+
+    class Meta:
+        model = ExpensePolicy
+        fields = [
+            'id',
+            'name',
+            'description',
+            'currency',
+            'is_active',
+            'categories',
+            'created_at',
+            'modified_at',
+        ]
 
 
 class ExpenseClaimSerializer(serializers.ModelSerializer):
@@ -105,6 +159,27 @@ class ExpenseClaimLineWriteSerializer(serializers.Serializer):
     description = serializers.CharField(required=False, allow_blank=True, default='')
     amount = serializers.DecimalField(max_digits=12, decimal_places=2)
     currency = serializers.CharField(max_length=3, required=False, default='INR')
+
+
+class ExpenseCategoryWriteSerializer(serializers.Serializer):
+    code = serializers.CharField(max_length=50)
+    name = serializers.CharField(max_length=120)
+    per_claim_limit = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, allow_null=True)
+    requires_receipt = serializers.BooleanField(required=False, default=False)
+    is_active = serializers.BooleanField(required=False, default=True)
+
+
+class ExpensePolicyWriteSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=200)
+    description = serializers.CharField(required=False, allow_blank=True, default='')
+    currency = serializers.CharField(max_length=3, required=False, default='INR')
+    is_active = serializers.BooleanField(required=False, default=True)
+    categories = ExpenseCategoryWriteSerializer(many=True, required=False)
+
+
+class ExpenseReceiptUploadSerializer(serializers.Serializer):
+    line_id = serializers.UUIDField()
+    file = serializers.FileField()
 
 
 class ExpenseClaimStatusUpdateSerializer(serializers.Serializer):

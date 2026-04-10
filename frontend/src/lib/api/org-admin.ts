@@ -24,6 +24,7 @@ import type {
   Arrears,
   CompensationAssignment,
   CompensationTemplate,
+  CostCentre,
   Department,
   DocumentRecord,
   EmployeeDocumentRequest,
@@ -813,6 +814,32 @@ export async function createPayrollTaxSlabSet(payload: Record<string, unknown>) 
   return data
 }
 
+export async function createCostCentre(payload: {
+  code: string
+  name: string
+  gl_code?: string
+  parent_id?: string | null
+  is_active?: boolean
+}) {
+  const { data } = await api.post<CostCentre>('/org/payroll/cost-centres/', payload)
+  return data
+}
+
+export async function updateCostCentre(id: string, payload: Partial<{
+  code: string
+  name: string
+  gl_code: string
+  parent_id: string | null
+  is_active: boolean
+}>) {
+  const { data } = await api.patch<CostCentre>(`/org/payroll/cost-centres/${id}/`, payload)
+  return data
+}
+
+export async function deactivateCostCentre(id: string) {
+  await api.delete(`/org/payroll/cost-centres/${id}/`)
+}
+
 export async function updatePayrollTaxSlabSet(id: string, payload: Record<string, unknown>) {
   const { data } = await api.patch<PayrollTaxSlabSet>(`/org/payroll/tax-slab-sets/${id}/`, payload)
   return data
@@ -897,6 +924,17 @@ export async function downloadPayrollFiling(id: string) {
   const response = await api.get<Blob>(`/org/payroll/filings/${id}/download/`, {
     responseType: 'blob',
   })
+
+  const contentType = response.headers['content-type'] ?? ''
+  if (contentType.includes('application/json')) {
+    const payload = JSON.parse(await (response.data as Blob).text()) as { url: string; file_name?: string }
+    const downloadResponse = await fetch(payload.url)
+    const blob = await downloadResponse.blob()
+    return {
+      blob,
+      filename: payload.file_name || `statutory-filing-${id}`,
+    }
+  }
 
   return {
     blob: response.data as Blob,

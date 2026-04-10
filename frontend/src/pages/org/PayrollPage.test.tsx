@@ -123,6 +123,7 @@ describe('PayrollPage', () => {
     useOrgInvestmentDeclarations.mockReturnValue({ data: [] })
 
     for (const hook of [
+      useCreateCostCentre,
       useCreateCompensationTemplate,
       useSubmitCompensationTemplate,
       useCreateCompensationAssignment,
@@ -138,6 +139,7 @@ describe('PayrollPage', () => {
       useCancelPayrollFiling,
       useDownloadPayrollFiling,
       useDownloadOrgForm12BBBulk,
+      useDeactivateCostCentre,
       useReviewOrgInvestmentDeclaration,
     ]) {
       hook.mockReturnValue({ isPending: false, mutateAsync: vi.fn().mockResolvedValue(undefined) })
@@ -176,6 +178,30 @@ describe('PayrollPage', () => {
       })
     })
     expect(toastSuccess).toHaveBeenCalledWith('Payroll run created.')
+  })
+
+  it('creates a cost centre from the setup section', async () => {
+    const user = userEvent.setup()
+    const createCostCentre = vi.fn().mockResolvedValue({ id: 'cc-1' })
+    useCreateCostCentre.mockReturnValue({ isPending: false, mutateAsync: createCostCentre })
+    useCreatePayrollRun.mockReturnValue({ isPending: false, mutateAsync: vi.fn().mockResolvedValue(undefined) })
+
+    renderPage()
+
+    await user.type(screen.getByLabelText('Code'), 'ENG-100')
+    await user.type(screen.getByLabelText('Name'), 'Engineering')
+    await user.type(screen.getByLabelText('GL code'), '5001-SALARY')
+    await user.click(screen.getByRole('button', { name: 'Create cost centre' }))
+
+    await waitFor(() => {
+      expect(createCostCentre).toHaveBeenCalledWith({
+        code: 'ENG-100',
+        name: 'Engineering',
+        gl_code: '5001-SALARY',
+        parent_id: undefined,
+      })
+    })
+    expect(toastSuccess).toHaveBeenCalledWith('Cost centre created.')
   })
 
   it('generates a statutory filing from the filings section', async () => {
@@ -244,6 +270,7 @@ describe('PayrollPage', () => {
         tax_slab_sets: [],
         compensation_templates: [],
         compensation_assignments: [],
+        cost_centres: [],
         pay_runs: [mockPayRun],
         statutory_filing_batches: [],
         tds_challans: [],
@@ -273,6 +300,7 @@ describe('PayrollPage', () => {
         tax_slab_sets: [],
         compensation_templates: [],
         compensation_assignments: [],
+        cost_centres: [],
         pay_runs: [{ ...mockPayRun, status: 'DRAFT' }],
         statutory_filing_batches: [],
         tds_challans: [],

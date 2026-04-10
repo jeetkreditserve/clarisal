@@ -189,6 +189,7 @@ class ApprovalWorkflowWriteSerializer(serializers.Serializer):
 
 
 class ApprovalActionSerializer(serializers.ModelSerializer):
+    approval_run_id = serializers.UUIDField(source='approval_run.id', read_only=True)
     request_kind = serializers.CharField(source='approval_run.request_kind', read_only=True)
     subject_label = serializers.CharField(source='approval_run.subject_label', read_only=True)
     requester_name = serializers.CharField(source='approval_run.requester_name', read_only=True)
@@ -209,6 +210,7 @@ class ApprovalActionSerializer(serializers.ModelSerializer):
             'status',
             'comment',
             'acted_at',
+            'approval_run_id',
             'request_kind',
             'subject_label',
             'requester_name',

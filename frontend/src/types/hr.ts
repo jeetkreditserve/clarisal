@@ -50,6 +50,8 @@ export type ApprovalRequestKind =
   | 'COMPENSATION_TEMPLATE_CHANGE'
 export type ApprovalActionStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'SKIPPED' | 'CANCELLED'
 export type ApprovalActionAssignmentSource = 'DIRECT' | 'DELEGATED' | 'ESCALATED'
+export type ExpenseClaimStatus = 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'CANCELLED'
+export type ExpenseReimbursementStatus = 'NOT_READY' | 'PENDING_PAYROLL' | 'INCLUDED_IN_PAYROLL' | 'PAID'
 export type HolidayCalendarStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED'
 export type HolidayClassification = 'PUBLIC' | 'RESTRICTED' | 'COMPANY'
 export type LeaveCycleType = 'CALENDAR_YEAR' | 'FINANCIAL_YEAR' | 'CUSTOM_FIXED_START' | 'EMPLOYEE_JOINING_DATE'
@@ -116,6 +118,18 @@ export interface Department {
   is_active: boolean
   created_at: string
   modified_at: string
+}
+
+export interface CostCentre {
+  id: string
+  code: string
+  name: string
+  gl_code: string
+  parent: string | null
+  parent_name: string | null
+  is_active: boolean
+  created_at: string
+  children_count: number
 }
 
 export interface EmployeeListItem {
@@ -646,6 +660,7 @@ export interface ApprovalActionItem {
   status: ApprovalActionStatus
   comment: string
   acted_at: string | null
+  approval_run_id: string
   request_kind: ApprovalRequestKind
   subject_label: string
   requester_name: string
@@ -1367,6 +1382,84 @@ export interface CompensationTemplateLine {
   component: PayrollComponent
   monthly_amount: string
   sequence: number
+  cost_centre_id: string | null
+  cost_centre_code: string | null
+  cost_centre_name: string | null
+}
+
+export interface ExpenseReceipt {
+  id: string
+  file_name: string
+  file_size: number
+  mime_type: string
+  download_url: string
+  created_at: string
+}
+
+export interface ExpenseCategory {
+  id: string
+  code: string
+  name: string
+  per_claim_limit: string | null
+  requires_receipt: boolean
+  is_active: boolean
+}
+
+export interface ExpensePolicy {
+  id: string
+  name: string
+  description: string
+  currency: string
+  is_active: boolean
+  categories: ExpenseCategory[]
+  created_at: string
+  modified_at: string
+}
+
+export interface ExpenseClaimLine {
+  id: string
+  category: string | null
+  category_name: string
+  expense_date: string
+  merchant: string
+  description: string
+  amount: string
+  currency: string
+  receipts: ExpenseReceipt[]
+}
+
+export interface ExpenseClaim {
+  id: string
+  employee: string
+  employee_name: string
+  employee_code: string | null
+  title: string
+  claim_date: string
+  currency: string
+  status: ExpenseClaimStatus
+  reimbursement_status: ExpenseReimbursementStatus
+  approval_run_id: string | null
+  reimbursement_pay_run_id: string | null
+  submitted_at: string | null
+  approved_at: string | null
+  rejected_at: string | null
+  reimbursed_at: string | null
+  rejection_reason: string
+  total_amount: string
+  lines: ExpenseClaimLine[]
+  created_at: string
+}
+
+export interface ExpenseClaimSummaryBucket {
+  count: number
+  amount: string
+}
+
+export interface ExpenseClaimSummary {
+  total_claims: number
+  total_amount: string
+  by_status: Record<string, ExpenseClaimSummaryBucket>
+  by_reimbursement_status: Record<string, ExpenseClaimSummaryBucket>
 }
 
 export interface CompensationTemplate {
@@ -1388,6 +1481,9 @@ export interface CompensationAssignmentLine {
   monthly_amount: string
   is_taxable: boolean
   sequence: number
+  cost_centre_id: string | null
+  cost_centre_code: string | null
+  cost_centre_name: string | null
 }
 
 export interface CompensationAssignment {
@@ -1554,6 +1650,7 @@ export interface PayrollTdsChallan {
 export interface OrgPayrollSummary {
   tax_slab_sets: PayrollTaxSlabSet[]
   components: PayrollComponent[]
+  cost_centres: CostCentre[]
   compensation_templates: CompensationTemplate[]
   compensation_assignments: CompensationAssignment[]
   pay_runs: PayrollRun[]

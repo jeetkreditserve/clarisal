@@ -14,9 +14,11 @@ import {
   useCalculatePayrollRun,
   useCreateCompensationAssignment,
   useCreateCompensationTemplate,
+  useCreateCostCentre,
   useCreateOrgArrear,
   useCreatePayrollRun,
   useCreatePayrollTdsChallan,
+  useDeactivateCostCentre,
   useDownloadOrgForm12BBBulk,
   useDownloadPayrollFiling,
   useEmployees,
@@ -87,6 +89,7 @@ function getFilingTone(status: string) {
 export function PayrollPage() {
   const { data, isLoading } = usePayrollSummary()
   const { data: employeesResponse } = useEmployees({ status: 'ACTIVE' })
+  const createCostCentreMutation = useCreateCostCentre()
   const createTemplateMutation = useCreateCompensationTemplate()
   const submitTemplateMutation = useSubmitCompensationTemplate()
   const createAssignmentMutation = useCreateCompensationAssignment()
@@ -103,6 +106,7 @@ export function PayrollPage() {
   const cancelFilingMutation = useCancelPayrollFiling()
   const downloadFilingMutation = useDownloadPayrollFiling()
   const downloadForm12BBBulkMutation = useDownloadOrgForm12BBBulk()
+  const deactivateCostCentreMutation = useDeactivateCostCentre()
   const reviewInvestmentDeclarationMutation = useReviewOrgInvestmentDeclaration()
   const { data: arrears = [] } = useOrgArrears()
 
@@ -111,6 +115,14 @@ export function PayrollPage() {
     description: '',
     basic_pay: '',
     employee_deduction: '',
+    basic_pay_cost_centre_id: '',
+    employee_deduction_cost_centre_id: '',
+  })
+  const [costCentreForm, setCostCentreForm] = useState({
+    code: '',
+    name: '',
+    gl_code: '',
+    parent_id: '',
   })
   const [assignmentForm, setAssignmentForm] = useState({
     employee_id: '',
@@ -202,6 +214,7 @@ export function PayrollPage() {
             component_type: 'EARNING',
             monthly_amount: templateForm.basic_pay,
             is_taxable: true,
+            cost_centre_id: templateForm.basic_pay_cost_centre_id || undefined,
           },
           {
             component_code: 'PF_EMPLOYEE',
@@ -209,12 +222,43 @@ export function PayrollPage() {
             component_type: 'EMPLOYEE_DEDUCTION',
             monthly_amount: templateForm.employee_deduction,
             is_taxable: false,
+            cost_centre_id: templateForm.employee_deduction_cost_centre_id || undefined,
           },
         ],
       })
       toast.success('Compensation template created.')
     } catch (error) {
       toast.error(getErrorMessage(error, 'Unable to create the compensation template. Check the salary-component values and try again.'))
+    }
+  }
+
+  const handleCreateCostCentre = async (event: React.FormEvent) => {
+    event.preventDefault()
+    try {
+      await createCostCentreMutation.mutateAsync({
+        code: costCentreForm.code,
+        name: costCentreForm.name,
+        gl_code: costCentreForm.gl_code || undefined,
+        parent_id: costCentreForm.parent_id || undefined,
+      })
+      setCostCentreForm({
+        code: '',
+        name: '',
+        gl_code: '',
+        parent_id: '',
+      })
+      toast.success('Cost centre created.')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to create the cost centre. Check the code, name, and parent selection.'))
+    }
+  }
+
+  const handleDeactivateCostCentre = async (costCentreId: string) => {
+    try {
+      await deactivateCostCentreMutation.mutateAsync(costCentreId)
+      toast.success('Cost centre deactivated.')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to deactivate the cost centre.'))
     }
   }
 
@@ -630,10 +674,14 @@ function RunsSection({
         </p>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-5">
+      <div className="grid gap-4 xl:grid-cols-6">
         <div className="surface-muted rounded-[22px] px-5 py-4">
           <p className="text-sm text-[hsl(var(--muted-foreground))]">Tax slab sets</p>
           <p className="mt-2 text-3xl font-semibold text-[hsl(var(--foreground-strong))]">{data.tax_slab_sets.length}</p>
+        </div>
+        <div className="surface-muted rounded-[22px] px-5 py-4">
+          <p className="text-sm text-[hsl(var(--muted-foreground))]">Cost centres</p>
+          <p className="mt-2 text-3xl font-semibold text-[hsl(var(--foreground-strong))]">{data.cost_centres.length}</p>
         </div>
         <div className="surface-muted rounded-[22px] px-5 py-4">
           <p className="text-sm text-[hsl(var(--muted-foreground))]">Templates</p>
@@ -679,7 +727,7 @@ function RunsSection({
       </SectionCard>
 
       {activeSection === 'setup' ? (
-        <div className="grid gap-6 xl:grid-cols-2">
+        <div className="grid gap-6 xl:grid-cols-3">
           <SectionCard title="Income tax masters" description="Statutory tax slab masters are managed by the Control Tower. Contact your CT admin to add or update slabs for a new financial year.">
             <div className="space-y-3">
               {data.tax_slab_sets.map((set) => (
@@ -697,11 +745,105 @@ function RunsSection({
             </div>
           </SectionCard>
 
+          <SectionCard title="Cost centres" description="Manage the payroll cost-centre master here so salary structures and payroll lines carry the right accounting context.">
+            <form onSubmit={handleCreateCostCentre} className="grid gap-4">
+              <div>
+                <label className="field-label" htmlFor="payroll-cost-centre-code">Code</label>
+                <input
+                  id="payroll-cost-centre-code"
+                  className="field-input"
+                  value={costCentreForm.code}
+                  onChange={(event) => setCostCentreForm((current) => ({ ...current, code: event.target.value }))}
+                  placeholder="ENG-100"
+                />
+              </div>
+              <div>
+                <label className="field-label" htmlFor="payroll-cost-centre-name">Name</label>
+                <input
+                  id="payroll-cost-centre-name"
+                  className="field-input"
+                  value={costCentreForm.name}
+                  onChange={(event) => setCostCentreForm((current) => ({ ...current, name: event.target.value }))}
+                  placeholder="Engineering"
+                />
+              </div>
+              <div>
+                <label className="field-label" htmlFor="payroll-cost-centre-gl-code">GL code</label>
+                <input
+                  id="payroll-cost-centre-gl-code"
+                  className="field-input"
+                  value={costCentreForm.gl_code}
+                  onChange={(event) => setCostCentreForm((current) => ({ ...current, gl_code: event.target.value }))}
+                  placeholder="5001-SALARY"
+                />
+              </div>
+              <div>
+                <label className="field-label" htmlFor="payroll-cost-centre-parent">Parent cost centre</label>
+                <AppSelect
+                  id="payroll-cost-centre-parent"
+                  value={costCentreForm.parent_id}
+                  onValueChange={(value) => setCostCentreForm((current) => ({ ...current, parent_id: value }))}
+                  options={[
+                    { value: '', label: 'No parent' },
+                    ...data.cost_centres
+                      .filter((costCentre) => costCentre.is_active)
+                      .map((costCentre) => ({
+                        value: costCentre.id,
+                        label: `${costCentre.code} · ${costCentre.name}`,
+                        hint: costCentre.gl_code || undefined,
+                      })),
+                  ]}
+                  placeholder="Optional parent"
+                />
+              </div>
+              <button type="submit" className="btn-primary" disabled={createCostCentreMutation.isPending}>
+                Create cost centre
+              </button>
+            </form>
+            <div className="mt-5 space-y-3">
+              {data.cost_centres.length ? data.cost_centres.map((costCentre) => (
+                <div key={costCentre.id} className="surface-shell rounded-[18px] px-4 py-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold text-[hsl(var(--foreground-strong))]">{costCentre.code}</p>
+                        <StatusBadge tone={costCentre.is_active ? 'success' : 'neutral'}>
+                          {costCentre.is_active ? 'Active' : 'Inactive'}
+                        </StatusBadge>
+                      </div>
+                      <p className="mt-2 text-sm text-[hsl(var(--foreground-strong))]">{costCentre.name}</p>
+                      <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
+                        {costCentre.gl_code ? `GL ${costCentre.gl_code}` : 'No GL code'}{costCentre.parent_name ? ` • Parent ${costCentre.parent_name}` : ''}
+                      </p>
+                    </div>
+                    {costCentre.is_active ? (
+                      <ConfirmDialog
+                        trigger={
+                          <button type="button" className="btn-secondary">
+                            Deactivate
+                          </button>
+                        }
+                        title="Deactivate cost centre?"
+                        description="Historical payroll lines keep their references, but new templates should stop using this cost centre."
+                        confirmLabel="Deactivate"
+                        variant="danger"
+                        onConfirm={() => handleDeactivateCostCentre(costCentre.id)}
+                      />
+                    ) : null}
+                  </div>
+                </div>
+              )) : (
+                <EmptyState title="No cost centres yet" description="Create at least one cost centre before mapping salary lines for payroll accounting." />
+              )}
+            </div>
+          </SectionCard>
+
           <SectionCard title="Setup guidance" description="Use this section first so payroll preview has the baseline tax and policy inputs it needs.">
             <div className="space-y-3 text-sm text-[hsl(var(--muted-foreground))]">
               <p>1. Confirm the correct fiscal-year slab set before assigning salary structures.</p>
-              <p>2. Treat this as preview tax setup only until statutory payroll is completed for India.</p>
-              <p>3. Move to the compensation section once the active slab set matches your intended payroll scenario.</p>
+              <p>2. Create cost centres before template design if payroll output needs department, function, or ledger splits.</p>
+              <p>3. Treat this as preview tax setup only until statutory payroll is completed for India.</p>
+              <p>4. Move to the compensation section once the active slab set and cost-centre master match your intended payroll scenario.</p>
             </div>
           </SectionCard>
         </div>
@@ -780,7 +922,14 @@ function RunsSection({
   )
 }
 
-type TemplateFormState = { name: string; description: string; basic_pay: string; employee_deduction: string }
+type TemplateFormState = {
+  name: string
+  description: string
+  basic_pay: string
+  employee_deduction: string
+  basic_pay_cost_centre_id: string
+  employee_deduction_cost_centre_id: string
+}
 type AssignmentFormState = { employee_id: string; template_id: string; effective_from: string }
 type ArrearFormState = { employee_id: string; for_period_year: string; for_period_month: string; reason: string; amount: string }
 type FilingFormState = { filing_type: string; period_year: string; period_month: string; fiscal_year: string; quarter: string; artifact_format: string }
@@ -843,6 +992,19 @@ function CompensationSection({
       })),
     [data],
   )
+  const costCentreOptions = useMemo(
+    () => [
+      { value: '', label: 'No cost centre' },
+      ...(data?.cost_centres ?? [])
+        .filter((costCentre) => costCentre.is_active)
+        .map((costCentre) => ({
+          value: costCentre.id,
+          label: `${costCentre.code} · ${costCentre.name}`,
+          hint: costCentre.gl_code || undefined,
+        })),
+    ],
+    [data],
+  )
 
   return (
     <div className="grid gap-6 xl:grid-cols-2">
@@ -870,6 +1032,26 @@ function CompensationSection({
             <label className="field-label" htmlFor="payroll-template-employee-deduction">Employee deduction</label>
             <input id="payroll-template-employee-deduction" className="field-input" value={templateForm.employee_deduction} onChange={(event) => setTemplateForm((current) => ({ ...current, employee_deduction: event.target.value }))} placeholder="Employee deduction" />
           </div>
+          <div>
+            <label className="field-label" htmlFor="payroll-template-basic-pay-cost-centre">Basic pay cost centre</label>
+            <AppSelect
+              id="payroll-template-basic-pay-cost-centre"
+              value={templateForm.basic_pay_cost_centre_id}
+              onValueChange={(value) => setTemplateForm((current) => ({ ...current, basic_pay_cost_centre_id: value }))}
+              options={costCentreOptions}
+              placeholder="Map basic pay"
+            />
+          </div>
+          <div>
+            <label className="field-label" htmlFor="payroll-template-employee-deduction-cost-centre">Employee deduction cost centre</label>
+            <AppSelect
+              id="payroll-template-employee-deduction-cost-centre"
+              value={templateForm.employee_deduction_cost_centre_id}
+              onValueChange={(value) => setTemplateForm((current) => ({ ...current, employee_deduction_cost_centre_id: value }))}
+              options={costCentreOptions}
+              placeholder="Optional deduction mapping"
+            />
+          </div>
           <div className="md:col-span-2">
             <button type="submit" className="btn-primary" disabled={createTemplateMutation.isPending}>
               Create template
@@ -877,26 +1059,35 @@ function CompensationSection({
           </div>
         </form>
         <div className="mt-5 space-y-3">
-          {data.compensation_templates.map((template) => (
-            <div key={template.id} className="surface-shell rounded-[18px] px-4 py-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="font-semibold text-[hsl(var(--foreground-strong))]">{template.name}</p>
-                    <StatusBadge tone={getCompensationStatusTone(template.status)}>
-                      {template.status}
-                    </StatusBadge>
+          {data.compensation_templates.map((template) => {
+            const mappedCostCentres = Array.from(
+              new Set(template.lines.map((line) => line.cost_centre_name).filter((value): value is string => Boolean(value))),
+            )
+
+            return (
+              <div key={template.id} className="surface-shell rounded-[18px] px-4 py-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-semibold text-[hsl(var(--foreground-strong))]">{template.name}</p>
+                      <StatusBadge tone={getCompensationStatusTone(template.status)}>
+                        {template.status}
+                      </StatusBadge>
+                    </div>
+                    <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">{template.lines.length} lines • Modified {formatDateTime(template.modified_at)}</p>
+                    <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
+                      Cost centres: {mappedCostCentres.length ? mappedCostCentres.join(', ') : 'Not mapped'}
+                    </p>
                   </div>
-                  <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">{template.lines.length} lines • Modified {formatDateTime(template.modified_at)}</p>
+                  {template.status !== 'PENDING_APPROVAL' && template.status !== 'APPROVED' ? (
+                    <button type="button" className="btn-secondary" onClick={() => void onSubmitTemplate(template.id)}>
+                      Submit approval
+                    </button>
+                  ) : null}
                 </div>
-                {template.status !== 'PENDING_APPROVAL' && template.status !== 'APPROVED' ? (
-                  <button type="button" className="btn-secondary" onClick={() => void onSubmitTemplate(template.id)}>
-                    Submit approval
-                  </button>
-                ) : null}
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       </SectionCard>
 
@@ -919,28 +1110,37 @@ function CompensationSection({
           </button>
         </form>
         <div className="mt-5 space-y-3">
-          {data.compensation_assignments.length ? data.compensation_assignments.map((assignment) => (
-            <div key={assignment.id} className="surface-shell rounded-[18px] px-4 py-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="font-semibold text-[hsl(var(--foreground-strong))]">{assignment.employee_name}</p>
-                    <StatusBadge tone={getCompensationStatusTone(assignment.status)}>
-                      {assignment.status}
-                    </StatusBadge>
+          {data.compensation_assignments.length ? data.compensation_assignments.map((assignment) => {
+            const mappedCostCentres = Array.from(
+              new Set(assignment.lines.map((line) => line.cost_centre_name).filter((value): value is string => Boolean(value))),
+            )
+
+            return (
+              <div key={assignment.id} className="surface-shell rounded-[18px] px-4 py-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-semibold text-[hsl(var(--foreground-strong))]">{assignment.employee_name}</p>
+                      <StatusBadge tone={getCompensationStatusTone(assignment.status)}>
+                        {assignment.status}
+                      </StatusBadge>
+                    </div>
+                    <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
+                      {assignment.template_name} • Effective {assignment.effective_from} • Version {assignment.version}
+                    </p>
+                    <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
+                      Cost centres: {mappedCostCentres.length ? mappedCostCentres.join(', ') : 'Not mapped'}
+                    </p>
                   </div>
-                  <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
-                    {assignment.template_name} • Effective {assignment.effective_from} • Version {assignment.version}
-                  </p>
+                  {assignment.status !== 'PENDING_APPROVAL' && assignment.status !== 'APPROVED' ? (
+                    <button type="button" className="btn-secondary" onClick={() => void onSubmitAssignment(assignment.id)}>
+                      Submit approval
+                    </button>
+                  ) : null}
                 </div>
-                {assignment.status !== 'PENDING_APPROVAL' && assignment.status !== 'APPROVED' ? (
-                  <button type="button" className="btn-secondary" onClick={() => void onSubmitAssignment(assignment.id)}>
-                    Submit approval
-                  </button>
-                ) : null}
               </div>
-            </div>
-          )) : (
+            )
+          }) : (
             <EmptyState title="No salary assignments yet" description="Assign a compensation template to at least one employee before calculating payroll." />
           )}
         </div>

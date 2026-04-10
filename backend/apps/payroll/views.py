@@ -363,13 +363,17 @@ class OrgPayrollSummaryView(APIView):
         tax_slab_sets = PayrollTaxSlabSet.objects.filter(
             organisation__isnull=True, is_system_master=True, country_code='IN', is_active=True,
         ).prefetch_related('slabs').order_by('fiscal_year', 'is_old_regime', 'tax_category')
-        templates = CompensationTemplate.objects.filter(organisation=organisation).prefetch_related('lines__component')
-        assignments = CompensationAssignment.objects.filter(employee__organisation=organisation).select_related('employee__user', 'template')
+        templates = CompensationTemplate.objects.filter(organisation=organisation).prefetch_related('lines__component', 'lines__cost_centre')
+        assignments = CompensationAssignment.objects.filter(employee__organisation=organisation).select_related('employee__user', 'template').prefetch_related('lines__cost_centre')
         pay_runs = _annotated_pay_run_qs(organisation=organisation)
         return Response(
             {
                 'tax_slab_sets': PayrollTaxSlabSetSerializer(tax_slab_sets, many=True).data,
                 'components': PayrollComponentSerializer(setup['components'], many=True).data,
+                'cost_centres': CostCentreSerializer(
+                    CostCentre.objects.filter(organisation=organisation).select_related('parent').order_by('code'),
+                    many=True,
+                ).data,
                 'compensation_templates': CompensationTemplateSerializer(templates, many=True).data,
                 'compensation_assignments': CompensationAssignmentSerializer(assignments, many=True).data,
                 'pay_runs': PayrollRunSerializer(pay_runs, many=True).data,
@@ -455,12 +459,12 @@ class OrgCompensationTemplateListCreateView(APIView):
 
     def get(self, request):
         organisation = _get_admin_organisation(request)
-        queryset = CompensationTemplate.objects.filter(organisation=organisation).prefetch_related('lines__component')
+        queryset = CompensationTemplate.objects.filter(organisation=organisation).prefetch_related('lines__component', 'lines__cost_centre')
         return Response(CompensationTemplateSerializer(queryset, many=True).data)
 
     def post(self, request):
         organisation = _get_admin_organisation(request)
-        serializer = CompensationTemplateWriteSerializer(data=request.data)
+        serializer = CompensationTemplateWriteSerializer(data=request.data, context={'organisation': organisation})
         serializer.is_valid(raise_exception=True)
         template = create_compensation_template(organisation, actor=request.user, **serializer.validated_data)
         return Response(CompensationTemplateSerializer(template).data, status=status.HTTP_201_CREATED)
@@ -472,7 +476,7 @@ class OrgCompensationTemplateDetailView(APIView):
     def patch(self, request, pk):
         organisation = _get_admin_organisation(request)
         template = get_object_or_404(CompensationTemplate, organisation=organisation, id=pk)
-        serializer = CompensationTemplateWriteSerializer(data=request.data, partial=True)
+        serializer = CompensationTemplateWriteSerializer(data=request.data, partial=True, context={'organisation': organisation})
         serializer.is_valid(raise_exception=True)
         template = update_compensation_template(template, actor=request.user, **serializer.validated_data)
         return Response(CompensationTemplateSerializer(template).data)
@@ -501,7 +505,7 @@ class OrgCompensationAssignmentListCreateView(APIView):
 
     def get(self, request):
         organisation = _get_admin_organisation(request)
-        queryset = CompensationAssignment.objects.filter(employee__organisation=organisation).select_related('employee__user', 'template').prefetch_related('lines')
+        queryset = CompensationAssignment.objects.filter(employee__organisation=organisation).select_related('employee__user', 'template').prefetch_related('lines__cost_centre')
         return Response(CompensationAssignmentSerializer(queryset, many=True).data)
 
     def post(self, request):

@@ -10,6 +10,7 @@ from .models import (
     CompensationAssignmentLine,
     CompensationTemplate,
     CompensationTemplateLine,
+    CostCentre,
     FullAndFinalSettlement,
     InvestmentDeclaration,
     LabourWelfareFundContribution,
@@ -245,10 +246,22 @@ class PayrollComponentSerializer(serializers.ModelSerializer):
 class CompensationTemplateLineSerializer(serializers.ModelSerializer):
     component = PayrollComponentSerializer(read_only=True)
     component_id = serializers.UUIDField(source='component.id', read_only=True)
+    cost_centre_id = serializers.UUIDField(source='cost_centre.id', read_only=True, allow_null=True)
+    cost_centre_code = serializers.CharField(source='cost_centre.code', read_only=True, allow_null=True)
+    cost_centre_name = serializers.CharField(source='cost_centre.name', read_only=True, allow_null=True)
 
     class Meta:
         model = CompensationTemplateLine
-        fields = ['id', 'component_id', 'component', 'monthly_amount', 'sequence']
+        fields = [
+            'id',
+            'component_id',
+            'component',
+            'monthly_amount',
+            'sequence',
+            'cost_centre_id',
+            'cost_centre_code',
+            'cost_centre_name',
+        ]
 
 
 class CompensationTemplateLineWriteSerializer(serializers.Serializer):
@@ -257,12 +270,27 @@ class CompensationTemplateLineWriteSerializer(serializers.Serializer):
     component_type = serializers.CharField(max_length=32)
     monthly_amount = serializers.DecimalField(max_digits=12, decimal_places=2)
     is_taxable = serializers.BooleanField(required=False, default=True)
+    cost_centre_id = serializers.UUIDField(required=False, allow_null=True)
 
     def validate_monthly_amount(self, value):
         if value < 0:
             raise serializers.ValidationError(
                 'Monthly amount cannot be negative. Use a deduction component type for amounts that reduce pay.'
             )
+        return value
+
+    def validate_cost_centre_id(self, value):
+        if value in (None, ''):
+            return None
+        organisation = self.context.get('organisation')
+        if organisation is None:
+            return value
+        if not CostCentre.objects.filter(
+            organisation=organisation,
+            id=value,
+            is_active=True,
+        ).exists():
+            raise serializers.ValidationError('Select an active cost centre from this organisation.')
         return value
 
 
@@ -283,6 +311,9 @@ class CompensationTemplateWriteSerializer(serializers.Serializer):
 
 class CompensationAssignmentLineSerializer(serializers.ModelSerializer):
     component_id = serializers.UUIDField(source='component.id', read_only=True)
+    cost_centre_id = serializers.UUIDField(source='cost_centre.id', read_only=True, allow_null=True)
+    cost_centre_code = serializers.CharField(source='cost_centre.code', read_only=True, allow_null=True)
+    cost_centre_name = serializers.CharField(source='cost_centre.name', read_only=True, allow_null=True)
 
     class Meta:
         model = CompensationAssignmentLine
@@ -294,6 +325,9 @@ class CompensationAssignmentLineSerializer(serializers.ModelSerializer):
             'monthly_amount',
             'is_taxable',
             'sequence',
+            'cost_centre_id',
+            'cost_centre_code',
+            'cost_centre_name',
         ]
 
 

@@ -34,17 +34,22 @@ function getPeriodLabel(month: number, year: number) {
 
 function ExpandedRow({ item }: { item: PayrollRunItem }) {
   const snapshot = item.snapshot as Record<string, unknown>
-  const lines = (snapshot?.lines as Array<{ component_type: string; component_name: string; monthly_amount: string }>) ?? []
+  const lines = (snapshot?.lines as Array<{
+    component_type: string
+    component_name: string
+    monthly_amount: string
+    cost_centre_name?: string
+  }>) ?? []
 
   const earnings = lines
     .filter((l) => l.component_type === 'EARNING')
-    .map((l) => ({ label: l.component_name, amount: l.monthly_amount }))
+    .map((l) => ({ label: l.component_name, amount: l.monthly_amount, costCentre: l.cost_centre_name }))
   const deductions = lines
     .filter((l) => l.component_type === 'EMPLOYEE_DEDUCTION')
-    .map((l) => ({ label: l.component_name, amount: l.monthly_amount }))
+    .map((l) => ({ label: l.component_name, amount: l.monthly_amount, costCentre: l.cost_centre_name }))
   const employerContributions = lines
     .filter((l) => l.component_type === 'EMPLOYER_CONTRIBUTION')
-    .map((l) => ({ label: l.component_name, amount: l.monthly_amount }))
+    .map((l) => ({ label: l.component_name, amount: l.monthly_amount, costCentre: l.cost_centre_name }))
 
   return (
     <div className="bg-[hsl(var(--muted)/0.5)] px-6 py-4">
@@ -55,7 +60,7 @@ function ExpandedRow({ item }: { item: PayrollRunItem }) {
             <dl className="space-y-1">
               {earnings.map((e) => (
                 <div key={e.label} className="flex justify-between text-sm">
-                  <dt>{e.label}</dt>
+                  <dt>{e.label}{e.costCentre ? ` · ${e.costCentre}` : ''}</dt>
                   <dd className="font-medium tabular-nums">{formatINR(e.amount)}</dd>
                 </div>
               ))}
@@ -68,7 +73,7 @@ function ExpandedRow({ item }: { item: PayrollRunItem }) {
             <dl className="space-y-1">
               {deductions.map((d) => (
                 <div key={d.label} className="flex justify-between text-sm">
-                  <dt>{d.label}</dt>
+                  <dt>{d.label}{d.costCentre ? ` · ${d.costCentre}` : ''}</dt>
                   <dd className="font-medium tabular-nums text-[hsl(var(--danger))]">{formatINR(d.amount)}</dd>
                 </div>
               ))}
@@ -81,7 +86,7 @@ function ExpandedRow({ item }: { item: PayrollRunItem }) {
             <dl className="space-y-1">
               {employerContributions.map((c) => (
                 <div key={c.label} className="flex justify-between text-sm">
-                  <dt>{c.label}</dt>
+                  <dt>{c.label}{c.costCentre ? ` · ${c.costCentre}` : ''}</dt>
                   <dd className="tabular-nums text-[hsl(var(--success))]">{formatINR(c.amount)}</dd>
                 </div>
               ))}

@@ -201,6 +201,12 @@ def _get_or_create_component(organisation, payload):
     return component
 
 
+def _resolve_cost_centre(organisation, cost_centre_id):
+    if not cost_centre_id:
+        return None
+    return organisation.cost_centres.filter(id=cost_centre_id, is_active=True).first()
+
+
 def _fmt_inr(val):
     """Format a numeric string or Decimal as ₹XX,XX,XXX.XX (Indian notation)."""
     try:
@@ -803,11 +809,15 @@ def create_compensation_template(organisation, *, name, description='', lines, a
         )
         for index, line in enumerate(lines, start=1):
             component = _get_or_create_component(organisation, line)
+            cost_centre = _resolve_cost_centre(organisation, line.get('cost_centre_id'))
+            if line.get('cost_centre_id') and cost_centre is None:
+                raise ValueError('Select an active cost centre from this organisation.')
             CompensationTemplateLine.objects.create(
                 template=template,
                 component=component,
                 monthly_amount=_normalize_decimal(line['monthly_amount']),
                 sequence=index,
+                cost_centre=cost_centre,
             )
     log_audit_event(actor, 'payroll.compensation_template.created', organisation=organisation, target=template)
     return template
@@ -825,11 +835,15 @@ def update_compensation_template(template, *, name=None, description=None, lines
         template.lines.all().delete()
         for index, line in enumerate(lines, start=1):
             component = _get_or_create_component(template.organisation, line)
+            cost_centre = _resolve_cost_centre(template.organisation, line.get('cost_centre_id'))
+            if line.get('cost_centre_id') and cost_centre is None:
+                raise ValueError('Select an active cost centre from this organisation.')
             CompensationTemplateLine.objects.create(
                 template=template,
                 component=component,
                 monthly_amount=_normalize_decimal(line['monthly_amount']),
                 sequence=index,
+                cost_centre=cost_centre,
             )
     log_audit_event(actor, 'payroll.compensation_template.updated', organisation=template.organisation, target=template)
     return template
@@ -892,7 +906,7 @@ def assign_employee_compensation(
             vpf_rate_percent=normalized_vpf_rate_percent,
             status=CompensationAssignmentStatus.APPROVED if auto_approve else CompensationAssignmentStatus.DRAFT,
         )
-        for line in template.lines.select_related('component').all():
+        for line in template.lines.select_related('component', 'cost_centre').all():
             CompensationAssignmentLine.objects.create(
                 assignment=assignment,
                 component=line.component,
@@ -901,6 +915,7 @@ def assign_employee_compensation(
                 monthly_amount=line.monthly_amount,
                 is_taxable=line.component.is_taxable,
                 sequence=line.sequence,
+                cost_centre=line.cost_centre,
             )
     log_audit_event(actor, 'payroll.compensation_assignment.created', organisation=employee.organisation, target=assignment)
     return assignment
@@ -1337,7 +1352,7 @@ def calculate_pay_run(pay_run, *, actor=None):
             has_pf_employer_line = False
             lines_snapshot = []
 
-            for line in assignment.lines.all().order_by('sequence', 'created_at'):
+            for line in assignment.lines.select_related('component', 'cost_centre').all().order_by('sequence', 'created_at'):
                 amount = _normalize_decimal(line.monthly_amount)
                 comp_code = line.component.code if line.component_id else ''
 
@@ -1354,6 +1369,9 @@ def calculate_pay_run(pay_run, *, actor=None):
                         'is_taxable': line.is_taxable,
                         'auto_calculated': False,
                         'template_amount': str(amount),
+                        'cost_centre_id': str(line.cost_centre_id) if line.cost_centre_id else '',
+                        'cost_centre_code': line.cost_centre.code if line.cost_centre_id else '',
+                        'cost_centre_name': line.cost_centre.name if line.cost_centre_id else '',
                     })
                     continue
                 if comp_code == 'PF_EMPLOYER':
@@ -1366,6 +1384,9 @@ def calculate_pay_run(pay_run, *, actor=None):
                         'is_taxable': line.is_taxable,
                         'auto_calculated': False,
                         'template_amount': str(amount),
+                        'cost_centre_id': str(line.cost_centre_id) if line.cost_centre_id else '',
+                        'cost_centre_code': line.cost_centre.code if line.cost_centre_id else '',
+                        'cost_centre_name': line.cost_centre.name if line.cost_centre_id else '',
                     })
                     continue
 
@@ -1376,6 +1397,9 @@ def calculate_pay_run(pay_run, *, actor=None):
                     'monthly_amount': str(amount),
                     'is_taxable': line.is_taxable,
                     'auto_calculated': False,
+                    'cost_centre_id': str(line.cost_centre_id) if line.cost_centre_id else '',
+                    'cost_centre_code': line.cost_centre.code if line.cost_centre_id else '',
+                    'cost_centre_name': line.cost_centre.name if line.cost_centre_id else '',
                 })
 
                 if line.component_type in [PayrollComponentType.EARNING, PayrollComponentType.REIMBURSEMENT]:

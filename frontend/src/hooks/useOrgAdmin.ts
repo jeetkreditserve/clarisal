@@ -31,6 +31,7 @@ import {
   createApprovalDelegation,
   createCompensationAssignment,
   createCompensationTemplate,
+  createCostCentre,
   createDepartment,
   createHolidayCalendar,
   createOrgAddress,
@@ -44,6 +45,7 @@ import {
   createNotice,
   createOnDutyPolicy,
   deactivateDepartment,
+  deactivateCostCentre,
   deactivateOrgAddress,
   deactivateLocation,
   deleteEmployee,
@@ -113,6 +115,7 @@ import {
   submitCompensationTemplate,
   submitPayrollRun,
   updateCompensationTemplate,
+  updateCostCentre,
   updateOrgInvestmentDeclarationReview,
   updateOrgAddress,
   updateOrgProfile,
@@ -946,6 +949,36 @@ export function useUpdatePayrollTaxSlabSet() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: Record<string, unknown> }) => updatePayrollTaxSlabSet(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useCreateCostCentre() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: createCostCentre,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useUpdateCostCentre() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Parameters<typeof updateCostCentre>[1] }) => updateCostCentre(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useDeactivateCostCentre() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: deactivateCostCentre,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['org'] })
     },
