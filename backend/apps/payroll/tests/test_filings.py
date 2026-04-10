@@ -11,6 +11,8 @@ from apps.organisations.models import (
     Organisation,
     OrganisationAccessState,
     OrganisationBillingStatus,
+    OrganisationMembership,
+    OrganisationMembershipStatus,
     OrganisationStatus,
 )
 from apps.organisations.services import create_licence_batch, mark_licence_batch_paid
@@ -64,6 +66,12 @@ def _create_org_with_admin():
         first_name="Nina",
         last_name="Admin",
         is_active=True,
+    )
+    OrganisationMembership.objects.create(
+        user=admin,
+        organisation=organisation,
+        is_org_admin=True,
+        status=OrganisationMembershipStatus.ACTIVE,
     )
     return organisation, admin
 
@@ -630,3 +638,167 @@ def test_generate_form12bb_pdf_empty_declaration_edge_case(filing_fixture):
 
     assert result.validation_errors == ["No investment declarations found for FY 2026-2027."]
     assert result.artifact_binary == b""
+import io
+import zipfile
+from unittest.mock import patch
+
+import pytest
+from rest_framework.test import APIClient
+
+from apps.payroll.models import InvestmentDeclaration, InvestmentSection
+from apps.payroll.services import generate_form12bb_zip_for_organisation
+
+
+@pytest.mark.django_db
+def test_generate_form12bb_zip_returns_valid_zip(filing_fixture):
+    """generate_form12bb_zip_for_organisation returns a valid ZIP containing PDFs."""
+    InvestmentDeclaration.objects.create(
+        employee=filing_fixture["employee"],
+        fiscal_year="2026-2027",
+        section=InvestmentSection.SECTION_80C,
+        description="PPF",
+        declared_amount="50000.00",
+    )
+
+    zip_bytes, structured_payloads = generate_form12bb_zip_for_organisation(
+        filing_fixture["organisation"],
+        fiscal_year="2026-2027",
+        actor=filing_fixture["admin"],
+    )
+
+    assert isinstance(zip_bytes, bytes)
+    assert len(zip_bytes) > 0
+
+    zip_buffer = io.BytesIO(zip_bytes)
+    with zipfile.ZipFile(zip_buffer, "r") as zf:
+        assert zf.testzip() is None
+        file_names = zf.namelist()
+        assert len(file_names) >= 1
+        pdf_files = [f for f in file_names if f.endswith(".pdf")]
+        assert len(pdf_files) == 1
+        pdf_content = zf.read(pdf_files[0])
+        assert pdf_content.startswith(b"%PDF")
+
+    assert len(structured_payloads) == 1
+    assert structured_payloads[0]["filing_type"] == "FORM12BB"
+
+
+@pytest.mark.django_db
+def test_generate_form12bb_zip_empty_when_no_declarations(filing_fixture):
+    """ZIP is empty when no employee has declarations for the fiscal year."""
+    zip_bytes, structured_payloads = generate_form12bb_zip_for_organisation(
+        filing_fixture["organisation"],
+        fiscal_year="2026-2027",
+        actor=filing_fixture["admin"],
+    )
+
+    zip_buffer = io.BytesIO(zip_bytes)
+    with zipfile.ZipFile(zip_buffer, "r") as zf:
+        file_names = zf.namelist()
+        assert len(file_names) == 0
+
+    assert len(structured_payloads) == 1
+    assert structured_payloads[0]["filing_type"] == "FORM12BB"
+    assert structured_payloads[0]["employee_code"] == "EMP001"
+
+
+@pytest.mark.django_db
+def test_my_form12bb_download_returns_pdf(filing_fixture):
+    """MyForm12BBDownloadView returns a PDF for a valid fiscal year with declarations."""
+    InvestmentDeclaration.objects.create(
+        employee=filing_fixture["employee"],
+        fiscal_year="2026-2027",
+        section=InvestmentSection.HRA,
+        description="Rent",
+        declared_amount="120000.00",
+    )
+
+    client = APIClient()
+    client.force_authenticate(user=filing_fixture["employee"].user)
+
+    response = client.get("/api/me/payroll/form12bb/2026-2027/download/")
+
+    assert response.status_code == 200
+    assert response["Content-Type"] == "application/pdf"
+    assert b"%PDF" in response.content
+    assert "form12bb-EMP001-2026-2027.pdf" in response["Content-Disposition"]
+
+
+@pytest.mark.django_db
+def test_my_form12bb_download_returns_400_when_blocked(filing_fixture):
+    """MyForm12BBDownloadView returns 400 when org operations are blocked."""
+    InvestmentDeclaration.objects.create(
+        employee=filing_fixture["employee"],
+        fiscal_year="2026-2027",
+        section=InvestmentSection.HRA,
+        description="Rent",
+        declared_amount="120000.00",
+    )
+
+    client = APIClient()
+    client.force_authenticate(user=filing_fixture["employee"].user)
+
+    with patch(
+        "apps.approvals.services.get_org_operations_guard",
+        return_value={"approval_actions_blocked": True, "reason": "Licence expired."},
+    ):
+        response = client.get("/api/me/payroll/form12bb/2026-2027/download/")
+
+    assert response.status_code == 400
+    assert "Licence expired" in response.json()["error"]
+
+
+@pytest.mark.django_db
+def test_my_form12bb_download_returns_400_when_no_declarations(filing_fixture):
+    """MyForm12BBDownloadView returns 400 when no declarations exist for the fiscal year."""
+    client = APIClient()
+    client.force_authenticate(user=filing_fixture["employee"].user)
+
+    response = client.get("/api/me/payroll/form12bb/2026-2027/download/")
+
+    assert response.status_code == 400
+    assert "No investment declarations found" in response.json()["error"]
+
+
+@pytest.mark.django_db
+def test_org_form12bb_bulk_download_returns_zip(filing_fixture):
+    """OrgForm12BBBulkDownloadView returns a ZIP file for the org."""
+    InvestmentDeclaration.objects.create(
+        employee=filing_fixture["employee"],
+        fiscal_year="2026-2027",
+        section=InvestmentSection.SECTION_80C,
+        description="PPF",
+        declared_amount="50000.00",
+    )
+
+    client = APIClient()
+    client.force_authenticate(user=filing_fixture["admin"])
+    client.session["active_admin_org_id"] = str(filing_fixture["organisation"].id)
+
+    response = client.get("/api/org/payroll/form12bb/2026-2027/download/")
+
+    assert response.status_code == 200
+    assert response["Content-Type"] == "application/zip"
+    assert "form12bb-bulk-2026-2027.zip" in response["Content-Disposition"]
+
+    zip_buffer = io.BytesIO(response.content)
+    with zipfile.ZipFile(zip_buffer, "r") as zf:
+        pdf_files = [f for f in zf.namelist() if f.endswith(".pdf")]
+        assert len(pdf_files) == 1
+
+
+@pytest.mark.django_db
+def test_org_form12bb_bulk_download_returns_400_when_blocked(filing_fixture):
+    """OrgForm12BBBulkDownloadView returns 400 when org operations are blocked."""
+    client = APIClient()
+    client.force_authenticate(user=filing_fixture["admin"])
+
+    client.session["active_admin_org_id"] = str(filing_fixture["organisation"].id)
+    with patch(
+        "apps.approvals.services.get_org_operations_guard",
+        return_value={"approval_actions_blocked": True, "reason": "Licence expired."},
+    ):
+        response = client.get("/api/org/payroll/form12bb/2026-2027/download/")
+
+    assert response.status_code == 400
+    assert "Licence expired" in response.json()["error"]

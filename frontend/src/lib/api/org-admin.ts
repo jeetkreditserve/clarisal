@@ -229,6 +229,28 @@ export async function fetchEmployeeDetail(id: string) {
   return data
 }
 
+export interface CareerTimelineEntry {
+  type: 'PROMOTION' | 'TRANSFER'
+  id: string
+  date: string
+  status: string
+  from_department: string | null
+  to_department: string | null
+  from_location: string | null
+  to_location: string | null
+  from_designation: string | null
+  to_designation: string | null
+  has_compensation_change?: boolean
+  reason: string
+  requested_by: string | null
+  approved_by: string | null
+}
+
+export async function fetchEmployeeCareerTimeline(employeeId: string) {
+  const { data } = await api.get<CareerTimelineEntry[]>(`/org/employees/${employeeId}/career-timeline/`)
+  return data
+}
+
 export async function updateEmployee(
   id: string,
   payload: Partial<{
@@ -860,4 +882,11 @@ export async function updateNotice(id: string, payload: Record<string, unknown>)
 export async function publishNotice(id: string) {
   const { data } = await api.post<NoticeItem>(`/org/notices/${id}/publish/`)
   return data
+}
+
+export async function downloadOrgForm12BBBulk(fiscalYear: string): Promise<Blob> {
+  const response = await api.get<Blob>(`/org/payroll/form12bb/${fiscalYear}/download/`, {
+    responseType: 'blob',
+  })
+  return response.data
 }

@@ -2277,3 +2277,35 @@ def rerun_payroll_run(pay_run, *, actor=None, requester_user=None, requester_emp
     )
     log_audit_event(actor or requester_user, 'payroll.run.rerun_created', organisation=pay_run.organisation, target=new_run)
     return new_run
+def generate_form12bb_zip_for_organisation(
+    organisation, *, fiscal_year: str, actor=None
+) -> tuple[bytes, list[dict[str, Any]]]:
+    from .filings.form12bb import generate_form12bb_pdf
+
+    import io
+    import zipfile
+
+    employees = list(
+        Employee.objects.filter(
+            organisation=organisation,
+            status=EmployeeStatus.ACTIVE,
+        )
+        .select_related("user")
+        .order_by("employee_code", "user__last_name", "user__first_name", "created_at")
+    )
+    pdf_entries: list[tuple[str, bytes]] = []
+    structured_payloads: list[dict[str, Any]] = []
+
+    for employee in employees:
+        result = generate_form12bb_pdf(employee=employee, fiscal_year=fiscal_year)
+        structured_payloads.append(result.structured_payload)
+        if result.artifact_binary:
+            pdf_entries.append((result.file_name, result.artifact_binary))
+
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for filename, pdf_bytes in pdf_entries:
+            zf.writestr(filename, pdf_bytes)
+
+    zip_buffer.seek(0)
+    return zip_buffer.read(), structured_payloads

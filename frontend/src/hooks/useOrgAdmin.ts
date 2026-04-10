@@ -13,6 +13,7 @@ import {
   cancelPayrollFiling,
   downloadAttendanceTemplate,
   downloadNormalizedAttendanceFile,
+  downloadOrgForm12BBBulk,
   downloadPayrollFiling,
   createApprovalWorkflow,
   createApprovalDelegation,
@@ -41,6 +42,7 @@ import {
   fetchEmployeeDocumentRequests,
   fetchEmployeeDetail,
   fetchEmployeeDocuments,
+  fetchEmployeeCareerTimeline,
   fetchEmployees,
   fetchOrgFullAndFinalSettlement,
   fetchOrgFullAndFinalSettlements,
@@ -317,6 +319,15 @@ export function useEmployeeDetail(id: string) {
     queryKey: ['org', organisationId, 'employees', id],
     queryFn: () => fetchEmployeeDetail(id),
     enabled: Boolean(id),
+  })
+}
+
+export function useEmployeeCareerTimeline(employeeId: string) {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'employees', employeeId, 'career-timeline'],
+    queryFn: () => fetchEmployeeCareerTimeline(employeeId),
+    enabled: Boolean(employeeId),
   })
 }
 
@@ -970,6 +981,12 @@ export function useCancelPayrollFiling() {
 export function useDownloadPayrollFiling() {
   return useMutation({
     mutationFn: downloadPayrollFiling,
+  })
+}
+
+export function useDownloadOrgForm12BBBulk() {
+  return useMutation({
+    mutationFn: downloadOrgForm12BBBulk,
   })
 }
 

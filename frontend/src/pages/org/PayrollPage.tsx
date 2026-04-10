@@ -9,7 +9,7 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { SkeletonPageHeader, SkeletonTable } from '@/components/ui/Skeleton'
 import { StatusBadge } from '@/components/ui/StatusBadge'
-import { useCancelPayrollFiling, useCalculatePayrollRun, useCreateCompensationAssignment, useCreateCompensationTemplate, useCreateOrgArrear, useCreatePayrollRun, useCreatePayrollTdsChallan, useDownloadPayrollFiling, useEmployees, useFinalizePayrollRun, useGeneratePayrollFiling, useOrgArrears, usePayrollSummary, useRegeneratePayrollFiling, useRerunPayrollRun, useSubmitCompensationAssignment, useSubmitCompensationTemplate, useSubmitPayrollRun } from '@/hooks/useOrgAdmin'
+import { useCancelPayrollFiling, useCalculatePayrollRun, useCreateCompensationAssignment, useCreateCompensationTemplate, useCreateOrgArrear, useCreatePayrollRun, useCreatePayrollTdsChallan, useDownloadOrgForm12BBBulk, useDownloadPayrollFiling, useEmployees, useFinalizePayrollRun, useGeneratePayrollFiling, useOrgArrears, usePayrollSummary, useRegeneratePayrollFiling, useRerunPayrollRun, useSubmitCompensationAssignment, useSubmitCompensationTemplate, useSubmitPayrollRun } from '@/hooks/useOrgAdmin'
 import { getErrorMessage } from '@/lib/errors'
 import { formatDateTime } from '@/lib/format'
 import { getCompensationStatusTone, getPayrollRunStatusTone } from '@/lib/status'
@@ -65,6 +65,7 @@ export function PayrollPage() {
   const regenerateFilingMutation = useRegeneratePayrollFiling()
   const cancelFilingMutation = useCancelPayrollFiling()
   const downloadFilingMutation = useDownloadPayrollFiling()
+  const downloadForm12BBBulkMutation = useDownloadOrgForm12BBBulk()
   const { data: arrears = [] } = useOrgArrears()
 
   const [templateForm, setTemplateForm] = useState({
@@ -109,6 +110,7 @@ export function PayrollPage() {
     statement_receipt_number: '',
     notes: '',
   })
+  const [form12BBFiscalYear, setForm12BBFiscalYear] = useState(`${currentYear}-${currentYear + 1}`)
   const [activeSection, setActiveSection] = useState<(typeof PAYROLL_SECTION_OPTIONS)[number]['value']>('setup')
 
   const employeeOptions = useMemo(
@@ -331,6 +333,16 @@ export function PayrollPage() {
       toast.success('Statutory filing downloaded.')
     } catch (error) {
       toast.error(getErrorMessage(error, 'Unable to download the statutory filing.'))
+    }
+  }
+
+  const handleDownloadForm12BBulk = async () => {
+    try {
+      const blob = await downloadForm12BBBulkMutation.mutateAsync(form12BBFiscalYear)
+      triggerDownload(blob, `form12bb-bulk-${form12BBFiscalYear}.zip`)
+      toast.success('Form 12BB bulk downloaded.')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to download Form 12BB. Confirm declarations exist for the selected fiscal year.'))
     }
   }
 
@@ -681,11 +693,15 @@ function RunsSection({
           regenerateFilingMutation={regenerateFilingMutation}
           cancelFilingMutation={cancelFilingMutation}
           downloadFilingMutation={downloadFilingMutation}
+          form12BBFiscalYear={form12BBFiscalYear}
+          setForm12BBFiscalYear={setForm12BBFiscalYear}
+          downloadForm12BBBulkMutation={downloadForm12BBBulkMutation}
           onGenerateFiling={handleGenerateFiling}
           onCreateTdsChallan={handleCreateTdsChallan}
           onDownloadFiling={handleDownloadFiling}
           onRegenerateFiling={handleRegenerateFiling}
           onCancelFiling={handleCancelFiling}
+          onDownloadForm12BBulk={handleDownloadForm12BBulk}
         />
       ) : null}
     </div>
@@ -954,11 +970,15 @@ interface FilingsSectionProps {
   regenerateFilingMutation: ReturnType<typeof useRegeneratePayrollFiling>
   cancelFilingMutation: ReturnType<typeof useCancelPayrollFiling>
   downloadFilingMutation: ReturnType<typeof useDownloadPayrollFiling>
+  form12BBFiscalYear: string
+  setForm12BBFiscalYear: React.Dispatch<React.SetStateAction<string>>
+  downloadForm12BBBulkMutation: ReturnType<typeof useDownloadOrgForm12BBBulk>
   onGenerateFiling: (event: React.FormEvent) => Promise<void>
   onCreateTdsChallan: (event: React.FormEvent) => Promise<void>
   onDownloadFiling: (filingId: string) => Promise<void>
   onRegenerateFiling: (filingId: string) => Promise<void>
   onCancelFiling: (filingId: string) => Promise<void>
+  onDownloadForm12BBulk: () => Promise<void>
 }
 
 function FilingsSection({
@@ -972,11 +992,15 @@ function FilingsSection({
   regenerateFilingMutation,
   cancelFilingMutation,
   downloadFilingMutation,
+  form12BBFiscalYear,
+  setForm12BBFiscalYear,
+  downloadForm12BBBulkMutation,
   onGenerateFiling,
   onCreateTdsChallan,
   onDownloadFiling,
   onRegenerateFiling,
   onCancelFiling,
+  onDownloadForm12BBulk,
 }: FilingsSectionProps) {
   return (
     <div className="grid gap-6 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
@@ -1074,6 +1098,34 @@ function FilingsSection({
               </button>
             </div>
           </form>
+        </SectionCard>
+
+        <SectionCard
+          title="Download all Form 12BB"
+          description="Download Form 12BB statements for all active employees in the organisation as a ZIP file."
+        >
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex-1 min-w-32">
+              <label className="field-label" htmlFor="form12bb-fiscal-year">
+                Fiscal year
+              </label>
+              <input
+                id="form12bb-fiscal-year"
+                className="field-input"
+                value={form12BBFiscalYear}
+                onChange={(event) => setForm12BBFiscalYear(event.target.value)}
+                placeholder="2026-2027"
+              />
+            </div>
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={downloadForm12BBBulkMutation.isPending}
+              onClick={() => void onDownloadForm12BBulk()}
+            >
+              {downloadForm12BBBulkMutation.isPending ? 'Preparing…' : 'Download All Form 12BB'}
+            </button>
+          </div>
         </SectionCard>
 
         <SectionCard title="Record TDS challan" description="Form 24Q and filing-grade Form 16 exports use these monthly deposit records for BSR code, challan serial, and statement receipt metadata.">

@@ -72,6 +72,7 @@ from .services import (
     download_statutory_filing_batch,
     ensure_org_payroll_setup,
     finalize_pay_run,
+    generate_form12bb_zip_for_organisation,
     generate_form16_data,
     generate_statutory_filing_batch,
     list_statutory_filing_batches,
@@ -881,6 +882,69 @@ class MyPayslipDownloadView(APIView):
         employee = _get_employee(request)
         payslip = get_object_or_404(Payslip, employee=employee, id=pk)
         return download_payslip_pdf_response(payslip)
+class MyForm12BBDownloadView(APIView):
+    permission_classes = [IsEmployee, BelongsToActiveOrg]
+
+    def get(self, request, fiscal_year):
+        employee = _get_employee(request)
+        try:
+            from apps.approvals.services import get_org_operations_guard
+
+            guard = get_org_operations_guard(employee.organisation)
+            if guard.get("approval_actions_blocked"):
+                return Response(
+                    {"error": guard.get("reason", "Operations are blocked.")},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        except Exception:
+            pass
+
+        from .filings.form12bb import generate_form12bb_pdf
+
+        result = generate_form12bb_pdf(employee=employee, fiscal_year=fiscal_year)
+        if result.validation_errors and not result.artifact_binary:
+            return Response(
+                {"error": result.validation_errors[0]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not result.artifact_binary:
+            return Response(
+                {"error": f"No Form 12BB available for FY {fiscal_year}."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        response = HttpResponse(
+            result.artifact_binary, content_type=result.content_type
+        )
+        response["Content-Disposition"] = f'attachment; filename="{result.file_name}"'
+        return response
+
+
+class OrgForm12BBBulkDownloadView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+
+    def get(self, request, fiscal_year):
+        organisation = _get_admin_organisation(request)
+        try:
+            from apps.approvals.services import get_org_operations_guard
+
+            guard = get_org_operations_guard(organisation)
+            if guard.get("approval_actions_blocked"):
+                return Response(
+                    {"error": guard.get("reason", "Operations are blocked.")},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        except Exception:
+            pass
+
+        zip_bytes, structured_payloads = generate_form12bb_zip_for_organisation(
+            organisation,
+            fiscal_year=fiscal_year,
+            actor=request.user,
+        )
+        file_name = f"form12bb-bulk-{fiscal_year}.zip"
+        response = HttpResponse(zip_bytes, content_type="application/zip")
+        response["Content-Disposition"] = f'attachment; filename="{file_name}"'
+        return response
 
 
 class MyInvestmentDeclarationListCreateView(APIView):

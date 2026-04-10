@@ -38,6 +38,7 @@ const useCreateOrgArrear = vi.fn()
 const useCreatePayrollRun = vi.fn()
 const useCreatePayrollTdsChallan = vi.fn()
 const useDownloadPayrollFiling = vi.fn()
+const useDownloadOrgForm12BBBulk = vi.fn()
 const useEmployees = vi.fn()
 const useFinalizePayrollRun = vi.fn()
 const useGeneratePayrollFiling = vi.fn()
@@ -66,6 +67,7 @@ vi.mock('@/hooks/useOrgAdmin', () => ({
   useCreateOrgArrear: () => useCreateOrgArrear(),
   useCreatePayrollRun: () => useCreatePayrollRun(),
   useCreatePayrollTdsChallan: () => useCreatePayrollTdsChallan(),
+  useDownloadOrgForm12BBBulk: () => useDownloadOrgForm12BBBulk(),
   useDownloadPayrollFiling: () => useDownloadPayrollFiling(),
   useEmployees: (...args: unknown[]) => useEmployees(...args),
   useFinalizePayrollRun: () => useFinalizePayrollRun(),
@@ -123,6 +125,7 @@ describe('PayrollPage', () => {
       useRegeneratePayrollFiling,
       useCancelPayrollFiling,
       useDownloadPayrollFiling,
+      useDownloadOrgForm12BBBulk,
     ]) {
       hook.mockReturnValue({ isPending: false, mutateAsync: vi.fn().mockResolvedValue(undefined) })
     }
@@ -196,8 +199,9 @@ describe('PayrollPage', () => {
     renderPage()
 
     await user.click(screen.getByRole('button', { name: 'Filings' }))
-    await user.clear(screen.getByPlaceholderText('2026-2027'))
-    await user.type(screen.getByPlaceholderText('2026-2027'), '2026-2027')
+    const fiscalYearInputs = screen.getAllByPlaceholderText('2026-2027')
+    await user.clear(fiscalYearInputs[1])
+    await user.type(fiscalYearInputs[1], '2026-2027')
     await user.clear(screen.getByPlaceholderText('0510032'))
     await user.type(screen.getByPlaceholderText('0510032'), '0510032')
     await user.clear(screen.getByPlaceholderText('00004'))
@@ -312,5 +316,22 @@ describe('PayrollPage', () => {
       })
     })
     expect(toastSuccess).toHaveBeenCalledWith('Arrear recorded.')
+  })
+
+  it('triggers Form 12BB bulk download from the filings section', async () => {
+    const user = userEvent.setup()
+    const downloadForm12BB = vi.fn().mockResolvedValue(new Blob(['pdf'], { type: 'application/pdf' }))
+    useDownloadOrgForm12BBBulk.mockReturnValue({ isPending: false, mutateAsync: downloadForm12BB })
+    useCreatePayrollRun.mockReturnValue({ isPending: false, mutateAsync: vi.fn().mockResolvedValue(undefined) })
+
+    renderPage()
+
+    await user.click(screen.getByRole('button', { name: 'Filings' }))
+    await user.click(screen.getByRole('button', { name: 'Download All Form 12BB' }))
+
+    await waitFor(() => {
+      expect(downloadForm12BB).toHaveBeenCalledWith('2026-2027')
+    })
+    expect(toastSuccess).toHaveBeenCalledWith('Form 12BB bulk downloaded.')
   })
 })

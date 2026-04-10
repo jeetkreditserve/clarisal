@@ -382,3 +382,10 @@ export async function withdrawMyAttendanceRegularization(id: string) {
   const { data } = await api.post<AttendanceRegularization>(`/me/attendance/regularizations/${id}/withdraw/`)
   return data
 }
+
+export async function downloadMyForm12BB(fiscalYear: string): Promise<Blob> {
+  const response = await api.get<Blob>(`/me/payroll/form12bb/${fiscalYear}/download/`, {
+    responseType: 'blob',
+  })
+  return response.data
+}
