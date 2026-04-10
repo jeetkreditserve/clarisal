@@ -16,6 +16,7 @@ import type {
   AttendanceRegularization,
   AttendanceSourceConfig,
   BiometricDevice,
+  BiometricDeviceHealth,
   BiometricSyncLog,
   AttendanceShift,
   AttendanceShiftAssignment,
@@ -44,6 +45,7 @@ import type {
   OnboardingDocumentType,
   OrgPayrollSummary,
   PayrollRun,
+  PayrollRunItem,
   PayrollTdsChallan,
   StatutoryFilingBatch,
   PayrollTaxSlabSet,
@@ -157,6 +159,19 @@ export async function fetchDepartments(includeInactive = false) {
   const { data } = await api.get<Department[]>('/org/departments/', {
     params: { include_inactive: includeInactive },
   })
+  return data
+}
+
+export interface Designation {
+  id: string
+  name: string
+  level: number
+  is_active: boolean
+  created_at: string
+}
+
+export async function fetchDesignations() {
+  const { data } = await api.get<Designation[]>('/org/designations/')
   return data
 }
 
@@ -644,9 +659,37 @@ export async function getDeviceSyncLogs(deviceId: string) {
   return data
 }
 
+export async function checkDeviceHealth(deviceId: string) {
+  const { data } = await api.get<BiometricDeviceHealth>(`/org/biometrics/devices/${deviceId}/health/`)
+  return data
+}
+
 export async function fetchPayrollSummary() {
   const { data } = await api.get<OrgPayrollSummary>('/org/payroll/summary/')
   return data
+}
+
+export async function fetchPayrollRunDetail(id: string) {
+  const { data } = await api.get<PayrollRun>(`/org/payroll/runs/${id}/`)
+  return data
+}
+
+export async function fetchPayrollRunItems(
+  runId: string,
+  params?: { employee?: string; has_exception?: boolean; page?: number },
+) {
+  const { data } = await api.get<PaginatedResponse<PayrollRunItem>>(`/org/payroll/runs/${runId}/items/`, { params })
+  return data
+}
+
+export async function downloadPayslipPdf(id: string) {
+  const response = await api.get<Blob>(`/org/payroll/payslips/${id}/download/`, {
+    responseType: 'blob',
+  })
+  return {
+    blob: response.data as Blob,
+    filename: response.headers['content-disposition']?.match(/filename="?([^"]+)"?/)?.[1] || `payslip-${id}.pdf`,
+  }
 }
 
 export async function fetchOrgFullAndFinalSettlements() {

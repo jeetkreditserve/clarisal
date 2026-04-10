@@ -3,6 +3,9 @@ from rest_framework import serializers
 
 from .models import (
     BloodTypeChoice,
+    CustomFieldDefinition,
+    CustomFieldValue,
+    Designation,
     EducationRecord,
     Employee,
     EmployeeBankAccount,
@@ -440,3 +443,259 @@ class CtEmployeeDetailSerializer(serializers.ModelSerializer):
             'office_location_name',
             'reporting_to_name',
         ]
+
+
+class DesignationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Designation
+        fields = ['id', 'name', 'level', 'is_active', 'created_at']
+        read_only_fields = ['id', 'created_at']
+
+
+class DesignationWriteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Designation
+        fields = ['name', 'level', 'is_active']
+
+
+class CustomFieldDefinitionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CustomFieldDefinition
+        fields = [
+            'id', 'name', 'field_key', 'field_type', 'placement',
+            'is_required', 'display_order', 'dropdown_options',
+            'placeholder', 'help_text', 'is_active', 'created_at'
+        ]
+        read_only_fields = ['id', 'created_at']
+
+
+class CustomFieldDefinitionWriteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CustomFieldDefinition
+        fields = [
+            'name', 'field_key', 'field_type', 'placement',
+            'is_required', 'display_order', 'dropdown_options',
+            'placeholder', 'help_text', 'is_active'
+        ]
+
+    def validate_field_key(self, value):
+        import re
+        if not re.match(r'^[a-z][a-z0-9_]*$', value):
+            raise serializers.ValidationError(
+                'Field key must start with a letter and contain only lowercase letters, numbers, and underscores.'
+            )
+        return value
+
+    def validate_dropdown_options(self, value):
+        if not isinstance(value, list):
+            raise serializers.ValidationError('Dropdown options must be a list.')
+        return value
+
+
+class CustomFieldValueSerializer(serializers.ModelSerializer):
+    field_name = serializers.CharField(source='field_definition.name', read_only=True)
+    field_type = serializers.CharField(source='field_definition.field_type', read_only=True)
+    display_value = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CustomFieldValue
+        fields = [
+            'id', 'field_definition', 'field_name', 'field_type',
+            'value_text', 'value_number', 'value_date', 'value_boolean', 'display_value'
+        ]
+        read_only_fields = ['id']
+
+    def get_display_value(self, obj):
+        return obj.get_display_value()
+
+
+class CustomFieldValueWriteSerializer(serializers.Serializer):
+    field_definition_id = serializers.UUIDField()
+    value_text = serializers.CharField(required=False, allow_blank=True, default='')
+    value_number = serializers.DecimalField(
+        required=False, allow_null=True, max_digits=20, decimal_places=6
+    )
+    value_date = serializers.DateField(required=False, allow_null=True)
+    value_boolean = serializers.BooleanField(required=False, default=False)
+
+
+class EmployeeCustomFieldsSerializer(serializers.Serializer):
+    employee_id = serializers.UUIDField()
+    custom_fields = CustomFieldValueWriteSerializer(many=True)
+
+
+class ExitInterviewQuestionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = __import__('apps.employees.models', fromlist=['ExitInterviewQuestion']).ExitInterviewQuestion
+        fields = ['id', 'question_text', 'question_type', 'options', 'order', 'is_required']
+
+
+class ExitInterviewQuestionWriteSerializer(serializers.Serializer):
+    question_text = serializers.CharField()
+    question_type = serializers.ChoiceField(
+        choices=['RATING', 'TEXT', 'MULTIPLE_CHOICE', 'YES_NO'],
+        default='TEXT'
+    )
+    options = serializers.ListField(child=serializers.CharField(), required=False, default=list)
+    order = serializers.IntegerField(required=False, default=0)
+    is_required = serializers.BooleanField(required=False, default=True)
+
+
+class ExitInterviewTemplateSerializer(serializers.ModelSerializer):
+    questions = ExitInterviewQuestionSerializer(many=True, read_only=True)
+    question_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = __import__('apps.employees.models', fromlist=['ExitInterviewTemplate']).ExitInterviewTemplate
+        fields = ['id', 'name', 'description', 'is_active', 'questions', 'question_count', 'created_at']
+    
+    def get_question_count(self, obj):
+        return obj.questions.count()
+
+
+class ExitInterviewTemplateWriteSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=255)
+    description = serializers.CharField(required=False, default='', allow_blank=True)
+    questions = ExitInterviewQuestionWriteSerializer(many=True, required=False)
+
+
+class ExitInterviewResponseSerializer(serializers.ModelSerializer):
+    question_text = serializers.CharField(source='question.question_text', read_only=True)
+    question_type = serializers.CharField(source='question.question_type', read_only=True)
+    
+    class Meta:
+        model = __import__('apps.employees.models', fromlist=['ExitInterviewResponse']).ExitInterviewResponse
+        fields = ['id', 'question', 'question_text', 'question_type', 'rating_value', 'text_value', 'choice_value', 'boolean_value']
+
+
+class ExitInterviewResponseWriteSerializer(serializers.Serializer):
+    question_id = serializers.UUIDField()
+    rating_value = serializers.IntegerField(required=False, allow_null=True, min_value=1, max_value=5)
+    text_value = serializers.CharField(required=False, default='', allow_blank=True)
+    choice_value = serializers.CharField(required=False, default='', allow_blank=True)
+    boolean_value = serializers.BooleanField(required=False, allow_null=True)
+
+
+class ExitInterviewSerializer(serializers.ModelSerializer):
+    responses = ExitInterviewResponseSerializer(many=True, read_only=True)
+    employee_name = serializers.CharField(source='process.employee.full_name', read_only=True)
+    template_name = serializers.CharField(source='template.name', read_only=True)
+    
+    class Meta:
+        model = __import__('apps.employees.models', fromlist=['ExitInterview']).ExitInterview
+        fields = [
+            'id', 'process', 'template', 'stage', 'scheduled_date', 'conducted_date',
+            'conducted_by', 'notes', 'overall_rating', 'responses', 'employee_name',
+            'template_name', 'created_at'
+        ]
+
+
+class ExitInterviewWriteSerializer(serializers.Serializer):
+    template_id = serializers.UUIDField(required=False, allow_null=True)
+    stage = serializers.ChoiceField(
+        choices=['NOTICE_PERIOD', 'LAST_DAY', 'EXIT', 'AFTER_EXIT'],
+        default='EXIT'
+    )
+    scheduled_date = serializers.DateTimeField(required=False, allow_null=True)
+    notes = serializers.CharField(required=False, default='', allow_blank=True)
+    overall_rating = serializers.IntegerField(required=False, allow_null=True, min_value=1, max_value=5)
+    responses = ExitInterviewResponseWriteSerializer(many=True, required=False)
+
+
+class OrgChartNodeSerializer(serializers.Serializer):
+    id = serializers.CharField()
+    name = serializers.CharField()
+    email = serializers.EmailField()
+    employee_code = serializers.CharField(allow_null=True)
+    designation = serializers.CharField(allow_null=True)
+    department = serializers.CharField(allow_null=True)
+    status = serializers.CharField()
+    profile_picture = serializers.CharField(allow_null=True)
+    direct_reports = serializers.SerializerMethodField()
+    
+    def get_direct_reports(self, obj):
+        return OrgChartNodeSerializer(obj['direct_reports'], many=True).data
+
+
+class DirectReportSerializer(serializers.ModelSerializer):
+    name = serializers.CharField(source='user.full_name')
+    designation = serializers.SerializerMethodField()
+    department = serializers.CharField(source='department.name', allow_null=True)
+    
+    class Meta:
+        model = __import__('apps.employees.models', fromlist=['Employee']).Employee
+        fields = ['id', 'name', 'employee_code', 'designation', 'department', 'status']
+    
+    def get_designation(self, obj):
+        return obj.designation_ref.name if obj.designation_ref else obj.designation
+
+
+class TransferEventSerializer(serializers.ModelSerializer):
+    employee_name = serializers.CharField(source='employee.user.full_name', read_only=True)
+    from_department_name = serializers.CharField(source='from_department.name', read_only=True, allow_null=True)
+    to_department_name = serializers.CharField(source='to_department.name', read_only=True, allow_null=True)
+    requested_by_name = serializers.CharField(source='requested_by.full_name', read_only=True, allow_null=True)
+    approved_by_name = serializers.CharField(source='approved_by.full_name', read_only=True, allow_null=True)
+    
+    class Meta:
+        model = __import__('apps.employees.models', fromlist=['EmployeeTransferEvent']).EmployeeTransferEvent
+        fields = [
+            'id', 'employee', 'employee_name', 'from_department', 'from_department_name',
+            'to_department', 'to_department_name', 'from_location', 'to_location',
+            'from_designation', 'to_designation', 'effective_date', 'reason', 'status',
+            'requested_by', 'requested_by_name', 'approved_by', 'approved_by_name',
+            'approved_at', 'notes', 'created_at'
+        ]
+
+
+class TransferEventWriteSerializer(serializers.Serializer):
+    employee_id = serializers.UUIDField()
+    to_department_id = serializers.UUIDField(required=False, allow_null=True)
+    to_location_id = serializers.UUIDField(required=False, allow_null=True)
+    to_designation_id = serializers.UUIDField(required=False, allow_null=True)
+    effective_date = serializers.DateField()
+    reason = serializers.CharField(required=False, default='', allow_blank=True)
+    notes = serializers.CharField(required=False, default='', allow_blank=True)
+
+
+class PromotionEventSerializer(serializers.ModelSerializer):
+    employee_name = serializers.CharField(source='employee.user.full_name', read_only=True)
+    from_designation_name = serializers.CharField(source='from_designation.name', read_only=True, allow_null=True)
+    to_designation_name = serializers.CharField(source='to_designation.name', read_only=True, allow_null=True)
+    requested_by_name = serializers.CharField(source='requested_by.full_name', read_only=True, allow_null=True)
+    approved_by_name = serializers.CharField(source='approved_by.full_name', read_only=True, allow_null=True)
+    
+    class Meta:
+        model = __import__('apps.employees.models', fromlist=['EmployeePromotionEvent']).EmployeePromotionEvent
+        fields = [
+            'id', 'employee', 'employee_name', 'from_designation', 'from_designation_name',
+            'to_designation', 'to_designation_name', 'revised_compensation_assignment',
+            'effective_date', 'reason', 'status', 'requested_by', 'requested_by_name',
+            'approved_by', 'approved_by_name', 'approved_at', 'notes', 'created_at'
+        ]
+
+
+class PromotionEventWriteSerializer(serializers.Serializer):
+    employee_id = serializers.UUIDField()
+    to_designation_id = serializers.UUIDField()
+    revised_compensation_id = serializers.UUIDField(required=False, allow_null=True)
+    effective_date = serializers.DateField()
+    reason = serializers.CharField(required=False, default='', allow_blank=True)
+    notes = serializers.CharField(required=False, default='', allow_blank=True)
+
+
+class CareerTimelineSerializer(serializers.Serializer):
+    type = serializers.CharField()
+    id = serializers.CharField()
+    date = serializers.CharField()
+    status = serializers.CharField()
+    from_department = serializers.CharField(allow_null=True)
+    to_department = serializers.CharField(allow_null=True)
+    from_location = serializers.CharField(allow_null=True)
+    to_location = serializers.CharField(allow_null=True)
+    from_designation = serializers.CharField(allow_null=True)
+    to_designation = serializers.CharField(allow_null=True)
+    has_compensation_change = serializers.BooleanField(required=False)
+    reason = serializers.CharField()
+    requested_by = serializers.CharField(allow_null=True)
+    approved_by = serializers.CharField(allow_null=True)

@@ -22,12 +22,15 @@ from apps.attendance.models import (
     AttendanceDay,
     AttendanceImportStatus,
     AttendancePunch,
+    AttendancePunchSource,
     AttendanceRecord,
     AttendanceRegularizationRequest,
     AttendanceRegularizationStatus,
     AttendanceSourceConfig,
+    GeoFencePolicy,
 )
 from apps.employees.models import Employee, EmployeeStatus
+from apps.locations.models import OfficeLocation
 from apps.organisations.models import (
     Organisation,
     OrganisationAccessState,
@@ -369,3 +372,81 @@ class TestAttendanceImportViews:
         assert day.check_in_at is not None
         assert day.check_out_at is not None
         assert day.status in {'PRESENT', 'HALF_DAY'}
+
+
+@pytest.mark.django_db
+def test_mobile_punch_blocks_when_employee_location_is_outside_blocking_geo_fence(attendance_setup):
+    employee = attendance_setup['employee']
+    client = attendance_setup['employee_client']
+    location = OfficeLocation.objects.create(organisation=employee.organisation, name='HQ')
+    employee.office_location = location
+    employee.save(update_fields=['office_location', 'modified_at'])
+    GeoFencePolicy.objects.create(
+        organisation=employee.organisation,
+        location=location,
+        name='HQ Radius',
+        latitude='12.971600',
+        longitude='77.594600',
+        radius_metres=100,
+        enforcement_mode='BLOCK',
+        is_active=True,
+    )
+
+    response = client.post(
+        '/api/me/attendance/mobile-punch/',
+        {
+            'action_type': 'CHECK_IN',
+            'latitude': '13.035000',
+            'longitude': '77.597000',
+        },
+        format='json',
+    )
+
+    assert response.status_code == 403
+    assert 'blocked' in response.data['error'].lower()
+    assert AttendancePunch.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_mobile_punch_uses_employee_location_policy_and_records_warning_when_warn_only(attendance_setup):
+    employee = attendance_setup['employee']
+    client = attendance_setup['employee_client']
+    assigned_location = OfficeLocation.objects.create(organisation=employee.organisation, name='Field Office')
+    other_location = OfficeLocation.objects.create(organisation=employee.organisation, name='HQ')
+    employee.office_location = assigned_location
+    employee.save(update_fields=['office_location', 'modified_at'])
+    GeoFencePolicy.objects.create(
+        organisation=employee.organisation,
+        location=other_location,
+        name='HQ Block',
+        latitude='12.971600',
+        longitude='77.594600',
+        radius_metres=50,
+        enforcement_mode='BLOCK',
+        is_active=True,
+    )
+    GeoFencePolicy.objects.create(
+        organisation=employee.organisation,
+        location=assigned_location,
+        name='Field Office Warn',
+        latitude='12.971600',
+        longitude='77.594600',
+        radius_metres=50,
+        enforcement_mode='WARN',
+        is_active=True,
+    )
+
+    response = client.post(
+        '/api/me/attendance/mobile-punch/',
+        {
+            'action_type': 'CHECK_IN',
+            'latitude': '13.035000',
+            'longitude': '77.597000',
+        },
+        format='json',
+    )
+
+    assert response.status_code == 201
+    assert 'location_warning' in response.data
+    punch = AttendancePunch.objects.get()
+    assert punch.source == AttendancePunchSource.MOBILE

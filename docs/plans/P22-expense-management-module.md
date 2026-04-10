@@ -42,24 +42,24 @@
 
 ## Task 1: Create the Expense Domain Models
 
-- [ ] Add models for expense policies, categories, claims, claim lines, receipt attachments, and reimbursement batches.
-- [ ] Support per-category limits, currency, mandatory receipt rules, and policy assignment per organisation.
-- [ ] Keep reimbursement state separate from approval state so the system can represent approved-but-unpaid claims cleanly.
+- [-] Add models for expense policies, categories, claims, claim lines, receipt attachments, and reimbursement batches.
+- [-] Support per-category limits, currency, mandatory receipt rules, and policy assignment per organisation.
+- [-] Keep reimbursement state separate from approval state so the system can represent approved-but-unpaid claims cleanly.
 
 ## Task 2: Build Service-Layer Workflows
 
-- [ ] Add claim draft, submit, approve, reject, return-for-edit, and reimburse flows.
-- [ ] Integrate with `approvals` for configurable multi-level approval where needed.
-- [ ] Add payroll/export handoff hooks for reimbursements without tightly coupling claim storage to payroll runs.
+- [-] Add claim draft, submit, approve, reject, return-for-edit, and reimburse flows.
+- [-] Integrate with `approvals` for configurable multi-level approval where needed.
+- [-] Add payroll/export handoff hooks for reimbursements without tightly coupling claim storage to payroll runs.
 
 ## Task 3: Build APIs and UI
 
-- [ ] Add employee claim creation, line editing, receipt upload, and status tracking.
-- [ ] Add org-admin policy management, review queue, bulk approval, and reimbursement marking.
-- [ ] Reuse shared upload, status badge, and confirmation components from the existing frontend.
+- [-] Add employee claim creation, line editing, receipt upload, and status tracking.
+- [-] Add org-admin policy management, review queue, bulk approval, and reimbursement marking.
+- [-] Reuse shared upload, status badge, and confirmation components from the existing frontend.
 
 ## Task 4: Add Cleanup, Tests, and Reporting Hooks
 
-- [ ] Add tests for policy validation, approval workflow transitions, reimbursement states, and receipt handling.
-- [ ] Remove any duplicate ad-hoc reimbursement logic found elsewhere in the codebase once the module exists.
-- [ ] Add a reporting/export hook so expense totals can be summarized alongside payroll and finance operations later.
+- [-] Add tests for policy validation, approval workflow transitions, reimbursement states, and receipt handling.
+- [-] Remove any duplicate ad-hoc reimbursement logic found elsewhere in the codebase once the module exists.
+- [-] Add a reporting/export hook so expense totals can be summarized alongside payroll and finance operations later.

@@ -291,3 +291,28 @@ def test_essl_ebioserver_webhook_accepts_auth_token_inside_realtime_payload(biom
     assert response.status_code == 200
     assert response.json()['processed'] == 1
     assert employee.attendance_punches.count() == 1
+
+
+@pytest.mark.django_db
+def test_health_endpoint_updates_last_health_check_at_and_returns_diagnostics(biometric_setup):
+    from apps.biometrics.models import BiometricDevice
+
+    client = biometric_setup['client']
+    organisation = biometric_setup['organisation']
+    device = BiometricDevice.objects.create(
+        organisation=organisation,
+        name='HQ Matrix',
+        protocol='MATRIX_COSEC',
+        vendor='MATRIX',
+        product_family='COSEC',
+        health_status='DEGRADED',
+        is_active=True,
+    )
+
+    response = client.get(f'/api/org/biometrics/devices/{device.id}/health/')
+
+    assert response.status_code == 200
+    assert response.data['health_status'] == 'DEGRADED'
+    assert response.data['vendor'] == 'MATRIX'
+    device.refresh_from_db()
+    assert device.last_health_check_at is not None

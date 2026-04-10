@@ -1,3 +1,5 @@
+import os
+
 from django.contrib import admin
 from django.http import JsonResponse
 from django.urls import include, path
@@ -7,9 +9,17 @@ def health_check(request):
     return JsonResponse({'status': 'ok', 'service': 'clarisal-api'})
 
 
+def api_health_check(request):
+    return JsonResponse({
+        'status': 'ok',
+        'version': os.environ.get('GIT_SHA', 'dev'),
+    })
+
+
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('health/', health_check),
+    path('api/health/', api_health_check, name='health-check'),
     path('api/', include([
         path('auth/', include('apps.accounts.urls')),
         path('ct/', include('apps.organisations.urls')),
@@ -41,6 +51,8 @@ urlpatterns = [
         path('me/', include('apps.payroll.self_urls')),
         path('me/', include('apps.notifications.urls')),
         path('me/', include('apps.performance.self_urls')),
+        path('org/', include('apps.assets.urls')),
+        path('me/', include('apps.assets.self_urls')),
     ])),
     path('api/v1/', include([
         path('auth/', include('apps.accounts.urls')),
@@ -73,5 +85,7 @@ urlpatterns = [
         path('me/', include('apps.payroll.self_urls')),
         path('me/', include('apps.notifications.urls')),
         path('me/', include('apps.performance.self_urls')),
+        path('org/', include('apps.assets.urls')),
+        path('me/', include('apps.assets.self_urls')),
     ])),
 ]

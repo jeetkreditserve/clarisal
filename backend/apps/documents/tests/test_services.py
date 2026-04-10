@@ -1,9 +1,10 @@
 import pytest
+from django.core.files.uploadedfile import SimpleUploadedFile
 
 from apps.accounts.models import AccountType, User, UserRole
 from apps.audit.models import AuditLog
 from apps.documents.models import Document
-from apps.documents.services import generate_download_url
+from apps.documents.services import _validate_upload, generate_download_url
 from apps.organisations.models import Organisation
 
 
@@ -74,3 +75,31 @@ def test_generate_download_url_logs_access_event(monkeypatch):
         'access_context': 'ORG_ADMIN',
         'expires_in_seconds': 900,
     }
+
+
+@pytest.mark.parametrize(
+    ('name', 'payload', 'content_type'),
+    [
+        ('proof.pdf', b'%PDF-1.7\n1 0 obj\n', 'application/pdf'),
+        ('proof.png', b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR', 'image/png'),
+        ('proof.jpg', b'\xff\xd8\xff\xe0\x00\x10JFIF', 'image/jpeg'),
+    ],
+)
+def test_validate_upload_accepts_supported_magic_bytes(name, payload, content_type):
+    uploaded = SimpleUploadedFile(name, payload, content_type=content_type)
+
+    _validate_upload(uploaded)
+
+
+@pytest.mark.parametrize(
+    ('name', 'payload'),
+    [
+        ('proof.pdf', b'MZ\x90\x00\x03\x00\x00\x00'),
+        ('proof.png', b'PK\x03\x04\x14\x00\x00\x00'),
+    ],
+)
+def test_validate_upload_rejects_disguised_binary_payloads(name, payload):
+    uploaded = SimpleUploadedFile(name, payload, content_type='application/octet-stream')
+
+    with pytest.raises(ValueError, match='content does not match'):
+        _validate_upload(uploaded)

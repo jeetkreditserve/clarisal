@@ -43,24 +43,24 @@
 
 ## Task 1: Create the Asset Domain Models
 
-- [ ] Add master-data models for categories, vendors, and asset templates if needed.
-- [ ] Add lifecycle models for asset items, employee assignments, acknowledgements, maintenance, incidents, and returns.
-- [ ] Track serial number, condition, warranty metadata, current holder, and lifecycle status explicitly.
+- [x] Add master-data models for categories, vendors, and asset templates if needed.
+- [x] Add lifecycle models for asset items, employee assignments, acknowledgements, maintenance, incidents, and returns.
+- [x] Track serial number, condition, warranty metadata, current holder, and lifecycle status explicitly.
 
 ## Task 2: Build Lifecycle Services
 
-- [ ] Add services for asset issuance, employee acknowledgement, reassignment, maintenance scheduling, damage/loss recording, and return confirmation.
-- [ ] Integrate asset-return status into offboarding so HR can see unresolved recoveries before closing an employee exit.
-- [ ] Add audit logging around every custody transfer and condition change.
+- [x] Add services for asset issuance, employee acknowledgement, reassignment, maintenance scheduling, damage/loss recording, and return confirmation.
+- [x] Integrate asset-return status into offboarding so HR can see unresolved recoveries before closing an employee exit.
+- [x] Add audit logging around every custody transfer and condition change.
 
 ## Task 3: Build APIs and UI
 
-- [ ] Add inventory CRUD, assignment, return, and maintenance endpoints for org admins.
-- [ ] Add employee self-service visibility for assigned assets, acknowledgement state, and return instructions.
+- [x] Add inventory CRUD, assignment, return, and maintenance endpoints for org admins.
+- [x] Add employee self-service visibility for assigned assets, acknowledgement state, and return instructions.
 - [ ] Reuse existing confirmation-dialog and status components rather than inventing another workflow pattern.
 
 ## Task 4: Cleanup and Verification
 
 - [ ] Remove any scattered asset acknowledgement workarounds once the module exists as a first-class domain.
-- [ ] Add tests for lifecycle state changes, offboarding blocking rules, and employee acknowledgements.
+- [x] Add tests for lifecycle state changes, offboarding blocking rules, and employee acknowledgements.
 - [ ] Add at least one E2E flow covering issue → acknowledge → offboarding return.

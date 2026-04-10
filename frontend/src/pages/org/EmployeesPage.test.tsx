@@ -8,6 +8,7 @@ import { EmployeesPage } from '@/pages/org/EmployeesPage'
 const toastSuccess = vi.fn()
 const toastError = vi.fn()
 const useDepartments = vi.fn()
+const useDesignations = vi.fn()
 const useEmployees = vi.fn()
 const useInviteEmployee = vi.fn()
 const useLocations = vi.fn()
@@ -22,6 +23,7 @@ vi.mock('sonner', () => ({
 
 vi.mock('@/hooks/useOrgAdmin', () => ({
   useDepartments: () => useDepartments(),
+  useDesignations: () => useDesignations(),
   useEmployees: (...args: unknown[]) => useEmployees(...args),
   useInviteEmployee: () => useInviteEmployee(),
   useLocations: () => useLocations(),
@@ -64,6 +66,9 @@ describe('EmployeesPage', () => {
     useDepartments.mockReturnValue({
       data: [{ id: 'dept-1', name: 'People Operations', is_active: true }],
     })
+    useDesignations.mockReturnValue({
+      data: [{ id: 'des-1', name: 'Engineer', level: 1, is_active: true }],
+    })
     useLocations.mockReturnValue({
       data: [{ id: 'loc-1', name: 'Registered Office', is_active: true }],
     })
@@ -77,6 +82,9 @@ describe('EmployeesPage', () => {
     const user = userEvent.setup()
     const inviteMutation = vi.fn().mockResolvedValue(undefined)
     useInviteEmployee.mockReturnValue({ isPending: false, mutateAsync: inviteMutation })
+    useDesignations.mockReturnValue({
+      data: [{ id: 'des-1', name: 'QA Engineer', level: 2, is_active: true }],
+    })
 
     renderPage()
 
@@ -84,7 +92,8 @@ describe('EmployeesPage', () => {
     await user.type(screen.getByLabelText('First name'), 'E2E')
     await user.type(screen.getByLabelText('Last name'), 'Tester')
     await user.type(screen.getByLabelText('Company email'), 'e2e.tester@acme.test')
-    await user.type(screen.getByLabelText('Designation'), 'QA Engineer')
+    await user.click(screen.getByText('Select designation'))
+    await user.click(screen.getByText('QA Engineer'))
     await user.click(screen.getByRole('checkbox', { name: /Address Proof/i }))
     const inviteButtons = screen.getAllByRole('button', { name: 'Invite employee' })
     await user.click(inviteButtons[inviteButtons.length - 1]!)

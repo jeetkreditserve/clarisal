@@ -40,6 +40,10 @@ vi.mock('@/lib/api/org-admin', async () => {
   }
 })
 
+vi.mock('@/components/ui/LiveAttendanceFeed', () => ({
+  LiveAttendanceFeed: () => <div data-testid="live-attendance-feed" />,
+}))
+
 function renderPage() {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -96,6 +100,8 @@ describe('BiometricDevicesPage', () => {
         name: 'HQ Main Gate',
         device_serial: 'SN-ADMS-001',
         protocol: 'ZK_ADMS',
+        vendor: 'ZKTeco / eSSL',
+        product_family: undefined,
         ip_address: undefined,
         port: 80,
         auth_username: undefined,
@@ -167,6 +173,8 @@ describe('BiometricDevicesPage', () => {
       name: 'eSSL Web API',
       device_serial: undefined,
       protocol: 'ESSL_EBIOSERVER',
+      vendor: 'eSSL',
+      product_family: undefined,
       ip_address: undefined,
       port: 80,
       auth_username: undefined,

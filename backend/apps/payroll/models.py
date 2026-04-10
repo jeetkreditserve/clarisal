@@ -392,6 +392,13 @@ class CompensationTemplateLine(AuditedBaseModel):
     )
     monthly_amount = models.DecimalField(max_digits=12, decimal_places=2)
     sequence = models.PositiveIntegerField(default=1)
+    cost_centre = models.ForeignKey(
+        'CostCentre',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='template_lines',
+    )
 
     class Meta:
         db_table = 'compensation_template_lines'
@@ -462,6 +469,13 @@ class CompensationAssignmentLine(AuditedBaseModel):
     monthly_amount = models.DecimalField(max_digits=12, decimal_places=2)
     is_taxable = models.BooleanField(default=True)
     sequence = models.PositiveIntegerField(default=1)
+    cost_centre = models.ForeignKey(
+        'CostCentre',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='assignment_lines',
+    )
 
     class Meta:
         db_table = 'compensation_assignment_lines'
@@ -762,3 +776,47 @@ class PayrollTDSChallan(AuditedBaseModel):
     def save(self, *args, **kwargs):
         self.quarter = tds_quarter_for_month(self.period_month)
         super().save(*args, **kwargs)
+
+
+class SurchargeRule(models.Model):
+    fiscal_year = models.CharField(max_length=9)
+    tax_regime = models.CharField(max_length=10, choices=[("OLD", "Old"), ("NEW", "New")])
+    income_threshold = models.DecimalField(max_digits=14, decimal_places=2)
+    surcharge_rate_percent = models.DecimalField(max_digits=5, decimal_places=2)
+    effective_from = models.DateField()
+
+    class Meta:
+        db_table = 'payroll_surcharge_rules'
+        unique_together = [("fiscal_year", "tax_regime", "income_threshold")]
+        ordering = ["fiscal_year", "tax_regime", "income_threshold"]
+
+    def __str__(self):
+        return f"{self.fiscal_year} {self.tax_regime} >{self.income_threshold}: {self.surcharge_rate_percent}%"
+
+
+class CostCentre(models.Model):
+    organisation = models.ForeignKey(
+        'organisations.Organisation',
+        on_delete=models.CASCADE,
+        related_name='cost_centres',
+    )
+    code = models.CharField(max_length=50)
+    name = models.CharField(max_length=200)
+    gl_code = models.CharField(max_length=50, blank=True)
+    parent = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='children',
+    )
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'payroll_cost_centres'
+        unique_together = [('organisation', 'code')]
+        ordering = ['code']
+
+    def __str__(self):
+        return f"{self.code} - {self.name}"

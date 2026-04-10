@@ -1,0 +1,1 @@
+{"nodes": [{"id": "test", "label": "test.py", "file_type": "code", "source_file": "backend/clarisal/settings/test.py", "source_location": "L1"}], "edges": [{"source": "test", "target": "development", "relation": "imports_from", "confidence": "EXTRACTED", "source_file": "backend/clarisal/settings/test.py", "source_location": "L2", "weight": 1.0}]}

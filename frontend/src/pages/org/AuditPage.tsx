@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { AppDialog } from '@/components/ui/AppDialog'
+import { AppDatePicker } from '@/components/ui/AppDatePicker'
 import { AuditTimeline } from '@/components/ui/AuditTimeline'
 import { AppSelect } from '@/components/ui/AppSelect'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -179,30 +180,28 @@ export function OrgAuditPage() {
             <label className="field-label" htmlFor="audit-date-from">
               From date
             </label>
-            <input
+            <AppDatePicker
               id="audit-date-from"
-              type="date"
-              className="field-input"
               value={dateFrom}
-              onChange={(event) => {
+              onValueChange={(value) => {
                 setPage(1)
-                setDateFrom(event.target.value)
+                setDateFrom(value)
               }}
+              placeholder="Select start date"
             />
           </div>
           <div>
             <label className="field-label" htmlFor="audit-date-to">
               To date
             </label>
-            <input
+            <AppDatePicker
               id="audit-date-to"
-              type="date"
-              className="field-input"
               value={dateTo}
-              onChange={(event) => {
+              onValueChange={(value) => {
                 setPage(1)
-                setDateTo(event.target.value)
+                setDateTo(value)
               }}
+              placeholder="Select end date"
             />
           </div>
         </div>

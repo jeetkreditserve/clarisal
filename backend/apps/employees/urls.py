@@ -12,6 +12,35 @@ from .views import (
     EmployeeProbationCompleteView,
 )
 
+from .views import (
+    CustomFieldDefinitionDetailView,
+    CustomFieldDefinitionListCreateView,
+    DesignationDetailView,
+    DesignationListCreateView,
+    EmployeeCustomFieldValuesView,
+)
+
+from .views import (
+    ExitInterviewDetailView,
+    ExitInterviewListCreateView,
+    ExitInterviewTemplateDetailView,
+    ExitInterviewTemplateListCreateView,
+)
+
+from .views import (
+    EmployeeDirectReportsView,
+    OrgChartCyclesView,
+    OrgChartView,
+)
+
+from .views import (
+    EmployeeCareerTimelineView,
+    PromotionEventDetailView,
+    PromotionEventListCreateView,
+    TransferEventDetailView,
+    TransferEventListCreateView,
+)
+
 urlpatterns = [
     path('employees/', EmployeeListInviteView.as_view(), name='employee-list-invite'),
     path('employees/<uuid:pk>/', EmployeeDetailView.as_view(), name='employee-detail'),
@@ -22,4 +51,21 @@ urlpatterns = [
     path('employees/<uuid:pk>/offboarding/complete/', EmployeeOffboardingCompleteView.as_view(), name='employee-offboarding-complete'),
     path('employees/<uuid:pk>/offboarding/tasks/<uuid:task_id>/', EmployeeOffboardingTaskDetailView.as_view(), name='employee-offboarding-task-detail'),
     path('employees/<uuid:pk>/delete/', EmployeeDeleteView.as_view(), name='employee-delete'),
+    path('designations/', DesignationListCreateView.as_view(), name='designation-list-create'),
+    path('designations/<uuid:pk>/', DesignationDetailView.as_view(), name='designation-detail'),
+    path('custom-fields/', CustomFieldDefinitionListCreateView.as_view(), name='custom-field-list-create'),
+    path('custom-fields/<uuid:pk>/', CustomFieldDefinitionDetailView.as_view(), name='custom-field-detail'),
+    path('employees/<uuid:employee_id>/custom-fields/', EmployeeCustomFieldValuesView.as_view(), name='employee-custom-fields'),
+    path('exit-interview-templates/', ExitInterviewTemplateListCreateView.as_view(), name='exit-interview-template-list-create'),
+    path('exit-interview-templates/<uuid:template_id>/', ExitInterviewTemplateDetailView.as_view(), name='exit-interview-template-detail'),
+    path('exit-interviews/', ExitInterviewListCreateView.as_view(), name='exit-interview-list-create'),
+    path('exit-interviews/<uuid:interview_id>/', ExitInterviewDetailView.as_view(), name='exit-interview-detail'),
+    path('org-chart/', OrgChartView.as_view(), name='org-chart'),
+    path('org-chart/cycles/', OrgChartCyclesView.as_view(), name='org-chart-cycles'),
+    path('employees/<uuid:employee_id>/direct-reports/', EmployeeDirectReportsView.as_view(), name='employee-direct-reports'),
+    path('employees/<uuid:employee_id>/career-timeline/', EmployeeCareerTimelineView.as_view(), name='employee-career-timeline'),
+    path('transfers/', TransferEventListCreateView.as_view(), name='transfer-list-create'),
+    path('transfers/<uuid:transfer_id>/', TransferEventDetailView.as_view(), name='transfer-detail'),
+    path('promotions/', PromotionEventListCreateView.as_view(), name='promotion-list-create'),
+    path('promotions/<uuid:promotion_id>/', PromotionEventDetailView.as_view(), name='promotion-detail'),
 ]

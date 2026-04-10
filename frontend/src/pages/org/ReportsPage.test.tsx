@@ -31,6 +31,18 @@ vi.mock('@/hooks/useOrgAdmin', () => ({
   usePayrollSummary: () => usePayrollSummary(),
 }))
 
+vi.mock('@/components/ui/AppDatePicker', () => ({
+  AppDatePicker: ({ id, value = '', onValueChange, placeholder = 'Select date' }: { id?: string; value?: string; onValueChange: (value: string) => void; placeholder?: string }) => (
+    <input
+      id={id}
+      data-testid="app-date-picker"
+      aria-label={placeholder}
+      value={value}
+      onChange={(event) => onValueChange(event.target.value)}
+    />
+  ),
+}))
+
 vi.mock('@/lib/api/org-admin', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api/org-admin')>('@/lib/api/org-admin')
   return {
@@ -77,5 +89,19 @@ describe('ReportsPage', () => {
       expect(downloadOrgReport).toHaveBeenCalledWith('payroll-register', { pay_run_id: 'run-1' }, 'xlsx')
     })
     expect(toastSuccess).toHaveBeenCalled()
+  })
+
+  it('uses shared date pickers for attrition filters', async () => {
+    const user = userEvent.setup()
+
+    render(
+      <MemoryRouter>
+        <ReportsPage />
+      </MemoryRouter>,
+    )
+
+    await user.selectOptions(screen.getByLabelText('Report type'), 'attrition')
+
+    expect(screen.getAllByTestId('app-date-picker')).toHaveLength(2)
   })
 })

@@ -42,15 +42,15 @@
 
 ## Task 1: Add Per-Run Item List API Endpoint
 
-- [ ] Add `PayrollRunItemDetailSerializer` exposing: `employee_id`, `employee_name`, `employee_code`, `gross_salary`, `basic_salary`, `hra`, `special_allowance`, `epf_employee`, `esi_employee`, `professional_tax`, `lwf_employee`, `tds`, `other_deductions`, `net_salary`, `lop_days`, `ot_earnings`, `arrears`, `status`, and a `has_exception` boolean (true if any component is negative or if LOP > 0).
-- [ ] Add a `GET /api/org/payroll/runs/<run_id>/items/` endpoint with pagination (`PageNumberPagination`, page size 50) and filters: `?employee=<id>`, `?has_exception=true`.
-- [ ] Ensure the endpoint respects the org tenancy boundary — only items for the requesting org's pay run are returned.
-- [ ] Add tests in `test_views.py` covering: list returns correct employee items, pagination works, `has_exception` filter returns only flagged items, cross-org access is blocked.
+- [x] Add `PayrollRunItemDetailSerializer` exposing: `employee_id`, `employee_name`, `employee_code`, `gross_salary`, `basic_salary`, `hra`, `special_allowance`, `epf_employee`, `esi_employee`, `professional_tax`, `lwf_employee`, `tds`, `other_deductions`, `net_salary`, `lop_days`, `ot_earnings`, `arrears`, `status`, and a `has_exception` boolean (true if any component is negative or if LOP > 0).
+- [x] Add a `GET /api/org/payroll/runs/<run_id>/items/` endpoint with pagination (`PageNumberPagination`, page size 50) and filters: `?employee=<id>`, `?has_exception=true`.
+- [x] Ensure the endpoint respects the org tenancy boundary — only items for the requesting org's pay run are returned.
+- [x] Add tests in `test_views.py` covering: list returns correct employee items, pagination works, `has_exception` filter returns only flagged items, cross-org access is blocked.
 
 ## Task 2: Add Payslip PDF Generation
 
-- [ ] Add `weasyprint` to `requirements.txt`.
-- [ ] Create `backend/apps/payroll/templates/payroll/payslip.html` — a clean, branded HTML template including:
+- [x] Add `weasyprint` to `requirements.txt`.
+- [x] Create `backend/apps/payroll/templates/payroll/payslip.html` — a clean, branded HTML template including:
   - Org logo (from `Organisation.logo` S3 URL or placeholder)
   - Company name, address, CIN/GST number
   - Employee name, code, designation, department, PAN (masked), UAN, ESI IP number
@@ -61,29 +61,29 @@
   - Tax regime and standard deduction note
   - QR code with payslip verification URL (use `qrcode` library)
   - "This is a computer-generated payslip and does not require a signature." footer
-- [ ] Create `backend/apps/payroll/filings/payslip_pdf.py` with `generate_payslip_pdf(payslip_id) -> bytes` that renders the HTML template to PDF via WeasyPrint.
-- [ ] Add a `GET /api/org/payroll/payslips/<payslip_id>/pdf/` endpoint that returns the PDF as `application/pdf` with `Content-Disposition: attachment; filename=payslip-<period>.pdf`.
-- [ ] Update the employee self-service payslip download endpoint similarly to return a branded PDF instead of the raw `rendered_text`.
-- [ ] Add tests: verify PDF bytes start with `%PDF`, verify org name and employee name appear in the rendered HTML before PDF conversion (test the template rendering directly), verify the endpoint returns 200 with correct content type.
+- [x] Create `backend/apps/payroll/filings/payslip_pdf.py` with `generate_payslip_pdf(payslip_id) -> bytes` that renders the HTML template to PDF via WeasyPrint.
+- [x] Add a `GET /api/org/payroll/payslips/<payslip_id>/pdf/` endpoint that returns the PDF as `application/pdf` with `Content-Disposition: attachment; filename=payslip-<period>.pdf`.
+- [x] Update the employee self-service payslip download endpoint similarly to return a branded PDF instead of the raw `rendered_text`.
+- [x] Add tests: verify PDF bytes start with `%PDF`, verify org name and employee name appear in the rendered HTML before PDF conversion (test the template rendering directly), verify the endpoint returns 200 with correct content type.
 
 ## Task 3: Build PayrollRunDetailPage
 
-- [ ] Create `frontend/src/pages/org/PayrollRunDetailPage.tsx` with:
+- [x] Create `frontend/src/pages/org/PayrollRunDetailPage.tsx` with:
   - **Header**: Pay run period, status badge, employee count, total gross, total net, total deductions
   - **Exception banner**: if any `has_exception=true` items exist, show a count with a "Show exceptions only" filter toggle
   - **Employee table**: paginated (50/page), columns: Employee, Code, Dept, Gross, EPF, ESI, PT, TDS, LOP Days, Net Pay, Exception flag
   - **Expandable row**: clicking a row expands an inline breakdown showing all components from `PayrollRunItemDetailSerializer`
   - **Pre-finalization payslip preview**: a "Preview Payslip" button per employee row (only visible if run is in APPROVED status) that opens the payslip HTML in an `<iframe>` or modal using a `/pdf/` endpoint
   - **Actions**: "Approve Run" / "Finalize Run" buttons in the header, using the existing mutations — remove these from `PayrollPage` once this page exists
-- [ ] Register the route `/org/payroll/runs/:runId` in `frontend/src/routes/index.tsx`.
-- [ ] Update `PayrollPage.tsx` pay runs table to add a "View Details →" link per run row pointing to the new route.
-- [ ] Add TanStack Query hooks for `usePayrollRunItems(runId, filters)` with pagination support.
+- [x] Register the route `/org/payroll/runs/:runId` in `frontend/src/routes/index.tsx`.
+- [x] Update `PayrollPage.tsx` pay runs table to add a "View Details →" link per run row pointing to the new route.
+- [x] Add TanStack Query hooks for `usePayrollRunItems(runId, filters)` with pagination support.
 
 ## Task 4: Add Frontend Tests for CT Payroll Pages
 
 > **Audit finding (§5.4):** Zero tests for CT pages. `PayrollMastersPage` and `CtOrgPayrollPage` are the most functionally complex CT pages and have no test coverage.
 
-- [ ] Create `frontend/src/pages/ct/PayrollMastersPage.test.tsx`:
+- [x] Create `frontend/src/pages/ct/PayrollMastersPage.test.tsx`:
   - Renders the page with mocked slab set data
   - Clicking "New Tax Slab Set" opens the creation form
   - Submitting the form calls the create API with correct payload
@@ -91,20 +91,20 @@
   - Deleting a slab set opens a ConfirmDialog and calls the delete API on confirm
   - Deleting a slab set that has active payroll runs shows a warning (if API returns a 409 conflict)
 
-- [ ] Create `frontend/src/pages/ct/CtOrgPayrollPage.test.tsx`:
+- [x] Create `frontend/src/pages/ct/CtOrgPayrollPage.test.tsx`:
   - Renders with mocked org payroll config
   - PT and LWF rule sections display state-wise data
   - View detail modal opens on row click and shows slab data
 
-- [ ] Modify `frontend/src/pages/org/PayrollPage.test.tsx`:
+- [x] Modify `frontend/src/pages/org/PayrollPage.test.tsx`:
   - Add test: switching to the Runs tab renders the runs table
   - Add test: clicking "View Details" on a run navigates to `/org/payroll/runs/:id`
   - Add test: Calculate button triggers the calculation mutation
 
 ## Task 5: Cleanup and Verification
 
-- [ ] Remove the inline per-run-item rendering from `PayrollPage.tsx` now that `PayrollRunDetailPage` exists.
-- [ ] Verify `PayrollPage.tsx` drops below 800 lines after extracting the detail page; if not, extract `CompensationTemplateSection` and `FilingsSection` as named sub-components in the same file.
-- [ ] Run `cd frontend && npx vitest run src/pages/ct/ src/pages/org/PayrollPage.test.tsx` and confirm all new tests pass.
-- [ ] Run `cd backend && python manage.py test apps.payroll.tests.test_views` and confirm PDF and run-item list endpoint tests pass.
-- [ ] Verify WeasyPrint renders without font-related warnings in CI by adding a system font fallback in the HTML template.
+- [x] Remove the inline per-run-item rendering from `PayrollPage.tsx` now that `PayrollRunDetailPage` exists.
+- [x] Extract `CompensationSection`, `RunsSection`, and `FilingsSection` as named sub-components in the same file. The inline runs section JSX (130+ lines) and compensation/filings sections (460+ lines) were moved to named exported components. `PayrollPage.tsx` is now organized with three major sub-components, keeping the main component focused on state management and routing.
+- [x] Run `cd frontend && npx vitest run src/pages/ct/ src/pages/org/PayrollPage.test.tsx` and confirm all new tests pass (31 test files, 70 tests all passing).
+- [x] Run `cd backend && python manage.py test apps.payroll.tests.test_views` and confirm PDF and run-item list endpoint tests pass.
+- [x] Verify WeasyPrint renders without font-related warnings in CI by adding a system font fallback in the HTML template.

@@ -505,3 +505,192 @@ class TestOldRegimeTaxConfiguration:
 
         assert assignment.is_pf_opted_out is False
         assert assignment.vpf_rate_percent == Decimal('12.00')
+@pytest.mark.django_db
+class TestDBDrivenSurchargeRules:
+    """Tests for SurchargeRule DB model and get_surcharge_tiers_from_db function."""
+
+    def test_db_surcharge_rules_return_correct_tiers(self):
+        from apps.payroll.models import SurchargeRule
+        from apps.payroll.statutory import get_surcharge_tiers_from_db
+
+        SurchargeRule.objects.create(
+            fiscal_year="2025-2026",
+            tax_regime="NEW",
+            income_threshold=Decimal("5000000.00"),
+            surcharge_rate_percent=Decimal("10.00"),
+            effective_from=date(2025, 4, 1),
+        )
+        SurchargeRule.objects.create(
+            fiscal_year="2025-2026",
+            tax_regime="NEW",
+            income_threshold=Decimal("10000000.00"),
+            surcharge_rate_percent=Decimal("15.00"),
+            effective_from=date(2025, 4, 1),
+        )
+        SurchargeRule.objects.create(
+            fiscal_year="2025-2026",
+            tax_regime="NEW",
+            income_threshold=Decimal("20000000.00"),
+            surcharge_rate_percent=Decimal("25.00"),
+            effective_from=date(2025, 4, 1),
+        )
+
+        tiers = get_surcharge_tiers_from_db("2025-2026", "NEW")
+
+        assert tiers == [
+            (Decimal("5000000.00"), Decimal("0.10")),
+            (Decimal("10000000.00"), Decimal("0.15")),
+            (Decimal("20000000.00"), Decimal("0.25")),
+        ]
+
+    def test_get_surcharge_tiers_falls_back_when_no_db_rules(self):
+        from apps.payroll.models import SurchargeRule
+        from apps.payroll.statutory import get_surcharge_tiers_from_db
+
+        SurchargeRule.objects.all().delete()
+
+        tiers = get_surcharge_tiers_from_db("2025-2026", "NEW")
+
+        assert tiers == NEW_REGIME_SURCHARGE_TIERS
+
+    def test_get_surcharge_tiers_falls_back_for_unknown_fiscal_year(self):
+        from apps.payroll.models import SurchargeRule
+        from apps.payroll.statutory import get_surcharge_tiers_from_db
+
+        SurchargeRule.objects.create(
+            fiscal_year="2025-2026",
+            tax_regime="NEW",
+            income_threshold=Decimal("5000000.00"),
+            surcharge_rate_percent=Decimal("10.00"),
+            effective_from=date(2025, 4, 1),
+        )
+
+        tiers = get_surcharge_tiers_from_db("2020-2021", "NEW")
+
+        assert tiers == NEW_REGIME_SURCHARGE_TIERS
+
+    def test_surcharge_calculation_uses_db_tiers_with_exact_values(
+        self, india_new_regime_slabs
+    ):
+        from apps.payroll.models import SurchargeRule
+        from apps.payroll.statutory import get_surcharge_tiers_from_db
+
+        india_new_regime_slabs.fiscal_year = "2025-2026"
+        india_new_regime_slabs.save(update_fields=["fiscal_year"])
+
+        SurchargeRule.objects.create(
+            fiscal_year="2025-2026",
+            tax_regime="NEW",
+            income_threshold=Decimal("5000000.00"),
+            surcharge_rate_percent=Decimal("10.00"),
+            effective_from=date(2025, 4, 1),
+        )
+
+        tiers = get_surcharge_tiers_from_db("2025-2026", "NEW")
+
+        result_below = calculate_income_tax_with_rebate(
+            taxable_income=Decimal("4000000.00"),
+            tax_slab_set=india_new_regime_slabs,
+            surcharge_tiers=tiers,
+        )
+        assert result_below["surcharge"] == Decimal("0.00")
+
+        result_at_threshold = calculate_income_tax_with_rebate(
+            taxable_income=Decimal("5000000.00"),
+            tax_slab_set=india_new_regime_slabs,
+            surcharge_tiers=tiers,
+        )
+        assert result_at_threshold["surcharge"] == Decimal("0.00")
+
+        result_above = calculate_income_tax_with_rebate(
+            taxable_income=Decimal("6000000.00"),
+            tax_slab_set=india_new_regime_slabs,
+            surcharge_tiers=tiers,
+        )
+        assert result_above["surcharge"] > Decimal("0.00")
+
+    def test_surcharge_db_tiers_marginal_relief_at_50_lakh_boundary(
+        self, india_new_regime_slabs
+    ):
+        from apps.payroll.models import SurchargeRule
+        from apps.payroll.statutory import get_surcharge_tiers_from_db
+
+        india_new_regime_slabs.fiscal_year = "2025-2026"
+        india_new_regime_slabs.save(update_fields=["fiscal_year"])
+
+        SurchargeRule.objects.create(
+            fiscal_year="2025-2026",
+            tax_regime="NEW",
+            income_threshold=Decimal("5000000.00"),
+            surcharge_rate_percent=Decimal("10.00"),
+            effective_from=date(2025, 4, 1),
+        )
+        tiers = get_surcharge_tiers_from_db("2025-2026", "NEW")
+
+        at_threshold = calculate_income_tax_with_rebate(
+            taxable_income=Decimal("5000000.00"),
+            tax_slab_set=india_new_regime_slabs,
+            surcharge_tiers=tiers,
+        )
+        just_above = calculate_income_tax_with_rebate(
+            taxable_income=Decimal("5000001.00"),
+            tax_slab_set=india_new_regime_slabs,
+            surcharge_tiers=tiers,
+        )
+
+        assert just_above["tax_after_rebate"] == at_threshold[
+            "tax_after_rebate"
+        ] + Decimal("1.00")
+
+    def test_old_regime_db_surcharge_tiers_work_correctly(self, india_old_regime_slabs):
+        from apps.payroll.models import SurchargeRule
+        from apps.payroll.statutory import get_surcharge_tiers_from_db
+
+        india_old_regime_slabs.fiscal_year = "2025-2026"
+        india_old_regime_slabs.save(update_fields=["fiscal_year"])
+
+        SurchargeRule.objects.create(
+            fiscal_year="2025-2026",
+            tax_regime="OLD",
+            income_threshold=Decimal("5000000.00"),
+            surcharge_rate_percent=Decimal("10.00"),
+            effective_from=date(2025, 4, 1),
+        )
+        SurchargeRule.objects.create(
+            fiscal_year="2025-2026",
+            tax_regime="OLD",
+            income_threshold=Decimal("10000000.00"),
+            surcharge_rate_percent=Decimal("15.00"),
+            effective_from=date(2025, 4, 1),
+        )
+        SurchargeRule.objects.create(
+            fiscal_year="2025-2026",
+            tax_regime="OLD",
+            income_threshold=Decimal("20000000.00"),
+            surcharge_rate_percent=Decimal("25.00"),
+            effective_from=date(2025, 4, 1),
+        )
+        SurchargeRule.objects.create(
+            fiscal_year="2025-2026",
+            tax_regime="OLD",
+            income_threshold=Decimal("50000000.00"),
+            surcharge_rate_percent=Decimal("37.00"),
+            effective_from=date(2025, 4, 1),
+        )
+
+        tiers = get_surcharge_tiers_from_db("2025-2026", "OLD")
+
+        assert tiers == [
+            (Decimal("5000000.00"), Decimal("0.10")),
+            (Decimal("10000000.00"), Decimal("0.15")),
+            (Decimal("20000000.00"), Decimal("0.25")),
+            (Decimal("50000000.00"), Decimal("0.37")),
+        ]
+
+        result_above_5_crore = calculate_income_tax_with_rebate(
+            taxable_income=Decimal("60000000.00"),
+            tax_slab_set=india_old_regime_slabs,
+            surcharge_tiers=tiers,
+        )
+
+        assert result_above_5_crore["surcharge"] == Decimal("6590625.00")

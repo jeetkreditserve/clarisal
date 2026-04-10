@@ -37,6 +37,7 @@ import {
   endEmployeeEmployment,
   completeEmployeeOffboarding,
   fetchDepartments,
+  fetchDesignations,
   fetchEmployeeDocumentRequests,
   fetchEmployeeDetail,
   fetchEmployeeDocuments,
@@ -51,6 +52,9 @@ import {
   fetchNotices,
   fetchOnboardingDocumentTypes,
   fetchOnDutyPolicies,
+  fetchPayrollRunDetail,
+  fetchPayrollRunItems,
+  downloadPayslipPdf,
   fetchOrgDashboard,
   fetchOrgSetup,
   fetchOrgLeaveRequests,
@@ -238,6 +242,14 @@ export function useDepartments(includeInactive = false, enabled = true) {
   return useQuery({
     queryKey: ['org', organisationId, 'departments', includeInactive],
     queryFn: () => fetchDepartments(includeInactive),
+    enabled,
+  })
+}
+
+export function useDesignations(enabled = true) {
+  return useQuery({
+    queryKey: ['org', 'designations'],
+    queryFn: fetchDesignations,
     enabled,
   })
 }
@@ -715,6 +727,33 @@ export function usePayrollSummary() {
   return useQuery({
     queryKey: ['org', organisationId, 'payroll'],
     queryFn: fetchPayrollSummary,
+  })
+}
+
+export function usePayrollRunDetail(id: string) {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'payroll-runs', id],
+    queryFn: () => fetchPayrollRunDetail(id),
+    enabled: Boolean(id),
+  })
+}
+
+export function usePayrollRunItems(
+  runId: string,
+  params?: { employee?: string; has_exception?: boolean; page?: number },
+) {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'payroll-runs', runId, 'items', params],
+    queryFn: () => fetchPayrollRunItems(runId, params),
+    enabled: Boolean(runId),
+  })
+}
+
+export function useDownloadPayslipPdf() {
+  return useMutation({
+    mutationFn: downloadPayslipPdf,
   })
 }
 

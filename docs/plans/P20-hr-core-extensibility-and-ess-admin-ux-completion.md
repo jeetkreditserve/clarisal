@@ -45,21 +45,21 @@
 
 ## Task 1: Add Custom Employee Fields
 
-- [ ] Add configurable field definitions scoped per organisation, with field types, validation rules, required flags, and display placement.
-- [ ] Add employee-value storage separate from the core `Employee` table to avoid schema churn per tenant.
-- [ ] Expose custom fields in employee detail APIs, list filters, and create/update flows.
+- [x] Add configurable field definitions scoped per organisation, with field types, validation rules, required flags, and display placement.
+- [x] Add employee-value storage separate from the core `Employee` table to avoid schema churn per tenant.
+- [x] Expose custom fields in employee detail APIs, list filters, and create/update flows.
 
 ## Task 2: Add Structured Exit Interview Support
 
-- [ ] Add exit interview templates, responses, and completion status tied to offboarding processes.
-- [ ] Support scored and free-text questions so the audit no longer sees exit interview as a bare task type only.
-- [ ] Surface the structured interview in org-admin offboarding flows and employee self-service where appropriate.
+- [x] Add exit interview templates, responses, and completion status tied to offboarding processes.
+- [x] Support scored and free-text questions so the audit no longer sees exit interview as a bare task type only.
+- [x] Surface the structured interview in org-admin offboarding flows and employee self-service where appropriate.
 
 ## Task 3: Add Org Chart Visualization
 
-- [ ] Add a dedicated org-chart query or serializer projection based on `reporting_to` relationships.
+- [x] Add a dedicated org-chart query or serializer projection based on `reporting_to` relationships.
 - [ ] Build a navigable React tree view rather than forcing users to infer hierarchy from employee-detail links.
-- [ ] Handle missing managers, cycles, and inactive employees cleanly in the tree projection.
+- [x] Handle missing managers, cycles, and inactive employees cleanly in the tree projection.
 
 ## Task 4: Add IT Declaration UI
 
@@ -89,21 +89,21 @@
 
 > **Audit v3 finding (Gap #9, §2 Feature Matrix):** No transfer or promotion event model exists. Only ad-hoc field edits are possible. Darwinbox has a full lifecycle event timeline. This is a High-priority gap.
 
-- [ ] Add `EmployeeTransferEvent` model: employee, from_department, to_department, from_location, to_location, from_designation, to_designation, effective_date, reason, requested_by, approval status.
-- [ ] Add `EmployeePromotionEvent` model: employee, from_designation, to_designation, revised_compensation_assignment FK (nullable), effective_date, reason, approval status.
-- [ ] When an approved transfer event becomes effective, auto-update the employee's department, location, and designation fields.
-- [ ] When an approved promotion event becomes effective, optionally trigger a new CompensationAssignment draft if salary revision is linked.
+- [x] Add `EmployeeTransferEvent` model: employee, from_department, to_department, from_location, to_location, from_designation, to_designation, effective_date, reason, requested_by, approval status.
+- [x] Add `EmployeePromotionEvent` model: employee, from_designation, to_designation, revised_compensation_assignment FK (nullable), effective_date, reason, approval status.
+- [x] When an approved transfer event becomes effective, auto-update the employee's department, location, and designation fields.
+- [x] When an approved promotion event becomes effective, optionally trigger a new CompensationAssignment draft if salary revision is linked. Auto-creates a DRAFT CompensationAssignment based on the employee's current compensation when `revised_compensation_assignment` is not pre-linked.
 - [ ] Add approval workflow hooks (using existing `approvals` app) for both event types so org admins can configure multi-level approval.
 - [ ] Expose transfer and promotion history as a timeline in `EmployeeDetailPage.tsx` alongside the existing compensation history.
-- [ ] Cover event creation, approval transitions, effective-date application, and compensation linkage with tests.
+- [x] Cover event creation, approval transitions, effective-date application, and compensation linkage with tests.
 
 ## Task 9: Add Designation Master
 
 > **Audit v3 finding (Gap #12, §4.1):** `Employee.designation` is a free-text `CharField`. This causes divergence (e.g., "Sr. Engineer" vs "Senior Engineer"). Darwinbox and Keka use locked designation masters.
 
-- [ ] Add a `Designation` model with `organisation` FK, `name`, `level` (integer for hierarchy ordering), and `is_active`.
-- [ ] Add a migration to create the table and a data migration script to populate unique designation values from existing `Employee.designation` strings per org.
-- [ ] Add `Employee.designation_ref` FK to `Designation` (nullable initially); write a migration to backfill `designation_ref` from the string field using the seeded master data.
-- [ ] Once backfill is validated, add `Designation` CRUD endpoints (org admin) and update employee create/update serializers to accept `designation_id` instead of free-text.
-- [ ] Update `EmployeesPage.tsx` and `EmployeeDetailPage.tsx` to use an `AppSelect` backed by the designation list rather than a text input.
-- [ ] Cover designation CRUD, employee assignment, and backfill correctness with tests.
+- [x] Add a `Designation` model with `organisation` FK, `name`, `level` (integer for hierarchy ordering), and `is_active`.
+- [x] Add a migration to create the table and a data migration script to populate unique designation values from existing `Employee.designation` strings per org.
+- [x] Add `Employee.designation_ref` FK to `Designation` (nullable initially); write a migration to backfill `designation_ref` from the string field using the seeded master data.
+- [x] Once backfill is validated, add `Designation` CRUD endpoints (org admin) and update employee create/update serializers to accept `designation_id` instead of free-text.
+- [x] Update `EmployeesPage.tsx` and `EmployeeDetailPage.tsx` to use an `AppSelect` backed by the designation list rather than a text input. Added `useDesignations` hook, `fetchDesignations` API function, and integrated `AppSelect` for designation selection in the invite form and employee detail/edit forms.
+- [x] Cover designation CRUD, employee assignment, and backfill correctness with tests.

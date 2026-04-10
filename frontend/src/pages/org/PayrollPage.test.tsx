@@ -1,12 +1,34 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { PayrollPage } from '@/pages/org/PayrollPage'
 
+const mockPayRun = {
+  id: 'run-1',
+  name: 'April 2026 Run',
+  period_year: 2026,
+  period_month: 4,
+  run_type: 'REGULAR',
+  status: 'CALCULATED',
+  use_attendance_inputs: false,
+  approval_run_id: null,
+  source_run_id: null,
+  employee_count: 5,
+  exception_count: 0,
+  attendance_snapshot: null,
+  calculated_at: '2026-04-05T10:30:00Z',
+  submitted_at: null,
+  finalized_at: null,
+  created_at: '2026-04-05T10:00:00Z',
+  modified_at: '2026-04-05T10:30:00Z',
+}
+
 const toastSuccess = vi.fn()
 const toastError = vi.fn()
+const toastLoading = vi.fn().mockReturnValue('loading-toast-id')
+const toastDismiss = vi.fn()
 
 const useCancelPayrollFiling = vi.fn()
 const useCalculatePayrollRun = vi.fn()
@@ -31,6 +53,8 @@ vi.mock('sonner', () => ({
   toast: {
     success: (...args: unknown[]) => toastSuccess(...args),
     error: (...args: unknown[]) => toastError(...args),
+    loading: (...args: unknown[]) => toastLoading(...args),
+    dismiss: (...args: unknown[]) => toastDismiss(...args),
   },
 }))
 
@@ -123,10 +147,9 @@ describe('PayrollPage', () => {
     renderPage()
 
     await user.click(screen.getByRole('button', { name: 'Runs' }))
-    await user.clear(screen.getByPlaceholderText('Year'))
-    await user.type(screen.getByPlaceholderText('Year'), '2026')
-    await user.clear(screen.getByPlaceholderText('Month'))
-    await user.type(screen.getByPlaceholderText('Month'), '4')
+    await waitFor(() => expect(screen.getByText('Create payroll run')).toBeInTheDocument())
+    fireEvent.change(screen.getByPlaceholderText('Year'), { target: { value: '2026' } })
+    fireEvent.change(screen.getByPlaceholderText('Month'), { target: { value: '4' } })
     await user.click(screen.getByRole('button', { name: 'Create payroll run' }))
 
     await waitFor(() => {
@@ -194,6 +217,63 @@ describe('PayrollPage', () => {
       )
     })
     expect(toastSuccess).toHaveBeenCalledWith('TDS challan recorded.')
+  })
+
+  it('navigates to the run detail page when View Details is clicked', async () => {
+    const user = userEvent.setup()
+    usePayrollSummary.mockReturnValue({
+      isLoading: false,
+      data: {
+        tax_slab_sets: [],
+        compensation_templates: [],
+        compensation_assignments: [],
+        pay_runs: [mockPayRun],
+        statutory_filing_batches: [],
+        tds_challans: [],
+        payslip_count: 0,
+      },
+    })
+    useCreatePayrollRun.mockReturnValue({ isPending: false, mutateAsync: vi.fn().mockResolvedValue(undefined) })
+
+    render(
+      <MemoryRouter initialEntries={['/org/payroll']}>
+        <PayrollPage />
+      </MemoryRouter>,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Runs' }))
+
+    const detailLink = screen.getByRole('link', { name: 'View Details →' })
+    expect(detailLink.getAttribute('href')).toBe('/org/payroll/runs/run-1')
+  })
+
+  it('triggers the calculate mutation when the Calculate button is clicked', async () => {
+    const user = userEvent.setup()
+    const calculateRun = vi.fn().mockResolvedValue(undefined)
+    usePayrollSummary.mockReturnValue({
+      isLoading: false,
+      data: {
+        tax_slab_sets: [],
+        compensation_templates: [],
+        compensation_assignments: [],
+        pay_runs: [{ ...mockPayRun, status: 'DRAFT' }],
+        statutory_filing_batches: [],
+        tds_challans: [],
+        payslip_count: 0,
+      },
+    })
+    useCreatePayrollRun.mockReturnValue({ isPending: false, mutateAsync: vi.fn().mockResolvedValue(undefined) })
+    useCalculatePayrollRun.mockReturnValue({ isPending: false, mutateAsync: calculateRun })
+
+    renderPage()
+
+    await user.click(screen.getByRole('button', { name: 'Runs' }))
+    await user.click(screen.getByRole('button', { name: 'Calculate' }))
+
+    await waitFor(() => {
+      expect(calculateRun).toHaveBeenCalledWith('run-1')
+    })
+    expect(toastSuccess).toHaveBeenCalledWith('Payroll run calculated.')
   })
 
   it('records an arrear from the compensation section', async () => {

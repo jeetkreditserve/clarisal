@@ -19,6 +19,12 @@ from .s3 import generate_presigned_url, upload_file
 
 ALLOWED_EXTENSIONS = {'.pdf', '.png', '.jpg', '.jpeg'}
 MAX_FILE_SIZE = 5 * 1024 * 1024
+SIGNATURES_BY_EXTENSION = {
+    '.pdf': (b'%PDF-',),
+    '.png': (b'\x89PNG\r\n\x1a\n',),
+    '.jpg': (b'\xff\xd8\xff',),
+    '.jpeg': (b'\xff\xd8\xff',),
+}
 
 DEFAULT_ONBOARDING_DOCUMENT_TYPES = [
     {'code': 'AADHAAR_CARD', 'name': 'Aadhaar Card', 'category': OnboardingDocumentCategory.IDENTITY_TAX, 'requires_identifier': True, 'sort_order': 10},
@@ -65,6 +71,11 @@ def _validate_upload(file_obj):
         raise ValueError('Only PDF, PNG, JPG, and JPEG files are allowed.')
     if file_obj.size > MAX_FILE_SIZE:
         raise ValueError('Files must be 5 MB or smaller.')
+    header = file_obj.read(16)
+    file_obj.seek(0)
+    allowed_signatures = SIGNATURES_BY_EXTENSION.get(ext, ())
+    if not header or not any(header.startswith(signature) for signature in allowed_signatures):
+        raise ValueError('The uploaded file content does not match the selected file type.')
 
 
 def ensure_default_document_types():

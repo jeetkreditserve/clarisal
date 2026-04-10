@@ -113,7 +113,7 @@ def months_remaining_in_fy(period_month: int) -> int:
 
 - [x] Replace `/ Decimal('12.00')` with `/ Decimal(str(months_remaining_in_fy(period_month)))`.
 - [x] Ensure `period_month` is derived from the `PayrollRun.period_start` date and is already available in the computation context; if not, pass it explicitly.
-- [ ] Add tests in `test_services.py`:
+- [x] Add tests in `test_services.py`:
   - April joiner (month 1): divisor = 12
   - October joiner (month 7): divisor = 6; verify monthly TDS = annual_tax / 6
   - February payroll (month 11): divisor = 2
@@ -124,7 +124,7 @@ def months_remaining_in_fy(period_month: int) -> int:
 
 > **Audit finding (§7.3, Gap #7 — High):** PT rules exist for MH, KA, TN, WB, AP, TG, MP. The following PT-applicable states are missing: Gujarat (GJ), Haryana (HR), Punjab (PB), Odisha (OR), Rajasthan (RJ), Himachal Pradesh (HP), Chhattisgarh (CG), Jharkhand (JH).
 
-- [ ] Research and add correct PT slab data for each state in `statutory_seed.py`. Cross-reference Simpliance / Greytip PT state list for current rates. Key slabs:
+- [x] Research and add correct PT slab data for each state in `statutory_seed.py`. Cross-reference Simpliance / Greytip PT state list for current rates. Key slabs:
   - **GJ**: ₹200/month for salary ≥ ₹12,000; annual cap ₹2,400
   - **HR**: ₹200/month for salary ≥ ₹25,000 (Haryana PT levied at district level — note this)
   - **PB**: ₹200/month for salary > ₹20,833; waiver for females
@@ -133,28 +133,28 @@ def months_remaining_in_fy(period_month: int) -> int:
   - **HP**: ₹200/month for salary ≥ ₹10,000
   - **CG**: ₹200/month for salary ≥ ₹25,000
   - **JH**: ₹100/month for salary ₹25,000–₹41,666; ₹150 above
-- [ ] Update `seed_statutory_masters` management command to include the new states.
-- [ ] Add tests verifying PT amount at threshold boundaries for each new state.
-- [ ] Document Rajasthan's explicit "no PT" sentinel so payroll runs in RJ do not raise a "no PT rule found" exception.
+- [x] Update `seed_statutory_masters` management command to include the new states.
+- [x] Add tests verifying PT amount at threshold boundaries for each new state.
+- [x] Document Rajasthan's explicit "no PT" sentinel so payroll runs in RJ do not raise a "no PT rule found" exception.
 
 ## Task 5: Expand Labour Welfare Fund to 5 More States
 
 > **Audit finding (§7.4, Gap #23 — Low/Medium):** LWF seeded only for MH and KA. States with LWF that are missing: AP, TG, MP, HR, OR.
 
-- [ ] Add LWF seed entries for:
+- [x] Add LWF seed entries for:
   - **AP**: Employee ₹40, Employer ₹60, annual (December)
   - **TG**: Employee ₹40, Employer ₹60, annual (December)
   - **MP**: Employee ₹10, Employer ₹30, annual (December); applies to wages ≤ ₹10,000 (verify current slabs)
   - **HR**: Employee ₹0.25/day, Employer ₹0.75/day — or equivalent annual equivalent (verify current slabs)
   - **OR**: Employee ₹20, Employer ₹40, annual (December)
-- [ ] Update `seed_statutory_masters` to include new LWF entries.
-- [ ] Add tests verifying LWF contribution amounts and frequency for each new state.
+- [x] Update `seed_statutory_masters` to include new LWF entries.
+- [x] Add tests verifying LWF contribution amounts and frequency for each new state.
 
 ## Task 6: Make Surcharge Tiers DB-Configurable Per Fiscal Year
 
 > **Audit finding (§7.7, Gap #8 — High):** `OLD_REGIME_SURCHARGE_TIERS` and `NEW_REGIME_SURCHARGE_TIERS` are hardcoded tuples in `statutory.py`. If the government changes surcharge tiers in a future Finance Act, a code deployment is required.
 
-- [ ] Add a `SurchargeRule` model:
+- [x] Add a `SurchargeRule` model:
 
 ```python
 class SurchargeRule(models.Model):
@@ -169,11 +169,11 @@ class SurchargeRule(models.Model):
         ordering = ["fiscal_year", "tax_regime", "income_threshold"]
 ```
 
-- [ ] Add seed data in `statutory_seed.py` for FY24-25 and FY25-26 surcharge tiers (both regimes).
-- [ ] Update `calculate_income_tax_with_rebate` (and/or the surcharge resolution helper) to query `SurchargeRule` for the relevant `fiscal_year` and `tax_regime`, falling back to `statutory.py` hardcoded constants only if no DB rows exist (for bootstrapping safety).
-- [ ] Update `seed_statutory_masters` to seed `SurchargeRule` rows.
-- [ ] Add CT UI to view (read-only) seeded surcharge rules alongside the existing tax slab set viewer.
-- [ ] Cover DB-driven surcharge calculation at all threshold boundaries with exact-value tests.
+- [x] Add seed data in `statutory_seed.py` for FY24-25 and FY25-26 surcharge tiers (both regimes).
+- [x] Update `calculate_income_tax_with_rebate` (and/or the surcharge resolution helper) to query `SurchargeRule` for the relevant `fiscal_year` and `tax_regime`, falling back to `statutory.py` hardcoded constants only if no DB rows exist (for bootstrapping safety).
+- [x] Update `seed_statutory_masters` to seed `SurchargeRule` rows.
+- [x] Add CT UI to view (read-only) seeded surcharge rules alongside the existing tax slab set viewer.
+- [x] Cover DB-driven surcharge calculation at all threshold boundaries with exact-value tests. Added 6 tests in `test_statutory_calculations.py` covering DB tier retrieval, fallback behavior, exact value calculation, marginal relief, and old regime calculation.
 
 ## Task 7: Validate Form 24Q Against NSDL FVU Schema
 
@@ -189,38 +189,37 @@ class SurchargeRule(models.Model):
 
 > **Audit finding (Gap #16 — Medium):** No Form 12BB PDF is generated from `InvestmentDeclaration` records. Employees and HR need Form 12BB as a submission declaration to the employer. Zoho People and Keka both offer this.
 
-- [ ] Create `backend/apps/payroll/filings/form12bb.py` with a `generate_form_12bb_pdf(investment_declaration_queryset, employee, fiscal_year)` function.
-- [ ] Use WeasyPrint (already used for Form 16 PDF rendering) to render the official Form 12BB layout with:
-  - Employee name, PAN, financial year, employer name and address
-  - Section A: HRA with landlord details
+- [x] Create `backend/apps/payroll/filings/form12bb.py` with `generate_form12bb_pdf(employee, fiscal_year)` function using WeasyPrint.
+  - Section A: HRA with landlord details and PAN
   - Section B: LTA with travel details
-  - Section C: Interest on home loan
-  - Section D: Other Chapter VI-A deductions (80C components, 80D, 80G, 80E, 80TTA)
+  - Section C: Interest on home loan (Section 24)
+  - Section D: Chapter VI-A deductions (80C, 80D, 80G, 80TTA, OTHER)
   - Declaration with date and employee signature block
+  - Summary box with totals per section
+- [x] Cover PDF generation (valid PDF bytes), section population from declaration records, empty-declaration blocking, and edge case with 4 tests in `test_filings.py`.
 - [ ] Add an employee self-service endpoint `GET /api/me/payroll/form-12bb/<fiscal_year>/` that returns the PDF.
 - [ ] Add an org-admin bulk download endpoint that generates Form 12BB PDFs for all employees in a fiscal year as a ZIP.
-- [ ] Cover PDF generation (check output is valid PDF bytes), section population from declaration records, and empty-declaration edge case with tests.
 
 ## Task 9: Add ESI Branch Code and PF Opt-Out Guard
 
 > **Audit findings (Gaps #22 and #21 — Low):** ESI challan export lacks branch code (required for ESIC portal matching). PF opt-out does not verify new joiner / never-been-EPF-member status.
 
 **ESI branch code:**
-- [ ] Add `esi_branch_code = models.CharField(max_length=20, blank=True)` to `Organisation` model.
-- [ ] Expose `esi_branch_code` in the org settings serializer and org-admin profile/settings page.
-- [ ] In `filings/esi.py`, include `esi_branch_code` in the challan header row. Add a validation warning (not a hard block) if `esi_branch_code` is blank when generating an ESI challan.
-- [ ] Add a test verifying the branch code appears in generated ESI challan output.
+- [x] Add `esi_branch_code = models.CharField(max_length=20, blank=True)` to `Organisation` model.
+- [x] Expose `esi_branch_code` in the org settings serializer and org-admin profile/settings page.
+- [x] In `filings/esi.py`, include `esi_branch_code` in the challan header row. Add a validation warning (not a hard block) if `esi_branch_code` is blank when generating an ESI challan.
+- [x] Add a test verifying the branch code appears in generated ESI challan output.
 
 **PF opt-out new joiner guard:**
-- [ ] In the PF opt-out validation path in `services.py`, add a check that `is_pf_opted_out` is only accepted when the employee's `date_of_joining` is after the PF wage ceiling introduction OR when the org explicitly marks the employee as a "never EPF member" (add `is_epf_exempt` boolean to `CompensationAssignment`).
-- [ ] Raise a validation error if `is_pf_opted_out=True` is set for an employee who joined before ₹15,000 ceiling was introduced (pre-September 2014) without the explicit `is_epf_exempt` override.
-- [ ] Document the EPFO circular reference for opt-out eligibility in a code comment.
+- [x] In the PF opt-out validation path in `services.py`, add a check that `is_pf_opted_out` is only accepted when the employee's `date_of_joining` is after the PF wage ceiling introduction OR when the org explicitly marks the employee as a "never EPF member" (add `is_epf_exempt` boolean to `CompensationAssignment`).
+- [x] Raise a validation error if `is_pf_opted_out=True` is set for an employee who joined before ₹15,000 ceiling was introduced (pre-September 2014) without the explicit `is_epf_exempt` override.
+- [x] Document the EPFO circular reference for opt-out eligibility in a code comment.
 
 ## Task 10: Add PT/LWF Rule Request-Scoped Cache
 
 > **Audit finding (Gap #19 — Medium):** PT and LWF rules are queried once per employee per payroll run. For an org with 1,000 employees, each run issues 1,000+ identical PT/LWF DB queries.
 
-- [ ] In `calculate_pay_run` (the outer loop in `services.py`), pre-fetch all active `ProfessionalTaxRule` and `LabourWelfareFundRule` records for relevant state codes before the employee loop begins.
-- [ ] Pass the pre-fetched rules as a dict keyed by `state_code` into `calculate_payroll_run_item` or the PT/LWF resolution helpers.
-- [ ] Update `_resolve_professional_tax_amount` and `_resolve_lwf_contribution` to accept the pre-fetched cache dict as an optional parameter, falling back to a DB query only if the cache is absent (for direct/unit test use).
-- [ ] Add a test that runs a payroll run for 10 employees in the same state and verifies that `ProfessionalTaxRule.objects.filter` is called at most once (use `django.test.utils.CaptureQueriesContext` or `assertNumQueries`).
+- [x] In `calculate_pay_run` (the outer loop in `services.py`), pre-fetch all active `ProfessionalTaxRule` and `LabourWelfareFundRule` records for relevant state codes before the employee loop begins.
+- [x] Pass the pre-fetched rules as a dict keyed by `state_code` into `calculate_payroll_run_item` or the PT/LWF resolution helpers.
+- [x] Update `_resolve_professional_tax_amount` and `_resolve_lwf_contribution` to accept the pre-fetched cache dict as an optional parameter, falling back to a DB query only if the cache is absent (for direct/unit test use).
+- [x] Add a test that runs a payroll run for 10 employees in the same state and verifies that `ProfessionalTaxRule.objects.filter` is called at most once (use `django.test.utils.CaptureQueriesContext` or `assertNumQueries`).

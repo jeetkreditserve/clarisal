@@ -11,6 +11,9 @@ from apps.departments.models import Department
 from apps.locations.models import OfficeLocation
 
 from .models import (
+    CustomFieldDefinition,
+    CustomFieldValue,
+    Designation,
     EducationRecord,
     Employee,
     EmployeeBankAccount,
@@ -25,6 +28,11 @@ from .serializers import (
     BankAccountWriteSerializer,
     EducationRecordSerializer,
     EmergencyContactSerializer,
+    CustomFieldDefinitionSerializer,
+    CustomFieldDefinitionWriteSerializer,
+    CustomFieldValueSerializer,
+    DesignationSerializer,
+    DesignationWriteSerializer,
     EmployeeDetailSerializer,
     EmployeeEndEmploymentSerializer,
     EmployeeInviteSerializer,
@@ -519,3 +527,537 @@ class MyBankAccountDetailView(APIView):
         account = get_object_or_404(EmployeeBankAccount, employee=employee, id=pk)
         delete_bank_account(account, actor=request.user)
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class DesignationListCreateView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+
+    def get(self, request):
+        organisation = get_active_admin_organisation(request, request.user)
+        designations = Designation.objects.filter(
+            organisation=organisation,
+            is_active=True
+        ).order_by('level', 'name')
+        return Response(DesignationSerializer(designations, many=True).data)
+
+
+class DesignationDetailView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
+
+    def get(self, request, pk):
+        organisation = get_active_admin_organisation(request, request.user)
+        designation = get_object_or_404(
+            Designation, organisation=organisation, id=pk
+        )
+        return Response(DesignationSerializer(designation).data)
+
+    def patch(self, request, pk):
+        organisation = get_active_admin_organisation(request, request.user)
+        designation = get_object_or_404(
+            Designation, organisation=organisation, id=pk
+        )
+        serializer = DesignationWriteSerializer(designation, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        designation = serializer.save()
+        return Response(DesignationSerializer(designation).data)
+
+    def delete(self, request, pk):
+        organisation = get_active_admin_organisation(request, request.user)
+        designation = get_object_or_404(
+            Designation, organisation=organisation, id=pk
+        )
+        designation.is_active = False
+        designation.save(update_fields=['is_active', 'modified_at'])
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class CustomFieldDefinitionListCreateView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+
+    def get(self, request):
+        organisation = get_active_admin_organisation(request, request.user)
+        placement = request.query_params.get('placement')
+        fields = CustomFieldDefinition.objects.filter(
+            organisation=organisation,
+            is_active=True
+        )
+        if placement:
+            fields = fields.filter(placement=placement)
+        fields = fields.order_by('placement', 'display_order', 'name')
+        return Response(CustomFieldDefinitionSerializer(fields, many=True).data)
+
+    def post(self, request):
+        organisation = get_active_admin_organisation(request, request.user)
+        serializer = CustomFieldDefinitionWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        field = serializer.save(organisation=organisation)
+        return Response(
+            CustomFieldDefinitionSerializer(field).data,
+            status=status.HTTP_201_CREATED
+        )
+
+
+class CustomFieldDefinitionDetailView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
+
+    def get(self, request, pk):
+        organisation = get_active_admin_organisation(request, request.user)
+        field = get_object_or_404(
+            CustomFieldDefinition, organisation=organisation, id=pk
+        )
+        return Response(CustomFieldDefinitionSerializer(field).data)
+
+    def patch(self, request, pk):
+        organisation = get_active_admin_organisation(request, request.user)
+        field = get_object_or_404(
+            CustomFieldDefinition, organisation=organisation, id=pk
+        )
+        serializer = CustomFieldDefinitionWriteSerializer(field, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        field = serializer.save()
+        return Response(CustomFieldDefinitionSerializer(field).data)
+
+    def delete(self, request, pk):
+        organisation = get_active_admin_organisation(request, request.user)
+        field = get_object_or_404(
+            CustomFieldDefinition, organisation=organisation, id=pk
+        )
+        field.is_active = False
+        field.save(update_fields=['is_active', 'modified_at'])
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class EmployeeCustomFieldValuesView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+
+    def get(self, request, employee_id):
+        organisation = get_active_admin_organisation(request, request.user)
+        employee = get_object_or_404(
+            Employee, organisation=organisation, id=employee_id
+        )
+        values = CustomFieldValue.objects.filter(
+            employee=employee,
+            is_deleted=False
+        ).select_related('field_definition')
+        return Response(CustomFieldValueSerializer(values, many=True).data)
+
+    def put(self, request, employee_id):
+        organisation = get_active_admin_organisation(request, request.user)
+        employee = get_object_or_404(
+            Employee, organisation=organisation, id=employee_id
+        )
+        custom_fields = request.data.get('custom_fields', [])
+        updated = []
+        for field_data in custom_fields:
+            field_def_id = field_data.get('field_definition_id')
+            field_def = get_object_or_404(
+                CustomFieldDefinition, organisation=organisation, id=field_def_id
+            )
+            value, created = CustomFieldValue.objects.update_or_create(
+                employee=employee,
+                field_definition=field_def,
+                defaults={
+                    'value_text': field_data.get('value_text', ''),
+                    'value_number': field_data.get('value_number'),
+                    'value_date': field_data.get('value_date'),
+                    'value_boolean': field_data.get('value_boolean', False),
+                }
+            )
+            updated.append(value)
+        return Response(CustomFieldValueSerializer(updated, many=True).data)
+
+class ExitInterviewTemplateListCreateView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+
+    def get(self, request):
+        organisation = get_active_admin_organisation(request, request.user)
+        templates = ExitInterviewTemplate.objects.filter(organisation=organisation, is_active=True)
+        serializer = ExitInterviewTemplateSerializer(templates, many=True)
+        return Response(serializer.data)
+
+    def post(self, request):
+        organisation = get_active_admin_organisation(request, request.user)
+        serializer = ExitInterviewTemplateWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        template = create_exit_interview_template(
+            organisation=organisation,
+            name=serializer.validated_data['name'],
+            description=serializer.validated_data.get('description', ''),
+            questions=serializer.validated_data.get('questions', []),
+            actor=request.user,
+        )
+        
+        return Response(
+            ExitInterviewTemplateSerializer(template).data,
+            status=status.HTTP_201_CREATED
+        )
+
+
+class ExitInterviewTemplateDetailView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+
+    def get(self, request, template_id):
+        organisation = get_active_admin_organisation(request, request.user)
+        template = get_object_or_404(
+            ExitInterviewTemplate.objects.filter(organisation=organisation),
+            id=template_id
+        )
+        serializer = ExitInterviewTemplateSerializer(template)
+        return Response(serializer.data)
+
+
+class ExitInterviewListCreateView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+
+    def get(self, request):
+        organisation = get_active_admin_organisation(request, request.user)
+        process_id = request.query_params.get('process_id')
+        
+        if process_id:
+            interviews = ExitInterview.objects.filter(
+                process__organisation=organisation,
+                process_id=process_id
+            )
+        else:
+            interviews = ExitInterview.objects.filter(
+                process__organisation=organisation
+            )
+        
+        serializer = ExitInterviewSerializer(interviews, many=True)
+        return Response(serializer.data)
+
+    def post(self, request):
+        organisation = get_active_admin_organisation(request, request.user)
+        serializer = ExitInterviewWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        process_id = serializer.validated_data.get('process_id') or request.data.get('process_id')
+        process = get_object_or_404(
+            EmployeeOffboardingProcess.objects.filter(organisation=organisation),
+            id=process_id
+        )
+        
+        template = None
+        template_id = serializer.validated_data.get('template_id')
+        if template_id:
+            template = get_object_or_404(
+                ExitInterviewTemplate.objects.filter(organisation=organisation),
+                id=template_id
+            )
+        
+        interview = schedule_exit_interview(
+            process=process,
+            scheduled_date=serializer.validated_data.get('scheduled_date'),
+            stage=serializer.validated_data.get('stage', 'EXIT'),
+            template=template,
+            actor=request.user,
+        )
+        
+        if serializer.validated_data.get('responses'):
+            for resp_data in serializer.validated_data['responses']:
+                question = get_object_or_404(ExitInterviewQuestion, id=resp_data['question_id'])
+                record_exit_interview_response(
+                    interview=interview,
+                    question=question,
+                    rating_value=resp_data.get('rating_value'),
+                    text_value=resp_data.get('text_value', ''),
+                    choice_value=resp_data.get('choice_value', ''),
+                    boolean_value=resp_data.get('boolean_value'),
+                    actor=request.user,
+                )
+        
+        return Response(
+            ExitInterviewSerializer(interview).data,
+            status=status.HTTP_201_CREATED
+        )
+
+
+class ExitInterviewDetailView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+
+    def get(self, request, interview_id):
+        organisation = get_active_admin_organisation(request, request.user)
+        interview = get_object_or_404(
+            ExitInterview.objects.filter(process__organisation=organisation),
+            id=interview_id
+        )
+        serializer = ExitInterviewSerializer(interview)
+        return Response(serializer.data)
+
+    def patch(self, request, interview_id):
+        organisation = get_active_admin_organisation(request, request.user)
+        interview = get_object_or_404(
+            ExitInterview.objects.filter(process__organisation=organisation),
+            id=interview_id
+        )
+        
+        serializer = ExitInterviewWriteSerializer(data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        
+        if serializer.validated_data.get('responses'):
+            for resp_data in serializer.validated_data['responses']:
+                question = get_object_or_404(ExitInterviewQuestion, id=resp_data['question_id'])
+                record_exit_interview_response(
+                    interview=interview,
+                    question=question,
+                    rating_value=resp_data.get('rating_value'),
+                    text_value=resp_data.get('text_value', ''),
+                    choice_value=resp_data.get('choice_value', ''),
+                    boolean_value=resp_data.get('boolean_value'),
+                    actor=request.user,
+                )
+        
+        if serializer.validated_data.get('overall_rating') is not None:
+            interview = complete_exit_interview(
+                interview=interview,
+                notes=serializer.validated_data.get('notes', ''),
+                overall_rating=serializer.validated_data.get('overall_rating'),
+                conducted_by=request.user,
+                actor=request.user,
+            )
+        elif serializer.validated_data.get('notes'):
+            interview.notes = serializer.validated_data['notes']
+            interview.save(update_fields=['notes', 'modified_at'])
+        
+        return Response(ExitInterviewSerializer(interview).data)
+
+class OrgChartView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+
+    def get(self, request):
+        organisation = get_active_admin_organisation(request, request.user)
+        include_inactive = request.query_params.get('include_inactive', 'false').lower() == 'true'
+        
+        tree = get_org_chart_tree(organisation, include_inactive=include_inactive)
+        serializer = OrgChartNodeSerializer(tree, many=True)
+        return Response(serializer.data)
+
+
+class OrgChartCyclesView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+
+    def get(self, request):
+        organisation = get_active_admin_organisation(request, request.user)
+        cycles = validate_org_chart_cycles(organisation)
+        return Response({'cycles': cycles, 'has_cycles': len(cycles) > 0})
+
+
+class EmployeeDirectReportsView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+
+    def get(self, request, employee_id):
+        organisation = get_active_admin_organisation(request, request.user)
+        employee = get_object_or_404(
+            Employee.objects.filter(organisation=organisation),
+            id=employee_id
+        )
+        include_inactive = request.query_params.get('include_inactive', 'false').lower() == 'true'
+        
+        direct_reports = get_employee_direct_reports(employee, include_inactive=include_inactive)
+        serializer = DirectReportSerializer(direct_reports, many=True)
+        return Response(serializer.data)
+
+class TransferEventListCreateView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+
+    def get(self, request):
+        organisation = get_active_admin_organisation(request, request.user)
+        employee_id = request.query_params.get('employee_id')
+        
+        if employee_id:
+            transfers = EmployeeTransferEvent.objects.filter(
+                employee__organisation=organisation,
+                employee_id=employee_id
+            )
+        else:
+            transfers = EmployeeTransferEvent.objects.filter(employee__organisation=organisation)
+        
+        transfers = transfers.select_related('employee', 'from_department', 'to_department', 'requested_by', 'approved_by')
+        serializer = TransferEventSerializer(transfers, many=True)
+        return Response(serializer.data)
+
+    def post(self, request):
+        organisation = get_active_admin_organisation(request, request.user)
+        serializer = TransferEventWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        employee = get_object_or_404(
+            Employee.objects.filter(organisation=organisation),
+            id=serializer.validated_data['employee_id']
+        )
+        
+        to_department = None
+        if serializer.validated_data.get('to_department_id'):
+            from departments.models import Department
+            to_department = get_object_or_404(Department, id=serializer.validated_data['to_department_id'])
+        
+        to_location = None
+        if serializer.validated_data.get('to_location_id'):
+            from locations.models import OfficeLocation
+            to_location = get_object_or_404(OfficeLocation, id=serializer.validated_data['to_location_id'])
+        
+        to_designation = None
+        if serializer.validated_data.get('to_designation_id'):
+            to_designation = get_object_or_404(Designation, id=serializer.validated_data['to_designation_id'])
+        
+        transfer = create_transfer_event(
+            employee=employee,
+            to_department=to_department,
+            to_location=to_location,
+            to_designation=to_designation,
+            effective_date=serializer.validated_data['effective_date'],
+            reason=serializer.validated_data.get('reason', ''),
+            requested_by=request.user,
+        )
+        
+        return Response(
+            TransferEventSerializer(transfer).data,
+            status=status.HTTP_201_CREATED
+        )
+
+
+class TransferEventDetailView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+
+    def get(self, request, transfer_id):
+        organisation = get_active_admin_organisation(request, request.user)
+        transfer = get_object_or_404(
+            EmployeeTransferEvent.objects.filter(employee__organisation=organisation),
+            id=transfer_id
+        )
+        serializer = TransferEventSerializer(transfer)
+        return Response(serializer.data)
+
+    def patch(self, request, transfer_id):
+        organisation = get_active_admin_organisation(request, request.user)
+        transfer = get_object_or_404(
+            EmployeeTransferEvent.objects.filter(employee__organisation=organisation),
+            id=transfer_id
+        )
+        
+        action = request.data.get('action')
+        
+        if action == 'approve':
+            notes = request.data.get('notes', '')
+            transfer = approve_transfer_event(transfer, approved_by=request.user, notes=notes)
+        elif action == 'apply':
+            transfer = apply_transfer_event(transfer, actor=request.user)
+        elif action == 'reject':
+            transfer.status = 'REJECTED'
+            transfer.notes = request.data.get('notes', '')
+            transfer.save()
+        elif action == 'cancel':
+            transfer.status = 'CANCELLED'
+            transfer.save()
+        
+        return Response(TransferEventSerializer(transfer).data)
+
+
+class PromotionEventListCreateView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+
+    def get(self, request):
+        organisation = get_active_admin_organisation(request, request.user)
+        employee_id = request.query_params.get('employee_id')
+        
+        if employee_id:
+            promotions = EmployeePromotionEvent.objects.filter(
+                employee__organisation=organisation,
+                employee_id=employee_id
+            )
+        else:
+            promotions = EmployeePromotionEvent.objects.filter(employee__organisation=organisation)
+        
+        promotions = promotions.select_related('employee', 'from_designation', 'to_designation', 'requested_by', 'approved_by')
+        serializer = PromotionEventSerializer(promotions, many=True)
+        return Response(serializer.data)
+
+    def post(self, request):
+        organisation = get_active_admin_organisation(request, request.user)
+        serializer = PromotionEventWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        employee = get_object_or_404(
+            Employee.objects.filter(organisation=organisation),
+            id=serializer.validated_data['employee_id']
+        )
+        
+        to_designation = get_object_or_404(
+            Designation.objects.filter(organisation=organisation),
+            id=serializer.validated_data['to_designation_id']
+        )
+        
+        revised_compensation = None
+        if serializer.validated_data.get('revised_compensation_id'):
+            from apps.payroll.models import CompensationAssignment
+            revised_compensation = get_object_or_404(
+                CompensationAssignment,
+                id=serializer.validated_data['revised_compensation_id']
+            )
+        
+        promotion = create_promotion_event(
+            employee=employee,
+            to_designation=to_designation,
+            effective_date=serializer.validated_data['effective_date'],
+            revised_compensation=revised_compensation,
+            reason=serializer.validated_data.get('reason', ''),
+            requested_by=request.user,
+        )
+        
+        return Response(
+            PromotionEventSerializer(promotion).data,
+            status=status.HTTP_201_CREATED
+        )
+
+
+class PromotionEventDetailView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+
+    def get(self, request, promotion_id):
+        organisation = get_active_admin_organisation(request, request.user)
+        promotion = get_object_or_404(
+            EmployeePromotionEvent.objects.filter(employee__organisation=organisation),
+            id=promotion_id
+        )
+        serializer = PromotionEventSerializer(promotion)
+        return Response(serializer.data)
+
+    def patch(self, request, promotion_id):
+        organisation = get_active_admin_organisation(request, request.user)
+        promotion = get_object_or_404(
+            EmployeePromotionEvent.objects.filter(employee__organisation=organisation),
+            id=promotion_id
+        )
+        
+        action = request.data.get('action')
+        
+        if action == 'approve':
+            notes = request.data.get('notes', '')
+            promotion = approve_promotion_event(promotion, approved_by=request.user, notes=notes)
+        elif action == 'apply':
+            promotion = apply_promotion_event(promotion, actor=request.user)
+        elif action == 'reject':
+            promotion.status = 'REJECTED'
+            promotion.notes = request.data.get('notes', '')
+            promotion.save()
+        elif action == 'cancel':
+            promotion.status = 'CANCELLED'
+            promotion.save()
+        
+        return Response(PromotionEventSerializer(promotion).data)
+
+
+class EmployeeCareerTimelineView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+
+    def get(self, request, employee_id):
+        organisation = get_active_admin_organisation(request, request.user)
+        employee = get_object_or_404(
+            Employee.objects.filter(organisation=organisation),
+            id=employee_id
+        )
+        
+        timeline = get_employee_career_timeline(employee)
+        serializer = CareerTimelineSerializer(timeline, many=True)
+        return Response(serializer.data)

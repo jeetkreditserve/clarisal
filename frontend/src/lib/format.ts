@@ -18,6 +18,17 @@ export function formatDateTime(value?: string | null) {
   }).format(new Date(value))
 }
 
+export function formatINR(value: string | number | null | undefined): string {
+  if (value === null || value === undefined || value === '') return '₹0.00'
+  const num = typeof value === 'string' ? parseFloat(value.replace(/,/g, '')) : value
+  if (isNaN(num)) return '₹0.00'
+  const formatted = new Intl.NumberFormat('en-IN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Math.abs(num))
+  return `${num < 0 ? '-' : ''}₹${formatted}`
+}
+
 export function startCase(value?: string | null) {
   if (!value) return 'Unknown'
   return value

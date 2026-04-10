@@ -9,78 +9,79 @@ from apps.timeoff.models import DaySession
 
 
 class AttendanceDayStatus(models.TextChoices):
-    PRESENT = 'PRESENT', 'Present'
-    HALF_DAY = 'HALF_DAY', 'Half Day'
-    ABSENT = 'ABSENT', 'Absent'
-    INCOMPLETE = 'INCOMPLETE', 'Incomplete'
-    HOLIDAY = 'HOLIDAY', 'Holiday'
-    WEEK_OFF = 'WEEK_OFF', 'Week Off'
-    ON_LEAVE = 'ON_LEAVE', 'On Leave'
-    ON_DUTY = 'ON_DUTY', 'On Duty'
-    WFH = 'WFH', 'Work From Home'
+    PRESENT = "PRESENT", "Present"
+    HALF_DAY = "HALF_DAY", "Half Day"
+    ABSENT = "ABSENT", "Absent"
+    INCOMPLETE = "INCOMPLETE", "Incomplete"
+    HOLIDAY = "HOLIDAY", "Holiday"
+    WEEK_OFF = "WEEK_OFF", "Week Off"
+    ON_LEAVE = "ON_LEAVE", "On Leave"
+    ON_DUTY = "ON_DUTY", "On Duty"
+    WFH = "WFH", "Work From Home"
 
 
 class AttendancePunchActionType(models.TextChoices):
-    CHECK_IN = 'CHECK_IN', 'Check In'
-    CHECK_OUT = 'CHECK_OUT', 'Check Out'
-    RAW = 'RAW', 'Raw Punch'
+    CHECK_IN = "CHECK_IN", "Check In"
+    CHECK_OUT = "CHECK_OUT", "Check Out"
+    RAW = "RAW", "Raw Punch"
 
 
 class AttendancePunchSource(models.TextChoices):
-    WEB = 'WEB', 'Web'
-    IMPORT = 'IMPORT', 'Excel Import'
-    API = 'API', 'External API'
-    DEVICE = 'DEVICE', 'Biometric Device'
-    REGULARIZATION = 'REGULARIZATION', 'Regularization'
-    MANUAL = 'MANUAL', 'Manual'
+    WEB = "WEB", "Web"
+    IMPORT = "IMPORT", "Excel Import"
+    API = "API", "External API"
+    DEVICE = "DEVICE", "Biometric Device"
+    REGULARIZATION = "REGULARIZATION", "Regularization"
+    MANUAL = "MANUAL", "Manual"
+    MOBILE = "MOBILE", "Mobile App"
 
 
 class AttendanceRegularizationStatus(models.TextChoices):
-    PENDING = 'PENDING', 'Pending Approval'
-    APPROVED = 'APPROVED', 'Approved'
-    REJECTED = 'REJECTED', 'Rejected'
-    CANCELLED = 'CANCELLED', 'Cancelled'
-    WITHDRAWN = 'WITHDRAWN', 'Withdrawn'
+    PENDING = "PENDING", "Pending Approval"
+    APPROVED = "APPROVED", "Approved"
+    REJECTED = "REJECTED", "Rejected"
+    CANCELLED = "CANCELLED", "Cancelled"
+    WITHDRAWN = "WITHDRAWN", "Withdrawn"
 
 
 class AttendanceSourceConfigKind(models.TextChoices):
-    API = 'API', 'API Source'
-    EXCEL = 'EXCEL', 'Excel Source'
-    DEVICE = 'DEVICE', 'Device Source'
+    API = "API", "API Source"
+    EXCEL = "EXCEL", "Excel Source"
+    DEVICE = "DEVICE", "Device Source"
 
 
 class AttendanceImportMode(models.TextChoices):
-    ATTENDANCE_SHEET = 'ATTENDANCE_SHEET', 'Attendance Sheet'
-    PUNCH_SHEET = 'PUNCH_SHEET', 'Punch Sheet'
+    ATTENDANCE_SHEET = "ATTENDANCE_SHEET", "Attendance Sheet"
+    PUNCH_SHEET = "PUNCH_SHEET", "Punch Sheet"
 
 
 class AttendanceImportStatus(models.TextChoices):
-    FAILED = 'FAILED', 'Failed'
-    READY_FOR_REVIEW = 'READY_FOR_REVIEW', 'Ready For Review'
-    POSTED = 'POSTED', 'Posted'
+    FAILED = "FAILED", "Failed"
+    READY_FOR_REVIEW = "READY_FOR_REVIEW", "Ready For Review"
+    POSTED = "POSTED", "Posted"
 
 
 class AttendanceImportRowStatus(models.TextChoices):
-    VALID = 'VALID', 'Valid'
-    ERROR = 'ERROR', 'Error'
-    INCOMPLETE = 'INCOMPLETE', 'Incomplete'
-    POSTED = 'POSTED', 'Posted'
+    VALID = "VALID", "Valid"
+    ERROR = "ERROR", "Error"
+    INCOMPLETE = "INCOMPLETE", "Incomplete"
+    POSTED = "POSTED", "Posted"
 
 
 class AttendanceRecordSource(models.TextChoices):
-    EXCEL_IMPORT = 'EXCEL_IMPORT', 'Excel Import'
-    MANUAL_OVERRIDE = 'MANUAL_OVERRIDE', 'Manual Override'
-    REGULARIZATION = 'REGULARIZATION', 'Regularization'
+    EXCEL_IMPORT = "EXCEL_IMPORT", "Excel Import"
+    MANUAL_OVERRIDE = "MANUAL_OVERRIDE", "Manual Override"
+    REGULARIZATION = "REGULARIZATION", "Regularization"
 
 
 class AttendancePolicy(AuditedBaseModel):
     organisation = models.ForeignKey(
-        'organisations.Organisation',
+        "organisations.Organisation",
         on_delete=models.CASCADE,
-        related_name='attendance_policies',
+        related_name="attendance_policies",
     )
     name = models.CharField(max_length=255)
-    timezone_name = models.CharField(max_length=64, default='Asia/Kolkata')
+    timezone_name = models.CharField(max_length=64, default="Asia/Kolkata")
     default_start_time = models.TimeField(default=time(9, 0))
     default_end_time = models.TimeField(default=time(18, 0))
     grace_minutes = models.PositiveIntegerField(default=15)
@@ -101,25 +102,77 @@ class AttendancePolicy(AuditedBaseModel):
     is_active = models.BooleanField(default=True)
 
     class Meta:
-        db_table = 'attendance_policies'
-        ordering = ['name']
+        db_table = "attendance_policies"
+        ordering = ["name"]
         constraints = [
             models.UniqueConstraint(
-                fields=['organisation'],
+                fields=["organisation"],
                 condition=Q(is_default=True),
-                name='unique_default_attendance_policy_per_org',
+                name="unique_default_attendance_policy_per_org",
             ),
         ]
 
     def __str__(self):
-        return f'{self.organisation.name} - {self.name}'
+        return f"{self.organisation.name} - {self.name}"
+
+
+class GeoFenceEnforcementMode(models.TextChoices):
+    WARN = "WARN", "Warn Only"
+    BLOCK = "BLOCK", "Block"
+
+
+class GeoFencePolicy(AuditedBaseModel):
+    organisation = models.ForeignKey(
+        "organisations.Organisation",
+        on_delete=models.CASCADE,
+        related_name="geo_fence_policies",
+    )
+    location = models.ForeignKey(
+        "locations.OfficeLocation",
+        on_delete=models.CASCADE,
+        related_name="geo_fence_policies",
+    )
+    name = models.CharField(max_length=255)
+    latitude = models.DecimalField(
+        max_digits=9,
+        decimal_places=6,
+        help_text="Centre latitude of the geo-fence",
+    )
+    longitude = models.DecimalField(
+        max_digits=9,
+        decimal_places=6,
+        help_text="Centre longitude of the geo-fence",
+    )
+    radius_metres = models.PositiveIntegerField(
+        default=100,
+        help_text="Allowed radius in metres from the centre point",
+    )
+    enforcement_mode = models.CharField(
+        max_length=10,
+        choices=GeoFenceEnforcementMode.choices,
+        default=GeoFenceEnforcementMode.WARN,
+    )
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = "attendance_geo_fence_policies"
+        ordering = ["name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["organisation", "location"],
+                name="unique_geo_fence_per_location",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.name} ({self.radius_metres}m around {self.latitude},{self.longitude})"
 
 
 class Shift(AuditedBaseModel):
     organisation = models.ForeignKey(
-        'organisations.Organisation',
+        "organisations.Organisation",
         on_delete=models.CASCADE,
-        related_name='attendance_shifts',
+        related_name="attendance_shifts",
     )
     name = models.CharField(max_length=255)
     start_time = models.TimeField()
@@ -132,49 +185,49 @@ class Shift(AuditedBaseModel):
     is_active = models.BooleanField(default=True)
 
     class Meta:
-        db_table = 'attendance_shifts'
-        ordering = ['name']
+        db_table = "attendance_shifts"
+        ordering = ["name"]
 
     def __str__(self):
-        return f'{self.organisation.name} - {self.name}'
+        return f"{self.organisation.name} - {self.name}"
 
 
 class ShiftAssignment(AuditedBaseModel):
     organisation = models.ForeignKey(
-        'organisations.Organisation',
+        "organisations.Organisation",
         on_delete=models.CASCADE,
-        related_name='shift_assignments',
+        related_name="shift_assignments",
     )
     employee = models.ForeignKey(
-        'employees.Employee',
+        "employees.Employee",
         on_delete=models.CASCADE,
-        related_name='shift_assignments',
+        related_name="shift_assignments",
     )
     shift = models.ForeignKey(
         Shift,
         on_delete=models.CASCADE,
-        related_name='assignments',
+        related_name="assignments",
     )
     start_date = models.DateField()
     end_date = models.DateField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
 
     class Meta:
-        db_table = 'attendance_shift_assignments'
-        ordering = ['-start_date', 'employee__employee_code']
+        db_table = "attendance_shift_assignments"
+        ordering = ["-start_date", "employee__employee_code"]
         indexes = [
-            models.Index(fields=['organisation', 'employee', 'start_date']),
+            models.Index(fields=["organisation", "employee", "start_date"]),
         ]
 
     def __str__(self):
-        return f'{self.employee} - {self.shift.name}'
+        return f"{self.employee} - {self.shift.name}"
 
 
 class ShiftRotationTemplate(AuditedBaseModel):
     organisation = models.ForeignKey(
-        'organisations.Organisation',
+        "organisations.Organisation",
         on_delete=models.CASCADE,
-        related_name='shift_rotation_templates',
+        related_name="shift_rotation_templates",
     )
     name = models.CharField(max_length=255)
     rotation_interval_days = models.PositiveIntegerField(default=7)
@@ -182,49 +235,49 @@ class ShiftRotationTemplate(AuditedBaseModel):
     is_active = models.BooleanField(default=True)
 
     class Meta:
-        db_table = 'attendance_shift_rotation_templates'
-        ordering = ['name']
+        db_table = "attendance_shift_rotation_templates"
+        ordering = ["name"]
 
     def __str__(self):
-        return f'{self.organisation.name} - {self.name}'
+        return f"{self.organisation.name} - {self.name}"
 
 
 class ShiftRotationAssignment(AuditedBaseModel):
     organisation = models.ForeignKey(
-        'organisations.Organisation',
+        "organisations.Organisation",
         on_delete=models.CASCADE,
-        related_name='shift_rotation_assignments',
+        related_name="shift_rotation_assignments",
     )
     employee = models.ForeignKey(
-        'employees.Employee',
+        "employees.Employee",
         on_delete=models.CASCADE,
-        related_name='shift_rotation_assignments',
+        related_name="shift_rotation_assignments",
     )
     template = models.ForeignKey(
         ShiftRotationTemplate,
         on_delete=models.CASCADE,
-        related_name='assignments',
+        related_name="assignments",
     )
     start_date = models.DateField()
     end_date = models.DateField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
 
     class Meta:
-        db_table = 'attendance_shift_rotation_assignments'
-        ordering = ['-start_date', 'employee__employee_code']
+        db_table = "attendance_shift_rotation_assignments"
+        ordering = ["-start_date", "employee__employee_code"]
         indexes = [
-            models.Index(fields=['organisation', 'employee', 'start_date']),
+            models.Index(fields=["organisation", "employee", "start_date"]),
         ]
 
     def __str__(self):
-        return f'{self.employee} - {self.template.name}'
+        return f"{self.employee} - {self.template.name}"
 
 
 class AttendanceSourceConfig(AuditedBaseModel):
     organisation = models.ForeignKey(
-        'organisations.Organisation',
+        "organisations.Organisation",
         on_delete=models.CASCADE,
-        related_name='attendance_source_configs',
+        related_name="attendance_source_configs",
     )
     name = models.CharField(max_length=255)
     kind = models.CharField(max_length=24, choices=AttendanceSourceConfigKind.choices)
@@ -233,25 +286,25 @@ class AttendanceSourceConfig(AuditedBaseModel):
     last_error = models.TextField(blank=True)
 
     class Meta:
-        db_table = 'attendance_source_configs'
-        ordering = ['name']
+        db_table = "attendance_source_configs"
+        ordering = ["name"]
 
     def __str__(self):
-        return f'{self.organisation.name} - {self.name}'
+        return f"{self.organisation.name} - {self.name}"
 
 
 class AttendanceImportJob(AuditedBaseModel):
     organisation = models.ForeignKey(
-        'organisations.Organisation',
+        "organisations.Organisation",
         on_delete=models.CASCADE,
-        related_name='attendance_import_jobs',
+        related_name="attendance_import_jobs",
     )
     uploaded_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
-        related_name='uploaded_attendance_import_jobs',
+        related_name="uploaded_attendance_import_jobs",
     )
     mode = models.CharField(max_length=32, choices=AttendanceImportMode.choices)
     status = models.CharField(max_length=24, choices=AttendanceImportStatus.choices)
@@ -262,31 +315,31 @@ class AttendanceImportJob(AuditedBaseModel):
     posted_rows = models.PositiveIntegerField(default=0)
 
     class Meta:
-        db_table = 'attendance_import_jobs'
-        ordering = ['-created_at']
+        db_table = "attendance_import_jobs"
+        ordering = ["-created_at"]
         indexes = [
-            models.Index(fields=['organisation', 'mode', 'status']),
-            models.Index(fields=['organisation', 'created_at']),
+            models.Index(fields=["organisation", "mode", "status"]),
+            models.Index(fields=["organisation", "created_at"]),
         ]
 
     def __str__(self):
-        return f'{self.get_mode_display()} • {self.original_filename}'
+        return f"{self.get_mode_display()} • {self.original_filename}"
 
 
 class AttendanceImportRow(AuditedBaseModel):
     job = models.ForeignKey(
         AttendanceImportJob,
         on_delete=models.CASCADE,
-        related_name='rows',
+        related_name="rows",
     )
     row_number = models.PositiveIntegerField()
     employee_code = models.CharField(max_length=20, blank=True)
     employee = models.ForeignKey(
-        'employees.Employee',
+        "employees.Employee",
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
-        related_name='+',
+        related_name="+",
     )
     attendance_date = models.DateField(null=True, blank=True)
     check_in_at = models.DateTimeField(null=True, blank=True)
@@ -297,43 +350,45 @@ class AttendanceImportRow(AuditedBaseModel):
     metadata = models.JSONField(default=dict, blank=True)
 
     class Meta:
-        db_table = 'attendance_import_rows'
-        ordering = ['row_number', 'created_at']
+        db_table = "attendance_import_rows"
+        ordering = ["row_number", "created_at"]
         indexes = [
-            models.Index(fields=['job', 'status']),
-            models.Index(fields=['employee', 'attendance_date']),
+            models.Index(fields=["job", "status"]),
+            models.Index(fields=["employee", "attendance_date"]),
         ]
 
     def __str__(self):
-        return f'{self.employee_code or "UNKNOWN"} • {self.attendance_date or "NA"}'
+        return f"{self.employee_code or 'UNKNOWN'} • {self.attendance_date or 'NA'}"
 
 
 class AttendancePunch(AuditedBaseModel):
     organisation = models.ForeignKey(
-        'organisations.Organisation',
+        "organisations.Organisation",
         on_delete=models.CASCADE,
-        related_name='attendance_punches',
+        related_name="attendance_punches",
     )
     employee = models.ForeignKey(
-        'employees.Employee',
+        "employees.Employee",
         on_delete=models.CASCADE,
-        related_name='attendance_punches',
+        related_name="attendance_punches",
     )
     source_config = models.ForeignKey(
         AttendanceSourceConfig,
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
-        related_name='punches',
+        related_name="punches",
     )
     import_job = models.ForeignKey(
         AttendanceImportJob,
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
-        related_name='punches',
+        related_name="punches",
     )
-    action_type = models.CharField(max_length=16, choices=AttendancePunchActionType.choices, default=AttendancePunchActionType.RAW)
+    action_type = models.CharField(
+        max_length=16, choices=AttendancePunchActionType.choices, default=AttendancePunchActionType.RAW
+    )
     source = models.CharField(max_length=24, choices=AttendancePunchSource.choices, default=AttendancePunchSource.WEB)
     punch_at = models.DateTimeField()
     remote_ip = models.CharField(max_length=64, blank=True)
@@ -342,68 +397,70 @@ class AttendancePunch(AuditedBaseModel):
     metadata = models.JSONField(default=dict, blank=True)
 
     class Meta:
-        db_table = 'attendance_punches'
-        ordering = ['-punch_at']
+        db_table = "attendance_punches"
+        ordering = ["-punch_at"]
         indexes = [
-            models.Index(fields=['organisation', 'punch_at']),
-            models.Index(fields=['employee', 'punch_at']),
+            models.Index(fields=["organisation", "punch_at"]),
+            models.Index(fields=["employee", "punch_at"]),
         ]
 
     def __str__(self):
-        return f'{self.employee.employee_code} • {self.action_type} • {self.punch_at}'
+        return f"{self.employee.employee_code} • {self.action_type} • {self.punch_at}"
 
 
 class AttendanceRecord(AuditedBaseModel):
     organisation = models.ForeignKey(
-        'organisations.Organisation',
+        "organisations.Organisation",
         on_delete=models.CASCADE,
-        related_name='attendance_records',
+        related_name="attendance_records",
     )
     employee = models.ForeignKey(
-        'employees.Employee',
+        "employees.Employee",
         on_delete=models.CASCADE,
-        related_name='attendance_records',
+        related_name="attendance_records",
     )
     attendance_date = models.DateField()
     check_in_at = models.DateTimeField()
     check_out_at = models.DateTimeField(null=True, blank=True)
-    source = models.CharField(max_length=24, choices=AttendanceRecordSource.choices, default=AttendanceRecordSource.EXCEL_IMPORT)
+    source = models.CharField(
+        max_length=24, choices=AttendanceRecordSource.choices, default=AttendanceRecordSource.EXCEL_IMPORT
+    )
     import_job = models.ForeignKey(
         AttendanceImportJob,
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
-        related_name='attendance_records',
+        related_name="attendance_records",
     )
 
     class Meta:
-        db_table = 'attendance_records'
-        ordering = ['-attendance_date', 'employee__employee_code']
+        db_table = "attendance_records"
+        ordering = ["-attendance_date", "employee__employee_code"]
         constraints = [
             models.UniqueConstraint(
-                fields=['organisation', 'employee', 'attendance_date'],
-                name='unique_attendance_record_per_employee_day',
+                fields=["organisation", "employee", "attendance_date"],
+                name="unique_attendance_record_per_employee_day",
             ),
         ]
         indexes = [
-            models.Index(fields=['organisation', 'attendance_date']),
-            models.Index(fields=['employee', 'attendance_date']),
+            models.Index(fields=["organisation", "attendance_date"]),
+            models.Index(fields=["employee", "attendance_date"]),
         ]
 
     def __str__(self):
-        return f'{self.employee.employee_code} • {self.attendance_date}'
+        return f"{self.employee.employee_code} • {self.attendance_date}"
 
 
 class AttendanceDay(AuditedBaseModel):
     organisation = models.ForeignKey(
-        'organisations.Organisation',
+        "organisations.Organisation",
         on_delete=models.CASCADE,
-        related_name='attendance_days',
+        related_name="attendance_days",
     )
     employee = models.ForeignKey(
-        'employees.Employee',
+        "employees.Employee",
         on_delete=models.CASCADE,
-        related_name='attendance_days',
+        related_name="attendance_days",
     )
     attendance_date = models.DateField()
     policy = models.ForeignKey(
@@ -411,17 +468,17 @@ class AttendanceDay(AuditedBaseModel):
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
-        related_name='attendance_days',
+        related_name="attendance_days",
     )
     shift = models.ForeignKey(
         Shift,
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
-        related_name='attendance_days',
+        related_name="attendance_days",
     )
     status = models.CharField(max_length=24, choices=AttendanceDayStatus.choices, default=AttendanceDayStatus.ABSENT)
-    source = models.CharField(max_length=24, choices=AttendancePunchSource.choices, blank=True, default='')
+    source = models.CharField(max_length=24, choices=AttendancePunchSource.choices, blank=True, default="")
     check_in_at = models.DateTimeField(null=True, blank=True)
     check_out_at = models.DateTimeField(null=True, blank=True)
     worked_minutes = models.PositiveIntegerField(default=0)
@@ -439,36 +496,36 @@ class AttendanceDay(AuditedBaseModel):
     metadata = models.JSONField(default=dict, blank=True)
 
     class Meta:
-        db_table = 'attendance_days'
-        ordering = ['-attendance_date', 'employee__employee_code']
+        db_table = "attendance_days"
+        ordering = ["-attendance_date", "employee__employee_code"]
         constraints = [
             models.UniqueConstraint(
-                fields=['organisation', 'employee', 'attendance_date'],
-                name='unique_attendance_day_per_employee_date',
+                fields=["organisation", "employee", "attendance_date"],
+                name="unique_attendance_day_per_employee_date",
             ),
         ]
         indexes = [
-            models.Index(fields=['organisation', 'attendance_date', 'status']),
-            models.Index(fields=['employee', 'attendance_date']),
+            models.Index(fields=["organisation", "attendance_date", "status"]),
+            models.Index(fields=["employee", "attendance_date"]),
         ]
 
     def __str__(self):
-        return f'{self.employee.employee_code} • {self.attendance_date} • {self.status}'
+        return f"{self.employee.employee_code} • {self.attendance_date} • {self.status}"
 
 
 class WFHRequestStatus(models.TextChoices):
-    PENDING = 'PENDING', 'Pending Approval'
-    APPROVED = 'APPROVED', 'Approved'
-    REJECTED = 'REJECTED', 'Rejected'
-    CANCELLED = 'CANCELLED', 'Cancelled'
-    WITHDRAWN = 'WITHDRAWN', 'Withdrawn'
+    PENDING = "PENDING", "Pending Approval"
+    APPROVED = "APPROVED", "Approved"
+    REJECTED = "REJECTED", "Rejected"
+    CANCELLED = "CANCELLED", "Cancelled"
+    WITHDRAWN = "WITHDRAWN", "Withdrawn"
 
 
 class WFHRequest(AuditedBaseModel):
     employee = models.ForeignKey(
-        'employees.Employee',
+        "employees.Employee",
         on_delete=models.CASCADE,
-        related_name='wfh_requests',
+        related_name="wfh_requests",
     )
     start_date = models.DateField()
     end_date = models.DateField()
@@ -478,34 +535,34 @@ class WFHRequest(AuditedBaseModel):
     rejection_reason = models.TextField(blank=True)
 
     class Meta:
-        db_table = 'attendance_wfh_requests'
-        ordering = ['-created_at']
+        db_table = "attendance_wfh_requests"
+        ordering = ["-created_at"]
         indexes = [
-            models.Index(fields=['employee', 'status']),
-            models.Index(fields=['employee', 'start_date', 'end_date']),
+            models.Index(fields=["employee", "status"]),
+            models.Index(fields=["employee", "start_date", "end_date"]),
         ]
 
     def __str__(self):
-        return f'{self.employee.employee_code} • {self.start_date} • {self.status}'
+        return f"{self.employee.employee_code} • {self.start_date} • {self.status}"
 
 
 class AttendanceOvertimeApprovalStatus(models.TextChoices):
-    PENDING = 'PENDING', 'Pending Approval'
-    APPROVED = 'APPROVED', 'Approved'
-    REJECTED = 'REJECTED', 'Rejected'
-    CANCELLED = 'CANCELLED', 'Cancelled'
+    PENDING = "PENDING", "Pending Approval"
+    APPROVED = "APPROVED", "Approved"
+    REJECTED = "REJECTED", "Rejected"
+    CANCELLED = "CANCELLED", "Cancelled"
 
 
 class AttendanceOvertimeApproval(AuditedBaseModel):
     attendance_day = models.OneToOneField(
         AttendanceDay,
         on_delete=models.CASCADE,
-        related_name='overtime_approval',
+        related_name="overtime_approval",
     )
     employee = models.ForeignKey(
-        'employees.Employee',
+        "employees.Employee",
         on_delete=models.CASCADE,
-        related_name='attendance_overtime_approvals',
+        related_name="attendance_overtime_approvals",
     )
     approved_minutes = models.PositiveIntegerField(default=0)
     status = models.CharField(
@@ -516,33 +573,33 @@ class AttendanceOvertimeApproval(AuditedBaseModel):
     rejection_reason = models.TextField(blank=True)
 
     class Meta:
-        db_table = 'attendance_overtime_approvals'
-        ordering = ['-created_at']
+        db_table = "attendance_overtime_approvals"
+        ordering = ["-created_at"]
         indexes = [
-            models.Index(fields=['employee', 'status']),
+            models.Index(fields=["employee", "status"]),
         ]
 
     def __str__(self):
-        return f'{self.employee.employee_code} • {self.attendance_day.attendance_date} • {self.status}'
+        return f"{self.employee.employee_code} • {self.attendance_day.attendance_date} • {self.status}"
 
 
 class AttendanceRegularizationRequest(AuditedBaseModel):
     organisation = models.ForeignKey(
-        'organisations.Organisation',
+        "organisations.Organisation",
         on_delete=models.CASCADE,
-        related_name='attendance_regularization_requests',
+        related_name="attendance_regularization_requests",
     )
     employee = models.ForeignKey(
-        'employees.Employee',
+        "employees.Employee",
         on_delete=models.CASCADE,
-        related_name='attendance_regularization_requests',
+        related_name="attendance_regularization_requests",
     )
     attendance_day = models.ForeignKey(
         AttendanceDay,
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
-        related_name='regularization_requests',
+        related_name="regularization_requests",
     )
     attendance_date = models.DateField()
     requested_check_in_at = models.DateTimeField(null=True, blank=True)
@@ -555,25 +612,25 @@ class AttendanceRegularizationRequest(AuditedBaseModel):
     )
     rejection_reason = models.TextField(blank=True)
     approval_run = models.ForeignKey(
-        'approvals.ApprovalRun',
+        "approvals.ApprovalRun",
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
-        related_name='attendance_regularization_requests',
+        related_name="attendance_regularization_requests",
     )
 
     class Meta:
-        db_table = 'attendance_regularization_requests'
-        ordering = ['-created_at']
+        db_table = "attendance_regularization_requests"
+        ordering = ["-created_at"]
         indexes = [
-            models.Index(fields=['organisation', 'status']),
-            models.Index(fields=['employee', 'attendance_date']),
+            models.Index(fields=["organisation", "status"]),
+            models.Index(fields=["employee", "attendance_date"]),
         ]
 
     def __str__(self):
-        return f'{self.employee.employee_code} • {self.attendance_date} • {self.status}'
+        return f"{self.employee.employee_code} • {self.attendance_date} • {self.status}"
 
-    def handle_approval_status_change(self, new_status, rejection_reason=''):
+    def handle_approval_status_change(self, new_status, rejection_reason=""):
         from .services import apply_regularization_status_change
 
         apply_regularization_status_change(self, new_status, rejection_reason=rejection_reason)

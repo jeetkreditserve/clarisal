@@ -369,10 +369,41 @@ class PayrollRunItemSerializer(serializers.ModelSerializer):
         ]
 
 
+class PayrollRunItemDetailSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    employee_id = serializers.UUIDField()
+    employee_name = serializers.CharField()
+    employee_code = serializers.CharField()
+    department = serializers.CharField(allow_null=True)
+    status = serializers.CharField()
+    has_exception = serializers.BooleanField()
+    gross_pay = serializers.DecimalField(max_digits=12, decimal_places=2)
+    employee_deductions = serializers.DecimalField(max_digits=12, decimal_places=2)
+    employer_contributions = serializers.DecimalField(max_digits=12, decimal_places=2)
+    income_tax = serializers.DecimalField(max_digits=12, decimal_places=2)
+    total_deductions = serializers.DecimalField(max_digits=12, decimal_places=2)
+    net_pay = serializers.DecimalField(max_digits=12, decimal_places=2)
+    snapshot = serializers.JSONField()
+    message = serializers.CharField(allow_blank=True)
+    arrears = serializers.DecimalField(max_digits=12, decimal_places=2, default=0)
+    lop_days = serializers.DecimalField(max_digits=12, decimal_places=2, default=0)
+    esi_employee = serializers.DecimalField(max_digits=12, decimal_places=2, default=0)
+    esi_employer = serializers.DecimalField(max_digits=12, decimal_places=2, default=0)
+    pf_employer = serializers.DecimalField(max_digits=12, decimal_places=2, default=0)
+    lwf_employee = serializers.DecimalField(max_digits=12, decimal_places=2, default=0)
+    lwf_employer = serializers.DecimalField(max_digits=12, decimal_places=2, default=0)
+    pt_monthly = serializers.DecimalField(max_digits=12, decimal_places=2, default=0)
+    tax_regime = serializers.CharField(allow_null=True)
+
+
 class PayrollRunSerializer(serializers.ModelSerializer):
-    items = PayrollRunItemSerializer(many=True, read_only=True)
     approval_run_id = serializers.UUIDField(source='approval_run.id', read_only=True, allow_null=True)
     source_run_id = serializers.UUIDField(source='source_run.id', read_only=True, allow_null=True)
+    total_gross = serializers.DecimalField(max_digits=14, decimal_places=2, read_only=True, default=None)
+    total_net = serializers.DecimalField(max_digits=14, decimal_places=2, read_only=True, default=None)
+    total_deductions = serializers.DecimalField(max_digits=14, decimal_places=2, read_only=True, default=None)
+    employee_count = serializers.IntegerField(read_only=True, default=0)
+    exception_count = serializers.IntegerField(read_only=True, default=0)
 
     class Meta:
         model = PayrollRun
@@ -390,7 +421,11 @@ class PayrollRunSerializer(serializers.ModelSerializer):
             'calculated_at',
             'submitted_at',
             'finalized_at',
-            'items',
+            'total_gross',
+            'total_net',
+            'total_deductions',
+            'employee_count',
+            'exception_count',
             'created_at',
             'modified_at',
         ]

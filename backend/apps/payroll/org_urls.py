@@ -1,6 +1,7 @@
 from django.urls import path
 
 from .views import (
+    CtSurchargeRuleListView,
     OrgArrearsDetailView,
     OrgArrearsListCreateView,
     OrgCompensationAssignmentListCreateView,
@@ -8,6 +9,8 @@ from .views import (
     OrgCompensationTemplateDetailView,
     OrgCompensationTemplateListCreateView,
     OrgCompensationTemplateSubmitView,
+    OrgCostCentreDetailView,
+    OrgCostCentreListCreateView,
     OrgFullAndFinalSettlementDetailView,
     OrgFullAndFinalSettlementListView,
     OrgPayrollRunCalculateView,
@@ -15,6 +18,7 @@ from .views import (
     OrgPayrollRunDetailView,
     OrgPayrollRunFinalizeView,
     OrgPayrollRunForm16View,
+    OrgPayrollRunItemListView,
     OrgPayrollRunListCreateView,
     OrgPayrollRunRerunView,
     OrgPayrollRunSubmitView,
@@ -23,6 +27,7 @@ from .views import (
     OrgPayrollTaxSlabSetListCreateView,
     OrgPayrollTDSChallanDetailView,
     OrgPayrollTDSChallanListCreateView,
+    OrgPayslipDownloadView,
     OrgStatutoryFilingBatchCancelView,
     OrgStatutoryFilingBatchDetailView,
     OrgStatutoryFilingBatchDownloadView,
@@ -33,6 +38,9 @@ from .views import (
 urlpatterns = [
     path('payroll/summary/', OrgPayrollSummaryView.as_view(), name='org-payroll-summary'),
     path('payroll/statutory-masters/', OrgPayrollStatutoryMasterListView.as_view(), name='org-payroll-statutory-master-list'),
+    path('payroll/surcharge-rules/', CtSurchargeRuleListView.as_view(), name='payroll-surcharge-rules-list'),
+    path('payroll/cost-centres/', OrgCostCentreListCreateView.as_view(), name='payroll-cost-centre-list-create'),
+    path('payroll/cost-centres/<uuid:cost_centre_id>/', OrgCostCentreDetailView.as_view(), name='payroll-cost-centre-detail'),
     path('payroll/tds-challans/', OrgPayrollTDSChallanListCreateView.as_view(), name='org-payroll-tds-challan-list-create'),
     path('payroll/tds-challans/<uuid:pk>/', OrgPayrollTDSChallanDetailView.as_view(), name='org-payroll-tds-challan-detail'),
     path('payroll/tax-slab-sets/', OrgPayrollTaxSlabSetListCreateView.as_view(), name='org-payroll-tax-slab-set-list'),
@@ -47,6 +55,7 @@ urlpatterns = [
     path('payroll/arrears/<uuid:pk>/', OrgArrearsDetailView.as_view(), name='org-payroll-arrears-detail'),
     path('payroll/runs/', OrgPayrollRunListCreateView.as_view(), name='org-payroll-run-list-create'),
     path('payroll/runs/<uuid:pk>/', OrgPayrollRunDetailView.as_view(), name='org-payroll-run-detail'),
+    path('payroll/runs/<uuid:pk>/items/', OrgPayrollRunItemListView.as_view(), name='org-payroll-run-item-list'),
     path('payroll/runs/<uuid:pk>/form16/', OrgPayrollRunForm16View.as_view(), name='org-payroll-run-form16'),
     path('payroll/runs/<uuid:pk>/calculate/', OrgPayrollRunCalculateView.as_view(), name='org-payroll-run-calculate'),
     path('payroll/runs/<uuid:pk>/calculation-status/', OrgPayrollRunCalculationStatusView.as_view(), name='org-payroll-run-calculation-status'),
@@ -57,5 +66,6 @@ urlpatterns = [
     path('payroll/filings/<uuid:pk>/', OrgStatutoryFilingBatchDetailView.as_view(), name='org-payroll-filing-detail'),
     path('payroll/filings/<uuid:pk>/regenerate/', OrgStatutoryFilingBatchRegenerateView.as_view(), name='org-payroll-filing-regenerate'),
     path('payroll/filings/<uuid:pk>/cancel/', OrgStatutoryFilingBatchCancelView.as_view(), name='org-payroll-filing-cancel'),
+    path('payroll/payslips/<uuid:pk>/download/', OrgPayslipDownloadView.as_view(), name='org-payslip-download'),
     path('payroll/filings/<uuid:pk>/download/', OrgStatutoryFilingBatchDownloadView.as_view(), name='org-payroll-filing-download'),
 ]

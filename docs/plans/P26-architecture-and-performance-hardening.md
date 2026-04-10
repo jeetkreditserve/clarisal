@@ -56,7 +56,7 @@
 > - `PayrollRun` scans all `ACTIVE` employees per org — needs `Employee(organisation, status, date_of_joining)`.
 > - `get_effective_compensation_assignment` resolves via ordering — needs `CompensationAssignment(employee, status, effective_from)`.
 
-- [ ] Add the following indexes in a new migration:
+- [x] Add the following indexes in a new migration:
 
 ```python
 # In Employee model Meta or via AddIndex migration:
@@ -76,14 +76,14 @@ indexes = [
 ]
 ```
 
-- [ ] Verify with `EXPLAIN ANALYZE` on a dev DB with 10,000+ employee rows that the payroll run query uses the new index (add a `# noqa: S608` or test comment documenting the expected query plan).
-- [ ] Check `PayrollRunItem` — confirm the existing `(pay_run, employee)` composite index is already present (audit said it is); if not, add it.
+- [-] Verify with `EXPLAIN ANALYZE` on a dev DB with 10,000+ employee rows that the payroll run query uses the new index (add a `# noqa: S608` or test comment documenting the expected query plan).
+- [x] Check `PayrollRunItem` — confirm the existing `(pay_run, employee)` composite index is already present (audit said it is); if not, add it.
 
 ## Task 3: Add Cost Centre Model
 
 > **Audit finding (Gap #17, §2):** No cost centre entity exists. Payroll allocations cannot be split across departments, projects, or GL codes. SAP SuccessFactors has full cost centre split. This is needed for enterprises with multi-department payroll allocation reporting.
 
-- [ ] Add `CostCentre` model to `backend/apps/payroll/models.py`:
+- [x] Add `CostCentre` model to `backend/apps/payroll/models.py`:
 
 ```python
 class CostCentre(models.Model):
@@ -99,17 +99,17 @@ class CostCentre(models.Model):
         unique_together = [("organisation", "code")]
 ```
 
-- [ ] Add `cost_centre = models.ForeignKey(CostCentre, null=True, blank=True, on_delete=models.SET_NULL)` to `CompensationTemplateLine` and `CompensationAssignmentLine`.
-- [ ] Add CRUD endpoints for `CostCentre` (org-admin only): list, create, update, deactivate. No delete — deactivate only to preserve historical references.
-- [ ] Expose `cost_centre` in payslip and run-item serializers so cost centre appears in the payroll run detail page and future GL export reports.
+- [x] Add `cost_centre = models.ForeignKey(CostCentre, null=True, blank=True, on_delete=models.SET_NULL)` to `CompensationTemplateLine` and `CompensationAssignmentLine`.
+- [x] Add CRUD endpoints for `CostCentre` (org-admin only): list, create, update, deactivate. No delete — deactivate only to preserve historical references.
+- [x] Expose `cost_centre` in payslip and run-item serializers so cost centre appears in the payroll run detail page and future GL export reports.
 - [ ] Add UI: a `CostCentresPage` (or section within the payroll Setup tab) for managing cost centres, and an optional cost centre selector on compensation template lines.
-- [ ] Cover CRUD, deactivation, and FK enforcement with tests.
+- [x] Cover CRUD, deactivation, and FK enforcement with tests.
 
 ## Task 4: Add Celery Idempotency Keys for Payroll Calculation
 
 > **Audit finding (§4.1):** No idempotency keys on Celery tasks. Duplicate delivery from the broker could trigger double payroll calculation for the same pay run, resulting in duplicate `PayrollRunItem` records or double-applied TDS.
 
-- [ ] In `backend/apps/payroll/tasks.py`, add an idempotency guard at the start of the `calculate_payroll_run` task:
+- [x] In `backend/apps/payroll/tasks.py`, add an idempotency guard at the start of the `calculate_payroll_run` task:
 
 ```python
 @app.task(bind=True, max_retries=3)
@@ -126,16 +126,16 @@ def calculate_payroll_run(self, pay_run_id: str):
         cache.delete(lock_key)
 ```
 
-- [ ] Set `CELERY_TASK_ACKS_LATE = True` in `settings/base.py` so tasks are only acknowledged after successful completion, enabling safe broker redelivery on worker crash.
-- [ ] Add a test verifying that calling `calculate_payroll_run.delay(run_id)` twice in rapid succession executes the calculation logic exactly once (use `mock.patch` on the lock acquire).
-- [ ] Verify existing payroll calculation tests still pass with the lock in place.
+- [x] Set `CELERY_TASK_ACKS_LATE = True` in `settings/base.py` so tasks are only acknowledged after successful completion, enabling safe broker redelivery on worker crash.
+- [x] Add a test verifying that calling `calculate_payroll_run.delay(run_id)` twice in rapid succession executes the calculation logic exactly once (use `mock.patch` on the lock acquire).
+- [x] Verify existing payroll calculation tests still pass with the lock in place.
 
 ## Task 5: Paginate PayrollRun Items in Summary Response
 
 > **Audit finding (§4.2):** `PayrollRun.items` is fetched inline in the payroll summary response. A run with 500 employees returns 500 items in a single response, causing slow loads and large payloads.
 
-- [ ] Audit the payroll summary serializer/view to confirm that `PayrollRunItem` records are being serialized inline.
-- [ ] Remove inline `items` from the payroll summary serializer. The `PayrollRunDetailPage` (P25) will fetch items via the dedicated paginated endpoint.
-- [ ] Update `PayrollPage.tsx` to stop expecting inline `items` in the summary response — it should show only aggregate counts (employee count, total gross, total net) which are cheap to compute and return.
-- [ ] Add `total_gross`, `total_net`, `total_deductions`, `employee_count`, and `exception_count` as computed annotations on the `PayrollRun` queryset using `Sum` and `Count` aggregations — serve these from the summary endpoint.
-- [ ] Cover the aggregated summary fields and the removal of inline items with API tests.
+- [x] Audit the payroll summary serializer/view to confirm that `PayrollRunItem` records are being serialized inline.
+- [x] Remove inline `items` from the payroll summary serializer. The `PayrollRunDetailPage` (P25) will fetch items via the dedicated paginated endpoint.
+- [x] Update `PayrollPage.tsx` to stop expecting inline `items` in the summary response — it should show only aggregate counts (employee count, total gross, total net) which are cheap to compute and return.
+- [x] Add `total_gross`, `total_net`, `total_deductions`, `employee_count`, and `exception_count` as computed annotations on the `PayrollRun` queryset using `Sum` and `Count` aggregations — serve these from the summary endpoint.
+- [x] Cover the aggregated summary fields and the removal of inline items with API tests.

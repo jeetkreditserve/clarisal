@@ -15,6 +15,7 @@ import { SkeletonPageHeader, SkeletonTable } from '@/components/ui/Skeleton'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import {
   useDepartments,
+  useDesignations,
   useEmployees,
   useInviteEmployee,
   useLocations,
@@ -63,6 +64,7 @@ export function EmployeesPage() {
   })
   const { data: departments } = useDepartments()
   const { data: locations } = useLocations()
+  const { data: designations } = useDesignations()
   const { data: documentTypes } = useOnboardingDocumentTypes()
   const inviteMutation = useInviteEmployee()
 
@@ -223,27 +225,64 @@ export function EmployeesPage() {
         }
       >
         <form id="invite-employee-form" onSubmit={handleInvite} className="grid gap-4 lg:grid-cols-3">
-          {[
-            ['first_name', 'First name'],
-            ['last_name', 'Last name'],
-            ['company_email', 'Company email'],
-            ['designation', 'Designation'],
-          ].map(([field, label]) => (
-            <div key={field}>
-              <label className="field-label" htmlFor={field}>
-                {label}
-              </label>
-              <input
-                id={field}
-                type={field === 'company_email' ? 'email' : 'text'}
-                className="field-input"
-                required={field !== 'designation'}
-                value={inviteForm[field as keyof typeof inviteForm]}
-                onChange={(event) => setInviteForm((current) => ({ ...current, [field]: event.target.value }))}
-              />
-              <FieldErrorText message={inviteFieldErrors[field]} />
-            </div>
-          ))}
+          <div>
+            <label className="field-label" htmlFor="first_name">
+              First name
+            </label>
+            <input
+              id="first_name"
+              type="text"
+              className="field-input"
+              required
+              value={inviteForm.first_name}
+              onChange={(event) => setInviteForm((current) => ({ ...current, first_name: event.target.value }))}
+            />
+            <FieldErrorText message={inviteFieldErrors.first_name} />
+          </div>
+          <div>
+            <label className="field-label" htmlFor="last_name">
+              Last name
+            </label>
+            <input
+              id="last_name"
+              type="text"
+              className="field-input"
+              required
+              value={inviteForm.last_name}
+              onChange={(event) => setInviteForm((current) => ({ ...current, last_name: event.target.value }))}
+            />
+            <FieldErrorText message={inviteFieldErrors.last_name} />
+          </div>
+          <div>
+            <label className="field-label" htmlFor="company_email">
+              Company email
+            </label>
+            <input
+              id="company_email"
+              type="email"
+              className="field-input"
+              required
+              value={inviteForm.company_email}
+              onChange={(event) => setInviteForm((current) => ({ ...current, company_email: event.target.value }))}
+            />
+            <FieldErrorText message={inviteFieldErrors.company_email} />
+          </div>
+          <div>
+            <label className="field-label" htmlFor="designation">
+              Designation
+            </label>
+            <AppSelect
+              id="designation"
+              value={inviteForm.designation}
+              onValueChange={(value) => setInviteForm((current) => ({ ...current, designation: value }))}
+              options={[
+                { value: '', label: 'Select designation' },
+                ...(designations?.map((d) => ({ value: d.name, label: d.name })) ?? []),
+              ]}
+              placeholder="Select designation"
+            />
+            <FieldErrorText message={inviteFieldErrors.designation} />
+          </div>
           <div>
             <label className="field-label" htmlFor="employment-type">
               Employment type

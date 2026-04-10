@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 
 import { AppDatePicker } from '@/components/ui/AppDatePicker'
@@ -9,29 +9,11 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { SkeletonPageHeader, SkeletonTable } from '@/components/ui/Skeleton'
 import { StatusBadge } from '@/components/ui/StatusBadge'
-import {
-  useCancelPayrollFiling,
-  useCalculatePayrollRun,
-  useCreateCompensationAssignment,
-  useCreateCompensationTemplate,
-  useCreateOrgArrear,
-  useCreatePayrollRun,
-  useCreatePayrollTdsChallan,
-  useDownloadPayrollFiling,
-  useEmployees,
-  useFinalizePayrollRun,
-  useGeneratePayrollFiling,
-  useOrgArrears,
-  usePayrollSummary,
-  useRegeneratePayrollFiling,
-  useRerunPayrollRun,
-  useSubmitCompensationAssignment,
-  useSubmitCompensationTemplate,
-  useSubmitPayrollRun,
-} from '@/hooks/useOrgAdmin'
+import { useCancelPayrollFiling, useCalculatePayrollRun, useCreateCompensationAssignment, useCreateCompensationTemplate, useCreateOrgArrear, useCreatePayrollRun, useCreatePayrollTdsChallan, useDownloadPayrollFiling, useEmployees, useFinalizePayrollRun, useGeneratePayrollFiling, useOrgArrears, usePayrollSummary, useRegeneratePayrollFiling, useRerunPayrollRun, useSubmitCompensationAssignment, useSubmitCompensationTemplate, useSubmitPayrollRun } from '@/hooks/useOrgAdmin'
 import { getErrorMessage } from '@/lib/errors'
 import { formatDateTime } from '@/lib/format'
 import { getCompensationStatusTone, getPayrollRunStatusTone } from '@/lib/status'
+import React, { useMemo, useState } from 'react'
 
 const currentYear = new Date().getFullYear()
 const PAYROLL_SECTION_OPTIONS = [
@@ -147,17 +129,6 @@ export function PayrollPage() {
       })),
     [data],
   )
-
-  type PayrollRun = NonNullable<typeof data>['pay_runs'][number]
-
-  const summarizeRunExceptions = (run: PayrollRun) => {
-    const exceptionItems = run.items.filter((item) => item.status === 'EXCEPTION')
-    return {
-      count: exceptionItems.length,
-      items: exceptionItems.slice(0, 3),
-      hiddenCount: Math.max(0, exceptionItems.length - 3),
-    }
-  }
 
   const handleCreateTemplate = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -390,9 +361,181 @@ export function PayrollPage() {
       <div className="space-y-5">
         <SkeletonPageHeader />
         <SkeletonTable rows={8} />
-      </div>
-    )
-  }
+    </div>
+  )
+}
+
+type RunFormState = { period_year: string; period_month: string; use_attendance_inputs: boolean }
+
+interface RunsSectionProps {
+  data: NonNullable<NonNullable<ReturnType<typeof usePayrollSummary>['data']>>
+  runForm: RunFormState
+  setRunForm: React.Dispatch<React.SetStateAction<RunFormState>>
+  createRunMutation: ReturnType<typeof useCreatePayrollRun>
+  calculateRunMutation: ReturnType<typeof useCalculatePayrollRun>
+  submitRunMutation: ReturnType<typeof useSubmitPayrollRun>
+  finalizeRunMutation: ReturnType<typeof useFinalizePayrollRun>
+  rerunMutation: ReturnType<typeof useRerunPayrollRun>
+  onCreateRun: (event: React.FormEvent) => Promise<void>
+  onCalculateRun: (runId: string) => Promise<void>
+  onSubmitRun: (runId: string) => Promise<void>
+  onFinalizeRun: (runId: string) => Promise<void>
+  onRerun: (runId: string) => Promise<void>
+}
+
+function RunsSection({
+  data,
+  runForm,
+  setRunForm,
+  createRunMutation,
+  calculateRunMutation,
+  submitRunMutation,
+  finalizeRunMutation,
+  rerunMutation,
+  onCreateRun,
+  onCalculateRun,
+  onSubmitRun,
+  onFinalizeRun,
+  onRerun,
+}: RunsSectionProps) {
+  const summarizeRunExceptions = (run: { exception_count?: number }) => ({ count: run.exception_count ?? 0 })
+
+  return (
+    <div className="grid gap-6 xl:grid-cols-2">
+      <SectionCard title="Run readiness" description="Create and process runs only after setup and compensation sections are in place.">
+        <div className="space-y-3 text-sm text-[hsl(var(--muted-foreground))]">
+          <p>1. Confirm at least one approved salary assignment exists.</p>
+          <p>2. Decide whether this run should use attendance-linked payable days before you create it.</p>
+          <p>3. Use calculate first, then resolve every exception before submitting for approval.</p>
+          <p>4. Finalization is irreversible for the current preview snapshot and will publish payslips.</p>
+        </div>
+      </SectionCard>
+
+      <SectionCard title="Payroll processing" description="Create a run, calculate results, submit for approval, finalize, and trigger reruns when corrections are needed. Do not treat this as full statutory payroll sign-off yet.">
+        <form onSubmit={onCreateRun} className="grid gap-4 md:grid-cols-2">
+          <div>
+            <label className="field-label" htmlFor="payroll-run-year">Period year</label>
+            <input id="payroll-run-year" className="field-input" value={runForm.period_year} onChange={(event) => setRunForm((current) => ({ ...current, period_year: event.target.value }))} placeholder="Year" />
+          </div>
+          <div>
+            <label className="field-label" htmlFor="payroll-run-month">Period month</label>
+            <input id="payroll-run-month" className="field-input" value={runForm.period_month} onChange={(event) => setRunForm((current) => ({ ...current, period_month: event.target.value }))} placeholder="Month" />
+          </div>
+          <label className="md:col-span-2 flex items-start gap-3 rounded-[18px] border border-[hsl(var(--border)_/_0.84)] bg-[hsl(var(--surface-subtle))] px-4 py-3 text-sm text-[hsl(var(--foreground-strong))]">
+            <input
+              type="checkbox"
+              checked={runForm.use_attendance_inputs}
+              onChange={(event) => setRunForm((current) => ({ ...current, use_attendance_inputs: event.target.checked }))}
+              className="mt-1"
+            />
+            <span>
+              Use attendance and leave inputs for payable days.
+              <span className="block text-[hsl(var(--muted-foreground))]">
+                Leave this off unless attendance for the payroll period has been reviewed and is ready to drive LOP deductions.
+              </span>
+            </span>
+          </label>
+          <div className="md:col-span-2">
+            <button type="submit" className="btn-primary" disabled={createRunMutation.isPending}>
+              Create payroll run
+            </button>
+          </div>
+        </form>
+        <div className="mt-5 space-y-3">
+          {data.pay_runs.length ? data.pay_runs.map((run) => {
+            const exceptionSummary = summarizeRunExceptions(run)
+            const attendanceSummary = run.attendance_snapshot
+
+            return (
+              <div key={run.id} className="surface-shell rounded-[18px] px-4 py-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-semibold text-[hsl(var(--foreground-strong))]">{run.name}</p>
+                      <StatusBadge tone={getPayrollRunStatusTone(run.status)}>
+                        {run.status}
+                      </StatusBadge>
+                      {exceptionSummary.count ? <StatusBadge tone="warning">{exceptionSummary.count} exceptions</StatusBadge> : null}
+                    </div>
+                    <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
+                      {(run.employee_count ?? 0)} employees • {run.run_type} • {run.period_month}/{run.period_year}
+                    </p>
+                    <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
+                      Attendance-linked payable days: {run.use_attendance_inputs ? 'enabled' : 'not applied'}
+                    </p>
+                    {attendanceSummary?.attendance_source && run.use_attendance_inputs ? (
+                      <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
+                        Attendance snapshot: {attendanceSummary.total_attendance_paid_days} paid days • {attendanceSummary.total_lop_days} LOP days • {attendanceSummary.total_overtime_minutes} overtime minutes
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {run.status === 'DRAFT' || run.status === 'REJECTED' || run.status === 'CALCULATED' ? (
+                      <button type="button" className="btn-secondary" onClick={() => void onCalculateRun(run.id)}>
+                        {run.status === 'CALCULATED' ? 'Recalculate' : 'Calculate'}
+                      </button>
+                    ) : null}
+                    {run.status === 'CALCULATED' && !exceptionSummary.count ? (
+                      <button type="button" className="btn-secondary" onClick={() => void onSubmitRun(run.id)}>
+                        Submit
+                      </button>
+                    ) : null}
+                    {run.status === 'APPROVED' ? (
+                      <ConfirmDialog
+                        trigger={
+                          <button type="button" className="btn-secondary">
+                            Finalize
+                          </button>
+                        }
+                        title="Finalize payroll run?"
+                        description="This will publish payslips from the current limited-scope payroll snapshot."
+                        confirmLabel="Finalize"
+                        variant="primary"
+                        onConfirm={() => onFinalizeRun(run.id)}
+                      />
+                    ) : null}
+                    {run.status === 'FINALIZED' ? (
+                      <ConfirmDialog
+                        trigger={
+                          <button type="button" className="btn-secondary">
+                            Rerun
+                          </button>
+                        }
+                        title="Create payroll rerun?"
+                        description="Use this only for correction testing while payroll remains in preview scope."
+                        confirmLabel="Create rerun"
+                        variant="primary"
+                        onConfirm={() => onRerun(run.id)}
+                      />
+                    ) : null}
+                    <Link
+                      to={`/org/payroll/runs/${run.id}`}
+                      className="btn-secondary text-xs"
+                    >
+                      View Details →
+                    </Link>
+                  </div>
+                </div>
+                {exceptionSummary.count ? (
+                  <div className="mt-4 rounded-[18px] border border-[hsl(var(--warning)_/_0.32)] bg-[hsl(var(--warning)_/_0.12)] px-4 py-3 text-sm text-[hsl(var(--foreground-strong))]">
+                    <p className="font-medium">This run cannot move forward until the exceptions are fixed.</p>
+                    <p className="mt-2 text-[hsl(var(--muted-foreground))]">
+                      <Link to={`/org/payroll/runs/${run.id}`} className="underline hover:text-[hsl(var(--foreground))]">
+                        View {exceptionSummary.count} exception{exceptionSummary.count !== 1 ? 's' : ''} in run details
+                      </Link>
+                    </p>
+                  </div>
+                ) : null}
+              </div>
+            )
+          }) : (
+            <EmptyState title="No payroll runs yet" description="Create the first pay run once templates and assignments are in place." />
+          )}
+        </div>
+      </SectionCard>
+    </div>
+  )
+}
 
   return (
     <div className="space-y-6">
@@ -487,441 +630,387 @@ export function PayrollPage() {
       ) : null}
 
       {activeSection === 'compensation' ? (
-        <div className="grid gap-6 xl:grid-cols-2">
-          <SectionCard title="Compensation templates" description="Define the reusable salary structure and submit the template through approval when it is ready for controlled payroll preview use.">
-            <div className="mb-4 rounded-[18px] border border-[hsl(var(--info)_/_0.24)] bg-[hsl(var(--info)_/_0.1)] px-4 py-3 text-sm text-[hsl(var(--foreground-strong))]">
-              <p className="font-medium">CTC context</p>
-              <p className="mt-1 text-[hsl(var(--muted-foreground))]">
-                Treat each template as a monthly salary-structure preview. In Indian payroll terms, this is the reusable monthly component breakup that later rolls into annual CTC and net-pay calculations.
-              </p>
-            </div>
-            <form onSubmit={handleCreateTemplate} className="grid gap-4 md:grid-cols-2">
-              <div>
-                <label className="field-label" htmlFor="payroll-template-name">Template name</label>
-                <input id="payroll-template-name" className="field-input" value={templateForm.name} onChange={(event) => setTemplateForm((current) => ({ ...current, name: event.target.value }))} placeholder="Template name" />
-              </div>
-              <div>
-                <label className="field-label" htmlFor="payroll-template-description">Description</label>
-                <input id="payroll-template-description" className="field-input" value={templateForm.description} onChange={(event) => setTemplateForm((current) => ({ ...current, description: event.target.value }))} placeholder="Description" />
-              </div>
-              <div>
-                <label className="field-label" htmlFor="payroll-template-basic-pay">Basic pay</label>
-                <input id="payroll-template-basic-pay" className="field-input" value={templateForm.basic_pay} onChange={(event) => setTemplateForm((current) => ({ ...current, basic_pay: event.target.value }))} placeholder="Basic pay" />
-              </div>
-              <div>
-                <label className="field-label" htmlFor="payroll-template-employee-deduction">Employee deduction</label>
-                <input id="payroll-template-employee-deduction" className="field-input" value={templateForm.employee_deduction} onChange={(event) => setTemplateForm((current) => ({ ...current, employee_deduction: event.target.value }))} placeholder="Employee deduction" />
-              </div>
-              <div className="md:col-span-2">
-                <button type="submit" className="btn-primary" disabled={createTemplateMutation.isPending}>
-                  Create template
-                </button>
-              </div>
-            </form>
-            <div className="mt-5 space-y-3">
-              {data.compensation_templates.map((template) => (
-                <div key={template.id} className="surface-shell rounded-[18px] px-4 py-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-semibold text-[hsl(var(--foreground-strong))]">{template.name}</p>
-                        <StatusBadge tone={getCompensationStatusTone(template.status)}>
-                          {template.status}
-                        </StatusBadge>
-                      </div>
-                      <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">{template.lines.length} lines • Modified {formatDateTime(template.modified_at)}</p>
-                    </div>
-                    {template.status !== 'PENDING_APPROVAL' && template.status !== 'APPROVED' ? (
-                      <button type="button" className="btn-secondary" onClick={() => void handleSubmitTemplate(template.id)}>
-                        Submit approval
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </SectionCard>
-
-          <SectionCard title="Salary assignments" description="Assign approved structures to employees with an effective date, then submit salary revisions into the approval queue. Review carefully because downstream payroll remains limited-scope.">
-            <form onSubmit={handleCreateAssignment} className="grid gap-4">
-              <div>
-                <label className="field-label" htmlFor="payroll-assignment-employee">Employee</label>
-                <AppSelect id="payroll-assignment-employee" value={assignmentForm.employee_id} onValueChange={(value) => setAssignmentForm((current) => ({ ...current, employee_id: value }))} options={employeeOptions} placeholder="Select employee" />
-              </div>
-              <div>
-                <label className="field-label" htmlFor="payroll-assignment-template">Template</label>
-                <AppSelect id="payroll-assignment-template" value={assignmentForm.template_id} onValueChange={(value) => setAssignmentForm((current) => ({ ...current, template_id: value }))} options={templateOptions} placeholder="Select template" />
-              </div>
-              <div>
-                <label className="field-label" htmlFor="payroll-assignment-effective-from">Effective from</label>
-                <AppDatePicker id="payroll-assignment-effective-from" value={assignmentForm.effective_from} onValueChange={(value) => setAssignmentForm((current) => ({ ...current, effective_from: value }))} placeholder="Select effective date" />
-              </div>
-              <button type="submit" className="btn-primary" disabled={createAssignmentMutation.isPending}>
-                Create assignment
-              </button>
-            </form>
-            <div className="mt-5 space-y-3">
-              {data.compensation_assignments.length ? data.compensation_assignments.map((assignment) => (
-                <div key={assignment.id} className="surface-shell rounded-[18px] px-4 py-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-semibold text-[hsl(var(--foreground-strong))]">{assignment.employee_name}</p>
-                        <StatusBadge tone={getCompensationStatusTone(assignment.status)}>
-                          {assignment.status}
-                        </StatusBadge>
-                      </div>
-                      <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
-                        {assignment.template_name} • Effective {assignment.effective_from} • Version {assignment.version}
-                      </p>
-                    </div>
-                    {assignment.status !== 'PENDING_APPROVAL' && assignment.status !== 'APPROVED' ? (
-                      <button type="button" className="btn-secondary" onClick={() => void handleSubmitAssignment(assignment.id)}>
-                        Submit approval
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-              )) : (
-                <EmptyState title="No salary assignments yet" description="Assign a compensation template to at least one employee before calculating payroll." />
-              )}
-            </div>
-          </SectionCard>
-
-          <SectionCard title="Arrears adjustments" description="Record underpayments from prior periods so they flow into the next payroll calculation.">
-            <form onSubmit={handleCreateArrear} className="grid gap-4 md:grid-cols-2">
-              <div className="md:col-span-2">
-                <label className="field-label" htmlFor="payroll-arrear-employee">Employee</label>
-                <AppSelect
-                  id="payroll-arrear-employee"
-                  value={arrearForm.employee_id}
-                  onValueChange={(value) => setArrearForm((current) => ({ ...current, employee_id: value }))}
-                  options={employeeOptions}
-                  placeholder="Select employee"
-                />
-              </div>
-              <div>
-                <label className="field-label" htmlFor="payroll-arrear-year">For period year</label>
-                <input
-                  id="payroll-arrear-year"
-                  className="field-input"
-                  value={arrearForm.for_period_year}
-                  onChange={(event) => setArrearForm((current) => ({ ...current, for_period_year: event.target.value }))}
-                  placeholder="Year"
-                />
-              </div>
-              <div>
-                <label className="field-label" htmlFor="payroll-arrear-month">For period month</label>
-                <input
-                  id="payroll-arrear-month"
-                  className="field-input"
-                  value={arrearForm.for_period_month}
-                  onChange={(event) => setArrearForm((current) => ({ ...current, for_period_month: event.target.value }))}
-                  placeholder="Month"
-                />
-              </div>
-              <div>
-                <label className="field-label" htmlFor="payroll-arrear-reason">Reason</label>
-                <input
-                  id="payroll-arrear-reason"
-                  className="field-input"
-                  value={arrearForm.reason}
-                  onChange={(event) => setArrearForm((current) => ({ ...current, reason: event.target.value }))}
-                  placeholder="Reason"
-                />
-              </div>
-              <div>
-                <label className="field-label" htmlFor="payroll-arrear-amount">Amount</label>
-                <input
-                  id="payroll-arrear-amount"
-                  className="field-input"
-                  value={arrearForm.amount}
-                  onChange={(event) => setArrearForm((current) => ({ ...current, amount: event.target.value }))}
-                  placeholder="Amount"
-                />
-              </div>
-              <div className="md:col-span-2">
-                <button type="submit" className="btn-primary" disabled={createArrearMutation.isPending}>
-                  Record arrear
-                </button>
-              </div>
-            </form>
-            <div className="mt-5 space-y-3">
-              {arrears.length ? arrears.map((arrear) => (
-                <div key={arrear.id} className="surface-shell rounded-[18px] px-4 py-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <p className="font-semibold text-[hsl(var(--foreground-strong))]">{arrear.employee_name}</p>
-                      <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
-                        {arrear.reason} • {arrear.for_period_month}/{arrear.for_period_year}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-semibold text-[hsl(var(--foreground-strong))]">₹{arrear.amount}</p>
-                      <p className="mt-2 text-xs uppercase tracking-[0.12em] text-[hsl(var(--muted-foreground))]">
-                        {arrear.is_included_in_payslip ? 'Included in payslip' : 'Pending payroll run'}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )) : (
-                <EmptyState title="No arrears recorded" description="Record manual arrears here when pay from a prior period needs to be recovered in the next run." />
-              )}
-            </div>
-          </SectionCard>
-        </div>
+        <CompensationSection
+          data={data}
+          employeesResponse={employeesResponse}
+          arrears={arrears}
+          templateForm={templateForm}
+          setTemplateForm={setTemplateForm}
+          assignmentForm={assignmentForm}
+          setAssignmentForm={setAssignmentForm}
+          arrearForm={arrearForm}
+          setArrearForm={setArrearForm}
+          createTemplateMutation={createTemplateMutation}
+          createAssignmentMutation={createAssignmentMutation}
+          createArrearMutation={createArrearMutation}
+          onCreateTemplate={handleCreateTemplate}
+          onCreateAssignment={handleCreateAssignment}
+          onCreateArrear={handleCreateArrear}
+          onSubmitTemplate={handleSubmitTemplate}
+          onSubmitAssignment={handleSubmitAssignment}
+        />
       ) : null}
 
       {activeSection === 'runs' ? (
-        <div className="grid gap-6 xl:grid-cols-2">
-          <SectionCard title="Run readiness" description="Create and process runs only after setup and compensation sections are in place.">
-            <div className="space-y-3 text-sm text-[hsl(var(--muted-foreground))]">
-              <p>1. Confirm at least one approved salary assignment exists.</p>
-              <p>2. Decide whether this run should use attendance-linked payable days before you create it.</p>
-              <p>3. Use calculate first, then resolve every exception before submitting for approval.</p>
-              <p>4. Finalization is irreversible for the current preview snapshot and will publish payslips.</p>
-            </div>
-          </SectionCard>
-
-          <SectionCard title="Payroll processing" description="Create a run, calculate results, submit for approval, finalize, and trigger reruns when corrections are needed. Do not treat this as full statutory payroll sign-off yet.">
-            <form onSubmit={handleCreateRun} className="grid gap-4 md:grid-cols-2">
-              <div>
-                <label className="field-label" htmlFor="payroll-run-year">Period year</label>
-                <input id="payroll-run-year" className="field-input" value={runForm.period_year} onChange={(event) => setRunForm((current) => ({ ...current, period_year: event.target.value }))} placeholder="Year" />
-              </div>
-              <div>
-                <label className="field-label" htmlFor="payroll-run-month">Period month</label>
-                <input id="payroll-run-month" className="field-input" value={runForm.period_month} onChange={(event) => setRunForm((current) => ({ ...current, period_month: event.target.value }))} placeholder="Month" />
-              </div>
-              <label className="md:col-span-2 flex items-start gap-3 rounded-[18px] border border-[hsl(var(--border)_/_0.84)] bg-[hsl(var(--surface-subtle))] px-4 py-3 text-sm text-[hsl(var(--foreground-strong))]">
-                <input
-                  type="checkbox"
-                  checked={runForm.use_attendance_inputs}
-                  onChange={(event) => setRunForm((current) => ({ ...current, use_attendance_inputs: event.target.checked }))}
-                  className="mt-1"
-                />
-                <span>
-                  Use attendance and leave inputs for payable days.
-                  <span className="block text-[hsl(var(--muted-foreground))]">
-                    Leave this off unless attendance for the payroll period has been reviewed and is ready to drive LOP deductions.
-                  </span>
-                </span>
-              </label>
-              <div className="md:col-span-2">
-                <button type="submit" className="btn-primary" disabled={createRunMutation.isPending}>
-                  Create payroll run
-                </button>
-              </div>
-            </form>
-            <div className="mt-5 space-y-3">
-              {data.pay_runs.length ? data.pay_runs.map((run) => {
-                const exceptionSummary = summarizeRunExceptions(run)
-                const attendanceSummary = run.attendance_snapshot
-
-                return (
-                  <div key={run.id} className="surface-shell rounded-[18px] px-4 py-4">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="font-semibold text-[hsl(var(--foreground-strong))]">{run.name}</p>
-                          <StatusBadge tone={getPayrollRunStatusTone(run.status)}>
-                            {run.status}
-                          </StatusBadge>
-                          {exceptionSummary.count ? <StatusBadge tone="warning">{exceptionSummary.count} exceptions</StatusBadge> : null}
-                        </div>
-                        <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
-                          {run.items.length} items • {run.run_type} • {run.period_month}/{run.period_year}
-                        </p>
-                        <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
-                          Attendance-linked payable days: {run.use_attendance_inputs ? 'enabled' : 'not applied'}
-                        </p>
-                        {attendanceSummary?.attendance_source && run.use_attendance_inputs ? (
-                          <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
-                            Attendance snapshot: {attendanceSummary.total_attendance_paid_days} paid days • {attendanceSummary.total_lop_days} LOP days • {attendanceSummary.total_overtime_minutes} overtime minutes
-                          </p>
-                        ) : null}
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {run.status === 'DRAFT' || run.status === 'REJECTED' || run.status === 'CALCULATED' ? (
-                          <button type="button" className="btn-secondary" onClick={() => void handleCalculateRun(run.id)}>
-                            {run.status === 'CALCULATED' ? 'Recalculate' : 'Calculate'}
-                          </button>
-                        ) : null}
-                        {run.status === 'CALCULATED' && !exceptionSummary.count ? (
-                          <button type="button" className="btn-secondary" onClick={() => void handleSubmitRun(run.id)}>
-                            Submit
-                          </button>
-                        ) : null}
-                        {run.status === 'APPROVED' ? (
-                          <ConfirmDialog
-                            trigger={
-                              <button type="button" className="btn-secondary">
-                                Finalize
-                              </button>
-                            }
-                            title="Finalize payroll run?"
-                            description="This will publish payslips from the current limited-scope payroll snapshot."
-                            confirmLabel="Finalize"
-                            variant="primary"
-                            onConfirm={() => handleFinalizeRun(run.id)}
-                          />
-                        ) : null}
-                        {run.status === 'FINALIZED' ? (
-                          <ConfirmDialog
-                            trigger={
-                              <button type="button" className="btn-secondary">
-                                Rerun
-                              </button>
-                            }
-                            title="Create payroll rerun?"
-                            description="Use this only for correction testing while payroll remains in preview scope."
-                            confirmLabel="Create rerun"
-                            variant="primary"
-                            onConfirm={() => handleRerun(run.id)}
-                          />
-                        ) : null}
-                      </div>
-                    </div>
-                    {exceptionSummary.count ? (
-                      <div className="mt-4 rounded-[18px] border border-[hsl(var(--warning)_/_0.32)] bg-[hsl(var(--warning)_/_0.12)] px-4 py-3 text-sm text-[hsl(var(--foreground-strong))]">
-                        <p className="font-medium">This run cannot move forward until the exceptions are fixed.</p>
-                        <ul className="mt-2 space-y-1 text-[hsl(var(--muted-foreground))]">
-                          {exceptionSummary.items.map((item) => (
-                            <li key={item.id}>
-                              {item.employee_name}: {item.message || 'Payroll data is incomplete.'}
-                            </li>
-                          ))}
-                        </ul>
-                        {exceptionSummary.hiddenCount ? (
-                          <p className="mt-2 text-[hsl(var(--muted-foreground))]">+{exceptionSummary.hiddenCount} more employees still need attention.</p>
-                        ) : null}
-                      </div>
-                    ) : null}
-                  </div>
-                )
-              }) : (
-                <EmptyState title="No payroll runs yet" description="Create the first pay run once templates and assignments are in place." />
-              )}
-            </div>
-          </SectionCard>
-        </div>
+        <RunsSection
+          data={data}
+          runForm={runForm}
+          setRunForm={setRunForm}
+          createRunMutation={createRunMutation}
+          calculateRunMutation={calculateRunMutation}
+          submitRunMutation={submitRunMutation}
+          finalizeRunMutation={finalizeRunMutation}
+          rerunMutation={rerunMutation}
+          onCreateRun={handleCreateRun}
+          onCalculateRun={handleCalculateRun}
+          onSubmitRun={handleSubmitRun}
+          onFinalizeRun={handleFinalizeRun}
+          onRerun={handleRerun}
+        />
       ) : null}
 
       {activeSection === 'filings' ? (
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
-          <div className="space-y-6">
-            <SectionCard title="Generate statutory filing" description="Create a persisted filing batch from finalized payroll data. Blockers are surfaced immediately so the batch never downloads partial statutory rows.">
-              <form onSubmit={handleGenerateFiling} className="grid gap-4 md:grid-cols-2">
-                <label className="grid gap-2">
-                  <span className="field-label">Filing type</span>
-                  <select
-                    className="field-input"
-                    value={filingForm.filing_type}
-                    onChange={(event) =>
-                      setFilingForm((current) => ({
-                        ...current,
-                        filing_type: event.target.value,
-                      }))
-                    }
-                  >
-                    <option value="PF_ECR">PF ECR</option>
-                    <option value="ESI_MONTHLY">ESI monthly</option>
-                    <option value="PROFESSIONAL_TAX">Professional tax</option>
-                    <option value="FORM24Q">Form 24Q</option>
-                    <option value="FORM16">Form 16</option>
-                  </select>
-                </label>
+        <FilingsSection
+          data={data}
+          filingForm={filingForm}
+          setFilingForm={setFilingForm}
+          tdsChallanForm={tdsChallanForm}
+          setTdsChallanForm={setTdsChallanForm}
+          createTdsChallanMutation={createTdsChallanMutation}
+          generateFilingMutation={generateFilingMutation}
+          regenerateFilingMutation={regenerateFilingMutation}
+          cancelFilingMutation={cancelFilingMutation}
+          downloadFilingMutation={downloadFilingMutation}
+          onGenerateFiling={handleGenerateFiling}
+          onCreateTdsChallan={handleCreateTdsChallan}
+          onDownloadFiling={handleDownloadFiling}
+          onRegenerateFiling={handleRegenerateFiling}
+          onCancelFiling={handleCancelFiling}
+        />
+      ) : null}
+    </div>
+  )
+}
 
-                {['PF_ECR', 'ESI_MONTHLY', 'PROFESSIONAL_TAX'].includes(filingForm.filing_type) ? (
-                  <>
-                    <label className="grid gap-2">
-                      <span className="field-label">Period year</span>
-                      <input
-                        className="field-input"
-                        value={filingForm.period_year}
-                        onChange={(event) => setFilingForm((current) => ({ ...current, period_year: event.target.value }))}
-                        placeholder="2026"
-                      />
-                    </label>
-                    <label className="grid gap-2">
-                      <span className="field-label">Period month</span>
-                      <input
-                        className="field-input"
-                        value={filingForm.period_month}
-                        onChange={(event) => setFilingForm((current) => ({ ...current, period_month: event.target.value }))}
-                        placeholder="4"
-                      />
-                    </label>
-                  </>
-                ) : null}
+type TemplateFormState = { name: string; description: string; basic_pay: string; employee_deduction: string }
+type AssignmentFormState = { employee_id: string; template_id: string; effective_from: string }
+type ArrearFormState = { employee_id: string; for_period_year: string; for_period_month: string; reason: string; amount: string }
+type FilingFormState = { filing_type: string; period_year: string; period_month: string; fiscal_year: string; quarter: string; artifact_format: string }
+type TdsChallanFormState = { fiscal_year: string; period_year: string; period_month: string; deposit_date: string; bsr_code: string; challan_serial_number: string; tax_deposited: string; statement_receipt_number: string; notes: string }
 
-                {['FORM24Q', 'FORM16'].includes(filingForm.filing_type) ? (
-                  <label className="grid gap-2">
-                    <span className="field-label">Fiscal year</span>
-                    <input
-                      className="field-input"
-                      value={filingForm.fiscal_year}
-                      onChange={(event) => setFilingForm((current) => ({ ...current, fiscal_year: event.target.value }))}
-                      placeholder="2026-2027"
-                    />
-                  </label>
-                ) : null}
+interface CompensationSectionProps {
+  data: NonNullable<NonNullable<ReturnType<typeof usePayrollSummary>['data']>>
+  employeesResponse: ReturnType<typeof useEmployees>['data']
+  arrears: NonNullable<NonNullable<ReturnType<typeof useOrgArrears>['data']>>
+  templateForm: TemplateFormState
+  setTemplateForm: React.Dispatch<React.SetStateAction<TemplateFormState>>
+  assignmentForm: AssignmentFormState
+  setAssignmentForm: React.Dispatch<React.SetStateAction<AssignmentFormState>>
+  arrearForm: ArrearFormState
+  setArrearForm: React.Dispatch<React.SetStateAction<ArrearFormState>>
+  createTemplateMutation: ReturnType<typeof useCreateCompensationTemplate>
+  createAssignmentMutation: ReturnType<typeof useCreateCompensationAssignment>
+  createArrearMutation: ReturnType<typeof useCreateOrgArrear>
+  onCreateTemplate: (event: React.FormEvent) => Promise<void>
+  onCreateAssignment: (event: React.FormEvent) => Promise<void>
+  onCreateArrear: (event: React.FormEvent) => Promise<void>
+  onSubmitTemplate: (templateId: string) => Promise<void>
+  onSubmitAssignment: (assignmentId: string) => Promise<void>
+}
 
-                {filingForm.filing_type === 'FORM24Q' ? (
-                  <label className="grid gap-2">
-                    <span className="field-label">Quarter</span>
-                    <select
-                      className="field-input"
-                      value={filingForm.quarter}
-                      onChange={(event) => setFilingForm((current) => ({ ...current, quarter: event.target.value }))}
-                    >
-                      <option value="Q1">Q1</option>
-                      <option value="Q2">Q2</option>
-                      <option value="Q3">Q3</option>
-                      <option value="Q4">Q4</option>
-                    </select>
-                  </label>
-                ) : null}
+function CompensationSection({
+  data,
+  employeesResponse,
+  arrears,
+  templateForm,
+  setTemplateForm,
+  assignmentForm,
+  setAssignmentForm,
+  arrearForm,
+  setArrearForm,
+  createTemplateMutation,
+  createAssignmentMutation,
+  createArrearMutation,
+  onCreateTemplate,
+  onCreateAssignment,
+  onCreateArrear,
+  onSubmitTemplate,
+  onSubmitAssignment,
+}: CompensationSectionProps) {
+  const employeeOptions = useMemo(
+    () =>
+      (employeesResponse?.results ?? []).map((employee) => ({
+        value: employee.id,
+        label: employee.full_name,
+        hint: employee.designation || employee.employee_code || undefined,
+      })),
+    [employeesResponse],
+  )
+  const templateOptions = useMemo(
+    () =>
+      (data?.compensation_templates ?? []).map((template) => ({
+        value: template.id,
+        label: template.name,
+        hint: template.status,
+      })),
+    [data],
+  )
 
-                {filingForm.filing_type === 'FORM16' ? (
-                  <label className="grid gap-2">
-                    <span className="field-label">Artifact format</span>
-                    <select
-                      className="field-input"
-                      value={filingForm.artifact_format}
-                      onChange={(event) => setFilingForm((current) => ({ ...current, artifact_format: event.target.value }))}
-                    >
-                      <option value="PDF">PDF</option>
-                      <option value="XML">XML</option>
-                    </select>
-                  </label>
-                ) : null}
-
-                <div className="md:col-span-2">
-                  <button type="submit" className="btn-primary" disabled={generateFilingMutation.isPending}>
-                    {generateFilingMutation.isPending ? 'Generating…' : 'Generate filing'}
-                  </button>
+  return (
+    <div className="grid gap-6 xl:grid-cols-2">
+      <SectionCard title="Compensation templates" description="Define the reusable salary structure and submit the template through approval when it is ready for controlled payroll preview use.">
+        <div className="mb-4 rounded-[18px] border border-[hsl(var(--info)_/_0.24)] bg-[hsl(var(--info)_/_0.1)] px-4 py-3 text-sm text-[hsl(var(--foreground-strong))]">
+          <p className="font-medium">CTC context</p>
+          <p className="mt-1 text-[hsl(var(--muted-foreground))]">
+            Treat each template as a monthly salary-structure preview. In Indian payroll terms, this is the reusable monthly component breakup that later rolls into annual CTC and net-pay calculations.
+          </p>
+        </div>
+        <form onSubmit={onCreateTemplate} className="grid gap-4 md:grid-cols-2">
+          <div>
+            <label className="field-label" htmlFor="payroll-template-name">Template name</label>
+            <input id="payroll-template-name" className="field-input" value={templateForm.name} onChange={(event) => setTemplateForm((current) => ({ ...current, name: event.target.value }))} placeholder="Template name" />
+          </div>
+          <div>
+            <label className="field-label" htmlFor="payroll-template-description">Description</label>
+            <input id="payroll-template-description" className="field-input" value={templateForm.description} onChange={(event) => setTemplateForm((current) => ({ ...current, description: event.target.value }))} placeholder="Description" />
+          </div>
+          <div>
+            <label className="field-label" htmlFor="payroll-template-basic-pay">Basic pay</label>
+            <input id="payroll-template-basic-pay" className="field-input" value={templateForm.basic_pay} onChange={(event) => setTemplateForm((current) => ({ ...current, basic_pay: event.target.value }))} placeholder="Basic pay" />
+          </div>
+          <div>
+            <label className="field-label" htmlFor="payroll-template-employee-deduction">Employee deduction</label>
+            <input id="payroll-template-employee-deduction" className="field-input" value={templateForm.employee_deduction} onChange={(event) => setTemplateForm((current) => ({ ...current, employee_deduction: event.target.value }))} placeholder="Employee deduction" />
+          </div>
+          <div className="md:col-span-2">
+            <button type="submit" className="btn-primary" disabled={createTemplateMutation.isPending}>
+              Create template
+            </button>
+          </div>
+        </form>
+        <div className="mt-5 space-y-3">
+          {data.compensation_templates.map((template) => (
+            <div key={template.id} className="surface-shell rounded-[18px] px-4 py-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-semibold text-[hsl(var(--foreground-strong))]">{template.name}</p>
+                    <StatusBadge tone={getCompensationStatusTone(template.status)}>
+                      {template.status}
+                    </StatusBadge>
+                  </div>
+                  <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">{template.lines.length} lines • Modified {formatDateTime(template.modified_at)}</p>
                 </div>
-              </form>
-            </SectionCard>
+                {template.status !== 'PENDING_APPROVAL' && template.status !== 'APPROVED' ? (
+                  <button type="button" className="btn-secondary" onClick={() => void onSubmitTemplate(template.id)}>
+                    Submit approval
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      </SectionCard>
 
-            <SectionCard title="Record TDS challan" description="Form 24Q and filing-grade Form 16 exports use these monthly deposit records for BSR code, challan serial, and statement receipt metadata.">
-              <form onSubmit={handleCreateTdsChallan} className="grid gap-4 md:grid-cols-2">
-                <label className="grid gap-2">
-                  <span className="field-label">Fiscal year</span>
-                  <input
-                    className="field-input"
-                    value={tdsChallanForm.fiscal_year}
-                    onChange={(event) => setTdsChallanForm((current) => ({ ...current, fiscal_year: event.target.value }))}
-                    placeholder="2026-2027"
-                  />
-                </label>
+      <SectionCard title="Salary assignments" description="Assign approved structures to employees with an effective date, then submit salary revisions into the approval queue. Review carefully because downstream payroll remains limited-scope.">
+        <form onSubmit={onCreateAssignment} className="grid gap-4">
+          <div>
+            <label className="field-label" htmlFor="payroll-assignment-employee">Employee</label>
+            <AppSelect id="payroll-assignment-employee" value={assignmentForm.employee_id} onValueChange={(value) => setAssignmentForm((current) => ({ ...current, employee_id: value }))} options={employeeOptions} placeholder="Select employee" />
+          </div>
+          <div>
+            <label className="field-label" htmlFor="payroll-assignment-template">Template</label>
+            <AppSelect id="payroll-assignment-template" value={assignmentForm.template_id} onValueChange={(value) => setAssignmentForm((current) => ({ ...current, template_id: value }))} options={templateOptions} placeholder="Select template" />
+          </div>
+          <div>
+            <label className="field-label" htmlFor="payroll-assignment-effective-from">Effective from</label>
+            <AppDatePicker id="payroll-assignment-effective-from" value={assignmentForm.effective_from} onValueChange={(value) => setAssignmentForm((current) => ({ ...current, effective_from: value }))} placeholder="Select effective date" />
+          </div>
+          <button type="submit" className="btn-primary" disabled={createAssignmentMutation.isPending}>
+            Create assignment
+          </button>
+        </form>
+        <div className="mt-5 space-y-3">
+          {data.compensation_assignments.length ? data.compensation_assignments.map((assignment) => (
+            <div key={assignment.id} className="surface-shell rounded-[18px] px-4 py-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-semibold text-[hsl(var(--foreground-strong))]">{assignment.employee_name}</p>
+                    <StatusBadge tone={getCompensationStatusTone(assignment.status)}>
+                      {assignment.status}
+                    </StatusBadge>
+                  </div>
+                  <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
+                    {assignment.template_name} • Effective {assignment.effective_from} • Version {assignment.version}
+                  </p>
+                </div>
+                {assignment.status !== 'PENDING_APPROVAL' && assignment.status !== 'APPROVED' ? (
+                  <button type="button" className="btn-secondary" onClick={() => void onSubmitAssignment(assignment.id)}>
+                    Submit approval
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          )) : (
+            <EmptyState title="No salary assignments yet" description="Assign a compensation template to at least one employee before calculating payroll." />
+          )}
+        </div>
+      </SectionCard>
+
+      <SectionCard title="Arrears adjustments" description="Record underpayments from prior periods so they flow into the next payroll calculation.">
+        <form onSubmit={onCreateArrear} className="grid gap-4 md:grid-cols-2">
+          <div className="md:col-span-2">
+            <label className="field-label" htmlFor="payroll-arrear-employee">Employee</label>
+            <AppSelect
+              id="payroll-arrear-employee"
+              value={arrearForm.employee_id}
+              onValueChange={(value) => setArrearForm((current) => ({ ...current, employee_id: value }))}
+              options={employeeOptions}
+              placeholder="Select employee"
+            />
+          </div>
+          <div>
+            <label className="field-label" htmlFor="payroll-arrear-year">For period year</label>
+            <input
+              id="payroll-arrear-year"
+              className="field-input"
+              value={arrearForm.for_period_year}
+              onChange={(event) => setArrearForm((current) => ({ ...current, for_period_year: event.target.value }))}
+              placeholder="Year"
+            />
+          </div>
+          <div>
+            <label className="field-label" htmlFor="payroll-arrear-month">For period month</label>
+            <input
+              id="payroll-arrear-month"
+              className="field-input"
+              value={arrearForm.for_period_month}
+              onChange={(event) => setArrearForm((current) => ({ ...current, for_period_month: event.target.value }))}
+              placeholder="Month"
+            />
+          </div>
+          <div>
+            <label className="field-label" htmlFor="payroll-arrear-reason">Reason</label>
+            <input
+              id="payroll-arrear-reason"
+              className="field-input"
+              value={arrearForm.reason}
+              onChange={(event) => setArrearForm((current) => ({ ...current, reason: event.target.value }))}
+              placeholder="Reason"
+            />
+          </div>
+          <div>
+            <label className="field-label" htmlFor="payroll-arrear-amount">Amount</label>
+            <input
+              id="payroll-arrear-amount"
+              className="field-input"
+              value={arrearForm.amount}
+              onChange={(event) => setArrearForm((current) => ({ ...current, amount: event.target.value }))}
+              placeholder="Amount"
+            />
+          </div>
+          <div className="md:col-span-2">
+            <button type="submit" className="btn-primary" disabled={createArrearMutation.isPending}>
+              Record arrear
+            </button>
+          </div>
+        </form>
+        <div className="mt-5 space-y-3">
+          {arrears.length ? arrears.map((arrear) => (
+            <div key={arrear.id} className="surface-shell rounded-[18px] px-4 py-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="font-semibold text-[hsl(var(--foreground-strong))]">{arrear.employee_name}</p>
+                  <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
+                    {arrear.reason} • {arrear.for_period_month}/{arrear.for_period_year}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="font-semibold text-[hsl(var(--foreground-strong))]">₹{arrear.amount}</p>
+                  <p className="mt-2 text-xs uppercase tracking-[0.12em] text-[hsl(var(--muted-foreground))]">
+                    {arrear.is_included_in_payslip ? 'Included in payslip' : 'Pending payroll run'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )) : (
+            <EmptyState title="No arrears recorded" description="Record manual arrears here when pay from a prior period needs to be recovered in the next run." />
+          )}
+        </div>
+      </SectionCard>
+    </div>
+  )
+}
+
+interface FilingsSectionProps {
+  data: NonNullable<NonNullable<ReturnType<typeof usePayrollSummary>['data']>>
+  filingForm: FilingFormState
+  setFilingForm: React.Dispatch<React.SetStateAction<FilingFormState>>
+  tdsChallanForm: TdsChallanFormState
+  setTdsChallanForm: React.Dispatch<React.SetStateAction<TdsChallanFormState>>
+  createTdsChallanMutation: ReturnType<typeof useCreatePayrollTdsChallan>
+  generateFilingMutation: ReturnType<typeof useGeneratePayrollFiling>
+  regenerateFilingMutation: ReturnType<typeof useRegeneratePayrollFiling>
+  cancelFilingMutation: ReturnType<typeof useCancelPayrollFiling>
+  downloadFilingMutation: ReturnType<typeof useDownloadPayrollFiling>
+  onGenerateFiling: (event: React.FormEvent) => Promise<void>
+  onCreateTdsChallan: (event: React.FormEvent) => Promise<void>
+  onDownloadFiling: (filingId: string) => Promise<void>
+  onRegenerateFiling: (filingId: string) => Promise<void>
+  onCancelFiling: (filingId: string) => Promise<void>
+}
+
+function FilingsSection({
+  data,
+  filingForm,
+  setFilingForm,
+  tdsChallanForm,
+  setTdsChallanForm,
+  createTdsChallanMutation,
+  generateFilingMutation,
+  regenerateFilingMutation,
+  cancelFilingMutation,
+  downloadFilingMutation,
+  onGenerateFiling,
+  onCreateTdsChallan,
+  onDownloadFiling,
+  onRegenerateFiling,
+  onCancelFiling,
+}: FilingsSectionProps) {
+  return (
+    <div className="grid gap-6 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+      <div className="space-y-6">
+        <SectionCard title="Generate statutory filing" description="Create a persisted filing batch from finalized payroll data. Blockers are surfaced immediately so the batch never downloads partial statutory rows.">
+          <form onSubmit={onGenerateFiling} className="grid gap-4 md:grid-cols-2">
+            <label className="grid gap-2">
+              <span className="field-label">Filing type</span>
+              <select
+                className="field-input"
+                value={filingForm.filing_type}
+                onChange={(event) =>
+                  setFilingForm((current) => ({
+                    ...current,
+                    filing_type: event.target.value,
+                  }))
+                }
+              >
+                <option value="PF_ECR">PF ECR</option>
+                <option value="ESI_MONTHLY">ESI monthly</option>
+                <option value="PROFESSIONAL_TAX">Professional tax</option>
+                <option value="FORM24Q">Form 24Q</option>
+                <option value="FORM16">Form 16</option>
+              </select>
+            </label>
+
+            {['PF_ECR', 'ESI_MONTHLY', 'PROFESSIONAL_TAX'].includes(filingForm.filing_type) ? (
+              <>
                 <label className="grid gap-2">
                   <span className="field-label">Period year</span>
                   <input
                     className="field-input"
-                    value={tdsChallanForm.period_year}
-                    onChange={(event) => setTdsChallanForm((current) => ({ ...current, period_year: event.target.value }))}
+                    value={filingForm.period_year}
+                    onChange={(event) => setFilingForm((current) => ({ ...current, period_year: event.target.value }))}
                     placeholder="2026"
                   />
                 </label>
@@ -929,162 +1018,242 @@ export function PayrollPage() {
                   <span className="field-label">Period month</span>
                   <input
                     className="field-input"
-                    value={tdsChallanForm.period_month}
-                    onChange={(event) => setTdsChallanForm((current) => ({ ...current, period_month: event.target.value }))}
+                    value={filingForm.period_month}
+                    onChange={(event) => setFilingForm((current) => ({ ...current, period_month: event.target.value }))}
                     placeholder="4"
                   />
                 </label>
-                <div className="grid gap-2">
-                  <span className="field-label">Deposit date</span>
-                  <AppDatePicker
-                    id="tds-challan-deposit-date"
-                    value={tdsChallanForm.deposit_date}
-                    onValueChange={(value) => setTdsChallanForm((current) => ({ ...current, deposit_date: value }))}
-                    placeholder="Select deposit date"
-                  />
-                </div>
-                <label className="grid gap-2">
-                  <span className="field-label">BSR code</span>
-                  <input
-                    className="field-input"
-                    value={tdsChallanForm.bsr_code}
-                    onChange={(event) => setTdsChallanForm((current) => ({ ...current, bsr_code: event.target.value }))}
-                    placeholder="0510032"
-                  />
-                </label>
-                <label className="grid gap-2">
-                  <span className="field-label">Challan serial</span>
-                  <input
-                    className="field-input"
-                    value={tdsChallanForm.challan_serial_number}
-                    onChange={(event) => setTdsChallanForm((current) => ({ ...current, challan_serial_number: event.target.value }))}
-                    placeholder="00004"
-                  />
-                </label>
-                <label className="grid gap-2">
-                  <span className="field-label">Tax deposited</span>
-                  <input
-                    className="field-input"
-                    value={tdsChallanForm.tax_deposited}
-                    onChange={(event) => setTdsChallanForm((current) => ({ ...current, tax_deposited: event.target.value }))}
-                    placeholder="3500.00"
-                  />
-                </label>
-                <label className="grid gap-2">
-                  <span className="field-label">Statement receipt number</span>
-                  <input
-                    className="field-input"
-                    value={tdsChallanForm.statement_receipt_number}
-                    onChange={(event) => setTdsChallanForm((current) => ({ ...current, statement_receipt_number: event.target.value }))}
-                    placeholder="Optional until 24Q is filed"
-                  />
-                </label>
-                <label className="grid gap-2 md:col-span-2">
-                  <span className="field-label">Notes</span>
-                  <input
-                    className="field-input"
-                    value={tdsChallanForm.notes}
-                    onChange={(event) => setTdsChallanForm((current) => ({ ...current, notes: event.target.value }))}
-                    placeholder="Optional reconciliation note"
-                  />
-                </label>
-                <div className="md:col-span-2">
-                  <button type="submit" className="btn-secondary" disabled={createTdsChallanMutation.isPending}>
-                    {createTdsChallanMutation.isPending ? 'Recording…' : 'Record TDS challan'}
-                  </button>
-                </div>
-              </form>
+              </>
+            ) : null}
 
-              <div className="mt-5 space-y-3">
-                {data.tds_challans.length === 0 ? (
-                  <p className="text-sm text-[hsl(var(--muted-foreground))]">No TDS challans recorded yet for this organisation.</p>
-                ) : (
-                  data.tds_challans.map((challan) => (
-                    <div key={challan.id} className="surface-shell rounded-[16px] px-4 py-3">
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                          <p className="font-medium text-[hsl(var(--foreground-strong))]">
-                            {challan.period_month}/{challan.period_year} • {challan.quarter}
-                          </p>
-                          <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
-                            BSR {challan.bsr_code} • Challan {challan.challan_serial_number} • Deposit {challan.deposit_date}
-                          </p>
-                        </div>
-                        <div className="text-right text-sm text-[hsl(var(--foreground-strong))]">
-                          <p>INR {challan.tax_deposited}</p>
-                          <p className="text-[hsl(var(--muted-foreground))]">{challan.statement_receipt_number || 'Receipt pending'}</p>
-                        </div>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </SectionCard>
-          </div>
-
-          <SectionCard title="Generated batches" description="Reproducible filing batches stay versioned. Regenerating a scope supersedes the older batch instead of silently mutating it.">
-            <div className="space-y-3">
-              {data.statutory_filing_batches.length === 0 ? (
-                <EmptyState
-                  title="No filing batches yet"
-                  description="Generate PF, ESI, PT, 24Q, or Form 16 batches after you finalize the source payroll run or fiscal period."
+            {['FORM24Q', 'FORM16'].includes(filingForm.filing_type) ? (
+              <label className="grid gap-2">
+                <span className="field-label">Fiscal year</span>
+                <input
+                  className="field-input"
+                  value={filingForm.fiscal_year}
+                  onChange={(event) => setFilingForm((current) => ({ ...current, fiscal_year: event.target.value }))}
+                  placeholder="2026-2027"
                 />
-              ) : (
-                data.statutory_filing_batches.map((batch) => (
-                  <div key={batch.id} className="surface-shell rounded-[18px] px-4 py-4">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="font-semibold text-[hsl(var(--foreground-strong))]">{batch.filing_type}</p>
-                          <StatusBadge tone={getFilingTone(batch.status)}>{batch.status}</StatusBadge>
-                          <StatusBadge tone="info">{batch.artifact_format}</StatusBadge>
-                        </div>
-                        <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
-                          {batch.period_year && batch.period_month
-                            ? `${batch.period_month}/${batch.period_year}`
-                            : batch.quarter
-                              ? `${batch.quarter} • ${batch.fiscal_year}`
-                              : batch.fiscal_year || 'Ad-hoc scope'}
-                        </p>
-                        <p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">
-                          {batch.generated_at ? `Generated ${formatDateTime(batch.generated_at)}` : 'Not generated yet'}
-                        </p>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {batch.status === 'GENERATED' ? (
-                          <button type="button" className="btn-secondary" onClick={() => void handleDownloadFiling(batch.id)}>
-                            Download
-                          </button>
-                        ) : null}
-                        {batch.status !== 'CANCELLED' ? (
-                          <button type="button" className="btn-secondary" onClick={() => void handleRegenerateFiling(batch.id)}>
-                            Regenerate
-                          </button>
-                        ) : null}
-                        {batch.status !== 'CANCELLED' ? (
-                          <button type="button" className="btn-secondary" onClick={() => void handleCancelFiling(batch.id)}>
-                            Cancel
-                          </button>
-                        ) : null}
-                      </div>
+              </label>
+            ) : null}
+
+            {filingForm.filing_type === 'FORM24Q' ? (
+              <label className="grid gap-2">
+                <span className="field-label">Quarter</span>
+                <select
+                  className="field-input"
+                  value={filingForm.quarter}
+                  onChange={(event) => setFilingForm((current) => ({ ...current, quarter: event.target.value }))}
+                >
+                  <option value="Q1">Q1</option>
+                  <option value="Q2">Q2</option>
+                  <option value="Q3">Q3</option>
+                  <option value="Q4">Q4</option>
+                </select>
+              </label>
+            ) : null}
+
+            {filingForm.filing_type === 'FORM16' ? (
+              <label className="grid gap-2">
+                <span className="field-label">Artifact format</span>
+                <select
+                  className="field-input"
+                  value={filingForm.artifact_format}
+                  onChange={(event) => setFilingForm((current) => ({ ...current, artifact_format: event.target.value }))}
+                >
+                  <option value="PDF">PDF</option>
+                  <option value="XML">XML</option>
+                </select>
+              </label>
+            ) : null}
+
+            <div className="md:col-span-2">
+              <button type="submit" className="btn-primary" disabled={generateFilingMutation.isPending}>
+                {generateFilingMutation.isPending ? 'Generating…' : 'Generate filing'}
+              </button>
+            </div>
+          </form>
+        </SectionCard>
+
+        <SectionCard title="Record TDS challan" description="Form 24Q and filing-grade Form 16 exports use these monthly deposit records for BSR code, challan serial, and statement receipt metadata.">
+          <form onSubmit={onCreateTdsChallan} className="grid gap-4 md:grid-cols-2">
+            <label className="grid gap-2">
+              <span className="field-label">Fiscal year</span>
+              <input
+                className="field-input"
+                value={tdsChallanForm.fiscal_year}
+                onChange={(event) => setTdsChallanForm((current) => ({ ...current, fiscal_year: event.target.value }))}
+                placeholder="2026-2027"
+              />
+            </label>
+            <label className="grid gap-2">
+              <span className="field-label">Period year</span>
+              <input
+                className="field-input"
+                value={tdsChallanForm.period_year}
+                onChange={(event) => setTdsChallanForm((current) => ({ ...current, period_year: event.target.value }))}
+                placeholder="2026"
+              />
+            </label>
+            <label className="grid gap-2">
+              <span className="field-label">Period month</span>
+              <input
+                className="field-input"
+                value={tdsChallanForm.period_month}
+                onChange={(event) => setTdsChallanForm((current) => ({ ...current, period_month: event.target.value }))}
+                placeholder="4"
+              />
+            </label>
+            <div className="grid gap-2">
+              <span className="field-label">Deposit date</span>
+              <AppDatePicker
+                id="tds-challan-deposit-date"
+                value={tdsChallanForm.deposit_date}
+                onValueChange={(value) => setTdsChallanForm((current) => ({ ...current, deposit_date: value }))}
+                placeholder="Select deposit date"
+              />
+            </div>
+            <label className="grid gap-2">
+              <span className="field-label">BSR code</span>
+              <input
+                className="field-input"
+                value={tdsChallanForm.bsr_code}
+                onChange={(event) => setTdsChallanForm((current) => ({ ...current, bsr_code: event.target.value }))}
+                placeholder="0510032"
+              />
+            </label>
+            <label className="grid gap-2">
+              <span className="field-label">Challan serial</span>
+              <input
+                className="field-input"
+                value={tdsChallanForm.challan_serial_number}
+                onChange={(event) => setTdsChallanForm((current) => ({ ...current, challan_serial_number: event.target.value }))}
+                placeholder="00004"
+              />
+            </label>
+            <label className="grid gap-2">
+              <span className="field-label">Tax deposited</span>
+              <input
+                className="field-input"
+                value={tdsChallanForm.tax_deposited}
+                onChange={(event) => setTdsChallanForm((current) => ({ ...current, tax_deposited: event.target.value }))}
+                placeholder="3500.00"
+              />
+            </label>
+            <label className="grid gap-2">
+              <span className="field-label">Statement receipt number</span>
+              <input
+                className="field-input"
+                value={tdsChallanForm.statement_receipt_number}
+                onChange={(event) => setTdsChallanForm((current) => ({ ...current, statement_receipt_number: event.target.value }))}
+                placeholder="Optional until 24Q is filed"
+              />
+            </label>
+            <label className="grid gap-2 md:col-span-2">
+              <span className="field-label">Notes</span>
+              <input
+                className="field-input"
+                value={tdsChallanForm.notes}
+                onChange={(event) => setTdsChallanForm((current) => ({ ...current, notes: event.target.value }))}
+                placeholder="Optional reconciliation note"
+              />
+            </label>
+            <div className="md:col-span-2">
+              <button type="submit" className="btn-secondary" disabled={createTdsChallanMutation.isPending}>
+                {createTdsChallanMutation.isPending ? 'Recording…' : 'Record TDS challan'}
+              </button>
+            </div>
+          </form>
+
+          <div className="mt-5 space-y-3">
+            {data.tds_challans.length === 0 ? (
+              <p className="text-sm text-[hsl(var(--muted-foreground))]">No TDS challans recorded yet for this organisation.</p>
+            ) : (
+              data.tds_challans.map((challan) => (
+                <div key={challan.id} className="surface-shell rounded-[16px] px-4 py-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="font-medium text-[hsl(var(--foreground-strong))]">
+                        {challan.period_month}/{challan.period_year} • {challan.quarter}
+                      </p>
+                      <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
+                        BSR {challan.bsr_code} • Challan {challan.challan_serial_number} • Deposit {challan.deposit_date}
+                      </p>
                     </div>
-                    {batch.validation_errors.length > 0 ? (
-                      <div className="mt-3 rounded-[16px] border border-[hsl(var(--danger)_/_0.24)] bg-[hsl(var(--danger)_/_0.08)] px-3 py-3 text-sm text-[hsl(var(--foreground-strong))]">
-                        <p className="font-medium">Validation blockers</p>
-                        <ul className="mt-2 list-disc pl-5 text-[hsl(var(--muted-foreground))]">
-                          {batch.validation_errors.slice(0, 3).map((error) => (
-                            <li key={error}>{error}</li>
-                          ))}
-                        </ul>
-                      </div>
+                    <div className="text-right text-sm text-[hsl(var(--foreground-strong))]">
+                      <p>INR {challan.tax_deposited}</p>
+                      <p className="text-[hsl(var(--muted-foreground))]">{challan.statement_receipt_number || 'Receipt pending'}</p>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </SectionCard>
+      </div>
+
+      <SectionCard title="Generated batches" description="Reproducible filing batches stay versioned. Regenerating a scope supersedes the older batch instead of silently mutating it.">
+        <div className="space-y-3">
+          {data.statutory_filing_batches.length === 0 ? (
+            <EmptyState
+              title="No filing batches yet"
+              description="Generate PF, ESI, PT, 24Q, or Form 16 batches after you finalize the source payroll run or fiscal period."
+            />
+          ) : (
+            data.statutory_filing_batches.map((batch) => (
+              <div key={batch.id} className="surface-shell rounded-[18px] px-4 py-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-semibold text-[hsl(var(--foreground-strong))]">{batch.filing_type}</p>
+                      <StatusBadge tone={getFilingTone(batch.status)}>{batch.status}</StatusBadge>
+                      <StatusBadge tone="info">{batch.artifact_format}</StatusBadge>
+                    </div>
+                    <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
+                      {batch.period_year && batch.period_month
+                        ? `${batch.period_month}/${batch.period_year}`
+                        : batch.quarter
+                          ? `${batch.quarter} • ${batch.fiscal_year}`
+                          : batch.fiscal_year || 'Ad-hoc scope'}
+                    </p>
+                    <p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">
+                      {batch.generated_at ? `Generated ${formatDateTime(batch.generated_at)}` : 'Not generated yet'}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {batch.status === 'GENERATED' ? (
+                      <button type="button" className="btn-secondary" onClick={() => void onDownloadFiling(batch.id)}>
+                        Download
+                      </button>
+                    ) : null}
+                    {batch.status !== 'CANCELLED' ? (
+                      <button type="button" className="btn-secondary" onClick={() => void onRegenerateFiling(batch.id)}>
+                        Regenerate
+                      </button>
+                    ) : null}
+                    {batch.status !== 'CANCELLED' ? (
+                      <button type="button" className="btn-secondary" onClick={() => void onCancelFiling(batch.id)}>
+                        Cancel
+                      </button>
                     ) : null}
                   </div>
-                ))
-              )}
-            </div>
-          </SectionCard>
+                </div>
+                {batch.validation_errors.length > 0 ? (
+                  <div className="mt-3 rounded-[16px] border border-[hsl(var(--danger)_/_0.24)] bg-[hsl(var(--danger)_/_0.08)] px-3 py-3 text-sm text-[hsl(var(--foreground-strong))]">
+                    <p className="font-medium">Validation blockers</p>
+                    <ul className="mt-2 list-disc pl-5 text-[hsl(var(--muted-foreground))]">
+                      {batch.validation_errors.slice(0, 3).map((error) => (
+                        <li key={error}>{error}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </div>
+            ))
+          )}
         </div>
-      ) : null}
+      </SectionCard>
     </div>
   )
 }

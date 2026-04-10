@@ -16,6 +16,7 @@ import {
   useCompleteEmployeeOffboarding,
   useDeleteEmployee,
   useDepartments,
+  useDesignations,
   useEmployeeDetail,
   useEmployeeDocumentDownload,
   useEmployeeDocumentRequests,
@@ -49,6 +50,7 @@ export function EmployeeDetailPage() {
   const { data: employee, isLoading } = useEmployeeDetail(employeeId)
   const { data: departments } = useDepartments()
   const { data: locations } = useLocations()
+  const { data: designations } = useDesignations()
   const { data: approvalWorkflows } = useApprovalWorkflows()
   const { data: managerOptions } = useEmployees({ status: 'ACTIVE', page: 1 })
   const { data: documentRequests } = useEmployeeDocumentRequests(employeeId)
@@ -289,7 +291,15 @@ export function EmployeeDetailPage() {
       <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
         <SectionCard title="Employment settings" description="Assignments stay editable while the employee progresses through invited, pending, active, and end-of-employment states.">
           <form onSubmit={handleSave} className="grid gap-4">
-            <input className="field-input" value={formValues.designation} onChange={(event) => setDraft((current) => ({ ...current, designation: event.target.value }))} placeholder="Designation" />
+            <AppSelect
+              value={formValues.designation}
+              onValueChange={(value) => setDraft((current) => ({ ...current, designation: value }))}
+              options={[
+                { value: '', label: 'Select designation' },
+                ...(designations?.map((d) => ({ value: d.name, label: d.name })) ?? []),
+              ]}
+              placeholder="Select designation"
+            />
             <div className="grid gap-4 md:grid-cols-2">
               <AppSelect
                 value={formValues.employment_type}
@@ -421,7 +431,15 @@ export function EmployeeDetailPage() {
                     }
                     placeholder="Select joining date"
                   />
-                  <input className="field-input" placeholder={formValues.designation || 'Designation'} value={joinForm.designation} onChange={(event) => setJoinForm((current) => ({ ...current, designation: event.target.value }))} />
+                  <AppSelect
+                    value={joinForm.designation}
+                    onValueChange={(value) => setJoinForm((current) => ({ ...current, designation: value }))}
+                    options={[
+                      { value: '', label: 'Select designation' },
+                      ...(designations?.map((d) => ({ value: d.name, label: d.name })) ?? []),
+                    ]}
+                    placeholder="Select designation"
+                  />
                 </div>
                 <AppSelect
                   value={joinForm.reporting_to_employee_id}

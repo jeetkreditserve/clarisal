@@ -65,7 +65,7 @@ export type AttendanceImportMode = 'ATTENDANCE_SHEET' | 'PUNCH_SHEET'
 export type AttendanceImportStatus = 'FAILED' | 'READY_FOR_REVIEW' | 'POSTED'
 export type AttendanceDayStatus = 'PRESENT' | 'HALF_DAY' | 'ABSENT' | 'INCOMPLETE' | 'HOLIDAY' | 'WEEK_OFF' | 'ON_LEAVE' | 'ON_DUTY' | 'WFH'
 export type AttendanceRegularizationStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED' | 'WITHDRAWN'
-export type BiometricProtocol = 'ZK_ADMS' | 'ESSL_EBIOSERVER' | 'MATRIX_COSEC' | 'SUPREMA_BIOSTAR' | 'HIKVISION_ISAPI'
+export type BiometricProtocol = 'ZK_ADMS' | 'ESSL_EBIOSERVER' | 'MATRIX_COSEC' | 'SUPREMA_BIOSTAR' | 'HIKVISION_ISAPI' | 'MANTRA_AEBAS' | 'CP_PLUS_EXPORT'
 export type OffboardingProcessStatus = 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED'
 export type OffboardingTaskStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'WAIVED'
 export type OffboardingTaskOwner = 'ORG_ADMIN' | 'MANAGER' | 'EMPLOYEE' | 'PAYROLL' | 'IT'
@@ -750,6 +750,9 @@ export interface BiometricDevice {
   name: string
   device_serial: string
   protocol: BiometricProtocol
+  vendor: string
+  product_family: string
+  connectivity_mode: string
   ip_address: string | null
   port: number
   auth_username: string
@@ -759,6 +762,8 @@ export interface BiometricDevice {
   endpoint_path: string
   is_active: boolean
   last_sync_at: string | null
+  last_health_check_at: string | null
+  health_status: 'UNKNOWN' | 'HEALTHY' | 'DEGRADED' | 'FAILED'
   created_at: string
 }
 
@@ -770,6 +775,17 @@ export interface BiometricSyncLog {
   records_skipped: number
   errors: string[]
   success: boolean
+}
+
+export interface BiometricDeviceHealth {
+  id: string
+  name: string
+  vendor: string
+  product_family: string
+  health_status: string
+  last_sync_at: string | null
+  last_health_check_at: string | null
+  is_active: boolean
 }
 
 export interface RecruitmentInterview {
@@ -1311,7 +1327,10 @@ export interface PayrollRunItem {
   id: string
   employee_id: string
   employee_name: string
+  employee_code: string
+  department: string | null
   status: 'READY' | 'EXCEPTION'
+  has_exception: boolean
   gross_pay: string
   employee_deductions: string
   employer_contributions: string
@@ -1320,6 +1339,15 @@ export interface PayrollRunItem {
   net_pay: string
   snapshot: Record<string, unknown>
   message: string
+  arrears: string
+  lop_days: string
+  esi_employee: string
+  esi_employer: string
+  pf_employer: string
+  lwf_employee: string
+  lwf_employer: string
+  pt_monthly: string
+  tax_regime: string | null
 }
 
 export interface PayrollRunAttendanceSnapshotEmployee {
@@ -1362,9 +1390,13 @@ export interface PayrollRun {
   calculated_at: string | null
   submitted_at: string | null
   finalized_at: string | null
-  items: PayrollRunItem[]
   created_at: string
   modified_at: string
+  employee_count?: number
+  exception_count?: number
+  total_gross?: string
+  total_net?: string
+  total_deductions?: string
 }
 
 export interface Payslip {

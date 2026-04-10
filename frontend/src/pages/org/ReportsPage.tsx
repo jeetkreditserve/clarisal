@@ -3,6 +3,7 @@ import { BarChart3, Calculator, Download, FileSpreadsheet, Users } from 'lucide-
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 
+import { AppDatePicker } from '@/components/ui/AppDatePicker'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { downloadOrgReport, type OrgReportFormat } from '@/lib/api/org-admin'
@@ -227,11 +228,21 @@ export function ReportsPage() {
             <>
               <label className="grid gap-2">
                 <span className="text-sm font-medium text-[hsl(var(--foreground-strong))]">Start date</span>
-                <input className="field-input" type="date" value={attritionStartDate} onChange={(event) => setAttritionStartDate(event.target.value)} />
+                <AppDatePicker
+                  id="attrition-start-date"
+                  value={attritionStartDate}
+                  onValueChange={setAttritionStartDate}
+                  placeholder="Select start date"
+                />
               </label>
               <label className="grid gap-2">
                 <span className="text-sm font-medium text-[hsl(var(--foreground-strong))]">End date</span>
-                <input className="field-input" type="date" value={attritionEndDate} onChange={(event) => setAttritionEndDate(event.target.value)} />
+                <AppDatePicker
+                  id="attrition-end-date"
+                  value={attritionEndDate}
+                  onValueChange={setAttritionEndDate}
+                  placeholder="Select end date"
+                />
               </label>
             </>
           ) : null}

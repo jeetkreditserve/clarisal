@@ -1,0 +1,1 @@
+{"nodes": [{"id": "theme_context", "label": "theme-context.ts", "file_type": "code", "source_file": "frontend/src/context/theme-context.ts", "source_location": "L1"}], "edges": [{"source": "theme_context", "target": "react", "relation": "imports_from", "confidence": "EXTRACTED", "source_file": "frontend/src/context/theme-context.ts", "source_location": "L1", "weight": 1.0}]}

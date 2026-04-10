@@ -52,7 +52,7 @@
 
 ## Task 2: Implement Comp-Off / TOIL
 
-- [ ] Add comp-off accrual models linked to overtime or approved special-duty events.
+- [x] Add comp-off accrual models linked to overtime or approved special-duty events.
 - [x] Add expiry, approval, and redemption rules so comp-off behaves differently from generic leave types.
 - [x] Integrate comp-off consumption into leave balance checks and employee-facing leave calendars.
 
@@ -64,15 +64,15 @@
 
 ## Task 4: Add Shift Rotation Patterns
 
-- [ ] Add rotation templates, assignment rules, and scheduler logic rather than forcing manual shift assignment churn.
-- [ ] Support common patterns such as weekly rotation, cyclic rotation, and rostered team rotation.
+- [x] Add rotation templates, assignment rules, and scheduler logic rather than forcing manual shift assignment churn.
+- [x] Support common patterns such as weekly rotation, cyclic rotation, and rostered team rotation.
 - [x] Recalculate attendance expectations against the effective rotated shift for each day.
 
 ## Task 5: Automate Annual Leave Lapse and LWP Handling
 
-- [ ] Create explicit cycle-end tasks to lapse leave where carry-forward is disabled.
+- [x] Create explicit cycle-end tasks to lapse leave where carry-forward is disabled.
 - [x] Add a dedicated LWP representation instead of relying only on downstream payroll proration.
-- [ ] Ensure leave, attendance, and payroll all agree on the same LWP semantics.
+- [x] Ensure leave, attendance, and payroll all agree on the same LWP semantics.
 
 ## Task 6: Add Employee Calendar UX
 
@@ -82,6 +82,6 @@
 
 ## Task 7: Cleanup and Full Coverage
 
-- [ ] Remove stale attendance assumptions that every policy is fixed-shift and office-presence only.
-- [ ] Fully cover new attendance/timeoff services, tasks, and calendar UI behavior.
+- [x] Remove stale attendance assumptions that every policy is fixed-shift and office-presence only.
+- [x] Fully cover new attendance/timeoff services, tasks, and calendar UI behavior.
 - [ ] Run at least one E2E journey covering attendance punch, WFH/leave visibility, and comp-off redemption.

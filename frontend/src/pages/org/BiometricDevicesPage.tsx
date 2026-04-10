@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { LiveAttendanceFeed } from '@/components/ui/LiveAttendanceFeed'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { SkeletonTable } from '@/components/ui/Skeleton'
@@ -14,12 +15,14 @@ import { getErrorMessage } from '@/lib/errors'
 import { formatDateTime } from '@/lib/format'
 import type { BiometricProtocol } from '@/types/hr'
 
-const PROTOCOL_OPTIONS: Array<{ value: BiometricProtocol; label: string; note: string }> = [
-  { value: 'ZK_ADMS', label: 'ZKTeco / eSSL ADMS', note: 'Push-based devices that post ATTLOG entries directly to Clarisal.' },
-  { value: 'ESSL_EBIOSERVER', label: 'eSSL eBioserver', note: 'Webhook-based eSSL middleware integration secured with a shared secret.' },
-  { value: 'MATRIX_COSEC', label: 'Matrix COSEC', note: 'Pull-based sync using the device API key and a 5-minute poll interval.' },
-  { value: 'SUPREMA_BIOSTAR', label: 'Suprema BioStar 2', note: 'Pull-based sync using BioStar login credentials over HTTPS.' },
-  { value: 'HIKVISION_ISAPI', label: 'HikVision ISAPI', note: 'Pull-based sync using digest-auth credentials.' },
+const PROTOCOL_OPTIONS: Array<{ value: BiometricProtocol; label: string; note: string; vendor: string }> = [
+  { value: 'ZK_ADMS', label: 'ZKTeco / eSSL ADMS', note: 'Push-based devices that post ATTLOG entries directly to Clarisal.', vendor: 'ZKTeco / eSSL' },
+  { value: 'ESSL_EBIOSERVER', label: 'eSSL eBioserver', note: 'Webhook-based eSSL middleware integration secured with a shared secret.', vendor: 'eSSL' },
+  { value: 'MATRIX_COSEC', label: 'Matrix COSEC', note: 'Pull-based sync using the device API key and a 5-minute poll interval.', vendor: 'Matrix COSEC' },
+  { value: 'SUPREMA_BIOSTAR', label: 'Suprema BioStar 2', note: 'Pull-based sync using BioStar login credentials over HTTPS.', vendor: 'Suprema' },
+  { value: 'HIKVISION_ISAPI', label: 'HikVision ISAPI', note: 'Pull-based sync using digest-auth credentials.', vendor: 'HikVision' },
+  { value: 'MANTRA_AEBAS', label: 'Mantra / AEBAS', note: 'Mantra biometric devices linked to AEBAS government attendance system.', vendor: 'Mantra' },
+  { value: 'CP_PLUS_EXPORT', label: 'CP PLUS Export', note: 'CP PLUS attendance devices with export-based integration.', vendor: 'CP PLUS' },
 ]
 
 const PROTOCOL_LABELS: Record<BiometricProtocol, string> = {
@@ -28,12 +31,34 @@ const PROTOCOL_LABELS: Record<BiometricProtocol, string> = {
   MATRIX_COSEC: 'Matrix COSEC',
   SUPREMA_BIOSTAR: 'Suprema BioStar 2',
   HIKVISION_ISAPI: 'HikVision ISAPI',
+  MANTRA_AEBAS: 'Mantra / AEBAS',
+  CP_PLUS_EXPORT: 'CP PLUS Export',
+}
+
+const VENDOR_LABELS: Record<string, string> = {
+  ZKTECO: 'ZKTeco',
+  ESSL: 'eSSL',
+  MATRIX: 'Matrix COSEC',
+  HIKVISION: 'HikVision',
+  SUPREMA: 'Suprema',
+  MANTRA: 'Mantra',
+  CP_PLUS: 'CP PLUS',
+  OTHER: 'Other',
+}
+
+const HEALTH_STATUS_LABELS: Record<string, { label: string; tone: 'success' | 'warning' | 'danger' | 'neutral' }> = {
+  HEALTHY: { label: 'Healthy', tone: 'success' },
+  DEGRADED: { label: 'Degraded', tone: 'warning' },
+  FAILED: { label: 'Failed', tone: 'danger' },
+  UNKNOWN: { label: 'Unknown', tone: 'neutral' },
 }
 
 const INITIAL_FORM = {
   name: '',
   device_serial: '',
   protocol: 'ZK_ADMS' as BiometricProtocol,
+  vendor: '',
+  product_family: '',
   ip_address: '',
   port: '80',
   auth_username: '',
@@ -51,10 +76,13 @@ function isWebhookProtocol(protocol: BiometricProtocol) {
 }
 
 function buildPayload(form: typeof INITIAL_FORM) {
+  const selectedProtocol = PROTOCOL_OPTIONS.find((p) => p.value === form.protocol)
   return {
     name: form.name.trim(),
     device_serial: form.device_serial.trim() || undefined,
     protocol: form.protocol,
+    vendor: selectedProtocol?.vendor || '',
+    product_family: form.product_family.trim() || undefined,
     ip_address: isPullProtocol(form.protocol) ? form.ip_address.trim() || undefined : undefined,
     port: isPullProtocol(form.protocol) ? Number(form.port || '80') : 80,
     auth_username: form.protocol === 'HIKVISION_ISAPI' ? form.auth_username.trim() || undefined : undefined,
@@ -328,110 +356,130 @@ export function BiometricDevicesPage() {
             description="Register the first device to bring biometric attendance into the organisation workspace."
           />
         ) : (
-          <div className="table-shell overflow-x-auto">
-            <table className="min-w-full text-left text-sm">
-              <thead className="text-[hsl(var(--muted-foreground))]">
-                <tr className="border-b border-[hsl(var(--border))]">
-                  <th className="px-4 py-3 font-medium">Device</th>
-                  <th className="px-4 py-3 font-medium">Protocol</th>
-                  <th className="px-4 py-3 font-medium">Serial / IP</th>
-                  <th className="px-4 py-3 font-medium">Last sync</th>
-                  <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3 font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {devicesQuery.data.map((device) => (
-                  <tr key={device.id} className="border-b border-[hsl(var(--border))] last:border-b-0">
-                    <td className="px-4 py-4">
-                      <div className="font-medium text-[hsl(var(--foreground-strong))]">{device.name}</div>
-                      {device.auth_username ? <div className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">User: {device.auth_username}</div> : null}
-                      {device.endpoint_path ? <div className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">Endpoint: {device.endpoint_path}</div> : null}
-                      {device.secret_preview ? <div className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">Secret: {device.secret_preview}</div> : null}
-                    </td>
-                    <td className="px-4 py-4 text-[hsl(var(--muted-foreground))]">{PROTOCOL_LABELS[device.protocol]}</td>
-                    <td className="px-4 py-4 text-[hsl(var(--muted-foreground))]">{device.device_serial || device.ip_address || 'Not set'}</td>
-                    <td className="px-4 py-4 text-[hsl(var(--muted-foreground))]">
-                      {device.last_sync_at ? formatDateTime(device.last_sync_at) : 'Never'}
-                    </td>
-                    <td className="px-4 py-4">
-                      <StatusBadge tone={device.is_active ? 'success' : 'neutral'}>
-                        {device.is_active ? 'Active' : 'Inactive'}
-                      </StatusBadge>
-                    </td>
-                    <td className="px-4 py-4">
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          className="btn-secondary"
-                          onClick={() => setSelectedDeviceId(device.id)}
-                        >
-                          Logs
-                        </button>
-                        <ConfirmDialog
-                          trigger={<button type="button" className="btn-secondary">Deactivate</button>}
-                          title={`Deactivate ${device.name}?`}
-                          description="The device will stop syncing new attendance punches, but the existing punch history will stay intact."
-                          confirmLabel="Deactivate"
-                          onConfirm={() => deleteMutation.mutateAsync(device.id)}
-                        />
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </SectionCard>
-
-      {selectedDevice ? (
-        <SectionCard
-          title={`Sync logs • ${selectedDevice.name}`}
-          description="Recent sync attempts for the selected device. Errors are preserved so vendor-side issues are easy to trace."
-        >
-          {syncLogsQuery.isLoading ? (
-            <SkeletonTable rows={3} />
-          ) : !syncLogsQuery.data?.length ? (
-            <EmptyState
-              icon={RefreshCw}
-              title="No sync logs yet"
-              description={isWebhookProtocol(selectedDevice.protocol) ? 'The device is registered. Logs will appear after the first webhook delivery.' : 'The device is registered. Logs will appear after the first push or scheduled pull cycle.'}
-            />
-          ) : (
             <div className="table-shell overflow-x-auto">
               <table className="min-w-full text-left text-sm">
                 <thead className="text-[hsl(var(--muted-foreground))]">
                   <tr className="border-b border-[hsl(var(--border))]">
-                    <th className="px-4 py-3 font-medium">Synced at</th>
-                    <th className="px-4 py-3 font-medium">Fetched</th>
-                    <th className="px-4 py-3 font-medium">Processed</th>
-                    <th className="px-4 py-3 font-medium">Skipped</th>
+                    <th className="px-4 py-3 font-medium">Device</th>
+                    <th className="px-4 py-3 font-medium">Protocol</th>
+                    <th className="px-4 py-3 font-medium">Vendor</th>
+                    <th className="px-4 py-3 font-medium">Serial / IP</th>
+                    <th className="px-4 py-3 font-medium">Last sync</th>
+                    <th className="px-4 py-3 font-medium">Health</th>
                     <th className="px-4 py-3 font-medium">Status</th>
+                    <th className="px-4 py-3 font-medium">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {syncLogsQuery.data.map((log) => (
-                    <tr key={log.id} className="border-b border-[hsl(var(--border))] last:border-b-0">
-                      <td className="px-4 py-4 text-[hsl(var(--muted-foreground))]">{formatDateTime(log.synced_at)}</td>
-                      <td className="px-4 py-4 text-[hsl(var(--foreground-strong))]">{log.records_fetched}</td>
-                      <td className="px-4 py-4 text-[hsl(var(--foreground-strong))]">{log.records_processed}</td>
-                      <td className="px-4 py-4 text-[hsl(var(--foreground-strong))]">{log.records_skipped}</td>
+                  {devicesQuery.data.map((device) => (
+                    <tr key={device.id} className="border-b border-[hsl(var(--border))] last:border-b-0">
                       <td className="px-4 py-4">
-                        <StatusBadge tone={log.success ? 'success' : 'danger'}>
-                          {log.success ? 'OK' : 'Failed'}
+                        <div className="font-medium text-[hsl(var(--foreground-strong))]">{device.name}</div>
+                        {device.auth_username ? <div className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">User: {device.auth_username}</div> : null}
+                        {device.endpoint_path ? <div className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">Endpoint: {device.endpoint_path}</div> : null}
+                        {device.secret_preview ? <div className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">Secret: {device.secret_preview}</div> : null}
+                      </td>
+                      <td className="px-4 py-4 text-[hsl(var(--muted-foreground))]">{PROTOCOL_LABELS[device.protocol]}</td>
+                      <td className="px-4 py-4 text-[hsl(var(--muted-foreground))]">
+                        {device.vendor ? VENDOR_LABELS[device.vendor] || device.vendor : '-'}
+                        {device.product_family ? <div className="text-xs">{device.product_family}</div> : null}
+                      </td>
+                      <td className="px-4 py-4 text-[hsl(var(--muted-foreground))]">{device.device_serial || device.ip_address || 'Not set'}</td>
+                      <td className="px-4 py-4 text-[hsl(var(--muted-foreground))]">
+                        {device.last_sync_at ? formatDateTime(device.last_sync_at) : 'Never'}
+                      </td>
+                      <td className="px-4 py-4">
+                        <StatusBadge tone={HEALTH_STATUS_LABELS[device.health_status]?.tone || 'neutral'}>
+                          {HEALTH_STATUS_LABELS[device.health_status]?.label || 'Unknown'}
                         </StatusBadge>
-                        {!log.success && log.errors.length ? (
-                          <p className="mt-2 max-w-xl text-xs leading-6 text-[hsl(var(--danger))]">{log.errors.join(' | ')}</p>
-                        ) : null}
+                      </td>
+                      <td className="px-4 py-4">
+                        <StatusBadge tone={device.is_active ? 'success' : 'neutral'}>
+                          {device.is_active ? 'Active' : 'Inactive'}
+                        </StatusBadge>
+                      </td>
+                      <td className="px-4 py-4">
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            className="btn-secondary"
+                            onClick={() => setSelectedDeviceId(device.id)}
+                          >
+                            Logs
+                          </button>
+                          <ConfirmDialog
+                            trigger={<button type="button" className="btn-secondary">Deactivate</button>}
+                            title={`Deactivate ${device.name}?`}
+                            description="The device will stop syncing new attendance punches, but the existing punch history will stay intact."
+                            confirmLabel="Deactivate"
+                            onConfirm={() => deleteMutation.mutateAsync(device.id)}
+                          />
+                        </div>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-          )}
-        </SectionCard>
+        )}
+      </SectionCard>
+
+      {selectedDevice ? (
+        <div className="grid gap-6 xl:grid-cols-2">
+          <SectionCard
+            title={`Sync logs • ${selectedDevice.name}`}
+            description="Recent sync attempts for the selected device. Errors are preserved so vendor-side issues are easy to trace."
+          >
+            {syncLogsQuery.isLoading ? (
+              <SkeletonTable rows={3} />
+            ) : !syncLogsQuery.data?.length ? (
+              <EmptyState
+                icon={RefreshCw}
+                title="No sync logs yet"
+                description={isWebhookProtocol(selectedDevice.protocol) ? 'The device is registered. Logs will appear after the first webhook delivery.' : 'The device is registered. Logs will appear after the first push or scheduled pull cycle.'}
+              />
+            ) : (
+              <div className="table-shell overflow-x-auto">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="text-[hsl(var(--muted-foreground))]">
+                    <tr className="border-b border-[hsl(var(--border))]">
+                      <th className="px-4 py-3 font-medium">Synced at</th>
+                      <th className="px-4 py-3 font-medium">Fetched</th>
+                      <th className="px-4 py-3 font-medium">Processed</th>
+                      <th className="px-4 py-3 font-medium">Skipped</th>
+                      <th className="px-4 py-3 font-medium">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {syncLogsQuery.data.map((log) => (
+                      <tr key={log.id} className="border-b border-[hsl(var(--border))] last:border-b-0">
+                        <td className="px-4 py-4 text-[hsl(var(--muted-foreground))]">{formatDateTime(log.synced_at)}</td>
+                        <td className="px-4 py-4 text-[hsl(var(--foreground-strong))]">{log.records_fetched}</td>
+                        <td className="px-4 py-4 text-[hsl(var(--foreground-strong))]">{log.records_processed}</td>
+                        <td className="px-4 py-4 text-[hsl(var(--foreground-strong))]">{log.records_skipped}</td>
+                        <td className="px-4 py-4">
+                          <StatusBadge tone={log.success ? 'success' : 'danger'}>
+                            {log.success ? 'OK' : 'Failed'}
+                          </StatusBadge>
+                          {!log.success && log.errors.length ? (
+                            <p className="mt-2 max-w-xl text-xs leading-6 text-[hsl(var(--danger))]">{log.errors.join(' | ')}</p>
+                          ) : null}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </SectionCard>
+
+          <SectionCard
+            title="Live Feed"
+            description="Real-time events from this device. Requires Redis and SSE support."
+          >
+            <LiveAttendanceFeed deviceId={selectedDevice.id} />
+          </SectionCard>
+        </div>
       ) : null}
     </div>
   )

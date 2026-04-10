@@ -20,6 +20,7 @@ import { OrgDashboardPage } from '@/pages/org/DashboardPage'
 import { OrgSetupPage } from '@/pages/org/SetupPage'
 import { OrgProfilePage } from '@/pages/org/ProfilePage'
 import { PayrollPage } from '@/pages/org/PayrollPage'
+import { PayrollRunDetailPage } from '@/pages/org/PayrollRunDetailPage'
 import { JobPostingsPage } from '@/pages/org/JobPostingsPage'
 import { ApplicationsPage } from '@/pages/org/ApplicationsPage'
 import { CandidateDetailPage } from '@/pages/org/CandidateDetailPage'
@@ -138,6 +139,7 @@ export const router = createBrowserRouter([
           { path: '/org/attendance', element: <AttendanceImportsPage /> },
           { path: '/org/biometric-devices', element: <BiometricDevicesPage /> },
           { path: '/org/payroll', element: <PayrollPage /> },
+          { path: '/org/payroll/runs/:id', element: <PayrollRunDetailPage /> },
           { path: '/org/recruitment/jobs', element: <JobPostingsPage /> },
           { path: '/org/recruitment/applications', element: <ApplicationsPage /> },
           { path: '/org/recruitment/candidates/:id', element: <CandidateDetailPage /> },

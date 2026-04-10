@@ -1,9 +1,13 @@
 import json
 
+from .filings.payslip_pdf import download_payslip_pdf_response
+
 from celery.result import AsyncResult
+from django.db.models import Count, Q, Sum
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
-from rest_framework import status
+from rest_framework import serializers, status
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -19,11 +23,15 @@ from apps.employees.models import Employee, EmployeeStatus
 
 from .models import (
     Arrears,
+    CostCentre,
     CompensationAssignment,
     CompensationTemplate,
     FullAndFinalSettlement,
     LabourWelfareFundRule,
     PayrollRun,
+    PayrollRunItem,
+    PayrollRunItemStatus,
+    SurchargeRule,
     PayrollTaxSlabSet,
     PayrollTDSChallan,
     Payslip,
@@ -44,6 +52,8 @@ from .serializers import (
     LabourWelfareFundRuleSerializer,
     PayrollComponentSerializer,
     PayrollRunCalculationStatusSerializer,
+    PayrollRunItemDetailSerializer,
+    PayrollRunItemSerializer,
     PayrollRunSerializer,
     PayrollRunWriteSerializer,
     PayrollTaxSlabSetSerializer,
@@ -78,6 +88,29 @@ from .services import (
 )
 
 
+def _annotated_pay_run_qs(organisation=None):
+    """Return a PayrollRun queryset with aggregated totals annotated."""
+    qs = PayrollRun.objects
+    if organisation is not None:
+        qs = qs.filter(organisation=organisation)
+    return qs.annotate(
+        total_gross=Sum("items__gross_pay"),
+        total_net=Sum("items__net_pay"),
+        total_deductions=Sum("items__total_deductions"),
+        employee_count=Count("items__employee", distinct=True),
+        exception_count=Count(
+            "items",
+            filter=Q(items__status=PayrollRunItemStatus.EXCEPTION),
+        ),
+    )
+
+
+def _serialize_pay_run(pay_run):
+    """Re-fetch a single PayrollRun with annotations and serialize it."""
+    annotated = _annotated_pay_run_qs().filter(id=pay_run.id).first() or pay_run
+    return PayrollRunSerializer(annotated).data
+
+
 def _get_admin_organisation(request):
     organisation = get_active_admin_organisation(request, request.user)
     if organisation is None:
@@ -90,6 +123,17 @@ def _get_employee(request):
     if employee is None:
         raise ValueError('Select an employee workspace to continue.')
     return employee
+
+
+def _parse_query_bool(value):
+    if value is None:
+        return None
+    normalized = str(value).strip().lower()
+    if normalized in {'1', 'true', 'yes', 'on'}:
+        return True
+    if normalized in {'0', 'false', 'no', 'off'}:
+        return False
+    raise ValueError('Boolean query parameter must be one of true/false, 1/0, yes/no, or on/off.')
 
 
 def _statutory_master_payload(*, state_code=None):
@@ -105,6 +149,159 @@ def _statutory_master_payload(*, state_code=None):
             many=True,
         ).data,
     }
+
+
+
+
+class SurchargeRuleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SurchargeRule
+        fields = ['id', 'fiscal_year', 'tax_regime', 'income_threshold', 'surcharge_rate_percent', 'effective_from']
+
+
+
+
+
+
+class CostCentreSerializer(serializers.ModelSerializer):
+    parent_name = serializers.CharField(source='parent.name', read_only=True, allow_null=True)
+    children_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = CostCentre
+        fields = [
+            'id', 'code', 'name', 'gl_code', 'parent', 'parent_name',
+            'is_active', 'created_at', 'children_count'
+        ]
+    
+    def get_children_count(self, obj):
+        return obj.children.filter(is_active=True).count()
+
+
+class CostCentreWriteSerializer(serializers.Serializer):
+    code = serializers.CharField(max_length=50)
+    name = serializers.CharField(max_length=200)
+    gl_code = serializers.CharField(max_length=50, required=False, default='', allow_blank=True)
+    parent_id = serializers.UUIDField(required=False, allow_null=True)
+    is_active = serializers.BooleanField(default=True)
+
+
+
+
+class OrgCostCentreListCreateView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+
+    def get(self, request):
+        organisation = get_active_admin_organisation(request, request.user)
+        include_inactive = request.query_params.get('include_inactive', 'false').lower() == 'true'
+        
+        queryset = CostCentre.objects.filter(organisation=organisation)
+        if not include_inactive:
+            queryset = queryset.filter(is_active=True)
+        
+        queryset = queryset.select_related('parent').order_by('code')
+        serializer = CostCentreSerializer(queryset, many=True)
+        return Response(serializer.data)
+
+    def post(self, request):
+        organisation = get_active_admin_organisation(request, request.user)
+        serializer = CostCentreWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        parent = None
+        if serializer.validated_data.get('parent_id'):
+            parent = CostCentre.objects.filter(
+                organisation=organisation,
+                id=serializer.validated_data['parent_id']
+            ).first()
+        
+        cost_centre = CostCentre.objects.create(
+            organisation=organisation,
+            code=serializer.validated_data['code'],
+            name=serializer.validated_data['name'],
+            gl_code=serializer.validated_data.get('gl_code', ''),
+            parent=parent,
+            is_active=serializer.validated_data.get('is_active', True),
+        )
+        
+        return Response(
+            CostCentreSerializer(cost_centre).data,
+            status=status.HTTP_201_CREATED
+        )
+
+
+class OrgCostCentreDetailView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+
+    def get(self, request, cost_centre_id):
+        organisation = get_active_admin_organisation(request, request.user)
+        cost_centre = get_object_or_404(
+            CostCentre.objects.filter(organisation=organisation),
+            id=cost_centre_id
+        )
+        serializer = CostCentreSerializer(cost_centre)
+        return Response(serializer.data)
+
+    def patch(self, request, cost_centre_id):
+        organisation = get_active_admin_organisation(request, request.user)
+        cost_centre = get_object_or_404(
+            CostCentre.objects.filter(organisation=organisation),
+            id=cost_centre_id
+        )
+        
+        serializer = CostCentreWriteSerializer(data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        
+        if 'code' in serializer.validated_data:
+            cost_centre.code = serializer.validated_data['code']
+        if 'name' in serializer.validated_data:
+            cost_centre.name = serializer.validated_data['name']
+        if 'gl_code' in serializer.validated_data:
+            cost_centre.gl_code = serializer.validated_data['gl_code']
+        if 'is_active' in serializer.validated_data:
+            cost_centre.is_active = serializer.validated_data['is_active']
+        if 'parent_id' in serializer.validated_data:
+            if serializer.validated_data['parent_id']:
+                cost_centre.parent = CostCentre.objects.filter(
+                    organisation=organisation,
+                    id=serializer.validated_data['parent_id']
+                ).first()
+            else:
+                cost_centre.parent = None
+        
+        cost_centre.save()
+        
+        return Response(CostCentreSerializer(cost_centre).data)
+
+    def delete(self, request, cost_centre_id):
+        organisation = get_active_admin_organisation(request, request.user)
+        cost_centre = get_object_or_404(
+            CostCentre.objects.filter(organisation=organisation),
+            id=cost_centre_id
+        )
+        
+        cost_centre.is_active = False
+        cost_centre.save()
+        
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class CtSurchargeRuleListView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+
+    def get(self, request):
+        fiscal_year = request.query_params.get('fiscal_year')
+        tax_regime = request.query_params.get('tax_regime')
+        
+        queryset = SurchargeRule.objects.all()
+        if fiscal_year:
+            queryset = queryset.filter(fiscal_year=fiscal_year)
+        if tax_regime:
+            queryset = queryset.filter(tax_regime=tax_regime.upper())
+        
+        queryset = queryset.order_by('fiscal_year', 'tax_regime', 'income_threshold')
+        serializer = SurchargeRuleSerializer(queryset, many=True)
+        return Response(serializer.data)
 
 
 class CtPayrollTaxSlabSetListCreateView(APIView):
@@ -163,7 +360,7 @@ class OrgPayrollSummaryView(APIView):
         ).prefetch_related('slabs').order_by('fiscal_year', 'is_old_regime', 'tax_category')
         templates = CompensationTemplate.objects.filter(organisation=organisation).prefetch_related('lines__component')
         assignments = CompensationAssignment.objects.filter(employee__organisation=organisation).select_related('employee__user', 'template')
-        pay_runs = PayrollRun.objects.filter(organisation=organisation).prefetch_related('items__employee__user')
+        pay_runs = _annotated_pay_run_qs(organisation=organisation)
         return Response(
             {
                 'tax_slab_sets': PayrollTaxSlabSetSerializer(tax_slab_sets, many=True).data,
@@ -345,7 +542,7 @@ class OrgPayrollRunListCreateView(APIView):
 
     def get(self, request):
         organisation = _get_admin_organisation(request)
-        queryset = PayrollRun.objects.filter(organisation=organisation).prefetch_related('items__employee__user')
+        queryset = _annotated_pay_run_qs(organisation=organisation)
         return Response(PayrollRunSerializer(queryset, many=True).data)
 
     def post(self, request):
@@ -358,7 +555,7 @@ class OrgPayrollRunListCreateView(APIView):
             requester_user=request.user,
             **serializer.validated_data,
         )
-        return Response(PayrollRunSerializer(pay_run).data, status=status.HTTP_201_CREATED)
+        return Response(_serialize_pay_run(pay_run), status=status.HTTP_201_CREATED)
 
 
 class OrgPayrollRunDetailView(APIView):
@@ -366,8 +563,73 @@ class OrgPayrollRunDetailView(APIView):
 
     def get(self, request, pk):
         organisation = _get_admin_organisation(request)
-        pay_run = get_object_or_404(PayrollRun.objects.prefetch_related('items__employee__user'), organisation=organisation, id=pk)
+        pay_run = get_object_or_404(_annotated_pay_run_qs(organisation=organisation), id=pk)
         return Response(PayrollRunSerializer(pay_run).data)
+
+
+
+def _serialize_run_item(item):
+    """Build a PayrollRunItemDetailSerializer-compatible dict from a PayrollRunItem."""
+    snap = item.snapshot or {}
+    return {
+        'id': str(item.id),
+        'employee_id': str(item.employee_id),
+        'employee_name': item.employee.user.full_name,
+        'employee_code': item.employee.employee_code,
+        'department': item.employee.department.name if item.employee.department_id else None,
+        'status': item.status,
+        'has_exception': item.status == 'EXCEPTION',
+        'gross_pay': str(item.gross_pay),
+        'employee_deductions': str(item.employee_deductions),
+        'employer_contributions': str(item.employer_contributions),
+        'income_tax': str(item.income_tax),
+        'total_deductions': str(item.total_deductions),
+        'net_pay': str(item.net_pay),
+        'snapshot': snap,
+        'message': item.message or '',
+        'arrears': snap.get('arrears', '0'),
+        'lop_days': snap.get('lop_days', '0'),
+        'esi_employee': snap.get('esi_employee', '0'),
+        'esi_employer': snap.get('esi_employer', '0'),
+        'pf_employer': snap.get('pf_employer', '0'),
+        'lwf_employee': snap.get('lwf_employee', '0'),
+        'lwf_employer': snap.get('lwf_employer', '0'),
+        'pt_monthly': snap.get('pt_monthly', '0'),
+        'tax_regime': snap.get('tax_regime'),
+    }
+
+
+class OrgPayrollRunItemListView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+
+    def get(self, request, pk):
+        organisation = _get_admin_organisation(request)
+        pay_run = get_object_or_404(PayrollRun, organisation=organisation, id=pk)
+        queryset = PayrollRunItem.objects.filter(pay_run=pay_run).select_related('employee__user', 'employee__department').order_by(
+            'employee__employee_code',
+            'employee__user__last_name',
+            'created_at',
+        )
+
+        employee_id = (request.query_params.get('employee') or '').strip()
+        if employee_id:
+            queryset = queryset.filter(employee_id=employee_id)
+
+        has_exception = request.query_params.get('has_exception')
+        if has_exception is not None:
+            try:
+                has_exception = _parse_query_bool(has_exception)
+            except ValueError as exc:
+                return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            queryset = queryset.filter(
+                status=PayrollRunItemStatus.EXCEPTION if has_exception else PayrollRunItemStatus.READY,
+            )
+
+        paginator = PageNumberPagination()
+        page = paginator.paginate_queryset(queryset, request)
+        items_data = [_serialize_run_item(i) for i in page]
+        serializer = PayrollRunItemDetailSerializer(items_data, many=True)
+        return paginator.get_paginated_response(serializer.data)
 
 
 class OrgPayrollRunForm16View(APIView):
@@ -434,7 +696,7 @@ class OrgPayrollRunSubmitView(APIView):
             )
         except ValueError as exc:
             return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-        return Response(PayrollRunSerializer(pay_run).data)
+        return Response(_serialize_pay_run(pay_run))
 
 
 class OrgPayrollRunFinalizeView(APIView):
@@ -447,7 +709,7 @@ class OrgPayrollRunFinalizeView(APIView):
             pay_run = finalize_pay_run(pay_run, actor=request.user)
         except ValueError as exc:
             return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-        return Response(PayrollRunSerializer(pay_run).data)
+        return Response(_serialize_pay_run(pay_run))
 
 
 class OrgPayrollRunRerunView(APIView):
@@ -460,7 +722,7 @@ class OrgPayrollRunRerunView(APIView):
             rerun = rerun_payroll_run(pay_run, actor=request.user, requester_user=request.user)
         except ValueError as exc:
             return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-        return Response(PayrollRunSerializer(rerun).data, status=status.HTTP_201_CREATED)
+        return Response(_serialize_pay_run(rerun), status=status.HTTP_201_CREATED)
 
 
 class OrgStatutoryFilingBatchListCreateView(APIView):
@@ -606,17 +868,22 @@ class MyPayslipDetailView(APIView):
         return Response(PayslipSerializer(payslip).data)
 
 
+class OrgPayslipDownloadView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+
+    def get(self, request, pk):
+        organisation = _get_admin_organisation(request)
+        payslip = get_object_or_404(Payslip, organisation=organisation, id=pk)
+        return download_payslip_pdf_response(payslip)
+
+
 class MyPayslipDownloadView(APIView):
     permission_classes = [IsEmployee, BelongsToActiveOrg]
 
     def get(self, request, pk):
         employee = _get_employee(request)
         payslip = get_object_or_404(Payslip, employee=employee, id=pk)
-        filename = f"{payslip.slip_number.replace('/', '-')}.txt"
-        payload = payslip.rendered_text or json.dumps(payslip.snapshot, indent=2, sort_keys=True)
-        response = HttpResponse(payload, content_type='text/plain; charset=utf-8')
-        response['Content-Disposition'] = f'attachment; filename="{filename}"'
-        return response
+        return download_payslip_pdf_response(payslip)
 
 
 class MyInvestmentDeclarationListCreateView(APIView):

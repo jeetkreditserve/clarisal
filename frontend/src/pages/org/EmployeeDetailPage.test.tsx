@@ -9,6 +9,7 @@ const useApprovalWorkflows = vi.fn()
 const useCompleteEmployeeOffboarding = vi.fn()
 const useDeleteEmployee = vi.fn()
 const useDepartments = vi.fn()
+const useDesignations = vi.fn()
 const useEmployeeDetail = vi.fn()
 const useEmployeeDocumentDownload = vi.fn()
 const useEmployeeDocumentRequests = vi.fn()
@@ -35,6 +36,7 @@ vi.mock('@/hooks/useOrgAdmin', () => ({
   useCompleteEmployeeOffboarding: () => useCompleteEmployeeOffboarding(),
   useDeleteEmployee: () => useDeleteEmployee(),
   useDepartments: () => useDepartments(),
+  useDesignations: () => useDesignations(),
   useEmployeeDetail: (id: string) => useEmployeeDetail(id),
   useEmployeeDocumentDownload: () => useEmployeeDocumentDownload(),
   useEmployeeDocumentRequests: (id: string) => useEmployeeDocumentRequests(id),
@@ -66,6 +68,7 @@ describe('EmployeeDetailPage', () => {
 
     useApprovalWorkflows.mockReturnValue({ data: [] })
     useDepartments.mockReturnValue({ data: [] })
+    useDesignations.mockReturnValue({ data: [{ id: 'des-1', name: 'Engineer', level: 1, is_active: true }] })
     useEmployeeDocumentDownload.mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({ url: 'https://example.com' }) })
     useEmployeeDocumentRequests.mockReturnValue({ data: [] })
     useEmployeeDocuments.mockReturnValue({ data: [] })

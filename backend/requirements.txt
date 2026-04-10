@@ -28,6 +28,10 @@ python-slugify==8.0.4
 cryptography==45.0.7
 openpyxl==3.1.5
 
+# Observability
+sentry-sdk[django,celery]==2.20.0
+structlog==24.4.0
+
 # Testing
 pytest==8.3.3
 pytest-django==4.9.0

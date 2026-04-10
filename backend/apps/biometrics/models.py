@@ -6,53 +6,96 @@ from apps.common.security import decrypt_value, encrypt_value, hash_token, mask_
 
 
 class BiometricProtocol(models.TextChoices):
-    ZK_ADMS = 'ZK_ADMS', 'ZKTeco / eSSL / Biomax (ADMS Push)'
-    ESSL_EBIOSERVER = 'ESSL_EBIOSERVER', 'eSSL eBioserver (Webhook Push)'
-    MATRIX_COSEC = 'MATRIX_COSEC', 'Matrix COSEC (REST Pull)'
-    SUPREMA_BIOSTAR = 'SUPREMA_BIOSTAR', 'Suprema BioStar 2 (REST Pull)'
-    HIKVISION_ISAPI = 'HIKVISION_ISAPI', 'HikVision ISAPI (REST Pull)'
+    ZK_ADMS = "ZK_ADMS", "ZKTeco / eSSL / Biomax (ADMS Push)"
+    ESSL_EBIOSERVER = "ESSL_EBIOSERVER", "eSSL eBioserver (Webhook Push)"
+    MATRIX_COSEC = "MATRIX_COSEC", "Matrix COSEC (REST Pull)"
+    SUPREMA_BIOSTAR = "SUPREMA_BIOSTAR", "Suprema BioStar 2 (REST Pull)"
+    HIKVISION_ISAPI = "HIKVISION_ISAPI", "HikVision ISAPI (REST Pull)"
+    MANTRA_AEBAS = "MANTRA_AEBAS", "Mantra / AEBAS Bridge"
+    CP_PLUS_EXPORT = "CP_PLUS_EXPORT", "CP PLUS Export Bridge"
+
+
+class VendorFamily(models.TextChoices):
+    ZK = "ZKTECO", "ZKTeco"
+    ESSL = "ESSL", "eSSL"
+    MATRIX = "MATRIX", "Matrix COSEC"
+    HIKVISION = "HIKVISION", "HikVision"
+    SUPREMA = "SUPREMA", "Suprema"
+    MANTRA = "MANTRA", "Mantra"
+    CP_PLUS = "CP_PLUS", "CP PLUS"
+    OTHER = "OTHER", "Other / Unknown"
+
+
+class ConnectivityMode(models.TextChoices):
+    PUSH = "PUSH", "Push (device-initiated)"
+    PULL = "PULL", "Pull (platform-initiated)"
+    EXPORT_BRIDGE = "EXPORT_BRIDGE", "Export Bridge (batch/file)"
 
 
 class BiometricDevice(AuditedBaseModel):
     organisation = models.ForeignKey(
-        'organisations.Organisation',
+        "organisations.Organisation",
         on_delete=models.CASCADE,
-        related_name='biometric_devices',
+        related_name="biometric_devices",
     )
     name = models.CharField(max_length=100)
-    device_serial = models.CharField(max_length=100, blank=True, help_text='Device serial number / SN')
+    device_serial = models.CharField(max_length=100, blank=True, help_text="Device serial number / SN")
     protocol = models.CharField(max_length=30, choices=BiometricProtocol.choices)
+    vendor = models.CharField(
+        max_length=20,
+        choices=VendorFamily.choices,
+        blank=True,
+        help_text="Vendor / manufacturer family",
+    )
+    product_family = models.CharField(max_length=100, blank=True, help_text="Product family or model series")
+    connectivity_mode = models.CharField(
+        max_length=20,
+        choices=ConnectivityMode.choices,
+        blank=True,
+        help_text="How the device communicates with Clarisal",
+    )
     ip_address = models.GenericIPAddressField(null=True, blank=True)
     port = models.PositiveIntegerField(default=80)
     auth_username = models.CharField(max_length=200, blank=True)
-    api_key_hash = models.CharField(max_length=128, blank=True, help_text='SHA-256 hash of the device secret')
+    api_key_hash = models.CharField(max_length=128, blank=True, help_text="SHA-256 hash of the device secret")
     api_key_encrypted = models.TextField(blank=True)
     oauth_client_id = models.CharField(max_length=200, blank=True)
     oauth_client_secret_hash = models.CharField(max_length=128, blank=True)
     oauth_client_secret_encrypted = models.TextField(blank=True)
     location = models.ForeignKey(
-        'locations.OfficeLocation',
+        "locations.OfficeLocation",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='biometric_devices',
+        related_name="biometric_devices",
     )
     is_active = models.BooleanField(default=True)
     last_sync_at = models.DateTimeField(null=True, blank=True)
+    last_health_check_at = models.DateTimeField(null=True, blank=True)
+    health_status = models.CharField(
+        max_length=20,
+        default="UNKNOWN",
+        choices=[
+            ("UNKNOWN", "Unknown"),
+            ("HEALTHY", "Healthy"),
+            ("DEGRADED", "Degraded"),
+            ("FAILED", "Failed"),
+        ],
+    )
     metadata = models.JSONField(default=dict, blank=True)
 
     class Meta:
-        ordering = ['name', 'device_serial']
+        ordering = ["name", "device_serial"]
         constraints = [
             models.UniqueConstraint(
-                fields=['organisation', 'device_serial'],
-                condition=~Q(device_serial=''),
-                name='unique_biometric_device_serial_per_org',
+                fields=["organisation", "device_serial"],
+                condition=~Q(device_serial=""),
+                name="unique_biometric_device_serial_per_org",
             ),
         ]
         indexes = [
-            models.Index(fields=['organisation', 'protocol', 'is_active']),
-            models.Index(fields=['organisation', 'last_sync_at']),
+            models.Index(fields=["organisation", "protocol", "is_active"]),
+            models.Index(fields=["organisation", "last_sync_at"]),
         ]
 
     def set_api_key(self, raw_key: str):
@@ -73,11 +116,11 @@ class BiometricDevice(AuditedBaseModel):
         return decrypt_value(self.oauth_client_secret_encrypted)
 
     def __str__(self):
-        return f'{self.name} ({self.protocol})'
+        return f"{self.name} ({self.protocol})"
 
 
 class BiometricSyncLog(AuditedBaseModel):
-    device = models.ForeignKey(BiometricDevice, on_delete=models.CASCADE, related_name='sync_logs')
+    device = models.ForeignKey(BiometricDevice, on_delete=models.CASCADE, related_name="sync_logs")
     synced_at = models.DateTimeField(auto_now_add=True)
     records_fetched = models.PositiveIntegerField(default=0)
     records_processed = models.PositiveIntegerField(default=0)
@@ -86,7 +129,7 @@ class BiometricSyncLog(AuditedBaseModel):
     success = models.BooleanField(default=True)
 
     class Meta:
-        ordering = ['-synced_at']
+        ordering = ["-synced_at"]
         indexes = [
-            models.Index(fields=['device', 'synced_at']),
+            models.Index(fields=["device", "synced_at"]),
         ]

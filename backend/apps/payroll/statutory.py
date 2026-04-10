@@ -128,6 +128,20 @@ def calculate_surcharge(*, taxable_income, tax_after_rebate, surcharge_tiers=Non
 def surcharge_tiers_for_regime(tax_regime: str):
     return OLD_REGIME_SURCHARGE_TIERS if str(tax_regime).upper() == 'OLD' else NEW_REGIME_SURCHARGE_TIERS
 
+def get_surcharge_tiers_from_db(fiscal_year: str, tax_regime: str):
+    from apps.payroll.models import SurchargeRule
+    try:
+        rules = SurchargeRule.objects.filter(
+            fiscal_year=fiscal_year,
+            tax_regime=tax_regime.upper()
+        ).order_by('income_threshold')
+        if rules.exists():
+            return [(rule.income_threshold, rule.surcharge_rate_percent / Decimal('100')) for rule in rules]
+    except Exception:
+        pass
+    return surcharge_tiers_for_regime(tax_regime)
+
+
 
 def calculate_income_tax_with_rebate(*, taxable_income, tax_slab_set, surcharge_tiers=None, rebate_threshold=None, rebate_max=None):
     annual_taxable_income = normalize_decimal(taxable_income) or ZERO

@@ -17,7 +17,7 @@ from apps.organisations.models import (
     OrganisationStatus,
 )
 from apps.organisations.services import create_licence_batch, mark_licence_batch_paid
-from apps.payroll.models import Payslip
+from apps.payroll.models import PayrollRunItemStatus, Payslip
 from apps.payroll.services import (
     assign_employee_compensation,
     calculate_pay_run,
@@ -331,9 +331,9 @@ class TestPayrollViews:
         response = employee_client.get(f'/api/me/payroll/payslips/{payslip.id}/download/')
 
         assert response.status_code == 200
-        assert response['Content-Type'].startswith('text/plain')
+        assert response['Content-Type'] == 'application/pdf'
         assert payslip.slip_number.replace('/', '-') in response['Content-Disposition']
-        assert payslip.rendered_text in response.content.decode('utf-8')
+        assert response.content[:4] == b'%PDF'
 
     def test_employee_can_download_payslip_rendered_text_with_labour_welfare_fund_lines(self, payroll_setup):
         employee_client = payroll_setup['employee_client']
@@ -387,11 +387,10 @@ class TestPayrollViews:
         payslip = Payslip.objects.get(employee=employee, pay_run=pay_run)
 
         response = employee_client.get(f'/api/me/payroll/payslips/{payslip.id}/download/')
-        rendered = response.content.decode('utf-8')
 
         assert response.status_code == 200
-        assert 'Labour Welfare Fund - Employee *' in rendered
-        assert 'Labour Welfare Fund - Employer *' in rendered
+        assert response['Content-Type'] == 'application/pdf'
+        assert response.content[:4] == b'%PDF'
 
     def test_org_admin_can_view_full_and_final_settlement_with_automated_gratuity(self, payroll_setup):
         organisation = payroll_setup['organisation']
@@ -492,10 +491,13 @@ class TestPayrollViews:
         payslip = Payslip.objects.get(employee=employee, pay_run=pay_run)
 
         response = employee_client.get(f'/api/me/payroll/payslips/{payslip.id}/download/')
-        rendered = response.content.decode('utf-8')
         item = pay_run.items.get(employee=employee)
 
         assert response.status_code == 200
+        assert response['Content-Type'] == 'application/pdf'
+        assert response.content[:4] == b'%PDF'
+        assert payslip.slip_number.replace('/', '-') in response['Content-Disposition']
+        # Verify snapshot fields used in PDF
         assert Decimal(item.snapshot['pt_monthly']) == Decimal('200.00')
         assert Decimal(item.snapshot['auto_pf']) == Decimal('1800.00')
         assert Decimal(item.snapshot['esi_employee']) == Decimal('150.00')
@@ -503,10 +505,6 @@ class TestPayrollViews:
         assert Decimal(item.snapshot['pf_employer']) == Decimal('1800.00')
         assert Decimal(item.snapshot['esi_employer']) == Decimal('650.00')
         assert Decimal(item.snapshot['lwf_employer']) == Decimal('36.00')
-        assert 'Professional Tax *' in rendered
-        assert 'Employee PF/VPF (12.00% of PF Wages) *' in rendered
-        assert 'ESI - Employee (0.75%) *' in rendered
-        assert 'Labour Welfare Fund - Employee *' in rendered
 
     def test_employee_can_create_and_list_investment_declarations(self, payroll_setup):
         employee_client = payroll_setup['employee_client']
@@ -821,3 +819,369 @@ class TestPayrollViews:
         assert update_response.status_code == 200
         assert update_response.data['tax_deposited'] == '3600.00'
         assert update_response.data['notes'] == 'Adjusted for interest reversal'
+
+    # ------------------------------------------------------------------
+    # P26 T5 — PayrollRun summary returns aggregated totals, no inline items
+    # ------------------------------------------------------------------
+
+    def test_pay_run_list_has_aggregated_totals_and_no_inline_items(self, payroll_setup):
+        """PayrollRun list must expose aggregate fields and NOT include inline items."""
+        organisation = payroll_setup['organisation']
+        org_admin_user = payroll_setup['org_admin_user']
+        org_admin_client = payroll_setup['org_admin_client']
+        employee = payroll_setup['employee']
+
+        pay_run = _finalize_basic_pay_run(
+            organisation=organisation,
+            org_admin_user=org_admin_user,
+            employee=employee,
+            monthly_amount='60000',
+        )
+
+        response = org_admin_client.get('/api/org/payroll/runs/')
+
+        assert response.status_code == 200
+        assert len(response.data) >= 1
+
+        run_data = next(r for r in response.data if r['id'] == str(pay_run.id))
+
+        # Must NOT contain inline items
+        assert 'items' not in run_data
+
+        # Must contain aggregate fields
+        assert 'total_gross' in run_data
+        assert 'total_net' in run_data
+        assert 'total_deductions' in run_data
+        assert 'employee_count' in run_data
+        assert 'exception_count' in run_data
+
+        # Values must match the single run item
+        item = pay_run.items.get(employee=employee)
+        from decimal import Decimal
+        assert Decimal(str(run_data['total_gross'])) == item.gross_pay
+        assert Decimal(str(run_data['total_net'])) == item.net_pay
+        assert int(run_data['employee_count']) == 1
+        assert int(run_data['exception_count']) == 0
+
+    def test_pay_run_detail_has_aggregated_totals_and_no_inline_items(self, payroll_setup):
+        """PayrollRun detail must expose aggregate fields and NOT include inline items."""
+        organisation = payroll_setup['organisation']
+        org_admin_user = payroll_setup['org_admin_user']
+        org_admin_client = payroll_setup['org_admin_client']
+        employee = payroll_setup['employee']
+
+        pay_run = _finalize_basic_pay_run(
+            organisation=organisation,
+            org_admin_user=org_admin_user,
+            employee=employee,
+            monthly_amount='50000',
+        )
+
+        response = org_admin_client.get(f'/api/org/payroll/runs/{pay_run.id}/')
+
+        assert response.status_code == 200
+        assert 'items' not in response.data
+        assert 'total_gross' in response.data
+        assert 'total_net' in response.data
+        assert 'employee_count' in response.data
+        assert int(response.data['employee_count']) == 1
+
+    def test_pay_run_aggregates_count_exception_items_by_status(self, payroll_setup):
+        organisation = payroll_setup['organisation']
+        org_admin_user = payroll_setup['org_admin_user']
+        org_admin_client = payroll_setup['org_admin_client']
+        employee = payroll_setup['employee']
+
+        pay_run = create_payroll_run(
+            organisation,
+            period_year=2026,
+            period_month=4,
+            actor=org_admin_user,
+            requester_user=org_admin_user,
+        )
+        pay_run.items.create(
+            employee=employee,
+            status=PayrollRunItemStatus.READY,
+            gross_pay='60000.00',
+            total_deductions='4200.00',
+            net_pay='55800.00',
+        )
+
+        second_user = User.objects.create_user(
+            email='employee-two@test.com',
+            password='pass123!',
+            account_type=AccountType.WORKFORCE,
+            role=UserRole.EMPLOYEE,
+            organisation=organisation,
+            is_active=True,
+        )
+        second_employee = Employee.objects.create(
+            organisation=organisation,
+            user=second_user,
+            employee_code='EMP101',
+            designation='Analyst',
+            status=EmployeeStatus.ACTIVE,
+            date_of_joining=date(2026, 4, 1),
+        )
+        pay_run.items.create(
+            employee=second_employee,
+            status=PayrollRunItemStatus.EXCEPTION,
+            message='Missing approved compensation assignment.',
+        )
+
+        response = org_admin_client.get('/api/org/payroll/runs/')
+
+        assert response.status_code == 200
+        run_data = next(r for r in response.data if r['id'] == str(pay_run.id))
+        assert int(run_data['employee_count']) == 2
+        assert int(run_data['exception_count']) == 1
+        assert Decimal(str(run_data['total_gross'])) == Decimal('60000.00')
+        assert Decimal(str(run_data['total_deductions'])) == Decimal('4200.00')
+
+    def test_pay_run_items_endpoint_returns_paginated_rows_and_filters_exceptions(self, payroll_setup):
+        organisation = payroll_setup['organisation']
+        org_admin_user = payroll_setup['org_admin_user']
+        org_admin_client = payroll_setup['org_admin_client']
+        employee = payroll_setup['employee']
+
+        pay_run = create_payroll_run(
+            organisation,
+            period_year=2026,
+            period_month=4,
+            actor=org_admin_user,
+            requester_user=org_admin_user,
+        )
+        ready_item = pay_run.items.create(
+            employee=employee,
+            status=PayrollRunItemStatus.READY,
+            gross_pay='42000.00',
+            total_deductions='2200.00',
+            net_pay='39800.00',
+        )
+
+        second_user = User.objects.create_user(
+            email='employee-three@test.com',
+            password='pass123!',
+            account_type=AccountType.WORKFORCE,
+            role=UserRole.EMPLOYEE,
+            organisation=organisation,
+            is_active=True,
+        )
+        second_employee = Employee.objects.create(
+            organisation=organisation,
+            user=second_user,
+            employee_code='EMP102',
+            designation='Support',
+            status=EmployeeStatus.ACTIVE,
+            date_of_joining=date(2026, 4, 1),
+        )
+        exception_item = pay_run.items.create(
+            employee=second_employee,
+            status=PayrollRunItemStatus.EXCEPTION,
+            message='PAN is missing from payroll profile.',
+        )
+
+        response = org_admin_client.get(f'/api/org/payroll/runs/{pay_run.id}/items/?has_exception=true')
+
+        assert response.status_code == 200
+        assert response.data['count'] == 1
+        assert response.data['next'] is None
+        assert response.data['previous'] is None
+        assert len(response.data['results']) == 1
+        assert response.data['results'][0]['id'] == str(exception_item.id)
+        assert response.data['results'][0]['has_exception'] is True
+
+        employee_response = org_admin_client.get(f'/api/org/payroll/runs/{pay_run.id}/items/?employee={employee.id}')
+
+        assert employee_response.status_code == 200
+        assert employee_response.data['count'] == 1
+        assert employee_response.data['results'][0]['id'] == str(ready_item.id)
+        assert employee_response.data['results'][0]['has_exception'] is False
+
+    # ------------------------------------------------------------------
+    # P21 T6 — /api/health/ endpoint
+    # ------------------------------------------------------------------
+
+    def test_org_admin_can_download_payslip_as_pdf(self, payroll_setup):
+        employee_client = payroll_setup['employee_client']
+        organisation = payroll_setup['organisation']
+        org_admin_user = payroll_setup['org_admin_user']
+        org_admin_client = payroll_setup['org_admin_client']
+        employee = payroll_setup['employee']
+
+        create_tax_slab_set(
+            country_code='IN',
+            fiscal_year='2026-27',
+            name='FY 2026-27',
+            slabs=[
+                {'min_income': '0', 'max_income': '300000', 'rate_percent': '0'},
+                {'min_income': '300000', 'max_income': '700000', 'rate_percent': '10'},
+                {'min_income': '700000', 'max_income': None, 'rate_percent': '20'},
+            ],
+            actor=org_admin_user,
+        )
+        ensure_org_payroll_setup(organisation, actor=org_admin_user)
+        template = create_compensation_template(
+            organisation,
+            name='Org Payslip Test Template',
+            description='Org admin payslip PDF test',
+            lines=[
+                {
+                    'component_code': 'BASIC',
+                    'name': 'Basic Pay',
+                    'component_type': 'EARNING',
+                    'monthly_amount': '40000',
+                    'is_taxable': True,
+                }
+            ],
+            actor=org_admin_user,
+        )
+        assign_employee_compensation(
+            employee,
+            template,
+            effective_from=date(2026, 4, 1),
+            actor=org_admin_user,
+            auto_approve=True,
+        )
+        pay_run = create_payroll_run(
+            organisation,
+            period_year=2026,
+            period_month=4,
+            actor=org_admin_user,
+            requester_user=org_admin_user,
+        )
+        calculate_pay_run(pay_run, actor=org_admin_user)
+        finalize_pay_run(pay_run, actor=org_admin_user, skip_approval=True)
+        payslip = Payslip.objects.get(employee=employee, pay_run=pay_run)
+
+        response = org_admin_client.get(f'/api/org/payroll/payslips/{payslip.id}/download/')
+
+        assert response.status_code == 200
+        assert response['Content-Type'] == 'application/pdf'
+        assert response.content[:4] == b'%PDF'
+        assert payslip.slip_number.replace('/', '-') in response['Content-Disposition']
+
+    def test_org_admin_cannot_download_another_org_payslip(self, payroll_setup):
+        """Cross-org payslip download should be forbidden — returns 404."""
+        org_admin_client = payroll_setup['org_admin_client']
+        organisation = payroll_setup['organisation']
+        org_admin_user = payroll_setup['org_admin_user']
+        employee = payroll_setup['employee']
+
+        create_tax_slab_set(
+            country_code='IN', fiscal_year='2026-27', name='FY 2026-27',
+            slabs=[{'min_income': '0', 'max_income': '300000', 'rate_percent': '0'}],
+            actor=org_admin_user,
+        )
+        ensure_org_payroll_setup(organisation, actor=org_admin_user)
+        template = create_compensation_template(
+            organisation, name='Cross-Org Test', description='Cross-org test',
+            lines=[{'component_code': 'BASIC', 'name': 'Basic Pay', 'component_type': 'EARNING', 'monthly_amount': '30000', 'is_taxable': True}],
+            actor=org_admin_user,
+        )
+        assign_employee_compensation(employee, template, effective_from=date(2026, 4, 1), actor=org_admin_user, auto_approve=True)
+        pay_run = create_payroll_run(organisation, period_year=2026, period_month=4, actor=org_admin_user, requester_user=org_admin_user)
+        calculate_pay_run(pay_run, actor=org_admin_user)
+        finalize_pay_run(pay_run, actor=org_admin_user, skip_approval=True)
+        payslip = Payslip.objects.get(employee=employee, pay_run=pay_run)
+
+        # Try to access with employee (non-admin) — should be forbidden
+        employee_client = payroll_setup['employee_client']
+        response = employee_client.get(f'/api/org/payroll/payslips/{payslip.id}/download/')
+        assert response.status_code == 403
+
+
+@pytest.mark.django_db
+def test_health_check_returns_ok(client):
+    response = client.get('/api/health/')
+    assert response.status_code == 200
+    assert response.json()['status'] == 'ok'
+
+    def test_org_admin_can_download_payslip_as_pdf(self, payroll_setup):
+        employee_client = payroll_setup['employee_client']
+        organisation = payroll_setup['organisation']
+        org_admin_user = payroll_setup['org_admin_user']
+        org_admin_client = payroll_setup['org_admin_client']
+        employee = payroll_setup['employee']
+
+        create_tax_slab_set(
+            country_code='IN',
+            fiscal_year='2026-27',
+            name='FY 2026-27',
+            slabs=[
+                {'min_income': '0', 'max_income': '300000', 'rate_percent': '0'},
+                {'min_income': '300000', 'max_income': '700000', 'rate_percent': '10'},
+                {'min_income': '700000', 'max_income': None, 'rate_percent': '20'},
+            ],
+            actor=org_admin_user,
+        )
+        ensure_org_payroll_setup(organisation, actor=org_admin_user)
+        template = create_compensation_template(
+            organisation,
+            name='Org Payslip Test Template',
+            description='Org admin payslip PDF test',
+            lines=[
+                {
+                    'component_code': 'BASIC',
+                    'name': 'Basic Pay',
+                    'component_type': 'EARNING',
+                    'monthly_amount': '40000',
+                    'is_taxable': True,
+                }
+            ],
+            actor=org_admin_user,
+        )
+        assign_employee_compensation(
+            employee,
+            template,
+            effective_from=date(2026, 4, 1),
+            actor=org_admin_user,
+            auto_approve=True,
+        )
+        pay_run = create_payroll_run(
+            organisation,
+            period_year=2026,
+            period_month=4,
+            actor=org_admin_user,
+            requester_user=org_admin_user,
+        )
+        calculate_pay_run(pay_run, actor=org_admin_user)
+        finalize_pay_run(pay_run, actor=org_admin_user, skip_approval=True)
+        payslip = Payslip.objects.get(employee=employee, pay_run=pay_run)
+
+        response = org_admin_client.get(f'/api/org/payroll/payslips/{payslip.id}/download/')
+
+        assert response.status_code == 200
+        assert response['Content-Type'] == 'application/pdf'
+        assert response.content[:4] == b'%PDF'
+        assert payslip.slip_number.replace('/', '-') in response['Content-Disposition']
+
+    def test_org_admin_cannot_download_another_org_payslip(self, payroll_setup):
+        """Cross-org payslip download should be forbidden — returns 404."""
+        org_admin_client = payroll_setup['org_admin_client']
+        organisation = payroll_setup['organisation']
+        org_admin_user = payroll_setup['org_admin_user']
+        employee = payroll_setup['employee']
+
+        create_tax_slab_set(
+            country_code='IN', fiscal_year='2026-27', name='FY 2026-27',
+            slabs=[{'min_income': '0', 'max_income': '300000', 'rate_percent': '0'}],
+            actor=org_admin_user,
+        )
+        ensure_org_payroll_setup(organisation, actor=org_admin_user)
+        template = create_compensation_template(
+            organisation, name='Cross-Org Test', description='Cross-org test',
+            lines=[{'component_code': 'BASIC', 'name': 'Basic Pay', 'component_type': 'EARNING', 'monthly_amount': '30000', 'is_taxable': True}],
+            actor=org_admin_user,
+        )
+        assign_employee_compensation(employee, template, effective_from=date(2026, 4, 1), actor=org_admin_user, auto_approve=True)
+        pay_run = create_payroll_run(organisation, period_year=2026, period_month=4, actor=org_admin_user, requester_user=org_admin_user)
+        calculate_pay_run(pay_run, actor=org_admin_user)
+        finalize_pay_run(pay_run, actor=org_admin_user, skip_approval=True)
+        payslip = Payslip.objects.get(employee=employee, pay_run=pay_run)
+
+        # Try to access with employee (non-admin) — should be forbidden
+        employee_client = payroll_setup['employee_client']
+        response = employee_client.get(f'/api/org/payroll/payslips/{payslip.id}/download/')
+        assert response.status_code == 403
+

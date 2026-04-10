@@ -1,3 +1,4 @@
+import logging
 import os
 from datetime import timedelta
 from decimal import Decimal
@@ -55,6 +56,7 @@ LOCAL_APPS = [
     'apps.biometrics',
     'apps.performance',
     'apps.recruitment',
+    'apps.assets',
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -285,3 +287,63 @@ INVITE_TOKEN_EXPIRY_HOURS = env.int('INVITE_TOKEN_EXPIRY_HOURS', default=48)
 PASSWORD_RESET_TOKEN_EXPIRY_MINUTES = env.int('PASSWORD_RESET_TOKEN_EXPIRY_MINUTES', default=30)
 DEFAULT_LICENCE_PRICE_PER_MONTH = Decimal(str(env('DEFAULT_LICENCE_PRICE_PER_MONTH', default='50.00')))
 RAZORPAY_WEBHOOK_SECRET = env('RAZORPAY_WEBHOOK_SECRET', default='')
+
+# ---------------------------------------------------------------------------
+# Sentry
+# ---------------------------------------------------------------------------
+def configure_optional_sentry(environment, sentry_module):
+    dsn = environment("SENTRY_DSN", default="")
+    if not dsn or sentry_module is None:
+        return False
+    sentry_module.init(
+        dsn=dsn,
+        traces_sample_rate=environment.float("SENTRY_TRACES_SAMPLE_RATE", default=0.1),
+        environment=environment("ENVIRONMENT", default="development"),
+        release=environment("GIT_SHA", default=""),
+        integrations=[],  # django and celery integrations auto-detected
+    )
+    return True
+
+
+try:
+    import sentry_sdk  # noqa: E402
+except ImportError:  # pragma: no cover - optional dependency in dev images
+    sentry_sdk = None
+
+SENTRY_DSN = env("SENTRY_DSN", default="")
+configure_optional_sentry(env, sentry_sdk)
+
+# ---------------------------------------------------------------------------
+# Logging + structlog
+# ---------------------------------------------------------------------------
+try:
+    import structlog  # noqa: E402
+except ImportError:  # pragma: no cover - optional dependency in dev images
+    structlog = None
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+        },
+    },
+    "root": {
+        "handlers": ["console"],
+        "level": "WARNING",
+    },
+}
+
+if structlog is not None:
+    structlog.configure(
+        processors=[
+            structlog.contextvars.merge_contextvars,
+            structlog.processors.add_log_level,
+            structlog.processors.TimeStamper(fmt="iso"),
+            structlog.dev.ConsoleRenderer() if DEBUG else structlog.processors.JSONRenderer(),
+        ],
+        wrapper_class=structlog.make_filtering_bound_logger(logging.WARNING),
+        context_class=dict,
+        logger_factory=structlog.PrintLoggerFactory(),
+    )

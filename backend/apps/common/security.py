@@ -1,10 +1,13 @@
 import base64
 import hashlib
+import logging
 import secrets
 
 from cryptography.fernet import Fernet, InvalidToken
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
+
+logger = logging.getLogger(__name__)
 
 
 def generate_secure_token(length: int = 48) -> str:
@@ -47,11 +50,18 @@ def encrypt_value(value: str | None) -> str:
 
 
 def decrypt_value(value: str | None) -> str:
-    if not value:
+    if not value or not isinstance(value, str):
         return ''
     try:
         return get_fernet().decrypt(value.encode('utf-8')).decode('utf-8')
     except InvalidToken:
+        logger.warning(
+            'field_decryption_failed',
+            extra={
+                'reason': 'invalid_token',
+                'ciphertext_length': len(value),
+            },
+        )
         return ''
 
 

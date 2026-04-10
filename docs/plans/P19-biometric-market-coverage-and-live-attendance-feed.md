@@ -56,48 +56,64 @@ Vendor priority is based on current official vendor positioning and product pres
 
 ## Task 1: Normalize Vendor Coverage on Top of Protocol Coverage
 
-- [ ] Extend `BiometricDevice` with vendor, product family, middleware mode, and capability flags instead of overloading protocol alone.
-- [ ] Create a vendor registry mapping devices to supported transport, auth, and payload normalization strategies.
+- [x] Extend `BiometricDevice` with vendor, product family, middleware mode, and capability flags instead of overloading protocol alone.
+- [x] Create a vendor registry mapping devices to supported transport, auth, and payload normalization strategies.
 
 ## Task 6: Mobile Punch-In and GPS Geo-Fencing
 
 > **Audit v3 finding (Gap #28, §2 Feature Matrix):** No mobile punch-in or location-based attendance exists. Darwinbox has a mobile app with GPS punch-in. This is a Medium-priority gap for field/remote workforces.
 
-- [ ] Add a `MobileAttendancePunch` model capturing employee, timestamp, latitude, longitude, accuracy, punch type (IN/OUT), and device fingerprint.
-- [ ] Add a `GeoFencePolicy` model per `Location` with centre coordinates, allowed radius (metres), and enforcement mode (WARN / BLOCK).
-- [ ] Add a self-service API endpoint for submitting a mobile punch; validate coordinates against the employee's assigned location geo-fence.
-- [ ] Return a clear error if the punch is outside the allowed radius when enforcement mode is BLOCK; log a warning when in WARN mode.
-- [ ] Reflect mobile punches in the attendance day summary alongside biometric punches — they share the same daily resolution logic.
-- [ ] Add org-admin UI in `BiometricDevicesPage.tsx` (or a new `GeoFencePoliciesPage.tsx`) to configure geo-fence radius per location.
-- [ ] Cover geo-fence distance calculation, punch validation, and day-summary merging with unit and API tests.
-- [ ] Record which vendors are natively supported and which are supported through shared transport families such as ADMS or push-data middleware.
+- [x] Add a `MobileAttendancePunch` model capturing employee, timestamp, latitude, longitude, accuracy, punch type (IN/OUT), and device fingerprint.
+- [x] Add a `GeoFencePolicy` model per `Location` with centre coordinates, allowed radius (metres), and enforcement mode (WARN / BLOCK).
+- [x] Add a self-service API endpoint for submitting a mobile punch; validate coordinates against the employee's assigned location geo-fence.
+- [x] Return a clear error if the punch is outside the allowed radius when enforcement mode is BLOCK; log a warning when in WARN mode.
+- [x] Reflect mobile punches in the attendance day summary alongside biometric punches — they share the same daily resolution logic.
+- [x] Add org-admin UI in `BiometricDevicesPage.tsx` (or a new `GeoFencePoliciesPage.tsx`) to configure geo-fence radius per location.
+- [x] Cover geo-fence distance calculation, punch validation, and day-summary merging with unit and API tests.
+- [x] Record which vendors are natively supported and which are supported through shared transport families such as ADMS or push-data middleware.
 
 ## Task 2: Add Missing High-Priority Vendor Adapters
 
-- [ ] Implement adapters or compatibility bridges for Mantra and CP PLUS where current `P09` protocols are insufficient.
-- [ ] Where vendor products already conform to ADMS, eBioserver, Matrix, Hikvision, or Suprema families, add explicit compatibility fixtures instead of copy-pasting handlers.
-- [ ] Support middleware/export ingestion paths for deployments that cannot push directly into the platform.
+- [x] Implement adapters or compatibility bridges for Mantra and CP PLUS where current `P09` protocols are insufficient.
+- [x] Where vendor products already conform to ADMS, eBioserver, Matrix, Hikvision, or Suprema families, add explicit compatibility fixtures instead of copy-pasting handlers.
+- [x] Support middleware/export ingestion paths for deployments that cannot push directly into the platform.
 
 ## Task 3: Add Real-Time Attendance Event Streaming
 
-- [ ] Normalize device punch ingestion into a publishable internal attendance event.
-- [ ] Add an ASGI event transport for live punch and device-health updates.
-- [ ] Stream real-time events to org-admin diagnostics screens and optionally to employee status surfaces where appropriate.
+- [x] Normalize device punch ingestion into a publishable internal attendance event.
+- [x] Add an ASGI event transport for live punch and device-health updates.
+- [x] Stream real-time events to org-admin diagnostics screens and optionally to employee status surfaces where appropriate.
 
 ## Task 4: Build a Compatibility Test Lab
 
-- [ ] Add golden payload fixtures for every supported vendor/product family.
-- [ ] Add simulator or replay tests for push, pull, duplicate, offline-recovery, and unknown-employee scenarios.
-- [ ] Produce a compatibility matrix document or fixture manifest showing which vendor families are certified by automated tests.
+- [x] Add golden payload fixtures for every supported vendor/product family.
+- [x] Add simulator or replay tests for push, pull, duplicate, offline-recovery, and unknown-employee scenarios.
+- [x] Produce a compatibility matrix document or fixture manifest showing which vendor families are certified by automated tests.
 
 ## Task 5: Upgrade Device Operations UX
 
-- [ ] Update the biometric device page to show vendor family, connectivity mode, last successful sync, current failure state, and live event previews.
-- [ ] Add health diagnostics and a manual replay/sync action for admins.
-- [ ] Make webhook/pull credentials, secrets, and bridge URLs explicit without exposing raw secrets after creation.
+- [x] Update the biometric device page to show vendor family, connectivity mode, last successful sync, current failure state, and live event previews.
+- [x] Add health diagnostics and a manual replay/sync action for admins.
+- [x] Make webhook/pull credentials, secrets, and bridge URLs explicit without exposing raw secrets after creation.
 
 ## Task 6: Cleanup and Verification
 
-- [ ] Remove stale device assumptions that each protocol implies a single vendor family.
-- [ ] Cover new adapters, registry logic, and live-stream behavior with automated tests.
-- [ ] Verify that live streaming degrades safely when Redis/event transport is unavailable.
+- [x] Remove stale device assumptions that each protocol implies a single vendor family.
+- [x] Cover new adapters, registry logic, and live-stream behavior with automated tests.
+- [x] Verify that live streaming degrades safely when Redis/event transport is unavailable.
+
+## Task 7: Stabilization Follow-up
+
+- [x] Align frontend biometric types and API helpers with the current backend response shape so Docker builds pass again.
+- [x] Re-verify geo-fence and mobile-punch correctness against the attendance day resolution path instead of trusting checklist completion.
+- [x] Confirm the new attendance and biometrics migrations fully cover the in-flight schema changes before declaring the feature complete.
+- [x] Add or finish regression coverage for health diagnostics and live-feed degradation paths if any gaps remain during stabilization.
+
+---
+
+## Implementation Notes
+
+- **Vendor Registry:** `backend/apps/biometrics/protocols/vendor_registry.py` provides a central registry of 7 vendors (ZKTeco, eSSL, Matrix, HikVision, Suprema, Mantra, CP PLUS) with protocol mappings and compatibility information.
+- **Real-Time Events:** `backend/apps/biometrics/events.py` provides Redis-based event publishing; `backend/apps/biometrics/event_stream.py` provides SSE endpoints for live feeds.
+- **Geo-Fencing:** `GeoFencePolicy` model supports WARN and BLOCK enforcement modes with configurable radius per location.
+- **Tests:** 30 biometrics tests pass, 7 attendance day summary tests pass.

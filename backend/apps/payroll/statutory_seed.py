@@ -710,3 +710,51 @@ def seed_statutory_master_data():
 
     it_count = seed_income_tax_masters()
     return {'professional_tax_rules': pt_count, 'labour_welfare_fund_rules': lwf_count, 'income_tax_masters': it_count}
+
+
+def seed_surcharge_rules(using='default'):
+    from decimal import Decimal
+    from django.db import connection
+    from apps.payroll.models import SurchargeRule
+    
+    surcharge_data = [
+        # FY2024-2025 New Regime
+        ("2024-2025", "NEW", Decimal("5000000.00"), Decimal("0.00")),
+        ("2024-2025", "NEW", Decimal("10000000.00"), Decimal("10.00")),
+        ("2024-2025", "NEW", Decimal("20000000.00"), Decimal("15.00")),
+        ("2024-2025", "NEW", Decimal("50000000.00"), Decimal("25.00")),
+        
+        # FY2024-2025 Old Regime
+        ("2024-2025", "OLD", Decimal("5000000.00"), Decimal("0.00")),
+        ("2024-2025", "OLD", Decimal("10000000.00"), Decimal("10.00")),
+        ("2024-2025", "OLD", Decimal("20000000.00"), Decimal("15.00")),
+        ("2024-2025", "OLD", Decimal("50000000.00"), Decimal("25.00")),
+        
+        # FY2025-2026 New Regime
+        ("2025-2026", "NEW", Decimal("5000000.00"), Decimal("0.00")),
+        ("2025-2026", "NEW", Decimal("10000000.00"), Decimal("10.00")),
+        ("2025-2026", "NEW", Decimal("20000000.00"), Decimal("15.00")),
+        ("2025-2026", "NEW", Decimal("50000000.00"), Decimal("25.00")),
+        
+        # FY2025-2026 Old Regime
+        ("2025-2026", "OLD", Decimal("5000000.00"), Decimal("0.00")),
+        ("2025-2026", "OLD", Decimal("10000000.00"), Decimal("10.00")),
+        ("2025-2026", "OLD", Decimal("20000000.00"), Decimal("15.00")),
+        ("2025-2026", "OLD", Decimal("50000000.00"), Decimal("25.00")),
+    ]
+    
+    from datetime import date
+    created = []
+    for fiscal_year, regime, threshold, rate in surcharge_data:
+        obj, was_created = SurchargeRule.objects.using(using).get_or_create(
+            fiscal_year=fiscal_year,
+            tax_regime=regime,
+            income_threshold=threshold,
+            defaults={
+                'surcharge_rate_percent': rate,
+                'effective_from': date(2024, 4, 1) if fiscal_year == "2024-2025" else date(2025, 4, 1),
+            }
+        )
+        if was_created:
+            created.append(obj)
+    return created
