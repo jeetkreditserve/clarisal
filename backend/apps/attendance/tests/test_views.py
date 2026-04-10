@@ -132,8 +132,8 @@ class TestAttendanceImportViews:
     def test_sample_template_downloads_return_xlsx_files(self, attendance_setup):
         client = attendance_setup['client']
 
-        attendance_response = client.get('/api/org/attendance/imports/templates/attendance-sheet/')
-        punch_response = client.get('/api/org/attendance/imports/templates/punch-sheet/')
+        attendance_response = client.get('/api/v1/org/attendance/imports/templates/attendance-sheet/')
+        punch_response = client.get('/api/v1/org/attendance/imports/templates/punch-sheet/')
 
         assert attendance_response.status_code == 200
         assert punch_response.status_code == 200
@@ -155,7 +155,7 @@ class TestAttendanceImportViews:
         )
 
         response = client.post(
-            '/api/org/attendance/imports/attendance-sheet/',
+            '/api/v1/org/attendance/imports/attendance-sheet/',
             {'file': SimpleUploadedFile('attendance.xlsx', workbook_bytes, content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')},
         )
 
@@ -180,7 +180,7 @@ class TestAttendanceImportViews:
         )
 
         response = client.post(
-            '/api/org/attendance/imports/attendance-sheet/',
+            '/api/v1/org/attendance/imports/attendance-sheet/',
             {'file': SimpleUploadedFile('attendance.xlsx', workbook_bytes, content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')},
         )
 
@@ -201,7 +201,7 @@ class TestAttendanceImportViews:
         )
 
         upload_response = client.post(
-            '/api/org/attendance/imports/punch-sheet/',
+            '/api/v1/org/attendance/imports/punch-sheet/',
             {'file': SimpleUploadedFile('punches.xlsx', workbook_bytes, content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')},
         )
 
@@ -210,7 +210,7 @@ class TestAttendanceImportViews:
         assert upload_response.data['valid_rows'] == 1
         job_id = upload_response.data['id']
 
-        download_response = client.get(f'/api/org/attendance/imports/{job_id}/normalized-file/')
+        download_response = client.get(f'/api/v1/org/attendance/imports/{job_id}/normalized-file/')
 
         assert download_response.status_code == 200
         workbook = load_workbook(BytesIO(download_response.content))
@@ -226,14 +226,14 @@ class TestAttendanceImportViews:
         )
 
         upload_response = client.post(
-            '/api/org/attendance/imports/punch-sheet/',
+            '/api/v1/org/attendance/imports/punch-sheet/',
             {'file': SimpleUploadedFile('punches.xlsx', workbook_bytes, content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')},
         )
 
         assert upload_response.status_code == 201
         assert upload_response.data['status'] == AttendanceImportStatus.READY_FOR_REVIEW
 
-        workbook = load_workbook(BytesIO(client.get(f"/api/org/attendance/imports/{upload_response.data['id']}/normalized-file/").content))
+        workbook = load_workbook(BytesIO(client.get(f"/api/v1/org/attendance/imports/{upload_response.data['id']}/normalized-file/").content))
         review_sheet = workbook['Review Notes']
         assert review_sheet['A2'].value == 'EMP100'
         assert review_sheet['D2'].value == 'Only one punch was found for this employee on this date. Add a checkout time before re-uploading.'
@@ -241,9 +241,9 @@ class TestAttendanceImportViews:
     def test_employee_can_punch_in_and_out_and_summary_updates(self, attendance_setup):
         client = attendance_setup['employee_client']
 
-        punch_in_response = client.post('/api/me/attendance/punch-in/', {})
-        punch_out_response = client.post('/api/me/attendance/punch-out/', {})
-        summary_response = client.get('/api/me/attendance/summary/')
+        punch_in_response = client.post('/api/v1/me/attendance/punch-in/', {})
+        punch_out_response = client.post('/api/v1/me/attendance/punch-out/', {})
+        summary_response = client.get('/api/v1/me/attendance/summary/')
 
         assert punch_in_response.status_code == 201
         assert punch_out_response.status_code == 201
@@ -256,11 +256,11 @@ class TestAttendanceImportViews:
         employee_client = attendance_setup['employee_client']
         admin_client = attendance_setup['client']
 
-        employee_client.post('/api/me/attendance/punch-in/', {})
-        employee_client.post('/api/me/attendance/punch-out/', {})
+        employee_client.post('/api/v1/me/attendance/punch-in/', {})
+        employee_client.post('/api/v1/me/attendance/punch-out/', {})
 
-        dashboard_response = admin_client.get('/api/org/attendance/dashboard/')
-        days_response = admin_client.get('/api/org/attendance/days/')
+        dashboard_response = admin_client.get('/api/v1/org/attendance/dashboard/')
+        days_response = admin_client.get('/api/v1/org/attendance/days/')
 
         assert dashboard_response.status_code == 200
         assert days_response.status_code == 200
@@ -273,7 +273,7 @@ class TestAttendanceImportViews:
         anonymous_client = APIClient()
 
         create_response = admin_client.post(
-            '/api/org/attendance/sources/',
+            '/api/v1/org/attendance/sources/',
             {
                 'name': 'Biometric gateway',
                 'kind': 'API',
@@ -287,7 +287,7 @@ class TestAttendanceImportViews:
         source_id = create_response.data['id']
 
         ingest_response = anonymous_client.post(
-            f'/api/org/attendance/public-sources/{source_id}/punches/',
+            f'/api/v1/org/attendance/public-sources/{source_id}/punches/',
             {
                 'punches': [
                     {'employee_code': 'EMP100', 'punch_at': '2026-04-07T09:02:00', 'action_type': 'CHECK_IN'},
@@ -308,10 +308,10 @@ class TestAttendanceImportViews:
         employee_client = attendance_setup['employee_client']
         admin_client = attendance_setup['client']
 
-        employee_client.post('/api/me/attendance/punch-in/', {})
-        employee_client.post('/api/me/attendance/punch-out/', {})
+        employee_client.post('/api/v1/me/attendance/punch-in/', {})
+        employee_client.post('/api/v1/me/attendance/punch-out/', {})
 
-        response = admin_client.get('/api/org/attendance/reports/summary/', {'month': '2026-04'})
+        response = admin_client.get('/api/v1/org/attendance/reports/summary/', {'month': '2026-04'})
 
         assert response.status_code == 200
         assert response.data['month'] == '2026-04'
@@ -350,7 +350,7 @@ class TestAttendanceImportViews:
         )
 
         response = employee_client.post(
-            '/api/me/attendance/regularizations/',
+            '/api/v1/me/attendance/regularizations/',
             {
                 'attendance_date': '2026-04-06',
                 'requested_check_in': '09:10',
@@ -393,7 +393,7 @@ def test_mobile_punch_blocks_when_employee_location_is_outside_blocking_geo_fenc
     )
 
     response = client.post(
-        '/api/me/attendance/mobile-punch/',
+        '/api/v1/me/attendance/mobile-punch/',
         {
             'action_type': 'CHECK_IN',
             'latitude': '13.035000',
@@ -437,7 +437,7 @@ def test_mobile_punch_uses_employee_location_policy_and_records_warning_when_war
     )
 
     response = client.post(
-        '/api/me/attendance/mobile-punch/',
+        '/api/v1/me/attendance/mobile-punch/',
         {
             'action_type': 'CHECK_IN',
             'latitude': '13.035000',

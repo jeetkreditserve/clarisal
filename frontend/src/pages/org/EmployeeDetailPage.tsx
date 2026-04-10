@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 
 import { EmptyState } from '@/components/ui/EmptyState'
 import { AppDatePicker } from '@/components/ui/AppDatePicker'
+import { CareerTimeline } from '@/components/ui/CareerTimeline'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { AppSelect } from '@/components/ui/AppSelect'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -18,6 +19,7 @@ import {
   useDepartments,
   useDesignations,
   useEmployeeDetail,
+  useEmployeeCareerTimeline,
   useEmployeeDocumentDownload,
   useEmployeeDocumentRequests,
   useEmployeeDocuments,
@@ -32,7 +34,7 @@ import {
   useUpdateEmployee,
 } from '@/hooks/useOrgAdmin'
 import { getErrorMessage } from '@/lib/errors'
-import { startCase } from '@/lib/format'
+import { formatDateTime, startCase } from '@/lib/format'
 import { getDocumentRequestStatusTone, getDocumentStatusTone, getEmployeeStatusTone } from '@/lib/status'
 import type { EmploymentType } from '@/types/hr'
 
@@ -48,6 +50,7 @@ export function EmployeeDetailPage() {
   const { id } = useParams<{ id: string }>()
   const employeeId = id ?? ''
   const { data: employee, isLoading } = useEmployeeDetail(employeeId)
+  const { data: careerTimeline, isLoading: isCareerTimelineLoading } = useEmployeeCareerTimeline(employeeId)
   const { data: departments } = useDepartments()
   const { data: locations } = useLocations()
   const { data: designations } = useDesignations()
@@ -525,6 +528,57 @@ export function EmployeeDetailPage() {
                   </div>
                 </div>
 
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="rounded-[20px] border border-[hsl(var(--border))] bg-white/70 px-4 py-3">
+                    <p className="text-sm text-[hsl(var(--muted-foreground))]">Active asset assignments</p>
+                    <p className="mt-2 font-semibold text-[hsl(var(--foreground-strong))]">{employee.offboarding.asset_summary.active_assignments}</p>
+                  </div>
+                  <div className="rounded-[20px] border border-[hsl(var(--border))] bg-white/70 px-4 py-3">
+                    <p className="text-sm text-[hsl(var(--muted-foreground))]">Returned assignments</p>
+                    <p className="mt-2 font-semibold text-[hsl(var(--foreground-strong))]">{employee.offboarding.asset_summary.returned_assignments}</p>
+                  </div>
+                  <div className="rounded-[20px] border border-[hsl(var(--border))] bg-white/70 px-4 py-3">
+                    <p className="text-sm text-[hsl(var(--muted-foreground))]">Recovery status</p>
+                    <div className="mt-2">
+                      <StatusBadge tone={employee.offboarding.asset_summary.has_unresolved ? 'warning' : 'success'}>
+                        {employee.offboarding.asset_summary.has_unresolved ? 'Unresolved assets' : 'No asset blockers'}
+                      </StatusBadge>
+                    </div>
+                  </div>
+                </div>
+
+                {employee.offboarding.asset_summary.unresolved_assets.length ? (
+                  <div className="rounded-[24px] border border-[hsl(var(--warning)_/_0.25)] bg-[hsl(var(--warning)_/_0.08)] px-5 py-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="font-semibold text-[hsl(var(--foreground-strong))]">Pending asset recovery</p>
+                        <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
+                          Recover these items before closing offboarding. The completion endpoint will stay blocked while they remain active.
+                        </p>
+                      </div>
+                      <Link className="btn-secondary" to={`/org/assets/assignments?employee=${employee.id}`}>
+                        Open asset assignments
+                      </Link>
+                    </div>
+                    <div className="mt-4 grid gap-3 md:grid-cols-2">
+                      {employee.offboarding.asset_summary.unresolved_assets.map((asset) => (
+                        <div key={asset.id} className="rounded-[20px] border border-[hsl(var(--border))] bg-white/80 px-4 py-4">
+                          <p className="font-semibold text-[hsl(var(--foreground-strong))]">{asset.asset_name}</p>
+                          <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
+                            {asset.asset_tag || 'No asset tag'} • {asset.category_name || 'Uncategorized'}
+                          </p>
+                          <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
+                            Assigned {asset.assigned_at ? formatDateTime(asset.assigned_at) : 'Not recorded'}
+                          </p>
+                          <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
+                            Expected return {asset.expected_return_date || employee.offboarding?.date_of_exit}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
                 <form onSubmit={handleOffboardingUpdate} className="grid gap-4">
                   <input
                     className="field-input"
@@ -693,6 +747,15 @@ export function EmployeeDetailPage() {
                 {[employee.profile.address_line1, employee.profile.city, employee.profile.state, employee.profile.country].filter(Boolean).join(', ') || 'Not provided'}
               </p>
             </div>
+          </div>
+
+          <div className="mt-6 space-y-3">
+            <p className="text-sm font-semibold text-[hsl(var(--foreground-strong))]">Career timeline</p>
+            {isCareerTimelineLoading ? (
+              <SkeletonTable rows={3} />
+            ) : (
+              <CareerTimeline entries={careerTimeline} />
+            )}
           </div>
 
           <div className="mt-6 grid gap-6 xl:grid-cols-2">

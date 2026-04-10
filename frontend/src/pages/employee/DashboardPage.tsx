@@ -7,7 +7,7 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { SkeletonMetricCard, SkeletonTable } from '@/components/ui/Skeleton'
 import { StatusBadge } from '@/components/ui/StatusBadge'
-import { useMyDashboard, useMyProfile } from '@/hooks/useEmployeeSelf'
+import { useMyAttendanceSummary, useMyDashboard, useMyProfile } from '@/hooks/useEmployeeSelf'
 import { getApprovalActionTone, getOnboardingStatusTone } from '@/lib/status'
 
 const DASHBOARD_NOTICE_LIMIT = 3
@@ -15,6 +15,7 @@ const DASHBOARD_NOTICE_LIMIT = 3
 export function EmployeeDashboardPage() {
   const { data: dashboard, isLoading } = useMyDashboard()
   const { data: profile } = useMyProfile()
+  const { data: attendanceSummary } = useMyAttendanceSummary()
 
   return (
     <div className="space-y-6">
@@ -79,6 +80,22 @@ export function EmployeeDashboardPage() {
             <MetricCard title="Pending documents" value={dashboard.pending_documents} hint="Files waiting for admin review." icon={FileClock} tone="warning" />
             <MetricCard title="Verified documents" value={dashboard.verified_documents} hint="Approved by your organisation." icon={ShieldCheck} tone="success" />
             <MetricCard title="Rejected documents" value={dashboard.rejected_documents} hint="Upload corrected copies where needed." icon={FileWarning} tone="danger" />
+            <MetricCard
+              title="Today attendance"
+              value={attendanceSummary?.today.status ?? 'Pending'}
+              hint={
+                attendanceSummary
+                  ? `${attendanceSummary.today.worked_minutes} worked minutes • ${attendanceSummary.pending_regularizations.length} regularizations pending`
+                  : 'Attendance summary unavailable.'
+              }
+              tone="info"
+            />
+            <MetricCard
+              title="Pending approvals"
+              value={dashboard.approvals.count}
+              hint={dashboard.approvals.count ? 'Review requests waiting on you.' : 'No approval actions are waiting on you.'}
+              tone={dashboard.approvals.count ? 'warning' : 'success'}
+            />
           </div>
 
           {dashboard.offboarding ? (

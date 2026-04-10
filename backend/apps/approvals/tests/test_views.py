@@ -129,7 +129,7 @@ class TestApprovalWorkflowApi:
         client, organisation = org_admin_client
 
         response = client.post(
-            '/api/org/approvals/workflows/',
+            '/api/v1/org/approvals/workflows/',
             {
                 'name': 'Attendance Regularization Workflow',
                 'description': '',
@@ -164,7 +164,7 @@ class TestApprovalWorkflowApi:
         client, organisation = org_admin_client
 
         response = client.post(
-            '/api/org/approvals/workflows/',
+            '/api/v1/org/approvals/workflows/',
             {
                 'name': 'Payroll Workflow',
                 'description': '',
@@ -211,7 +211,7 @@ class TestApprovalWorkflowApi:
         )
 
         response = client.post(
-            '/api/org/approvals/workflows/',
+            '/api/v1/org/approvals/workflows/',
             {
                 'name': 'SLA Workflow',
                 'description': '',
@@ -276,7 +276,7 @@ class TestApprovalWorkflowApi:
         )
 
         response = client.post(
-            '/api/org/approvals/delegations/',
+            '/api/v1/org/approvals/delegations/',
             {
                 'delegator_employee_id': str(delegator.id),
                 'delegate_employee_id': str(delegate.id),
@@ -304,10 +304,10 @@ class TestApprovalWorkflowApi:
         stage = ApprovalStage.objects.create(workflow=workflow, name='Manager review', sequence=1)
         ApprovalStageApprover.objects.create(stage=stage, approver_type='PRIMARY_ORG_ADMIN')
 
-        list_response = client.get('/api/org/approvals/workflows/')
-        detail_response = client.get(f'/api/org/approvals/workflows/{workflow.id}/')
+        list_response = client.get('/api/v1/org/approvals/workflows/')
+        detail_response = client.get(f'/api/v1/org/approvals/workflows/{workflow.id}/')
         invalid_patch = client.patch(
-            f'/api/org/approvals/workflows/{workflow.id}/',
+            f'/api/v1/org/approvals/workflows/{workflow.id}/',
             {
                 'name': 'Existing Workflow',
                 'description': '',
@@ -330,7 +330,7 @@ class TestApprovalWorkflowApi:
             format='json',
         )
         valid_patch = client.patch(
-            f'/api/org/approvals/workflows/{workflow.id}/',
+            f'/api/v1/org/approvals/workflows/{workflow.id}/',
             {
                 'name': 'Existing Workflow Updated',
                 'description': '',
@@ -411,10 +411,10 @@ class TestApprovalWorkflowApi:
             subject_label='Delegated OD',
         )
 
-        inbox_response = client.get('/api/org/approvals/inbox/')
-        delegation_list = client.get('/api/org/approvals/delegations/')
+        inbox_response = client.get('/api/v1/org/approvals/inbox/')
+        delegation_list = client.get('/api/v1/org/approvals/delegations/')
         delegation_patch = client.patch(
-            f'/api/org/approvals/delegations/{delegation.id}/',
+            f'/api/v1/org/approvals/delegations/{delegation.id}/',
             {
                 'delegator_employee_id': str(requester.id),
                 'delegate_employee_id': str(delegate.id),
@@ -428,12 +428,12 @@ class TestApprovalWorkflowApi:
 
         with patch('apps.notifications.tasks.send_approval_outcome_email.delay'):
             approve_response = client.post(
-                f'/api/org/approvals/actions/{owned_action.id}/approve/',
+                f'/api/v1/org/approvals/actions/{owned_action.id}/approve/',
                 {'comment': 'Approved'},
                 format='json',
             )
         reject_validation = client.post(
-            f'/api/org/approvals/actions/{other_action.id}/reject/',
+            f'/api/v1/org/approvals/actions/{other_action.id}/reject/',
             {'comment': ''},
             format='json',
         )
@@ -459,11 +459,11 @@ class TestApprovalWorkflowApi:
             subject_label='My leave',
         )
 
-        inbox_response = client.get('/api/me/approvals/inbox/')
+        inbox_response = client.get('/api/v1/me/approvals/inbox/')
         with patch('apps.accounts.permissions.get_org_operations_guard', return_value={'approval_actions_blocked': False, 'reason': ''}):
             with patch('apps.notifications.tasks.send_approval_outcome_email.delay'):
                 approve_response = client.post(
-                    f'/api/me/approvals/actions/{approval_action.id}/approve/',
+                    f'/api/v1/me/approvals/actions/{approval_action.id}/approve/',
                     {'comment': 'Looks good'},
                     format='json',
                 )
@@ -488,7 +488,7 @@ class TestApprovalWorkflowApi:
         with patch('apps.accounts.permissions.get_org_operations_guard', return_value={'approval_actions_blocked': False, 'reason': ''}):
             with patch('apps.notifications.tasks.send_approval_outcome_email.delay'):
                 reject_response = client.post(
-                    f'/api/me/approvals/actions/{rejected_action.id}/reject/',
+                    f'/api/v1/me/approvals/actions/{rejected_action.id}/reject/',
                     {'comment': 'Needs changes'},
                     format='json',
                 )

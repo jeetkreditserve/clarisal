@@ -1,3 +1,5 @@
+import io
+import zipfile
 from datetime import date
 from decimal import Decimal
 
@@ -169,7 +171,7 @@ class TestPayrollViews:
         call_command('seed_statutory_masters')
 
         response = ct_client.post(
-            '/api/ct/payroll/tax-slab-sets/',
+            '/api/v1/ct/payroll/tax-slab-sets/',
             {
                 'name': 'FY 2026 Master',
                 'country_code': 'IN',
@@ -186,7 +188,7 @@ class TestPayrollViews:
 
         assert response.status_code == 201
 
-        summary_response = org_admin_client.get('/api/org/payroll/summary/')
+        summary_response = org_admin_client.get('/api/v1/org/payroll/summary/')
         assert summary_response.status_code == 200
         assert summary_response.data['tax_slab_sets']
         # Org summary returns CT masters directly; verify the newly created master appears.
@@ -200,8 +202,8 @@ class TestPayrollViews:
         ct_client = payroll_setup['ct_client']
         org_admin_client = payroll_setup['org_admin_client']
 
-        ct_response = ct_client.get('/api/ct/payroll/statutory-masters/?state_code=KA')
-        org_response = org_admin_client.get('/api/org/payroll/statutory-masters/?state_code=MH')
+        ct_response = ct_client.get('/api/v1/ct/payroll/statutory-masters/?state_code=KA')
+        org_response = org_admin_client.get('/api/v1/org/payroll/statutory-masters/?state_code=MH')
 
         assert ct_response.status_code == 200
         assert org_response.status_code == 200
@@ -258,7 +260,7 @@ class TestPayrollViews:
         calculate_pay_run(pay_run, actor=org_admin_user)
         finalize_pay_run(pay_run, actor=org_admin_user, skip_approval=True)
 
-        response = employee_client.get('/api/me/payroll/payslips/')
+        response = employee_client.get('/api/v1/me/payroll/payslips/')
 
         assert response.status_code == 200
         assert len(response.data) == 1
@@ -269,9 +271,9 @@ class TestPayrollViews:
         ct_client = payroll_setup['ct_client']
         employee = payroll_setup['employee']
 
-        summary_response = ct_client.get('/api/org/payroll/summary/')
-        payslip_response = ct_client.get('/api/me/payroll/payslips/')
-        payslip_detail_response = ct_client.get(f'/api/me/payroll/payslips/{employee.id}/')
+        summary_response = ct_client.get('/api/v1/org/payroll/summary/')
+        payslip_response = ct_client.get('/api/v1/me/payroll/payslips/')
+        payslip_detail_response = ct_client.get(f'/api/v1/me/payroll/payslips/{employee.id}/')
 
         assert summary_response.status_code == 403
         assert payslip_response.status_code == 403
@@ -328,7 +330,7 @@ class TestPayrollViews:
         finalize_pay_run(pay_run, actor=org_admin_user, skip_approval=True)
         payslip = Payslip.objects.get(employee=employee, pay_run=pay_run)
 
-        response = employee_client.get(f'/api/me/payroll/payslips/{payslip.id}/download/')
+        response = employee_client.get(f'/api/v1/me/payroll/payslips/{payslip.id}/download/')
 
         assert response.status_code == 200
         assert response['Content-Type'] == 'application/pdf'
@@ -386,7 +388,7 @@ class TestPayrollViews:
         finalize_pay_run(pay_run, actor=org_admin_user, skip_approval=True)
         payslip = Payslip.objects.get(employee=employee, pay_run=pay_run)
 
-        response = employee_client.get(f'/api/me/payroll/payslips/{payslip.id}/download/')
+        response = employee_client.get(f'/api/v1/me/payroll/payslips/{payslip.id}/download/')
 
         assert response.status_code == 200
         assert response['Content-Type'] == 'application/pdf'
@@ -428,7 +430,7 @@ class TestPayrollViews:
             initiated_by=org_admin_user,
         )
 
-        response = org_admin_client.get(f'/api/org/payroll/full-and-final-settlements/{settlement.id}/')
+        response = org_admin_client.get(f'/api/v1/org/payroll/full-and-final-settlements/{settlement.id}/')
 
         assert response.status_code == 200
         assert response.data['gratuity'] == '75000.00'
@@ -490,7 +492,7 @@ class TestPayrollViews:
         finalize_pay_run(pay_run, actor=org_admin_user, skip_approval=True)
         payslip = Payslip.objects.get(employee=employee, pay_run=pay_run)
 
-        response = employee_client.get(f'/api/me/payroll/payslips/{payslip.id}/download/')
+        response = employee_client.get(f'/api/v1/me/payroll/payslips/{payslip.id}/download/')
         item = pay_run.items.get(employee=employee)
 
         assert response.status_code == 200
@@ -510,7 +512,7 @@ class TestPayrollViews:
         employee_client = payroll_setup['employee_client']
 
         create_response = employee_client.post(
-            '/api/me/payroll/investment-declarations/',
+            '/api/v1/me/payroll/investment-declarations/',
             {
                 'fiscal_year': '2024-25',
                 'section': '80C',
@@ -523,11 +525,223 @@ class TestPayrollViews:
         assert create_response.status_code == 201
         assert create_response.data['section'] == '80C'
 
-        list_response = employee_client.get('/api/me/payroll/investment-declarations/')
+        list_response = employee_client.get('/api/v1/me/payroll/investment-declarations/')
 
         assert list_response.status_code == 200
         assert len(list_response.data) == 1
         assert list_response.data[0]['description'] == 'PPF'
+
+    def test_employee_can_update_and_delete_own_investment_declaration(self, payroll_setup):
+        employee_client = payroll_setup['employee_client']
+
+        create_response = employee_client.post(
+            '/api/v1/me/payroll/investment-declarations/',
+            {
+                'fiscal_year': '2026-2027',
+                'section': '80C',
+                'description': 'EPF contribution',
+                'declared_amount': '100000.00',
+            },
+            format='json',
+        )
+
+        declaration_id = create_response.data['id']
+
+        update_response = employee_client.patch(
+            f'/api/v1/me/payroll/investment-declarations/{declaration_id}/',
+            {
+                'description': 'EPF + PPF contribution',
+                'declared_amount': '120000.00',
+            },
+            format='json',
+        )
+
+        assert update_response.status_code == 200
+        assert update_response.data['description'] == 'EPF + PPF contribution'
+        assert update_response.data['declared_amount'] == '120000.00'
+
+        detail_response = employee_client.get(f'/api/v1/me/payroll/investment-declarations/{declaration_id}/')
+
+        assert detail_response.status_code == 200
+        assert detail_response.data['id'] == declaration_id
+
+        delete_response = employee_client.delete(f'/api/v1/me/payroll/investment-declarations/{declaration_id}/')
+
+        assert delete_response.status_code == 204
+        list_response = employee_client.get('/api/v1/me/payroll/investment-declarations/')
+        assert list_response.status_code == 200
+        assert list_response.data == []
+
+    def test_employee_investment_declaration_validates_section_cap(self, payroll_setup):
+        employee_client = payroll_setup['employee_client']
+
+        first_response = employee_client.post(
+            '/api/v1/me/payroll/investment-declarations/',
+            {
+                'fiscal_year': '2026-2027',
+                'section': '80C',
+                'description': 'PPF',
+                'declared_amount': '100000.00',
+            },
+            format='json',
+        )
+        assert first_response.status_code == 201
+
+        second_response = employee_client.post(
+            '/api/v1/me/payroll/investment-declarations/',
+            {
+                'fiscal_year': '2026-2027',
+                'section': '80C',
+                'description': 'ELSS',
+                'declared_amount': '60000.00',
+            },
+            format='json',
+        )
+
+        assert second_response.status_code == 400
+        assert 'declared_amount' in second_response.data
+
+    def test_org_admin_can_filter_and_verify_investment_declarations(self, payroll_setup):
+        employee_client = payroll_setup['employee_client']
+        org_admin_client = payroll_setup['org_admin_client']
+        employee = payroll_setup['employee']
+
+        create_response = employee_client.post(
+            '/api/v1/me/payroll/investment-declarations/',
+            {
+                'fiscal_year': '2026-2027',
+                'section': '80D',
+                'description': 'Mediclaim',
+                'declared_amount': '25000.00',
+            },
+            format='json',
+        )
+        declaration_id = create_response.data['id']
+
+        list_response = org_admin_client.get(
+            '/api/v1/org/payroll/investment-declarations/',
+            {
+                'employee_id': str(employee.id),
+                'fiscal_year': '2026-2027',
+                'section': '80D',
+                'is_verified': 'false',
+            },
+        )
+
+        assert list_response.status_code == 200
+        assert len(list_response.data) == 1
+        assert list_response.data[0]['id'] == declaration_id
+
+        verify_response = org_admin_client.patch(
+            f'/api/v1/org/payroll/investment-declarations/{declaration_id}/',
+            {'is_verified': True},
+            format='json',
+        )
+
+        assert verify_response.status_code == 200
+        assert verify_response.data['is_verified'] is True
+
+        verified_list_response = org_admin_client.get(
+            '/api/v1/org/payroll/investment-declarations/',
+            {'is_verified': 'true'},
+        )
+
+        assert verified_list_response.status_code == 200
+        assert [item['id'] for item in verified_list_response.data] == [declaration_id]
+
+    def test_employee_form12bb_canonical_alias_returns_pdf(self, payroll_setup):
+        employee_client = payroll_setup['employee_client']
+
+        create_response = employee_client.post(
+            '/api/v1/me/payroll/investment-declarations/',
+            {
+                'fiscal_year': '2026-2027',
+                'section': '80C',
+                'description': 'PPF',
+                'declared_amount': '150000.00',
+            },
+            format='json',
+        )
+        assert create_response.status_code == 201
+
+        response = employee_client.get('/api/v1/me/payroll/form-12bb/2026-2027/')
+
+        assert response.status_code == 200
+        assert response['Content-Type'] == 'application/pdf'
+        assert response.content[:4] == b'%PDF'
+
+    def test_employee_can_download_payslips_for_fiscal_year_as_zip(self, payroll_setup):
+        organisation = payroll_setup['organisation']
+        employee = payroll_setup['employee']
+        employee_client = payroll_setup['employee_client']
+        org_admin_user = payroll_setup['org_admin_user']
+
+        create_tax_slab_set(
+            fiscal_year='2026-2027',
+            name='FY 2026 Master',
+            country_code='IN',
+            slabs=[
+                {'min_income': '0', 'max_income': '300000', 'rate_percent': '0'},
+                {'min_income': '300000', 'max_income': '700000', 'rate_percent': '10'},
+                {'min_income': '700000', 'max_income': None, 'rate_percent': '20'},
+            ],
+            actor=org_admin_user,
+        )
+        ensure_org_payroll_setup(organisation, actor=org_admin_user)
+        template = create_compensation_template(
+            organisation,
+            name='Annual Payroll Template',
+            description='Payslip ZIP test',
+            lines=[
+                {
+                    'component_code': 'BASIC',
+                    'name': 'Basic Pay',
+                    'component_type': 'EARNING',
+                    'monthly_amount': '45000',
+                    'is_taxable': True,
+                }
+            ],
+            actor=org_admin_user,
+        )
+        assign_employee_compensation(
+            employee,
+            template,
+            effective_from=date(2026, 4, 1),
+            actor=org_admin_user,
+            auto_approve=True,
+        )
+
+        april_2026_run = create_payroll_run(
+            organisation,
+            period_year=2026,
+            period_month=4,
+            actor=org_admin_user,
+            requester_user=org_admin_user,
+        )
+        calculate_pay_run(april_2026_run, actor=org_admin_user)
+        finalize_pay_run(april_2026_run, actor=org_admin_user, skip_approval=True)
+
+        april_2027_run = create_payroll_run(
+            organisation,
+            period_year=2027,
+            period_month=4,
+            actor=org_admin_user,
+            requester_user=org_admin_user,
+        )
+        calculate_pay_run(april_2027_run, actor=org_admin_user)
+        finalize_pay_run(april_2027_run, actor=org_admin_user, skip_approval=True)
+
+        response = employee_client.get('/api/v1/me/payroll/payslips/fiscal-year/2026-2027/download/')
+
+        assert response.status_code == 200
+        assert response['Content-Type'] == 'application/zip'
+        assert 'payslips-2026-2027.zip' in response['Content-Disposition']
+
+        archive = zipfile.ZipFile(io.BytesIO(response.content))
+        names = archive.namelist()
+        assert len(names) == 1
+        assert names[0].endswith('.pdf')
+        assert archive.read(names[0])[:4] == b'%PDF'
 
     def test_org_admin_can_create_old_regime_compensation_assignment(self, payroll_setup):
         organisation = payroll_setup['organisation']
@@ -552,7 +766,7 @@ class TestPayrollViews:
         )
 
         response = org_admin_client.post(
-            '/api/org/payroll/compensations/',
+            '/api/v1/org/payroll/compensations/',
             {
                 'employee_id': str(employee.id),
                 'template_id': str(template.id),
@@ -571,7 +785,7 @@ class TestPayrollViews:
         org_admin_client = payroll_setup['org_admin_client']
 
         end_response = org_admin_client.post(
-            f'/api/org/employees/{employee.id}/end-employment/',
+            f'/api/v1/org/employees/{employee.id}/end-employment/',
             {
                 'status': EmployeeStatus.RESIGNED,
                 'date_of_exit': '2026-04-30',
@@ -582,14 +796,14 @@ class TestPayrollViews:
 
         assert end_response.status_code == 200
 
-        list_response = org_admin_client.get('/api/org/payroll/full-and-final-settlements/')
+        list_response = org_admin_client.get('/api/v1/org/payroll/full-and-final-settlements/')
 
         assert list_response.status_code == 200
         assert len(list_response.data) == 1
         assert list_response.data[0]['employee_id'] == str(employee.id)
         assert list_response.data[0]['status'] == 'DRAFT'
 
-        detail_response = org_admin_client.get(f"/api/org/payroll/full-and-final-settlements/{list_response.data[0]['id']}/")
+        detail_response = org_admin_client.get(f"/api/v1/org/payroll/full-and-final-settlements/{list_response.data[0]['id']}/")
 
         assert detail_response.status_code == 200
         assert detail_response.data['last_working_day'] == '2026-04-30'
@@ -663,7 +877,7 @@ class TestPayrollViews:
         calculate_pay_run(pay_run, actor=org_admin_user)
         finalize_pay_run(pay_run, actor=org_admin_user, skip_approval=True)
 
-        response = org_admin_client.get(f'/api/org/payroll/runs/{pay_run.id}/form16/')
+        response = org_admin_client.get(f'/api/v1/org/payroll/runs/{pay_run.id}/form16/')
 
         assert response.status_code == 200
         assert response.data['pay_run_id'] == str(pay_run.id)
@@ -698,7 +912,7 @@ class TestPayrollViews:
         )
 
         generate_response = payroll_setup['org_admin_client'].post(
-            '/api/org/payroll/filings/',
+            '/api/v1/org/payroll/filings/',
             {
                 'filing_type': 'PF_ECR',
                 'period_year': 2026,
@@ -712,7 +926,7 @@ class TestPayrollViews:
         assert generate_response.data['file_name'].endswith('.csv')
 
         batch_id = generate_response.data['id']
-        download_response = payroll_setup['org_admin_client'].get(f'/api/org/payroll/filings/{batch_id}/download/')
+        download_response = payroll_setup['org_admin_client'].get(f'/api/v1/org/payroll/filings/{batch_id}/download/')
 
         assert download_response.status_code == 200
         assert download_response['Content-Disposition'].endswith('.csv"')
@@ -730,7 +944,7 @@ class TestPayrollViews:
         )
 
         response = payroll_setup['org_admin_client'].post(
-            '/api/org/payroll/filings/',
+            '/api/v1/org/payroll/filings/',
             {
                 'filing_type': 'PF_ECR',
                 'period_year': 2026,
@@ -765,7 +979,7 @@ class TestPayrollViews:
         )
 
         create_response = payroll_setup['org_admin_client'].post(
-            '/api/org/payroll/filings/',
+            '/api/v1/org/payroll/filings/',
             {
                 'filing_type': 'FORM16',
                 'fiscal_year': '2026-2027',
@@ -776,19 +990,19 @@ class TestPayrollViews:
         assert create_response.status_code == 201
 
         batch_id = create_response.data['id']
-        regenerate_response = payroll_setup['org_admin_client'].post(f'/api/org/payroll/filings/{batch_id}/regenerate/')
+        regenerate_response = payroll_setup['org_admin_client'].post(f'/api/v1/org/payroll/filings/{batch_id}/regenerate/')
 
         assert regenerate_response.status_code == 201
         assert regenerate_response.data['status'] == 'GENERATED'
 
-        cancel_response = payroll_setup['org_admin_client'].post(f'/api/org/payroll/filings/{batch_id}/cancel/')
+        cancel_response = payroll_setup['org_admin_client'].post(f'/api/v1/org/payroll/filings/{batch_id}/cancel/')
 
         assert cancel_response.status_code == 200
         assert cancel_response.data['status'] == 'CANCELLED'
 
     def test_org_admin_can_create_and_update_tds_challan(self, payroll_setup):
         create_response = payroll_setup['org_admin_client'].post(
-            '/api/org/payroll/tds-challans/',
+            '/api/v1/org/payroll/tds-challans/',
             {
                 'fiscal_year': '2026-2027',
                 'period_year': 2026,
@@ -808,7 +1022,7 @@ class TestPayrollViews:
 
         challan_id = create_response.data['id']
         update_response = payroll_setup['org_admin_client'].patch(
-            f'/api/org/payroll/tds-challans/{challan_id}/',
+            f'/api/v1/org/payroll/tds-challans/{challan_id}/',
             {
                 'tax_deposited': '3600.00',
                 'notes': 'Adjusted for interest reversal',
@@ -838,7 +1052,7 @@ class TestPayrollViews:
             monthly_amount='60000',
         )
 
-        response = org_admin_client.get('/api/org/payroll/runs/')
+        response = org_admin_client.get('/api/v1/org/payroll/runs/')
 
         assert response.status_code == 200
         assert len(response.data) >= 1
@@ -877,7 +1091,7 @@ class TestPayrollViews:
             monthly_amount='50000',
         )
 
-        response = org_admin_client.get(f'/api/org/payroll/runs/{pay_run.id}/')
+        response = org_admin_client.get(f'/api/v1/org/payroll/runs/{pay_run.id}/')
 
         assert response.status_code == 200
         assert 'items' not in response.data
@@ -929,7 +1143,7 @@ class TestPayrollViews:
             message='Missing approved compensation assignment.',
         )
 
-        response = org_admin_client.get('/api/org/payroll/runs/')
+        response = org_admin_client.get('/api/v1/org/payroll/runs/')
 
         assert response.status_code == 200
         run_data = next(r for r in response.data if r['id'] == str(pay_run.id))
@@ -981,7 +1195,7 @@ class TestPayrollViews:
             message='PAN is missing from payroll profile.',
         )
 
-        response = org_admin_client.get(f'/api/org/payroll/runs/{pay_run.id}/items/?has_exception=true')
+        response = org_admin_client.get(f'/api/v1/org/payroll/runs/{pay_run.id}/items/?has_exception=true')
 
         assert response.status_code == 200
         assert response.data['count'] == 1
@@ -991,7 +1205,7 @@ class TestPayrollViews:
         assert response.data['results'][0]['id'] == str(exception_item.id)
         assert response.data['results'][0]['has_exception'] is True
 
-        employee_response = org_admin_client.get(f'/api/org/payroll/runs/{pay_run.id}/items/?employee={employee.id}')
+        employee_response = org_admin_client.get(f'/api/v1/org/payroll/runs/{pay_run.id}/items/?employee={employee.id}')
 
         assert employee_response.status_code == 200
         assert employee_response.data['count'] == 1
@@ -1003,7 +1217,6 @@ class TestPayrollViews:
     # ------------------------------------------------------------------
 
     def test_org_admin_can_download_payslip_as_pdf(self, payroll_setup):
-        employee_client = payroll_setup['employee_client']
         organisation = payroll_setup['organisation']
         org_admin_user = payroll_setup['org_admin_user']
         org_admin_client = payroll_setup['org_admin_client']
@@ -1054,7 +1267,7 @@ class TestPayrollViews:
         finalize_pay_run(pay_run, actor=org_admin_user, skip_approval=True)
         payslip = Payslip.objects.get(employee=employee, pay_run=pay_run)
 
-        response = org_admin_client.get(f'/api/org/payroll/payslips/{payslip.id}/download/')
+        response = org_admin_client.get(f'/api/v1/org/payroll/payslips/{payslip.id}/download/')
 
         assert response.status_code == 200
         assert response['Content-Type'] == 'application/pdf'
@@ -1063,7 +1276,6 @@ class TestPayrollViews:
 
     def test_org_admin_cannot_download_another_org_payslip(self, payroll_setup):
         """Cross-org payslip download should be forbidden — returns 404."""
-        org_admin_client = payroll_setup['org_admin_client']
         organisation = payroll_setup['organisation']
         org_admin_user = payroll_setup['org_admin_user']
         employee = payroll_setup['employee']
@@ -1087,7 +1299,7 @@ class TestPayrollViews:
 
         # Try to access with employee (non-admin) — should be forbidden
         employee_client = payroll_setup['employee_client']
-        response = employee_client.get(f'/api/org/payroll/payslips/{payslip.id}/download/')
+        response = employee_client.get(f'/api/v1/org/payroll/payslips/{payslip.id}/download/')
         assert response.status_code == 403
 
 
@@ -1096,92 +1308,3 @@ def test_health_check_returns_ok(client):
     response = client.get('/api/health/')
     assert response.status_code == 200
     assert response.json()['status'] == 'ok'
-
-    def test_org_admin_can_download_payslip_as_pdf(self, payroll_setup):
-        employee_client = payroll_setup['employee_client']
-        organisation = payroll_setup['organisation']
-        org_admin_user = payroll_setup['org_admin_user']
-        org_admin_client = payroll_setup['org_admin_client']
-        employee = payroll_setup['employee']
-
-        create_tax_slab_set(
-            country_code='IN',
-            fiscal_year='2026-27',
-            name='FY 2026-27',
-            slabs=[
-                {'min_income': '0', 'max_income': '300000', 'rate_percent': '0'},
-                {'min_income': '300000', 'max_income': '700000', 'rate_percent': '10'},
-                {'min_income': '700000', 'max_income': None, 'rate_percent': '20'},
-            ],
-            actor=org_admin_user,
-        )
-        ensure_org_payroll_setup(organisation, actor=org_admin_user)
-        template = create_compensation_template(
-            organisation,
-            name='Org Payslip Test Template',
-            description='Org admin payslip PDF test',
-            lines=[
-                {
-                    'component_code': 'BASIC',
-                    'name': 'Basic Pay',
-                    'component_type': 'EARNING',
-                    'monthly_amount': '40000',
-                    'is_taxable': True,
-                }
-            ],
-            actor=org_admin_user,
-        )
-        assign_employee_compensation(
-            employee,
-            template,
-            effective_from=date(2026, 4, 1),
-            actor=org_admin_user,
-            auto_approve=True,
-        )
-        pay_run = create_payroll_run(
-            organisation,
-            period_year=2026,
-            period_month=4,
-            actor=org_admin_user,
-            requester_user=org_admin_user,
-        )
-        calculate_pay_run(pay_run, actor=org_admin_user)
-        finalize_pay_run(pay_run, actor=org_admin_user, skip_approval=True)
-        payslip = Payslip.objects.get(employee=employee, pay_run=pay_run)
-
-        response = org_admin_client.get(f'/api/org/payroll/payslips/{payslip.id}/download/')
-
-        assert response.status_code == 200
-        assert response['Content-Type'] == 'application/pdf'
-        assert response.content[:4] == b'%PDF'
-        assert payslip.slip_number.replace('/', '-') in response['Content-Disposition']
-
-    def test_org_admin_cannot_download_another_org_payslip(self, payroll_setup):
-        """Cross-org payslip download should be forbidden — returns 404."""
-        org_admin_client = payroll_setup['org_admin_client']
-        organisation = payroll_setup['organisation']
-        org_admin_user = payroll_setup['org_admin_user']
-        employee = payroll_setup['employee']
-
-        create_tax_slab_set(
-            country_code='IN', fiscal_year='2026-27', name='FY 2026-27',
-            slabs=[{'min_income': '0', 'max_income': '300000', 'rate_percent': '0'}],
-            actor=org_admin_user,
-        )
-        ensure_org_payroll_setup(organisation, actor=org_admin_user)
-        template = create_compensation_template(
-            organisation, name='Cross-Org Test', description='Cross-org test',
-            lines=[{'component_code': 'BASIC', 'name': 'Basic Pay', 'component_type': 'EARNING', 'monthly_amount': '30000', 'is_taxable': True}],
-            actor=org_admin_user,
-        )
-        assign_employee_compensation(employee, template, effective_from=date(2026, 4, 1), actor=org_admin_user, auto_approve=True)
-        pay_run = create_payroll_run(organisation, period_year=2026, period_month=4, actor=org_admin_user, requester_user=org_admin_user)
-        calculate_pay_run(pay_run, actor=org_admin_user)
-        finalize_pay_run(pay_run, actor=org_admin_user, skip_approval=True)
-        payslip = Payslip.objects.get(employee=employee, pay_run=pay_run)
-
-        # Try to access with employee (non-admin) — should be forbidden
-        employee_client = payroll_setup['employee_client']
-        response = employee_client.get(f'/api/org/payroll/payslips/{payslip.id}/download/')
-        assert response.status_code == 403
-

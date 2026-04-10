@@ -5,7 +5,11 @@ from calendar import monthrange
 from datetime import date
 from decimal import Decimal
 import hashlib
+from io import BytesIO
+from typing import Any
+from uuid import uuid4
 
+from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
 from django.db.models import Q, Sum
@@ -14,6 +18,7 @@ from django.utils import timezone
 from apps.approvals.models import ApprovalRequestKind, ApprovalRun, ApprovalRunStatus
 from apps.approvals.services import cancel_approval_run, get_default_workflow
 from apps.audit.services import log_audit_event
+from apps.documents.s3 import generate_presigned_url, upload_file
 from apps.employees.models import Employee, EmployeeStatus, GovernmentIdType
 from apps.notifications.models import NotificationKind
 from apps.notifications.services import create_notification
@@ -1160,6 +1165,13 @@ def _resolve_labour_welfare_fund_amount(*, state_code, gross_pay, period_year, p
 
 
 def calculate_pay_run(pay_run, *, actor=None):
+    from apps.expenses.services import (
+        build_payroll_reimbursement_lines,
+        get_pending_expense_claims_by_employee_for_pay_run,
+        mark_expense_claims_included_in_payroll,
+        reset_expense_claims_for_pay_run,
+    )
+
     if pay_run.status == PayrollRunStatus.APPROVED:
         raise ValueError('Approved payroll runs cannot be recalculated. Create a rerun or move the run back to draft first.')
     if pay_run.status == PayrollRunStatus.FINALIZED:
@@ -1181,7 +1193,9 @@ def calculate_pay_run(pay_run, *, actor=None):
         org_state_resolution_error = str(exc)
 
     with transaction.atomic():
+        reset_expense_claims_for_pay_run(pay_run)
         pay_run.items.all().delete()
+        expense_claims_by_employee = get_pending_expense_claims_by_employee_for_pay_run(pay_run)
         run_attendance_snapshot = {
             'attendance_source': 'attendance_service' if pay_run.use_attendance_inputs else 'not_applied',
             'period_start': str(period_start),
@@ -1684,10 +1698,16 @@ def calculate_pay_run(pay_run, *, actor=None):
             income_tax = (annual_tax_total / Decimal(str(_months_remaining_in_fiscal_year(pay_run.period_month)))).quantize(Decimal('0.01'))
 
             # ── Step 8: Final totals ─────────────────────────────────────────
+            expense_claims = expense_claims_by_employee.get(employee.id, [])
+            expense_reimbursement_lines, expense_reimbursement_total = build_payroll_reimbursement_lines(expense_claims)
+            if expense_reimbursement_total > ZERO:
+                lines_snapshot.extend(expense_reimbursement_lines)
+                gross_pay = (gross_pay + expense_reimbursement_total).quantize(Decimal('0.01'))
+
             total_deductions = (employee_deductions + income_tax + lop_deduction).quantize(Decimal('0.01'))
             net_pay = ensure_non_negative_net_pay(gross_pay - total_deductions)
 
-            PayrollRunItem.objects.create(
+            payroll_item = PayrollRunItem.objects.create(
                 pay_run=pay_run,
                 employee=employee,
                 status=PayrollRunItemStatus.READY,
@@ -1704,6 +1724,7 @@ def calculate_pay_run(pay_run, *, actor=None):
                     'readiness': _employee_payroll_snapshot(employee),
                     'lines': lines_snapshot,
                     'arrears': str(arrears_amount),
+                    'expense_reimbursements': str(expense_reimbursement_total),
                     # Period detail
                     'period_start': str(period_start),
                     'period_end': str(period_end),
@@ -1749,6 +1770,7 @@ def calculate_pay_run(pay_run, *, actor=None):
                     'annual_tax_total': str(annual_tax_total),
                 },
             )
+            mark_expense_claims_included_in_payroll(payroll_item, expense_claims)
 
         run_attendance_snapshot['total_attendance_paid_days'] = str(total_attendance_paid_days.quantize(Decimal('0.01')))
         run_attendance_snapshot['total_lop_days'] = str(total_lop_days.quantize(Decimal('0.01')))
@@ -1934,6 +1956,22 @@ def _apply_filing_batch_result(
     result,
     audit_action,
 ):
+    payload_bytes = result.payload_bytes() if not result.validation_errors else b''
+    artifact_storage_backend = ''
+    artifact_storage_key = ''
+    artifact_uploaded_at = None
+    store_artifact_in_s3 = (
+        not result.validation_errors
+        and getattr(settings, 'PAYROLL_FILING_ARTIFACT_STORAGE', 'database').lower() == 's3'
+    )
+    if store_artifact_in_s3:
+        storage_object_id = uuid4()
+        safe_file_name = (result.file_name or 'statutory-filing').replace('/', '-')
+        artifact_storage_key = f'payroll/filings/{organisation.id}/{storage_object_id}/{safe_file_name}'
+        upload_file(BytesIO(payload_bytes), artifact_storage_key, result.content_type or 'application/octet-stream')
+        artifact_storage_backend = 's3'
+        artifact_uploaded_at = timezone.now()
+
     batch = StatutoryFilingBatch.objects.create(
         organisation=organisation,
         filing_type=filing_type,
@@ -1943,17 +1981,20 @@ def _apply_filing_batch_result(
         fiscal_year=fiscal_year or '',
         quarter=quarter or '',
         status=StatutoryFilingStatus.BLOCKED if result.validation_errors else StatutoryFilingStatus.GENERATED,
-        checksum=hashlib.sha256(result.payload_bytes()).hexdigest() if not result.validation_errors else '',
+        checksum=hashlib.sha256(payload_bytes).hexdigest() if not result.validation_errors else '',
         file_name=result.file_name if not result.validation_errors else '',
         content_type=result.content_type if not result.validation_errors else '',
-        file_size_bytes=len(result.payload_bytes()) if not result.validation_errors else 0,
+        file_size_bytes=len(payload_bytes) if not result.validation_errors else 0,
+        artifact_storage_backend=artifact_storage_backend,
+        artifact_storage_key=artifact_storage_key,
+        artifact_uploaded_at=artifact_uploaded_at,
         generated_at=timezone.now() if not result.validation_errors else None,
         source_signature=_source_signature(runs=runs, payslips=payslips),
         validation_errors=result.validation_errors,
         metadata=result.metadata | {'source_run_ids': [str(run.id) for run in runs]},
         structured_payload=result.structured_payload,
-        artifact_text=result.artifact_text if not result.validation_errors else '',
-        artifact_binary=result.artifact_binary if not result.validation_errors else None,
+        artifact_text=result.artifact_text if not result.validation_errors and not artifact_storage_key else '',
+        artifact_binary=result.artifact_binary if not result.validation_errors and not artifact_storage_key else None,
     )
     if runs:
         batch.source_pay_runs.set(runs)
@@ -2146,16 +2187,25 @@ def cancel_statutory_filing_batch(batch, *, actor=None):
 def download_statutory_filing_batch(batch, *, actor=None):
     if batch.status != StatutoryFilingStatus.GENERATED:
         raise ValueError('Only generated statutory filing batches can be downloaded.')
+    download_url = ''
+    if batch.artifact_storage_backend == 's3' and batch.artifact_storage_key:
+        download_url = generate_presigned_url(batch.artifact_storage_key, expiry=900)
     log_audit_event(
         actor,
         'payroll.filing.downloaded',
         organisation=batch.organisation,
         target=batch,
-        payload={'filing_type': batch.filing_type, 'file_name': batch.file_name},
+        payload={
+            'filing_type': batch.filing_type,
+            'file_name': batch.file_name,
+            'artifact_storage_backend': batch.artifact_storage_backend,
+        },
     )
+    if download_url:
+        return None, batch.content_type, batch.file_name, download_url
     if batch.artifact_binary:
-        return bytes(batch.artifact_binary), batch.content_type, batch.file_name
-    return batch.artifact_text.encode('utf-8'), batch.content_type, batch.file_name
+        return bytes(batch.artifact_binary), batch.content_type, batch.file_name, ''
+    return batch.artifact_text.encode('utf-8'), batch.content_type, batch.file_name, ''
 
 
 def submit_pay_run_for_approval(pay_run, *, requester_user, requester_employee=None):
@@ -2187,6 +2237,8 @@ def submit_pay_run_for_approval(pay_run, *, requester_user, requester_employee=N
 
 
 def finalize_pay_run(pay_run, *, actor=None, skip_approval=False):
+    from apps.expenses.services import mark_expense_claims_paid_for_pay_run_item
+
     if pay_run.status not in [PayrollRunStatus.APPROVED, PayrollRunStatus.CALCULATED]:
         raise ValueError('Only approved or explicitly bypassed calculated payroll runs can be finalized.')
     if pay_run.status == PayrollRunStatus.CALCULATED and not skip_approval:
@@ -2252,6 +2304,7 @@ def finalize_pay_run(pay_run, *, actor=None, skip_approval=False):
                 pay_run=pay_run,
                 is_included_in_payslip=False,
             ).update(is_included_in_payslip=True)
+            mark_expense_claims_paid_for_pay_run_item(item)
 
         pay_run.status = PayrollRunStatus.FINALIZED
         pay_run.finalized_at = timezone.now()
@@ -2277,6 +2330,8 @@ def rerun_payroll_run(pay_run, *, actor=None, requester_user=None, requester_emp
     )
     log_audit_event(actor or requester_user, 'payroll.run.rerun_created', organisation=pay_run.organisation, target=new_run)
     return new_run
+
+
 def generate_form12bb_zip_for_organisation(
     organisation, *, fiscal_year: str, actor=None
 ) -> tuple[bytes, list[dict[str, Any]]]:

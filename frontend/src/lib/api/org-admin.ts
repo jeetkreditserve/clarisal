@@ -31,6 +31,7 @@ import type {
   EmployeeListItem,
   FullAndFinalSettlement,
   HolidayCalendar,
+  InvestmentDeclaration,
   LeaveCycle,
   LeavePlan,
   LeaveRequestRecord,
@@ -226,6 +227,35 @@ export async function inviteEmployee(payload: {
 
 export async function fetchEmployeeDetail(id: string) {
   const { data } = await api.get<EmployeeDetail>(`/org/employees/${id}/`)
+  return data
+}
+
+export interface OrgChartNode {
+  id: string
+  name: string
+  email: string
+  employee_code: string | null
+  designation: string | null
+  department: string | null
+  status: EmployeeDetail['status']
+  profile_picture: string | null
+  direct_reports: OrgChartNode[]
+}
+
+export interface OrgChartCyclesResponse {
+  has_cycles: boolean
+  cycles: string[][]
+}
+
+export async function fetchOrgChart(includeInactive = false) {
+  const { data } = await api.get<OrgChartNode[]>('/org/org-chart/', {
+    params: includeInactive ? { include_inactive: true } : undefined,
+  })
+  return data
+}
+
+export async function fetchOrgChartCycles() {
+  const { data } = await api.get<OrgChartCyclesResponse>('/org/org-chart/cycles/')
   return data
 }
 
@@ -691,6 +721,21 @@ export async function fetchPayrollSummary() {
   return data
 }
 
+export async function fetchOrgInvestmentDeclarations(params?: {
+  employee_id?: string
+  fiscal_year?: string
+  section?: string
+  is_verified?: boolean
+}) {
+  const { data } = await api.get<InvestmentDeclaration[]>('/org/payroll/investment-declarations/', { params })
+  return data
+}
+
+export async function updateOrgInvestmentDeclarationReview(id: string, payload: { is_verified: boolean }) {
+  const { data } = await api.patch<InvestmentDeclaration>(`/org/payroll/investment-declarations/${id}/`, payload)
+  return data
+}
+
 export async function fetchPayrollRunDetail(id: string) {
   const { data } = await api.get<PayrollRun>(`/org/payroll/runs/${id}/`)
   return data
@@ -885,7 +930,7 @@ export async function publishNotice(id: string) {
 }
 
 export async function downloadOrgForm12BBBulk(fiscalYear: string): Promise<Blob> {
-  const response = await api.get<Blob>(`/org/payroll/form12bb/${fiscalYear}/download/`, {
+  const response = await api.get<Blob>(`/org/payroll/form-12bb/${fiscalYear}/download/`, {
     responseType: 'blob',
   })
   return response.data

@@ -1,8 +1,10 @@
 from decimal import Decimal
 
+from django.db.models import Sum
 from rest_framework import serializers
 
 from .models import (
+    SECTION_LIMITS,
     Arrears,
     CompensationAssignment,
     CompensationAssignmentLine,
@@ -27,6 +29,7 @@ from .models import (
     TaxCategory,
     TaxRegime,
 )
+from .statutory import normalize_fiscal_year_label
 
 
 class PayrollTaxSlabSerializer(serializers.ModelSerializer):
@@ -385,14 +388,14 @@ class PayrollRunItemDetailSerializer(serializers.Serializer):
     net_pay = serializers.DecimalField(max_digits=12, decimal_places=2)
     snapshot = serializers.JSONField()
     message = serializers.CharField(allow_blank=True)
-    arrears = serializers.DecimalField(max_digits=12, decimal_places=2, default=0)
-    lop_days = serializers.DecimalField(max_digits=12, decimal_places=2, default=0)
-    esi_employee = serializers.DecimalField(max_digits=12, decimal_places=2, default=0)
-    esi_employer = serializers.DecimalField(max_digits=12, decimal_places=2, default=0)
-    pf_employer = serializers.DecimalField(max_digits=12, decimal_places=2, default=0)
-    lwf_employee = serializers.DecimalField(max_digits=12, decimal_places=2, default=0)
-    lwf_employer = serializers.DecimalField(max_digits=12, decimal_places=2, default=0)
-    pt_monthly = serializers.DecimalField(max_digits=12, decimal_places=2, default=0)
+    arrears = serializers.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    lop_days = serializers.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    esi_employee = serializers.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    esi_employer = serializers.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    pf_employer = serializers.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    lwf_employee = serializers.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    lwf_employer = serializers.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    pt_monthly = serializers.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
     tax_regime = serializers.CharField(allow_null=True)
 
 
@@ -463,6 +466,9 @@ class StatutoryFilingBatchSerializer(serializers.ModelSerializer):
             'file_name',
             'content_type',
             'file_size_bytes',
+            'artifact_storage_backend',
+            'artifact_storage_key',
+            'artifact_uploaded_at',
             'generated_at',
             'source_signature',
             'validation_errors',
@@ -535,21 +541,33 @@ class PayslipSerializer(serializers.ModelSerializer):
 
 class InvestmentDeclarationSerializer(serializers.ModelSerializer):
     employee_id = serializers.UUIDField(source='employee.id', read_only=True)
+    employee_name = serializers.CharField(source='employee.user.full_name', read_only=True)
+    verified_by_id = serializers.UUIDField(source='verified_by.id', read_only=True, allow_null=True)
+    verified_by_name = serializers.CharField(source='verified_by.full_name', read_only=True, allow_null=True)
+    section_limit = serializers.SerializerMethodField()
 
     class Meta:
         model = InvestmentDeclaration
         fields = [
             'id',
             'employee_id',
+            'employee_name',
             'fiscal_year',
             'section',
             'description',
             'declared_amount',
             'proof_file_key',
             'is_verified',
+            'verified_by_id',
+            'verified_by_name',
+            'section_limit',
             'created_at',
             'modified_at',
         ]
+
+    def get_section_limit(self, obj):
+        limit = SECTION_LIMITS.get(obj.section)
+        return str(limit) if limit is not None else None
 
 
 class FullAndFinalSettlementSerializer(serializers.ModelSerializer):
@@ -612,6 +630,54 @@ class InvestmentDeclarationWriteSerializer(serializers.Serializer):
     description = serializers.CharField(max_length=200)
     declared_amount = serializers.DecimalField(max_digits=12, decimal_places=2)
     proof_file_key = serializers.CharField(required=False, allow_blank=True, allow_null=True, default='')
+
+    def validate_fiscal_year(self, value):
+        normalized = normalize_fiscal_year_label(value)
+        if normalized.count('-') != 1 or len(normalized.split('-', 1)[0]) != 4:
+            raise serializers.ValidationError('Fiscal year must be in YYYY-YYYY or YYYY-YY format.')
+        return normalized
+
+    def validate_declared_amount(self, value):
+        if value <= Decimal('0.00'):
+            raise serializers.ValidationError('Declared amount must be greater than zero.')
+        return value
+
+    def validate(self, attrs):
+        instance = getattr(self, 'instance', None)
+        employee = self.context.get('employee') or getattr(instance, 'employee', None)
+
+        fiscal_year = attrs.get('fiscal_year') or getattr(instance, 'fiscal_year', '')
+        section = attrs.get('section') or getattr(instance, 'section', '')
+        declared_amount = attrs.get('declared_amount', getattr(instance, 'declared_amount', Decimal('0.00')))
+
+        attrs['fiscal_year'] = normalize_fiscal_year_label(fiscal_year)
+
+        section_cap = SECTION_LIMITS.get(section)
+        if employee is not None and section_cap is not None:
+            queryset = InvestmentDeclaration.objects.filter(
+                employee=employee,
+                section=section,
+                fiscal_year=attrs['fiscal_year'],
+            )
+            if instance is not None:
+                queryset = queryset.exclude(id=instance.id)
+            existing_total = queryset.aggregate(total=Sum('declared_amount'))['total'] or Decimal('0.00')
+            if existing_total + declared_amount > section_cap:
+                remaining = max(section_cap - existing_total, Decimal('0.00'))
+                raise serializers.ValidationError(
+                    {
+                        'declared_amount': (
+                            f'{section} declarations cannot exceed {section_cap:.2f} in '
+                            f'{attrs["fiscal_year"]}. Remaining limit: {remaining:.2f}.'
+                        )
+                    }
+                )
+
+        return attrs
+
+
+class InvestmentDeclarationReviewSerializer(serializers.Serializer):
+    is_verified = serializers.BooleanField()
 
 
 class ArrearsCreateSerializer(serializers.Serializer):

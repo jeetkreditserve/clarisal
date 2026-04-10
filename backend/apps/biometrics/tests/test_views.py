@@ -7,7 +7,7 @@ def test_org_admin_can_create_list_and_deactivate_biometric_device(biometric_set
     client = biometric_setup['client']
 
     create_response = client.post(
-        '/api/org/biometrics/devices/',
+        '/api/v1/org/biometrics/devices/',
         {
             'name': 'HQ Main Gate',
             'device_serial': 'SN-ADMS-001',
@@ -20,9 +20,9 @@ def test_org_admin_can_create_list_and_deactivate_biometric_device(biometric_set
     assert create_response.status_code == 201
     device_id = create_response.data['id']
 
-    list_response = client.get('/api/org/biometrics/devices/')
-    delete_response = client.delete(f'/api/org/biometrics/devices/{device_id}/')
-    detail_response = client.get('/api/org/biometrics/devices/')
+    list_response = client.get('/api/v1/org/biometrics/devices/')
+    delete_response = client.delete(f'/api/v1/org/biometrics/devices/{device_id}/')
+    detail_response = client.get('/api/v1/org/biometrics/devices/')
 
     assert list_response.status_code == 200
     assert len(list_response.data) == 1
@@ -47,7 +47,7 @@ def test_adms_endpoint_processes_attlog_and_writes_sync_log(biometric_setup):
 
     body = 'EMP100\t2026-04-05 09:05:00\t0\t1\t0'
     response = anonymous_client.post(
-        '/api/biometric/adms/iclock/cdata?SN=SN-ADMS-001&table=ATTLOG',
+        '/api/v1/biometric/adms/iclock/cdata?SN=SN-ADMS-001&table=ATTLOG',
         data=body,
         content_type='text/plain',
     )
@@ -80,7 +80,7 @@ def test_device_sync_logs_endpoint_returns_recent_logs(biometric_setup):
         success=True,
     )
 
-    response = client.get(f'/api/org/biometrics/devices/{device.id}/sync-logs/')
+    response = client.get(f'/api/v1/org/biometrics/devices/{device.id}/sync-logs/')
 
     assert response.status_code == 200
     assert response.data[0]['records_fetched'] == 3
@@ -91,7 +91,7 @@ def test_essl_ebioserver_device_requires_shared_secret(biometric_setup):
     client = biometric_setup['client']
 
     response = client.post(
-        '/api/org/biometrics/devices/',
+        '/api/v1/org/biometrics/devices/',
         {
             'name': 'eSSL Web API',
             'protocol': 'ESSL_EBIOSERVER',
@@ -120,7 +120,7 @@ def test_essl_ebioserver_webhook_rejects_invalid_secret(biometric_setup):
     device.save(update_fields=['api_key_hash', 'api_key_encrypted', 'modified_at'])
 
     response = anonymous_client.post(
-        f'/api/biometric/essl/ebioserver/{device.id}/events/',
+        f'/api/v1/biometric/essl/ebioserver/{device.id}/events/',
         data={
             'transactions': [
                 {
@@ -154,7 +154,7 @@ def test_essl_ebioserver_webhook_processes_transactions_and_writes_sync_log(biom
     device.save(update_fields=['api_key_hash', 'api_key_encrypted', 'modified_at'])
 
     response = anonymous_client.post(
-        f'/api/biometric/essl/ebioserver/{device.id}/events/',
+        f'/api/v1/biometric/essl/ebioserver/{device.id}/events/',
         data={
             'transactions': [
                 {
@@ -191,7 +191,7 @@ def test_essl_ebioserver_webhook_skips_duplicates_in_summary(biometric_setup):
     device.save(update_fields=['api_key_hash', 'api_key_encrypted', 'modified_at'])
 
     response = anonymous_client.post(
-        f'/api/biometric/essl/ebioserver/{device.id}/events/',
+        f'/api/v1/biometric/essl/ebioserver/{device.id}/events/',
         data={
             'transactions': [
                 {
@@ -234,7 +234,7 @@ def test_essl_ebioserver_webhook_skips_unknown_employees_without_failing_request
     device.save(update_fields=['api_key_hash', 'api_key_encrypted', 'modified_at'])
 
     response = anonymous_client.post(
-        f'/api/biometric/essl/ebioserver/{device.id}/events/',
+        f'/api/v1/biometric/essl/ebioserver/{device.id}/events/',
         data={
             'transactions': [
                 {
@@ -272,7 +272,7 @@ def test_essl_ebioserver_webhook_accepts_auth_token_inside_realtime_payload(biom
     device.save(update_fields=['api_key_hash', 'api_key_encrypted', 'modified_at'])
 
     response = anonymous_client.post(
-        f'/api/biometric/essl/ebioserver/{device.id}/events/',
+        f'/api/v1/biometric/essl/ebioserver/{device.id}/events/',
         data={
             'RealTime': {
                 'OperationID': 'op-1',
@@ -309,7 +309,7 @@ def test_health_endpoint_updates_last_health_check_at_and_returns_diagnostics(bi
         is_active=True,
     )
 
-    response = client.get(f'/api/org/biometrics/devices/{device.id}/health/')
+    response = client.get(f'/api/v1/org/biometrics/devices/{device.id}/health/')
 
     assert response.status_code == 200
     assert response.data['health_status'] == 'DEGRADED'

@@ -45,6 +45,52 @@ def ensure_default_workflow_configured(organisation):
     if missing_request_kinds:
         raise ValueError('Create and activate a default approval workflow for each request type before inviting employees.')
 
+def ensure_default_promotion_transfer_workflow(organisation, request_kind, employee):
+    """Create a default 1-step approval workflow for PROMOTION/TRANSFER if none exists.
+    Uses the employee's reporting manager as the sole approver (ANY mode).
+    Returns the created workflow, or None if one already exists."""
+    if request_kind not in {ApprovalRequestKind.PROMOTION, ApprovalRequestKind.TRANSFER}:
+        raise ValueError(f'ensure_default_promotion_transfer_workflow only supports PROMOTION or TRANSFER, got {request_kind}')
+
+    if ApprovalWorkflow.objects.filter(
+        organisation=organisation,
+        is_default=True,
+        default_request_kind=request_kind,
+        is_active=True,
+    ).exists():
+        return None
+
+    from .models import ApprovalStage, ApprovalStageApprover
+
+    manager = getattr(employee, 'reporting_to', None)
+    manager_employee = manager if manager and manager.id != employee.id else None
+
+    label = 'Promotion' if request_kind == ApprovalRequestKind.PROMOTION else 'Transfer'
+
+    workflow = ApprovalWorkflow.objects.create(
+        organisation=organisation,
+        name=f'Default {label} Approval',
+        is_default=True,
+        default_request_kind=request_kind,
+        is_active=True,
+        created_by=None,
+    )
+
+    stage = ApprovalStage.objects.create(
+        workflow=workflow,
+        name='Step 1',
+        sequence=1,
+        mode=ApprovalStageMode.ANY,
+        fallback_type=ApprovalFallbackType.PRIMARY_ORG_ADMIN,
+    )
+
+    ApprovalStageApprover.objects.create(
+        stage=stage,
+        approver_type=ApprovalApproverType.REPORTING_MANAGER,
+        approver_employee=manager_employee,
+    )
+
+    return workflow
 
 def _matches_rule(rule, employee, request_kind, leave_type=None):
     if not rule.is_active or rule.request_kind != request_kind:
@@ -217,8 +263,11 @@ def _resolve_stage_fallback(stage, organisation):
         return None
     if stage.fallback_type == ApprovalFallbackType.SPECIFIC_EMPLOYEE and stage.fallback_employee:
         return stage.fallback_employee.user, stage.fallback_employee
-    if stage.fallback_type == ApprovalFallbackType.PRIMARY_ORG_ADMIN and organisation.primary_admin_user:
-        return organisation.primary_admin_user, None
+    if stage.fallback_type == ApprovalFallbackType.PRIMARY_ORG_ADMIN:
+        if organisation.primary_admin_user:
+            return organisation.primary_admin_user, None
+        if organisation.created_by:
+            return organisation.created_by, None
     return None
 
 

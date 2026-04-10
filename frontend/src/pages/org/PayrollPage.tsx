@@ -9,7 +9,29 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { SkeletonPageHeader, SkeletonTable } from '@/components/ui/Skeleton'
 import { StatusBadge } from '@/components/ui/StatusBadge'
-import { useCancelPayrollFiling, useCalculatePayrollRun, useCreateCompensationAssignment, useCreateCompensationTemplate, useCreateOrgArrear, useCreatePayrollRun, useCreatePayrollTdsChallan, useDownloadOrgForm12BBBulk, useDownloadPayrollFiling, useEmployees, useFinalizePayrollRun, useGeneratePayrollFiling, useOrgArrears, usePayrollSummary, useRegeneratePayrollFiling, useRerunPayrollRun, useSubmitCompensationAssignment, useSubmitCompensationTemplate, useSubmitPayrollRun } from '@/hooks/useOrgAdmin'
+import {
+  useCancelPayrollFiling,
+  useCalculatePayrollRun,
+  useCreateCompensationAssignment,
+  useCreateCompensationTemplate,
+  useCreateOrgArrear,
+  useCreatePayrollRun,
+  useCreatePayrollTdsChallan,
+  useDownloadOrgForm12BBBulk,
+  useDownloadPayrollFiling,
+  useEmployees,
+  useFinalizePayrollRun,
+  useGeneratePayrollFiling,
+  useOrgArrears,
+  useOrgInvestmentDeclarations,
+  usePayrollSummary,
+  useRegeneratePayrollFiling,
+  useReviewOrgInvestmentDeclaration,
+  useRerunPayrollRun,
+  useSubmitCompensationAssignment,
+  useSubmitCompensationTemplate,
+  useSubmitPayrollRun,
+} from '@/hooks/useOrgAdmin'
 import { getErrorMessage } from '@/lib/errors'
 import { formatDateTime } from '@/lib/format'
 import { getCompensationStatusTone, getPayrollRunStatusTone } from '@/lib/status'
@@ -21,6 +43,21 @@ const PAYROLL_SECTION_OPTIONS = [
   { value: 'compensation', label: 'Compensation' },
   { value: 'runs', label: 'Runs' },
   { value: 'filings', label: 'Filings' },
+] as const
+const DECLARATION_REVIEW_OPTIONS = [
+  { value: 'all', label: 'All declarations' },
+  { value: 'pending', label: 'Pending review' },
+  { value: 'verified', label: 'Verified' },
+] as const
+const DECLARATION_SECTION_OPTIONS = [
+  { value: '', label: 'All sections' },
+  { value: '80C', label: '80C' },
+  { value: '80D', label: '80D' },
+  { value: '80TTA', label: '80TTA' },
+  { value: '80G', label: '80G' },
+  { value: 'HRA', label: 'HRA' },
+  { value: 'LTA', label: 'LTA' },
+  { value: 'OTHER', label: 'OTHER' },
 ] as const
 
 function triggerDownload(blob: Blob, filename: string) {
@@ -66,6 +103,7 @@ export function PayrollPage() {
   const cancelFilingMutation = useCancelPayrollFiling()
   const downloadFilingMutation = useDownloadPayrollFiling()
   const downloadForm12BBBulkMutation = useDownloadOrgForm12BBBulk()
+  const reviewInvestmentDeclarationMutation = useReviewOrgInvestmentDeclaration()
   const { data: arrears = [] } = useOrgArrears()
 
   const [templateForm, setTemplateForm] = useState({
@@ -112,6 +150,12 @@ export function PayrollPage() {
   })
   const [form12BBFiscalYear, setForm12BBFiscalYear] = useState(`${currentYear}-${currentYear + 1}`)
   const [activeSection, setActiveSection] = useState<(typeof PAYROLL_SECTION_OPTIONS)[number]['value']>('setup')
+  const [declarationFilters, setDeclarationFilters] = useState({
+    employee_id: '',
+    fiscal_year: `${currentYear}-${currentYear + 1}`,
+    section: '',
+    review_state: 'pending' as (typeof DECLARATION_REVIEW_OPTIONS)[number]['value'],
+  })
 
   const employeeOptions = useMemo(
     () =>
@@ -131,6 +175,19 @@ export function PayrollPage() {
       })),
     [data],
   )
+  const declarationQuery = useMemo(
+    () => ({
+      employee_id: declarationFilters.employee_id || undefined,
+      fiscal_year: declarationFilters.fiscal_year || undefined,
+      section: declarationFilters.section || undefined,
+      is_verified:
+        declarationFilters.review_state === 'all'
+          ? undefined
+          : declarationFilters.review_state === 'verified',
+    }),
+    [declarationFilters],
+  )
+  const { data: investmentDeclarations = [] } = useOrgInvestmentDeclarations(declarationQuery)
 
   const handleCreateTemplate = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -343,6 +400,15 @@ export function PayrollPage() {
       toast.success('Form 12BB bulk downloaded.')
     } catch (error) {
       toast.error(getErrorMessage(error, 'Unable to download Form 12BB. Confirm declarations exist for the selected fiscal year.'))
+    }
+  }
+
+  const handleReviewInvestmentDeclaration = async (id: string, isVerified: boolean) => {
+    try {
+      await reviewInvestmentDeclarationMutation.mutateAsync({ id, is_verified: isVerified })
+      toast.success(isVerified ? 'Declaration verified.' : 'Declaration moved back to pending review.')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to update the declaration review status.'))
     }
   }
 
@@ -684,6 +750,7 @@ function RunsSection({
       {activeSection === 'filings' ? (
         <FilingsSection
           data={data}
+          employeeOptions={employeeOptions}
           filingForm={filingForm}
           setFilingForm={setFilingForm}
           tdsChallanForm={tdsChallanForm}
@@ -696,12 +763,17 @@ function RunsSection({
           form12BBFiscalYear={form12BBFiscalYear}
           setForm12BBFiscalYear={setForm12BBFiscalYear}
           downloadForm12BBBulkMutation={downloadForm12BBBulkMutation}
+          declarationFilters={declarationFilters}
+          setDeclarationFilters={setDeclarationFilters}
+          investmentDeclarations={investmentDeclarations}
+          reviewInvestmentDeclarationMutation={reviewInvestmentDeclarationMutation}
           onGenerateFiling={handleGenerateFiling}
           onCreateTdsChallan={handleCreateTdsChallan}
           onDownloadFiling={handleDownloadFiling}
           onRegenerateFiling={handleRegenerateFiling}
           onCancelFiling={handleCancelFiling}
           onDownloadForm12BBulk={handleDownloadForm12BBulk}
+          onReviewInvestmentDeclaration={handleReviewInvestmentDeclaration}
         />
       ) : null}
     </div>
@@ -961,6 +1033,7 @@ function CompensationSection({
 
 interface FilingsSectionProps {
   data: NonNullable<NonNullable<ReturnType<typeof usePayrollSummary>['data']>>
+  employeeOptions: Array<{ value: string; label: string; hint?: string }>
   filingForm: FilingFormState
   setFilingForm: React.Dispatch<React.SetStateAction<FilingFormState>>
   tdsChallanForm: TdsChallanFormState
@@ -973,16 +1046,34 @@ interface FilingsSectionProps {
   form12BBFiscalYear: string
   setForm12BBFiscalYear: React.Dispatch<React.SetStateAction<string>>
   downloadForm12BBBulkMutation: ReturnType<typeof useDownloadOrgForm12BBBulk>
+  declarationFilters: {
+    employee_id: string
+    fiscal_year: string
+    section: string
+    review_state: (typeof DECLARATION_REVIEW_OPTIONS)[number]['value']
+  }
+  setDeclarationFilters: React.Dispatch<
+    React.SetStateAction<{
+      employee_id: string
+      fiscal_year: string
+      section: string
+      review_state: (typeof DECLARATION_REVIEW_OPTIONS)[number]['value']
+    }>
+  >
+  investmentDeclarations: NonNullable<NonNullable<ReturnType<typeof useOrgInvestmentDeclarations>['data']>>
+  reviewInvestmentDeclarationMutation: ReturnType<typeof useReviewOrgInvestmentDeclaration>
   onGenerateFiling: (event: React.FormEvent) => Promise<void>
   onCreateTdsChallan: (event: React.FormEvent) => Promise<void>
   onDownloadFiling: (filingId: string) => Promise<void>
   onRegenerateFiling: (filingId: string) => Promise<void>
   onCancelFiling: (filingId: string) => Promise<void>
   onDownloadForm12BBulk: () => Promise<void>
+  onReviewInvestmentDeclaration: (id: string, isVerified: boolean) => Promise<void>
 }
 
 function FilingsSection({
   data,
+  employeeOptions,
   filingForm,
   setFilingForm,
   tdsChallanForm,
@@ -995,12 +1086,17 @@ function FilingsSection({
   form12BBFiscalYear,
   setForm12BBFiscalYear,
   downloadForm12BBBulkMutation,
+  declarationFilters,
+  setDeclarationFilters,
+  investmentDeclarations,
+  reviewInvestmentDeclarationMutation,
   onGenerateFiling,
   onCreateTdsChallan,
   onDownloadFiling,
   onRegenerateFiling,
   onCancelFiling,
   onDownloadForm12BBulk,
+  onReviewInvestmentDeclaration,
 }: FilingsSectionProps) {
   return (
     <div className="grid gap-6 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
@@ -1125,6 +1221,106 @@ function FilingsSection({
             >
               {downloadForm12BBBulkMutation.isPending ? 'Preparing…' : 'Download All Form 12BB'}
             </button>
+          </div>
+        </SectionCard>
+
+        <SectionCard
+          title="Investment declaration review"
+          description="Filter declaration records by employee, fiscal year, and review status so payroll can verify or reopen employee-submitted deductions."
+        >
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="md:col-span-2">
+              <label className="field-label" htmlFor="investment-review-employee">
+                Employee
+              </label>
+              <AppSelect
+                id="investment-review-employee"
+                value={declarationFilters.employee_id}
+                onValueChange={(value) => setDeclarationFilters((current) => ({ ...current, employee_id: value }))}
+                options={[{ value: '', label: 'All employees' }, ...employeeOptions]}
+                placeholder="All employees"
+              />
+            </div>
+            <div>
+              <label className="field-label" htmlFor="investment-review-fiscal-year">
+                Fiscal year
+              </label>
+              <input
+                id="investment-review-fiscal-year"
+                className="field-input"
+                value={declarationFilters.fiscal_year}
+                onChange={(event) => setDeclarationFilters((current) => ({ ...current, fiscal_year: event.target.value }))}
+                placeholder="2026-2027"
+              />
+            </div>
+            <div>
+              <label className="field-label" htmlFor="investment-review-section">
+                Section
+              </label>
+              <AppSelect
+                id="investment-review-section"
+                value={declarationFilters.section}
+                onValueChange={(value) => setDeclarationFilters((current) => ({ ...current, section: value }))}
+                options={DECLARATION_SECTION_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
+                placeholder="All sections"
+              />
+            </div>
+            <div className="md:col-span-2">
+              <label className="field-label" htmlFor="investment-review-state">
+                Review state
+              </label>
+              <AppSelect
+                id="investment-review-state"
+                value={declarationFilters.review_state}
+                onValueChange={(value) =>
+                  setDeclarationFilters((current) => ({
+                    ...current,
+                    review_state: value as (typeof DECLARATION_REVIEW_OPTIONS)[number]['value'],
+                  }))
+                }
+                options={DECLARATION_REVIEW_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
+                placeholder="Select state"
+              />
+            </div>
+          </div>
+
+          <div className="mt-5 space-y-3">
+            {investmentDeclarations.length ? (
+              investmentDeclarations.map((declaration) => (
+                <div key={declaration.id} className="surface-shell rounded-[18px] px-4 py-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold text-[hsl(var(--foreground-strong))]">{declaration.employee_name}</p>
+                        <StatusBadge tone={declaration.is_verified ? 'success' : 'warning'}>
+                          {declaration.is_verified ? 'Verified' : 'Pending review'}
+                        </StatusBadge>
+                        <StatusBadge tone="info">{declaration.section}</StatusBadge>
+                      </div>
+                      <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
+                        FY {declaration.fiscal_year} • ₹{declaration.declared_amount} • {declaration.description}
+                      </p>
+                      <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
+                        {declaration.verified_by_name ? `Reviewed by ${declaration.verified_by_name}` : 'Not yet verified'}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      disabled={reviewInvestmentDeclarationMutation.isPending}
+                      onClick={() => void onReviewInvestmentDeclaration(declaration.id, !declaration.is_verified)}
+                    >
+                      {declaration.is_verified ? 'Mark pending' : 'Verify'}
+                    </button>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <EmptyState
+                title="No declarations match these filters"
+                description="Declarations appear here after employees submit them from self-service."
+              />
+            )}
           </div>
         </SectionCard>
 

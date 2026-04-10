@@ -65,7 +65,7 @@ def workforce_user(db):
 class TestLogin:
     def test_control_tower_login_returns_user_and_session(self, api_client, ct_user):
         response = api_client.post(
-            '/api/auth/control-tower/login/',
+            '/api/v1/auth/control-tower/login/',
             {
                 'email': 'ct@clarisal.com',
                 'password': 'TestPass@123',
@@ -82,7 +82,7 @@ class TestLogin:
 
     def test_workforce_login_returns_memberships_and_default_route(self, api_client, workforce_user):
         response = api_client.post(
-            '/api/auth/login/',
+            '/api/v1/auth/login/',
             {
                 'email': 'ops@northstar.com',
                 'password': 'TestPass@123',
@@ -99,7 +99,7 @@ class TestLogin:
 
     def test_workforce_login_rejects_control_tower_credentials(self, api_client, ct_user):
         response = api_client.post(
-            '/api/auth/login/',
+            '/api/v1/auth/login/',
             {
                 'email': 'ct@clarisal.com',
                 'password': 'TestPass@123',
@@ -110,29 +110,29 @@ class TestLogin:
 
     def test_me_returns_current_user(self, api_client, ct_user):
         api_client.post(
-            '/api/auth/control-tower/login/',
+            '/api/v1/auth/control-tower/login/',
             {
                 'email': 'ct@clarisal.com',
                 'password': 'TestPass@123',
             },
             format='json',
         )
-        response = api_client.get('/api/auth/me/')
+        response = api_client.get('/api/v1/auth/me/')
         assert response.status_code == 200
         assert response.json()['email'] == 'ct@clarisal.com'
 
     def test_logout_clears_session(self, api_client, ct_user):
         api_client.post(
-            '/api/auth/control-tower/login/',
+            '/api/v1/auth/control-tower/login/',
             {
                 'email': 'ct@clarisal.com',
                 'password': 'TestPass@123',
             },
             format='json',
         )
-        response = api_client.post('/api/auth/logout/', {}, format='json')
+        response = api_client.post('/api/v1/auth/logout/', {}, format='json')
         assert response.status_code == 204
-        me_response = api_client.get('/api/auth/me/')
+        me_response = api_client.get('/api/v1/auth/me/')
         assert me_response.status_code == 403
 
     def test_same_email_can_authenticate_separately_for_control_tower_and_workforce(self, db):
@@ -167,7 +167,7 @@ class TestLogin:
 
         ct_client = APIClient()
         ct_response = ct_client.post(
-            '/api/auth/control-tower/login/',
+            '/api/v1/auth/control-tower/login/',
             {'email': 'shared@clarisal.com', 'password': 'ControlTower@123'},
             format='json',
         )
@@ -176,7 +176,7 @@ class TestLogin:
 
         workforce_client = APIClient()
         workforce_response = workforce_client.post(
-            '/api/auth/login/',
+            '/api/v1/auth/login/',
             {'email': 'shared@clarisal.com', 'password': 'Workforce@123'},
             format='json',
         )
@@ -244,7 +244,7 @@ class TestLogin:
         )
 
         response = api_client.post(
-            '/api/auth/login/',
+            '/api/v1/auth/login/',
             {'email': 'hybrid@northstar.com', 'password': 'HybridPass@123'},
             format='json',
         )

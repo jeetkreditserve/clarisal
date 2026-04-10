@@ -84,7 +84,7 @@ class TestOrgPayrollRunCalculateViewAsync:
         mock_delay.return_value.id = 'celery-task-uuid-abc'
 
         response = async_payroll_setup['client'].post(
-            f"/api/org/payroll/runs/{async_payroll_setup['pay_run'].id}/calculate/"
+            f"/api/v1/org/payroll/runs/{async_payroll_setup['pay_run'].id}/calculate/"
         )
 
         assert response.status_code == 202
@@ -103,7 +103,7 @@ class TestOrgPayrollRunCalculateViewAsync:
         mock_async_result.return_value = mock_result
 
         response = async_payroll_setup['client'].get(
-            f"/api/org/payroll/runs/{async_payroll_setup['pay_run'].id}/calculation-status/?task_id=celery-task-uuid-abc"
+            f"/api/v1/org/payroll/runs/{async_payroll_setup['pay_run'].id}/calculation-status/?task_id=celery-task-uuid-abc"
         )
 
         assert response.status_code == 200

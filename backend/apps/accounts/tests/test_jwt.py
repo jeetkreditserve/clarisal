@@ -18,7 +18,7 @@ class TestJWTEndpoints:
 
     def test_obtain_token_returns_access_and_refresh(self):
         response = self.client.post(
-            '/api/auth/token/',
+            '/api/v1/auth/token/',
             {
                 'email': self.user.email,
                 'password': 'testpass123',
@@ -32,7 +32,7 @@ class TestJWTEndpoints:
 
     def test_refresh_token_returns_new_access(self):
         obtain = self.client.post(
-            '/api/auth/token/',
+            '/api/v1/auth/token/',
             {
                 'email': self.user.email,
                 'password': 'testpass123',
@@ -42,7 +42,7 @@ class TestJWTEndpoints:
         refresh_token = obtain.data['refresh']
 
         response = self.client.post(
-            '/api/auth/token/refresh/',
+            '/api/v1/auth/token/refresh/',
             {
                 'refresh': refresh_token,
             },
@@ -54,7 +54,7 @@ class TestJWTEndpoints:
 
     def test_protected_endpoint_accepts_jwt(self):
         obtain = self.client.post(
-            '/api/auth/token/',
+            '/api/v1/auth/token/',
             {
                 'email': self.user.email,
                 'password': 'testpass123',
@@ -64,7 +64,7 @@ class TestJWTEndpoints:
         access_token = obtain.data['access']
         self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {access_token}')
 
-        response = self.client.get('/api/auth/me/')
+        response = self.client.get('/api/v1/auth/me/')
 
         assert response.status_code == 200
         assert response.data['email'] == self.user.email

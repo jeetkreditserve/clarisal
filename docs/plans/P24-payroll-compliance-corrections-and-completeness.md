@@ -197,8 +197,8 @@ class SurchargeRule(models.Model):
   - Declaration with date and employee signature block
   - Summary box with totals per section
 - [x] Cover PDF generation (valid PDF bytes), section population from declaration records, empty-declaration blocking, and edge case with 4 tests in `test_filings.py`.
-- [ ] Add an employee self-service endpoint `GET /api/me/payroll/form-12bb/<fiscal_year>/` that returns the PDF.
-- [ ] Add an org-admin bulk download endpoint that generates Form 12BB PDFs for all employees in a fiscal year as a ZIP.
+- [x] Add an employee self-service endpoint `GET /api/me/payroll/form-12bb/<fiscal_year>/` that returns the PDF.
+- [x] Add an org-admin bulk download endpoint that generates Form 12BB PDFs for all employees in a fiscal year as a ZIP.
 
 ## Task 9: Add ESI Branch Code and PF Opt-Out Guard
 

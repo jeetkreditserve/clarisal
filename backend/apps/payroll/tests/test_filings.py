@@ -22,6 +22,7 @@ from apps.payroll.services import (
     create_compensation_template,
     create_payroll_run,
     create_tax_slab_set,
+    download_statutory_filing_batch,
     ensure_org_payroll_setup,
     finalize_pay_run,
     generate_statutory_filing_batch,
@@ -227,6 +228,49 @@ class TestStatutoryFilings:
 
         assert batch.status == StatutoryFilingStatus.GENERATED
         assert batch.artifact_text == _read_fixture("pf_ecr_2026_04.csv")
+
+    def test_generated_filing_artifact_can_be_stored_in_s3(self, filing_fixture, settings, monkeypatch):
+        settings.PAYROLL_FILING_ARTIFACT_STORAGE = "s3"
+        uploads = []
+
+        def fake_upload_file(file_obj, key, content_type):
+            uploads.append(
+                {
+                    "key": key,
+                    "content_type": content_type,
+                    "payload": file_obj.read(),
+                }
+            )
+
+        monkeypatch.setattr("apps.payroll.services.upload_file", fake_upload_file)
+        monkeypatch.setattr(
+            "apps.payroll.services.generate_presigned_url",
+            lambda key, expiry=900: f"https://files.example.test/{key}?expires={expiry}",
+        )
+
+        batch = generate_statutory_filing_batch(
+            filing_fixture["organisation"],
+            filing_type="PF_ECR",
+            actor=filing_fixture["admin"],
+            period_year=2026,
+            period_month=4,
+        )
+
+        assert batch.status == StatutoryFilingStatus.GENERATED
+        assert batch.artifact_storage_backend == "s3"
+        assert batch.artifact_storage_key.startswith(f"payroll/filings/{filing_fixture['organisation'].id}/")
+        assert batch.artifact_text == ""
+        assert batch.artifact_binary is None
+        assert uploads[0]["key"] == batch.artifact_storage_key
+        assert uploads[0]["content_type"] == "text/csv"
+        assert uploads[0]["payload"].decode("utf-8") == _read_fixture("pf_ecr_2026_04.csv")
+
+        payload, content_type, file_name, download_url = download_statutory_filing_batch(batch, actor=filing_fixture["admin"])
+
+        assert payload is None
+        assert content_type == "text/csv"
+        assert file_name == batch.file_name
+        assert download_url == f"https://files.example.test/{batch.artifact_storage_key}?expires=900"
 
     def test_esi_export_matches_fixture_and_preserves_continued_eligibility(self, filing_fixture):
         batch = generate_statutory_filing_batch(
@@ -716,7 +760,7 @@ def test_my_form12bb_download_returns_pdf(filing_fixture):
     client = APIClient()
     client.force_authenticate(user=filing_fixture["employee"].user)
 
-    response = client.get("/api/me/payroll/form12bb/2026-2027/download/")
+    response = client.get("/api/v1/me/payroll/form12bb/2026-2027/download/")
 
     assert response.status_code == 200
     assert response["Content-Type"] == "application/pdf"
@@ -742,7 +786,7 @@ def test_my_form12bb_download_returns_400_when_blocked(filing_fixture):
         "apps.approvals.services.get_org_operations_guard",
         return_value={"approval_actions_blocked": True, "reason": "Licence expired."},
     ):
-        response = client.get("/api/me/payroll/form12bb/2026-2027/download/")
+        response = client.get("/api/v1/me/payroll/form12bb/2026-2027/download/")
 
     assert response.status_code == 400
     assert "Licence expired" in response.json()["error"]
@@ -754,7 +798,7 @@ def test_my_form12bb_download_returns_400_when_no_declarations(filing_fixture):
     client = APIClient()
     client.force_authenticate(user=filing_fixture["employee"].user)
 
-    response = client.get("/api/me/payroll/form12bb/2026-2027/download/")
+    response = client.get("/api/v1/me/payroll/form12bb/2026-2027/download/")
 
     assert response.status_code == 400
     assert "No investment declarations found" in response.json()["error"]
@@ -775,7 +819,7 @@ def test_org_form12bb_bulk_download_returns_zip(filing_fixture):
     client.force_authenticate(user=filing_fixture["admin"])
     client.session["active_admin_org_id"] = str(filing_fixture["organisation"].id)
 
-    response = client.get("/api/org/payroll/form12bb/2026-2027/download/")
+    response = client.get("/api/v1/org/payroll/form12bb/2026-2027/download/")
 
     assert response.status_code == 200
     assert response["Content-Type"] == "application/zip"
@@ -798,7 +842,7 @@ def test_org_form12bb_bulk_download_returns_400_when_blocked(filing_fixture):
         "apps.approvals.services.get_org_operations_guard",
         return_value={"approval_actions_blocked": True, "reason": "Licence expired."},
     ):
-        response = client.get("/api/org/payroll/form12bb/2026-2027/download/")
+        response = client.get("/api/v1/org/payroll/form12bb/2026-2027/download/")
 
     assert response.status_code == 400
     assert "Licence expired" in response.json()["error"]

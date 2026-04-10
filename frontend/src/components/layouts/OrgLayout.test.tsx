@@ -156,6 +156,7 @@ describe('OrgLayout', () => {
     expect(screen.queryByText('Job postings')).not.toBeInTheDocument()
     expect(screen.queryByText('Goal cycles')).not.toBeInTheDocument()
     expect(screen.getByText('Payroll Preview')).toBeInTheDocument()
+    expect(screen.getByText('Org chart')).toBeInTheDocument()
 
     await waitFor(() => {
       expect(refreshImpersonation).toHaveBeenCalled()

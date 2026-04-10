@@ -137,14 +137,14 @@ class TestEmployeeWorkflowAssignments:
             employee_code='EMP001',
         )
 
-        response = client.get(f'/api/org/employees/{employee.id}/')
+        response = client.get(f'/api/v1/org/employees/{employee.id}/')
         assert response.status_code == 200
         assert response.data['leave_approval_workflow_id'] is None
         assert response.data['effective_approval_workflows']['leave']['workflow_id'] == str(leave_workflow.id)
         assert response.data['effective_approval_workflows']['leave']['source'] == 'DEFAULT'
 
         patch_response = client.patch(
-            f'/api/org/employees/{employee.id}/',
+            f'/api/v1/org/employees/{employee.id}/',
             {
                 'leave_approval_workflow_id': str(leave_workflow.id),
                 'on_duty_approval_workflow_id': str(od_workflow.id),
@@ -175,7 +175,7 @@ class TestEmployeeWorkflowAssignments:
         )
 
         response = client.post(
-            f'/api/org/employees/{employee.id}/end-employment/',
+            f'/api/v1/org/employees/{employee.id}/end-employment/',
             {
                 'status': EmployeeStatus.RESIGNED,
                 'date_of_exit': '2026-04-30',
@@ -220,7 +220,7 @@ class TestEmployeeWorkflowAssignments:
         ]
 
         task_response = client.patch(
-            f'/api/org/employees/{employee.id}/offboarding/tasks/{tasks[0].id}/',
+            f'/api/v1/org/employees/{employee.id}/offboarding/tasks/{tasks[0].id}/',
             {'status': OffboardingTaskStatus.COMPLETED},
             format='json',
         )
@@ -228,11 +228,11 @@ class TestEmployeeWorkflowAssignments:
         assert task_response.data['completed_required_task_count'] == 1
 
         client.patch(
-            f'/api/org/employees/{employee.id}/offboarding/tasks/{tasks[1].id}/',
+            f'/api/v1/org/employees/{employee.id}/offboarding/tasks/{tasks[1].id}/',
             {'status': OffboardingTaskStatus.WAIVED},
             format='json',
         )
-        complete_response = client.post(f'/api/org/employees/{employee.id}/offboarding/complete/')
+        complete_response = client.post(f'/api/v1/org/employees/{employee.id}/offboarding/complete/')
         assert complete_response.status_code == 200
         assert complete_response.data['status'] == OffboardingProcessStatus.COMPLETED
 
@@ -251,7 +251,7 @@ class TestEmployeeOffboardingSelfService:
         )
         process.tasks.create(code='EXIT_COMMUNICATION', title='Exit communication', owner='EMPLOYEE')
 
-        response = client.get('/api/me/offboarding/')
+        response = client.get('/api/v1/me/offboarding/')
 
         assert response.status_code == 200
         assert response.data['id'] == str(process.id)

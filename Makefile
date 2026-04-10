@@ -1,4 +1,4 @@
-.PHONY: install migrate shell test coverage lint typecheck frontend-install frontend-test frontend-test-coverage e2e e2e-headed check
+.PHONY: install migrate shell test coverage lint typecheck frontend-install frontend-test frontend-test-coverage seed e2e e2e-headed check
 
 DC = docker compose
 BACKEND = backend
@@ -40,7 +40,10 @@ frontend-test:
 frontend-test-coverage:
 	$(DC) exec frontend sh -lc "cd $(FRONTEND_DIR) && npx vitest run --coverage"
 
-e2e:
+seed:
+	$(DC) exec backend /bin/sh -lc "cd $(BACKEND_DIR) && $(MANAGE) seed_control_tower"
+
+e2e: seed
 	$(DC) exec frontend sh -lc "cd $(FRONTEND_DIR) && npx playwright test"
 
 e2e-headed:

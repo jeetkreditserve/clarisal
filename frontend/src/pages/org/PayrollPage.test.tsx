@@ -34,6 +34,7 @@ const useCancelPayrollFiling = vi.fn()
 const useCalculatePayrollRun = vi.fn()
 const useCreateCompensationAssignment = vi.fn()
 const useCreateCompensationTemplate = vi.fn()
+const useCreateCostCentre = vi.fn()
 const useCreateOrgArrear = vi.fn()
 const useCreatePayrollRun = vi.fn()
 const useCreatePayrollTdsChallan = vi.fn()
@@ -43,12 +44,16 @@ const useEmployees = vi.fn()
 const useFinalizePayrollRun = vi.fn()
 const useGeneratePayrollFiling = vi.fn()
 const useOrgArrears = vi.fn()
+const useOrgInvestmentDeclarations = vi.fn()
 const usePayrollSummary = vi.fn()
 const useRegeneratePayrollFiling = vi.fn()
+const useReviewOrgInvestmentDeclaration = vi.fn()
 const useRerunPayrollRun = vi.fn()
 const useSubmitCompensationAssignment = vi.fn()
 const useSubmitCompensationTemplate = vi.fn()
 const useSubmitPayrollRun = vi.fn()
+const useUpdateCostCentre = vi.fn()
+const useDeactivateCostCentre = vi.fn()
 
 vi.mock('sonner', () => ({
   toast: {
@@ -64,6 +69,7 @@ vi.mock('@/hooks/useOrgAdmin', () => ({
   useCalculatePayrollRun: () => useCalculatePayrollRun(),
   useCreateCompensationAssignment: () => useCreateCompensationAssignment(),
   useCreateCompensationTemplate: () => useCreateCompensationTemplate(),
+  useCreateCostCentre: () => useCreateCostCentre(),
   useCreateOrgArrear: () => useCreateOrgArrear(),
   useCreatePayrollRun: () => useCreatePayrollRun(),
   useCreatePayrollTdsChallan: () => useCreatePayrollTdsChallan(),
@@ -73,12 +79,16 @@ vi.mock('@/hooks/useOrgAdmin', () => ({
   useFinalizePayrollRun: () => useFinalizePayrollRun(),
   useGeneratePayrollFiling: () => useGeneratePayrollFiling(),
   useOrgArrears: (...args: unknown[]) => useOrgArrears(...args),
+  useOrgInvestmentDeclarations: (...args: unknown[]) => useOrgInvestmentDeclarations(...args),
   usePayrollSummary: () => usePayrollSummary(),
   useRegeneratePayrollFiling: () => useRegeneratePayrollFiling(),
+  useReviewOrgInvestmentDeclaration: () => useReviewOrgInvestmentDeclaration(),
   useRerunPayrollRun: () => useRerunPayrollRun(),
   useSubmitCompensationAssignment: () => useSubmitCompensationAssignment(),
   useSubmitCompensationTemplate: () => useSubmitCompensationTemplate(),
   useSubmitPayrollRun: () => useSubmitPayrollRun(),
+  useUpdateCostCentre: () => useUpdateCostCentre(),
+  useDeactivateCostCentre: () => useDeactivateCostCentre(),
 }))
 
 function renderPage() {
@@ -101,6 +111,7 @@ describe('PayrollPage', () => {
         ],
         compensation_templates: [],
         compensation_assignments: [],
+        cost_centres: [],
         pay_runs: [],
         statutory_filing_batches: [],
         tds_challans: [],
@@ -109,6 +120,7 @@ describe('PayrollPage', () => {
     })
     useEmployees.mockReturnValue({ data: { results: [] } })
     useOrgArrears.mockReturnValue({ data: [] })
+    useOrgInvestmentDeclarations.mockReturnValue({ data: [] })
 
     for (const hook of [
       useCreateCompensationTemplate,
@@ -126,6 +138,7 @@ describe('PayrollPage', () => {
       useCancelPayrollFiling,
       useDownloadPayrollFiling,
       useDownloadOrgForm12BBBulk,
+      useReviewOrgInvestmentDeclaration,
     ]) {
       hook.mockReturnValue({ isPending: false, mutateAsync: vi.fn().mockResolvedValue(undefined) })
     }

@@ -14,6 +14,8 @@ from .views import (
     OrgForm12BBBulkDownloadView,
     OrgFullAndFinalSettlementDetailView,
     OrgFullAndFinalSettlementListView,
+    OrgInvestmentDeclarationDetailView,
+    OrgInvestmentDeclarationListView,
     OrgPayrollRunCalculateView,
     OrgPayrollRunCalculationStatusView,
     OrgPayrollRunDetailView,
@@ -199,5 +201,20 @@ urlpatterns = [
         "payroll/form12bb/<str:fiscal_year>/download/",
         OrgForm12BBBulkDownloadView.as_view(),
         name="org-form12bb-download",
+    ),
+    path(
+        "payroll/form-12bb/<str:fiscal_year>/download/",
+        OrgForm12BBBulkDownloadView.as_view(),
+        name="org-form-12bb-download",
+    ),
+    path(
+        "payroll/investment-declarations/",
+        OrgInvestmentDeclarationListView.as_view(),
+        name="org-investment-declaration-list",
+    ),
+    path(
+        "payroll/investment-declarations/<uuid:pk>/",
+        OrgInvestmentDeclarationDetailView.as_view(),
+        name="org-investment-declaration-detail",
     ),
 ]

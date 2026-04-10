@@ -44,6 +44,7 @@ export type ApprovalRequestKind =
   | 'LEAVE'
   | 'ON_DUTY'
   | 'ATTENDANCE_REGULARIZATION'
+  | 'EXPENSE_CLAIM'
   | 'PAYROLL_PROCESSING'
   | 'SALARY_REVISION'
   | 'COMPENSATION_TEMPLATE_CHANGE'
@@ -69,6 +70,9 @@ export type BiometricProtocol = 'ZK_ADMS' | 'ESSL_EBIOSERVER' | 'MATRIX_COSEC' |
 export type OffboardingProcessStatus = 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED'
 export type OffboardingTaskStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'WAIVED'
 export type OffboardingTaskOwner = 'ORG_ADMIN' | 'MANAGER' | 'EMPLOYEE' | 'PAYROLL' | 'IT'
+export type AssetCondition = 'NEW' | 'GOOD' | 'FAIR' | 'POOR' | 'DAMAGED'
+export type AssetLifecycleStatus = 'AVAILABLE' | 'ASSIGNED' | 'IN_MAINTENANCE' | 'RETIRED' | 'LOST' | 'RETURNED'
+export type AssetAssignmentStatus = 'ACTIVE' | 'RETURNED' | 'LOST'
 
 export interface LinkedOrganisationAddress {
   id: string
@@ -267,6 +271,21 @@ export interface OffboardingTask {
   completed_by_name: string
 }
 
+export interface OffboardingAssetSummary {
+  active_assignments: number
+  returned_assignments: number
+  has_unresolved: boolean
+  unresolved_assets: Array<{
+    id: string
+    asset_id: string
+    asset_name: string
+    asset_tag: string
+    category_name: string | null
+    assigned_at: string | null
+    expected_return_date: string | null
+  }>
+}
+
 export interface OffboardingProcess {
   id: string
   status: OffboardingProcessStatus
@@ -281,7 +300,70 @@ export interface OffboardingProcess {
   pending_required_task_count: number
   pending_document_requests: number
   has_primary_bank_account: boolean
+  asset_summary: OffboardingAssetSummary
   tasks: OffboardingTask[]
+}
+
+export interface AssetCategory {
+  id: string
+  name: string
+  description: string
+  is_active: boolean
+  created_at: string
+}
+
+export interface AssetItem {
+  id: string
+  name: string
+  asset_tag: string
+  serial_number: string
+  vendor: string
+  category: string | null
+  category_name: string | null
+  purchase_date: string | null
+  purchase_cost: string | null
+  warranty_expiry: string | null
+  condition: AssetCondition
+  lifecycle_status: AssetLifecycleStatus
+  notes: string
+  metadata: Record<string, unknown>
+  current_assignee: {
+    id: string
+    name: string
+    employee_code: string | null
+  } | null
+  created_at: string
+}
+
+export interface AssetAssignment {
+  id: string
+  asset: string
+  asset_name: string
+  asset_tag: string
+  employee: string
+  employee_name: string
+  employee_code: string | null
+  assigned_at: string
+  acknowledged_at: string | null
+  expected_return_date: string | null
+  returned_at: string | null
+  condition_on_issue: AssetCondition
+  condition_on_return: AssetCondition | null
+  status: AssetAssignmentStatus
+  notes: string
+}
+
+export interface AssetMaintenance {
+  id: string
+  asset: string
+  asset_name: string
+  maintenance_type: string
+  description: string
+  scheduled_date: string
+  completed_date: string | null
+  cost: string | null
+  vendor: string
+  notes: string
 }
 
 export type FNFStatus = 'DRAFT' | 'CALCULATED' | 'APPROVED' | 'PAID' | 'CANCELLED'
@@ -1409,6 +1491,23 @@ export interface Payslip {
   snapshot: Record<string, unknown>
   rendered_text: string
   created_at: string
+}
+
+export interface InvestmentDeclaration {
+  id: string
+  employee_id: string
+  employee_name: string
+  fiscal_year: string
+  section: string
+  description: string
+  declared_amount: string
+  proof_file_key: string | null
+  is_verified: boolean
+  verified_by_id: string | null
+  verified_by_name: string | null
+  section_limit: string | null
+  created_at: string
+  modified_at: string
 }
 
 export interface StatutoryFilingBatch {

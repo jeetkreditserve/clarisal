@@ -18,6 +18,7 @@ environ.Env.read_env(os.path.join(BASE_DIR.parent, '.env'))
 SECRET_KEY = env('SECRET_KEY', default='django-insecure-dev-key-change-in-production')
 DEBUG = env('DEBUG')
 ALLOWED_HOSTS = env('ALLOWED_HOSTS')
+API_VERSION = env('API_VERSION', default='v1')
 
 DJANGO_APPS = [
     'django.contrib.admin',
@@ -51,6 +52,7 @@ LOCAL_APPS = [
     'apps.communications',
     'apps.audit',
     'apps.payroll',
+    'apps.expenses',
     'apps.notifications',
     'apps.reports',
     'apps.biometrics',
@@ -181,6 +183,8 @@ CORS_ALLOWED_ORIGINS = env.list(
     ],
 )
 CORS_ALLOW_CREDENTIALS = True
+# CSRF trusted origins are scheme/host/port values only. API path versioning
+# belongs in URL routing, not in this setting.
 CSRF_TRUSTED_ORIGINS = env.list(
     'CSRF_TRUSTED_ORIGINS',
     default=[
@@ -280,6 +284,7 @@ AWS_S3_REGION_NAME = env('AWS_S3_REGION_NAME', default='ap-south-1')
 AWS_S3_SIGNATURE_VERSION = 's3v4'
 AWS_DEFAULT_ACL = 'private'
 AWS_S3_FILE_OVERWRITE = False
+PAYROLL_FILING_ARTIFACT_STORAGE = env('PAYROLL_FILING_ARTIFACT_STORAGE', default='database')
 
 # App config
 FRONTEND_URL = env('FRONTEND_URL', default='http://localhost:8080')

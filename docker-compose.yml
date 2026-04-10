@@ -35,6 +35,8 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      args:
+        INSTALL_DEV_REQUIREMENTS: "true"
     command: ["/bin/sh", "/app/docker/start-web.sh", "python", "manage.py", "runserver", "0.0.0.0:8000"]
     volumes:
       - ./backend:/app
@@ -72,6 +74,8 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      args:
+        INSTALL_DEV_REQUIREMENTS: "true"
     command: celery -A clarisal worker -l info
     volumes:
       - ./backend:/app
@@ -97,6 +101,8 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      args:
+        INSTALL_DEV_REQUIREMENTS: "true"
     command: celery -A clarisal beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
     volumes:
       - ./backend:/app

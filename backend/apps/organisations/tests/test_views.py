@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import json
+from datetime import date
 
 import pytest
 from django.contrib.contenttypes.models import ContentType
@@ -20,6 +21,7 @@ from apps.attendance.models import (
     AttendanceSourceConfig,
     WFHRequest,
 )
+from apps.attendance.services import get_org_attendance_dashboard
 from apps.audit.models import AuditLog
 from apps.departments.models import Department
 from apps.documents.models import Document, EmployeeDocumentRequest, OnboardingDocumentType
@@ -127,13 +129,13 @@ def org(db):
 class TestOrganisationListCreate:
     def test_list_returns_paginated_orgs(self, ct_client, org):
         client, _ = ct_client
-        response = client.get('/api/ct/organisations/')
+        response = client.get('/api/v1/ct/organisations/')
         assert response.status_code == 200
         assert response.data['count'] >= 1
 
     def test_create_org(self, ct_client):
         client, _ = ct_client
-        response = client.post('/api/ct/organisations/', organisation_create_payload(), format='json')
+        response = client.post('/api/v1/ct/organisations/', organisation_create_payload(), format='json')
         assert response.status_code == 201
         assert response.data['name'] == 'New Org'
         assert response.data['status'] == OrganisationStatus.PENDING
@@ -146,7 +148,7 @@ class TestOrganisationListCreate:
 
     def test_create_requires_name(self, ct_client):
         client, _ = ct_client
-        response = client.post('/api/ct/organisations/', {}, format='json')
+        response = client.post('/api/v1/ct/organisations/', {}, format='json')
         assert response.status_code == 400
 
     def test_create_rejects_phone_with_wrong_country_dial_code(self, ct_client):
@@ -154,17 +156,17 @@ class TestOrganisationListCreate:
         payload = organisation_create_payload()
         payload['primary_admin']['phone'] = '+447700900123'
         payload['country_code'] = 'IN'
-        response = client.post('/api/ct/organisations/', payload, format='json')
+        response = client.post('/api/v1/ct/organisations/', payload, format='json')
         assert response.status_code == 400
         assert 'primary_admin' in response.data
 
     def test_create_returns_400_for_duplicate_gstin(self, ct_client):
         client, _ = ct_client
-        first_response = client.post('/api/ct/organisations/', organisation_create_payload(name='Existing Org'), format='json')
+        first_response = client.post('/api/v1/ct/organisations/', organisation_create_payload(name='Existing Org'), format='json')
         assert first_response.status_code == 201
         payload = organisation_create_payload(name='Conflicting Org')
         payload['addresses'][0]['gstin'] = '29ABCDE1234F1Z5'
-        response = client.post('/api/ct/organisations/', payload, format='json')
+        response = client.post('/api/v1/ct/organisations/', payload, format='json')
         assert response.status_code == 400
         assert 'error' in response.data
 
@@ -178,7 +180,7 @@ class TestOrganisationListCreate:
             is_active=True,
         )
 
-        response = client.post('/api/ct/organisations/', organisation_create_payload(name='Shared Person Org'), format='json')
+        response = client.post('/api/v1/ct/organisations/', organisation_create_payload(name='Shared Person Org'), format='json')
 
         assert response.status_code == 201
         organisation = Organisation.objects.get(id=response.data['id'])
@@ -211,14 +213,14 @@ class TestOrganisationListCreate:
             is_primary=True,
         )
 
-        response = client.post('/api/ct/organisations/', payload, format='json')
+        response = client.post('/api/v1/ct/organisations/', payload, format='json')
 
         assert response.status_code == 400
         assert 'error' in response.data
 
     def test_unauthenticated_returns_401(self):
         client = APIClient()
-        response = client.get('/api/ct/organisations/')
+        response = client.get('/api/v1/ct/organisations/')
         assert response.status_code == 403
 
     def test_non_ct_user_returns_403(self, db):
@@ -239,8 +241,8 @@ class TestOrganisationListCreate:
             status=OrganisationMembershipStatus.ACTIVE,
         )
         client = APIClient()
-        client.post('/api/auth/login/', {'email': 'org@test.com', 'password': 'pass'}, format='json')
-        response = client.get('/api/ct/organisations/')
+        client.post('/api/v1/auth/login/', {'email': 'org@test.com', 'password': 'pass'}, format='json')
+        response = client.get('/api/v1/ct/organisations/')
         assert response.status_code == 403
 
 
@@ -248,14 +250,14 @@ class TestOrganisationListCreate:
 class TestOrganisationActivate:
     def test_pending_to_paid(self, ct_client, org):
         client, _ = ct_client
-        response = client.post(f'/api/ct/organisations/{org.id}/activate/')
+        response = client.post(f'/api/v1/ct/organisations/{org.id}/activate/')
         assert response.status_code == 200
         assert response.data['status'] == OrganisationStatus.PAID
 
     def test_invalid_transition_returns_400(self, ct_client, org):
         client, _ = ct_client
         # PENDING cannot go to SUSPENDED
-        response = client.post(f'/api/ct/organisations/{org.id}/suspend/')
+        response = client.post(f'/api/v1/ct/organisations/{org.id}/suspend/')
         assert response.status_code == 400
 
 
@@ -270,7 +272,7 @@ class TestOrganisationProfileUpdate:
             currency='INR',
         )
         response = client.patch(
-            f'/api/ct/organisations/{organisation.id}/',
+            f'/api/v1/ct/organisations/{organisation.id}/',
             {'phone': '+447700900123'},
             format='json',
         )
@@ -283,7 +285,7 @@ class TestLicenceBatchViews:
     def test_org_detail_includes_batch_defaults_and_batches(self, ct_client, org):
         client, _ = ct_client
 
-        response = client.get(f'/api/ct/organisations/{org.id}/')
+        response = client.get(f'/api/v1/ct/organisations/{org.id}/')
 
         assert response.status_code == 200
         assert 'licence_batches' in response.data
@@ -294,7 +296,7 @@ class TestLicenceBatchViews:
         client, _ = ct_client
 
         create_response = client.post(
-            f'/api/ct/organisations/{org.id}/licence-batches/',
+            f'/api/v1/ct/organisations/{org.id}/licence-batches/',
             {
                 'quantity': 5,
                 'price_per_licence_per_month': '99.00',
@@ -311,7 +313,7 @@ class TestLicenceBatchViews:
 
         batch_id = create_response.data['id']
         update_response = client.patch(
-            f'/api/ct/organisations/{org.id}/licence-batches/{batch_id}/',
+            f'/api/v1/ct/organisations/{org.id}/licence-batches/{batch_id}/',
             {
                 'quantity': 6,
                 'price_per_licence_per_month': '109.00',
@@ -323,7 +325,7 @@ class TestLicenceBatchViews:
         assert update_response.data['price_per_licence_per_month'] == '109.00'
 
         pay_response = client.post(
-            f'/api/ct/organisations/{org.id}/licence-batches/{batch_id}/mark-paid/',
+            f'/api/v1/ct/organisations/{org.id}/licence-batches/{batch_id}/mark-paid/',
             {'paid_at': '2026-04-01'},
             format='json',
         )
@@ -339,7 +341,7 @@ class TestCtImpersonationViews:
         client, _ = ct_client
 
         start_response = client.post(
-            f'/api/ct/organisations/{org.id}/act-as/',
+            f'/api/v1/ct/organisations/{org.id}/act-as/',
             {'reason': 'Investigating payroll setup'},
             format='json',
         )
@@ -349,22 +351,22 @@ class TestCtImpersonationViews:
         assert start_response.data['reason'] == 'Investigating payroll setup'
         assert start_response.data['is_active'] is True
 
-        me_response = client.get('/api/auth/me/')
+        me_response = client.get('/api/v1/auth/me/')
         assert me_response.status_code == 200
         assert me_response.data['active_workspace_kind'] == 'ADMIN'
         assert me_response.data['has_org_admin_access'] is True
         assert me_response.data['default_route'] == '/org/dashboard'
         assert me_response.data['impersonation']['organisation_id'] == str(org.id)
 
-        refresh_response = client.post('/api/ct/act-as/refresh/', {}, format='json')
+        refresh_response = client.post('/api/v1/ct/act-as/refresh/', {}, format='json')
         assert refresh_response.status_code == 200
         assert refresh_response.data['organisation_id'] == str(org.id)
 
-        stop_response = client.post('/api/ct/act-as/stop/', {}, format='json')
+        stop_response = client.post('/api/v1/ct/act-as/stop/', {}, format='json')
         assert stop_response.status_code == 200
         assert stop_response.data['is_active'] is False
 
-        me_after_stop = client.get('/api/auth/me/')
+        me_after_stop = client.get('/api/v1/auth/me/')
         assert me_after_stop.status_code == 200
         assert me_after_stop.data['active_workspace_kind'] == 'CONTROL_TOWER'
         assert me_after_stop.data['impersonation'] is None
@@ -372,17 +374,17 @@ class TestCtImpersonationViews:
     def test_impersonating_control_tower_can_read_org_profile_but_cannot_mutate_it(self, ct_client, org):
         client, _ = ct_client
         start_response = client.post(
-            f'/api/ct/organisations/{org.id}/act-as/',
+            f'/api/v1/ct/organisations/{org.id}/act-as/',
             {'reason': 'Reviewing org profile'},
             format='json',
         )
         assert start_response.status_code == 201
 
-        read_response = client.get('/api/org/profile/')
+        read_response = client.get('/api/v1/org/profile/')
         assert read_response.status_code == 200
         assert read_response.data['id'] == str(org.id)
 
-        write_response = client.patch('/api/org/profile/', {'name': 'Mutated Name'}, format='json')
+        write_response = client.patch('/api/v1/org/profile/', {'name': 'Mutated Name'}, format='json')
         assert write_response.status_code == 403
 
     def test_start_impersonation_replaces_existing_active_session(self, ct_client, org):
@@ -395,14 +397,14 @@ class TestCtImpersonationViews:
             access_state=OrganisationAccessState.ACTIVE,
         )
         first_response = client.post(
-            f'/api/ct/organisations/{org.id}/act-as/',
+            f'/api/v1/ct/organisations/{org.id}/act-as/',
             {'reason': 'Initial support session'},
             format='json',
         )
         assert first_response.status_code == 201
 
         second_response = client.post(
-            f'/api/ct/organisations/{second_org.id}/act-as/',
+            f'/api/v1/ct/organisations/{second_org.id}/act-as/',
             {'reason': 'Switching tenants'},
             format='json',
         )
@@ -414,14 +416,14 @@ class TestCtImpersonationViews:
     def test_impersonating_control_tower_blocks_non_whitelisted_ct_writes(self, ct_client, org):
         client, _ = ct_client
         start_response = client.post(
-            f'/api/ct/organisations/{org.id}/act-as/',
+            f'/api/v1/ct/organisations/{org.id}/act-as/',
             {'reason': 'Reviewing a tenant issue'},
             format='json',
         )
         assert start_response.status_code == 201
 
         response = client.post(
-            f'/api/ct/organisations/{org.id}/notes/',
+            f'/api/v1/ct/organisations/{org.id}/notes/',
             {'body': 'This should be blocked while impersonating.'},
             format='json',
         )
@@ -461,14 +463,14 @@ class TestCtImpersonationViews:
             invited_by=ct_user,
         )
         start_response = client.post(
-            f'/api/ct/organisations/{org.id}/act-as/',
+            f'/api/v1/ct/organisations/{org.id}/act-as/',
             {'reason': 'Investigating a locked admin account'},
             format='json',
         )
         assert start_response.status_code == 201
 
         response = client.post(
-            f'/api/ct/organisations/{org.id}/admins/{locked_user.id}/reactivate/',
+            f'/api/v1/ct/organisations/{org.id}/admins/{locked_user.id}/reactivate/',
             {'reason': 'Unlocking the org admin account during support'},
             format='json',
         )
@@ -490,7 +492,7 @@ class TestOrganisationFeatureFlags:
         client, _ = ct_client
 
         response = client.patch(
-            f'/api/ct/organisations/{org.id}/feature-flags/',
+            f'/api/v1/ct/organisations/{org.id}/feature-flags/',
             [{'feature_code': 'REPORTS', 'is_enabled': False}],
             format='json',
         )
@@ -528,14 +530,14 @@ class TestOrganisationFeatureFlags:
         )
 
         client = APIClient()
-        login_response = client.post('/api/auth/login/', {'email': 'flag-admin@test.com', 'password': 'pass123!'}, format='json')
+        login_response = client.post('/api/v1/auth/login/', {'email': 'flag-admin@test.com', 'password': 'pass123!'}, format='json')
         assert login_response.status_code == 200
 
-        me_response = client.get('/api/auth/me/')
+        me_response = client.get('/api/v1/auth/me/')
         assert me_response.status_code == 200
         assert me_response.data['feature_flags']['NOTICES'] is False
 
-        notice_response = client.get('/api/org/notices/')
+        notice_response = client.get('/api/v1/org/notices/')
         assert notice_response.status_code == 403
 
 
@@ -543,7 +545,7 @@ class TestOrganisationFeatureFlags:
 class TestCtOrganisationDetailTabsSupport:
     def test_org_detail_includes_tab_summary_counts(self, ct_client, org):
         client, ct_user = ct_client
-        response = client.get(f'/api/ct/organisations/{org.id}/')
+        response = client.get(f'/api/v1/ct/organisations/{org.id}/')
 
         assert response.status_code == 200
         assert 'admin_count' in response.data
@@ -555,7 +557,7 @@ class TestCtOrganisationDetailTabsSupport:
     def test_org_detail_includes_operations_guard_for_blocked_orgs(self, ct_client, org):
         client, _ = ct_client
 
-        response = client.get(f'/api/ct/organisations/{org.id}/')
+        response = client.get(f'/api/v1/ct/organisations/{org.id}/')
 
         assert response.status_code == 200
         assert response.data['operations_guard'] == {
@@ -572,7 +574,7 @@ class TestCtOrganisationDetailTabsSupport:
         client, ct_user = ct_client
 
         create_response = client.post(
-            f'/api/ct/organisations/{org.id}/notes/',
+            f'/api/v1/ct/organisations/{org.id}/notes/',
             {'body': 'Payment follow-up scheduled with finance.'},
             format='json',
         )
@@ -582,7 +584,7 @@ class TestCtOrganisationDetailTabsSupport:
         assert create_response.data['created_by']['email'] == ct_user.email
         assert OrganisationNote.objects.filter(organisation=org).count() == 1
 
-        list_response = client.get(f'/api/ct/organisations/{org.id}/notes/')
+        list_response = client.get(f'/api/v1/ct/organisations/{org.id}/notes/')
 
         assert list_response.status_code == 200
         assert len(list_response.data) == 1
@@ -609,7 +611,7 @@ class TestCtOrganisationDetailTabsSupport:
             status='ACTIVE',
         )
 
-        response = client.get(f'/api/ct/organisations/{org.id}/employees/')
+        response = client.get(f'/api/v1/ct/organisations/{org.id}/employees/')
 
         assert response.status_code == 200
         assert response.data['count'] == 1
@@ -619,7 +621,7 @@ class TestCtOrganisationDetailTabsSupport:
         assert 'employment_type' not in response.data['results'][0]
         assert 'date_of_joining' not in response.data['results'][0]
 
-        detail_response = client.get(f'/api/ct/organisations/{org.id}/employees/{employee.id}/')
+        detail_response = client.get(f'/api/v1/ct/organisations/{org.id}/employees/{employee.id}/')
         assert detail_response.status_code == 200
         assert detail_response.data['full_name'] == 'Riya Sen'
         assert 'email' not in detail_response.data
@@ -706,7 +708,7 @@ class TestCtOrganisationDetailTabsSupport:
             is_primary=True,
         )
 
-        response = client.get(f'/api/ct/organisations/{org.id}/employees/{employee.id}/')
+        response = client.get(f'/api/v1/ct/organisations/{org.id}/employees/{employee.id}/')
 
         assert response.status_code == 200
         assert response.data == {
@@ -744,7 +746,7 @@ class TestCtOrganisationDetailTabsSupport:
         )
 
         response = client.patch(
-            f'/api/ct/organisations/{org.id}/employees/{employee.id}/',
+            f'/api/v1/ct/organisations/{org.id}/employees/{employee.id}/',
             {'designation': 'Senior Analyst'},
             format='json',
         )
@@ -757,7 +759,7 @@ class TestCtOrganisationDetailTabsSupport:
         client, _ = ct_client
 
         create_response = client.post(
-            f'/api/ct/organisations/{org.id}/holiday-calendars/',
+            f'/api/v1/ct/organisations/{org.id}/holiday-calendars/',
             {
                 'name': 'FY 2026 Calendar',
                 'year': 2026,
@@ -780,14 +782,14 @@ class TestCtOrganisationDetailTabsSupport:
         assert create_response.status_code == 201
         calendar_id = create_response.data['id']
 
-        publish_response = client.post(f'/api/ct/organisations/{org.id}/holiday-calendars/{calendar_id}/publish/')
+        publish_response = client.post(f'/api/v1/ct/organisations/{org.id}/holiday-calendars/{calendar_id}/publish/')
         assert publish_response.status_code == 200
         assert publish_response.data['status'] == 'PUBLISHED'
 
     def test_ct_can_fetch_configuration_snapshot(self, ct_client, org):
         client, _ = ct_client
 
-        response = client.get(f'/api/ct/organisations/{org.id}/configuration/')
+        response = client.get(f'/api/v1/ct/organisations/{org.id}/configuration/')
 
         assert response.status_code == 200
         assert set(response.data.keys()) == {
@@ -833,7 +835,7 @@ class TestCtOrganisationDetailTabsSupport:
             message='No approved compensation assignment is effective for this period.',
         )
 
-        response = client.get(f'/api/ct/organisations/{org.id}/payroll/')
+        response = client.get(f'/api/v1/ct/organisations/{org.id}/payroll/')
 
         assert response.status_code == 200
         assert response.data['payroll_runs'][0] == {
@@ -911,7 +913,7 @@ class TestCtOrganisationDetailTabsSupport:
             status=CompensationAssignmentStatus.PENDING_APPROVAL,
         )
 
-        response = client.get(f'/api/ct/organisations/{org.id}/payroll/')
+        response = client.get(f'/api/v1/ct/organisations/{org.id}/payroll/')
 
         assert response.status_code == 200
         assert response.data['tax_slab_set_count'] == 1
@@ -940,7 +942,7 @@ class TestCtOrganisationDetailTabsSupport:
             object_id=org.id,
         )
 
-        response = client.get(f'/api/ct/organisations/{org.id}/approvals/')
+        response = client.get(f'/api/v1/ct/organisations/{org.id}/approvals/')
 
         assert response.status_code == 200
         assert response.data['workflows_count'] == 1
@@ -999,7 +1001,7 @@ class TestCtOrganisationDetailTabsSupport:
             posted_rows=1,
         )
 
-        response = client.get(f'/api/ct/organisations/{org.id}/attendance/')
+        response = client.get(f'/api/v1/ct/organisations/{org.id}/attendance/')
 
         assert response.status_code == 200
         assert response.data['policy_count'] == 1
@@ -1013,7 +1015,7 @@ class TestCtOrganisationDetailTabsSupport:
     def test_ct_attendance_support_summary_surfaces_setup_gaps(self, ct_client, org):
         client, _ = ct_client
 
-        response = client.get(f'/api/ct/organisations/{org.id}/attendance/')
+        response = client.get(f'/api/v1/ct/organisations/{org.id}/attendance/')
 
         assert response.status_code == 200
         assert 'NO_ACTIVE_ATTENDANCE_SOURCE' in {item['code'] for item in response.data['diagnostics']}
@@ -1043,16 +1045,17 @@ class TestCtOrganisationDetailTabsSupport:
             is_default=True,
             is_active=True,
         )
+        today = date.fromisoformat(get_org_attendance_dashboard(org)['date'])
         WFHRequest.objects.create(
             employee=employee,
-            start_date='2026-04-07',
-            end_date='2026-04-07',
+            start_date=today,
+            end_date=today,
             session='FULL_DAY',
             reason='Remote day',
             status='APPROVED',
         )
 
-        response = client.get(f'/api/ct/organisations/{org.id}/attendance/')
+        response = client.get(f'/api/v1/ct/organisations/{org.id}/attendance/')
 
         assert response.status_code == 200
         assert response.data['today_summary']['wfh_count'] == 1
@@ -1070,7 +1073,7 @@ class TestTenantDataExports:
         monkeypatch.setattr('apps.organisations.views.generate_tenant_data_export.delay', fake_delay)
 
         create_response = client.post(
-            f'/api/ct/organisations/{org.id}/exports/',
+            f'/api/v1/ct/organisations/{org.id}/exports/',
             {'export_type': 'EMPLOYEES'},
             format='json',
         )
@@ -1080,7 +1083,7 @@ class TestTenantDataExports:
         assert create_response.data['status'] == 'REQUESTED'
         assert captured['batch_id'] == create_response.data['id']
 
-        list_response = client.get(f'/api/ct/organisations/{org.id}/exports/')
+        list_response = client.get(f'/api/v1/ct/organisations/{org.id}/exports/')
 
         assert list_response.status_code == 200
         assert list_response.data[0]['id'] == create_response.data['id']
@@ -1116,7 +1119,7 @@ class TestTenantDataExports:
         client.force_authenticate(user=admin_user)
 
         response = client.post(
-            '/api/org/exports/',
+            '/api/v1/org/exports/',
             {'export_type': 'AUDIT_LOG'},
             format='json',
         )
@@ -1170,7 +1173,7 @@ class TestTenantDataExports:
             metadata={'rejection_note': 'Unreadable copy'},
         )
 
-        response = client.get(f'/api/ct/organisations/{org.id}/onboarding-support/')
+        response = client.get(f'/api/v1/ct/organisations/{org.id}/onboarding-support/')
 
         assert response.status_code == 200
         assert response.data['onboarding_status_counts'] == {
@@ -1209,7 +1212,7 @@ class TestCtOrganisationOnboardingProgress:
         OnboardingChecklist.objects.create(organisation=org, step=OnboardingStepCode.ADMINS)
 
         blocked_response = client.post(
-            f'/api/ct/organisations/{org.id}/onboarding/ADMINS/complete/',
+            f'/api/v1/ct/organisations/{org.id}/onboarding/ADMINS/complete/',
             {},
             format='json',
         )
@@ -1235,7 +1238,7 @@ class TestCtOrganisationOnboardingProgress:
         )
 
         allowed_response = client.post(
-            f'/api/ct/organisations/{org.id}/onboarding/ADMINS/complete/',
+            f'/api/v1/ct/organisations/{org.id}/onboarding/ADMINS/complete/',
             {},
             format='json',
         )
@@ -1325,7 +1328,7 @@ class TestCtOrganisationOnboardingProgress:
             status='ACTIVE',
         )
 
-        response = client.post(f'/api/ct/organisations/{org.id}/onboarding/', {}, format='json')
+        response = client.post(f'/api/v1/ct/organisations/{org.id}/onboarding/', {}, format='json')
 
         assert response.status_code == 200
         assert response.data['completed_count'] == 8
@@ -1423,7 +1426,7 @@ class TestCtOrganisationAnalyticsAndBilling:
             metadata={'source': 'unit-test'},
         )
 
-        response = client.get(f'/api/ct/organisations/{org.id}/analytics/')
+        response = client.get(f'/api/v1/ct/organisations/{org.id}/analytics/')
 
         assert response.status_code == 200
         assert response.data['latest'] == {
@@ -1471,13 +1474,13 @@ class TestCtOrganisationAnalyticsAndBilling:
         signature = hmac.new(b'razorpay-test-secret', body, hashlib.sha256).hexdigest()
 
         first_response = client.post(
-            '/api/ct/billing/webhooks/razorpay/',
+            '/api/v1/ct/billing/webhooks/razorpay/',
             data=body,
             content_type='application/json',
             HTTP_X_RAZORPAY_SIGNATURE=signature,
         )
         second_response = client.post(
-            '/api/ct/billing/webhooks/razorpay/',
+            '/api/v1/ct/billing/webhooks/razorpay/',
             data=body,
             content_type='application/json',
             HTTP_X_RAZORPAY_SIGNATURE=signature,
@@ -1523,7 +1526,7 @@ class TestCtOrganisationEditingParity:
             status=OrganisationMembershipStatus.INACTIVE,
         )
 
-        response = client.get(f'/api/ct/organisations/{org.id}/admins/')
+        response = client.get(f'/api/v1/ct/organisations/{org.id}/admins/')
 
         assert response.status_code == 200
         assert {item['membership_status'] for item in response.data} >= {'INVITED', 'INACTIVE'}
@@ -1561,8 +1564,8 @@ class TestCtOrganisationEditingParity:
             invited_by=ct_user,
         )
 
-        deactivate_response = client.post(f'/api/ct/organisations/{org.id}/admins/{secondary.id}/deactivate/')
-        reactivate_response = client.post(f'/api/ct/organisations/{org.id}/admins/{secondary.id}/reactivate/')
+        deactivate_response = client.post(f'/api/v1/ct/organisations/{org.id}/admins/{secondary.id}/deactivate/')
+        reactivate_response = client.post(f'/api/v1/ct/organisations/{org.id}/admins/{secondary.id}/reactivate/')
 
         assert deactivate_response.status_code == 200
         assert deactivate_response.data['membership_status'] == 'INACTIVE'
@@ -1586,7 +1589,7 @@ class TestCtOrganisationEditingParity:
             invited_by=ct_user,
         )
 
-        response = client.post(f'/api/ct/organisations/{org.id}/admins/{pending_user.id}/revoke-pending/')
+        response = client.post(f'/api/v1/ct/organisations/{org.id}/admins/{pending_user.id}/revoke-pending/')
 
         assert response.status_code == 200
         assert response.data['membership_status'] == 'REVOKED'
@@ -1622,12 +1625,12 @@ class TestCtOrganisationEditingParity:
         )
 
         location_response = client.post(
-            f'/api/ct/organisations/{org.id}/locations/',
+            f'/api/v1/ct/organisations/{org.id}/locations/',
             {'name': 'HQ', 'organisation_address_id': str(registered_address.id), 'is_remote': False},
             format='json',
         )
         department_response = client.post(
-            f'/api/ct/organisations/{org.id}/departments/',
+            f'/api/v1/ct/organisations/{org.id}/departments/',
             {'name': 'Engineering', 'description': 'Product engineering'},
             format='json',
         )
@@ -1640,7 +1643,7 @@ class TestCtOrganisationEditingParity:
     def test_ct_can_manage_leave_and_notice_configuration(self, ct_client, org):
         client, _ = ct_client
         cycle_response = client.post(
-            f'/api/ct/organisations/{org.id}/leave-cycles/',
+            f'/api/v1/ct/organisations/{org.id}/leave-cycles/',
             {
                 'name': 'Calendar Year',
                 'cycle_type': 'CALENDAR_YEAR',
@@ -1654,7 +1657,7 @@ class TestCtOrganisationEditingParity:
         assert cycle_response.status_code == 201
 
         plan_response = client.post(
-            f'/api/ct/organisations/{org.id}/leave-plans/',
+            f'/api/v1/ct/organisations/{org.id}/leave-plans/',
             {
                 'leave_cycle_id': cycle_response.data['id'],
                 'name': 'General Plan',
@@ -1675,7 +1678,7 @@ class TestCtOrganisationEditingParity:
             format='json',
         )
         policy_response = client.post(
-            f'/api/ct/organisations/{org.id}/on-duty-policies/',
+            f'/api/v1/ct/organisations/{org.id}/on-duty-policies/',
             {
                 'name': 'Default Policy',
                 'description': '',
@@ -1688,7 +1691,7 @@ class TestCtOrganisationEditingParity:
             format='json',
         )
         workflow_response = client.post(
-            f'/api/ct/organisations/{org.id}/approval-workflows/',
+            f'/api/v1/ct/organisations/{org.id}/approval-workflows/',
             {
                 'name': 'Default Workflow',
                 'description': '',
@@ -1709,7 +1712,7 @@ class TestCtOrganisationEditingParity:
             format='json',
         )
         notice_response = client.post(
-            f'/api/ct/organisations/{org.id}/notices/',
+            f'/api/v1/ct/organisations/{org.id}/notices/',
             {
                 'title': 'Office advisory',
                 'body': 'Quarter-end blackout window',
@@ -1725,7 +1728,7 @@ class TestCtOrganisationEditingParity:
         assert notice_response.status_code == 201
 
         publish_response = client.post(
-            f"/api/ct/organisations/{org.id}/notices/{notice_response.data['id']}/publish/"
+            f"/api/v1/ct/organisations/{org.id}/notices/{notice_response.data['id']}/publish/"
         )
         assert publish_response.status_code == 200
         assert publish_response.data['status'] == 'PUBLISHED'

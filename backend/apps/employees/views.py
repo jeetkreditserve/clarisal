@@ -21,18 +21,25 @@ from .models import (
     EmployeeFamilyMember,
     EmployeeOffboardingProcess,
     EmployeeOffboardingTask,
+    EmployeePromotionEvent,
+    EmployeeTransferEvent,
+    ExitInterview,
+    ExitInterviewQuestion,
+    ExitInterviewTemplate,
 )
 from .repositories import list_employees
 from .serializers import (
     BankAccountSerializer,
     BankAccountWriteSerializer,
-    EducationRecordSerializer,
-    EmergencyContactSerializer,
+    CareerTimelineSerializer,
     CustomFieldDefinitionSerializer,
     CustomFieldDefinitionWriteSerializer,
     CustomFieldValueSerializer,
     DesignationSerializer,
     DesignationWriteSerializer,
+    DirectReportSerializer,
+    EducationRecordSerializer,
+    EmergencyContactSerializer,
     EmployeeDetailSerializer,
     EmployeeEndEmploymentSerializer,
     EmployeeInviteSerializer,
@@ -40,31 +47,53 @@ from .serializers import (
     EmployeeMarkJoinedSerializer,
     EmployeeProfileSerializer,
     EmployeeUpdateSerializer,
+    ExitInterviewSerializer,
+    ExitInterviewTemplateSerializer,
+    ExitInterviewTemplateWriteSerializer,
+    ExitInterviewWriteSerializer,
     FamilyMemberSerializer,
     GovernmentIdSerializer,
     GovernmentIdWriteSerializer,
     OffboardingProcessSerializer,
     OffboardingTaskUpdateSerializer,
     OnboardingBasicDetailsSerializer,
+    OrgChartNodeSerializer,
+    PromotionEventSerializer,
+    PromotionEventWriteSerializer,
+    TransferEventSerializer,
+    TransferEventWriteSerializer,
 )
 from .services import (
+    apply_promotion_event,
+    apply_transfer_event,
+    approve_promotion_event,
+    approve_transfer_event,
+    complete_exit_interview,
     complete_offboarding_process,
     create_bank_account,
     create_education_record,
+    create_exit_interview_template,
     create_or_update_emergency_contact,
     create_or_update_family_member,
+    create_promotion_event,
+    create_transfer_event,
     delete_bank_account,
     delete_education_record,
     delete_emergency_contact,
     delete_employee,
     delete_family_member,
     end_employment,
+    get_employee_career_timeline,
     get_employee_dashboard,
+    get_employee_direct_reports,
     get_onboarding_summary,
+    get_org_chart_tree,
     get_profile_completion,
     invite_employee,
     mark_employee_joined,
+    record_exit_interview_response,
     refresh_employee_onboarding_status,
+    schedule_exit_interview,
     update_bank_account,
     update_education_record,
     update_employee,
@@ -73,6 +102,7 @@ from .services import (
     update_offboarding_task,
     update_onboarding_basics,
     upsert_government_id,
+    validate_org_chart_cycles,
 )
 
 
@@ -679,7 +709,7 @@ class ExitInterviewTemplateListCreateView(APIView):
         organisation = get_active_admin_organisation(request, request.user)
         serializer = ExitInterviewTemplateWriteSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        
+
         template = create_exit_interview_template(
             organisation=organisation,
             name=serializer.validated_data['name'],
@@ -687,7 +717,7 @@ class ExitInterviewTemplateListCreateView(APIView):
             questions=serializer.validated_data.get('questions', []),
             actor=request.user,
         )
-        
+
         return Response(
             ExitInterviewTemplateSerializer(template).data,
             status=status.HTTP_201_CREATED
@@ -713,7 +743,7 @@ class ExitInterviewListCreateView(APIView):
     def get(self, request):
         organisation = get_active_admin_organisation(request, request.user)
         process_id = request.query_params.get('process_id')
-        
+
         if process_id:
             interviews = ExitInterview.objects.filter(
                 process__organisation=organisation,
@@ -723,7 +753,7 @@ class ExitInterviewListCreateView(APIView):
             interviews = ExitInterview.objects.filter(
                 process__organisation=organisation
             )
-        
+
         serializer = ExitInterviewSerializer(interviews, many=True)
         return Response(serializer.data)
 
@@ -731,13 +761,13 @@ class ExitInterviewListCreateView(APIView):
         organisation = get_active_admin_organisation(request, request.user)
         serializer = ExitInterviewWriteSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        
+
         process_id = serializer.validated_data.get('process_id') or request.data.get('process_id')
         process = get_object_or_404(
             EmployeeOffboardingProcess.objects.filter(organisation=organisation),
             id=process_id
         )
-        
+
         template = None
         template_id = serializer.validated_data.get('template_id')
         if template_id:
@@ -745,7 +775,7 @@ class ExitInterviewListCreateView(APIView):
                 ExitInterviewTemplate.objects.filter(organisation=organisation),
                 id=template_id
             )
-        
+
         interview = schedule_exit_interview(
             process=process,
             scheduled_date=serializer.validated_data.get('scheduled_date'),
@@ -753,7 +783,7 @@ class ExitInterviewListCreateView(APIView):
             template=template,
             actor=request.user,
         )
-        
+
         if serializer.validated_data.get('responses'):
             for resp_data in serializer.validated_data['responses']:
                 question = get_object_or_404(ExitInterviewQuestion, id=resp_data['question_id'])
@@ -766,7 +796,7 @@ class ExitInterviewListCreateView(APIView):
                     boolean_value=resp_data.get('boolean_value'),
                     actor=request.user,
                 )
-        
+
         return Response(
             ExitInterviewSerializer(interview).data,
             status=status.HTTP_201_CREATED
@@ -791,10 +821,10 @@ class ExitInterviewDetailView(APIView):
             ExitInterview.objects.filter(process__organisation=organisation),
             id=interview_id
         )
-        
+
         serializer = ExitInterviewWriteSerializer(data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        
+
         if serializer.validated_data.get('responses'):
             for resp_data in serializer.validated_data['responses']:
                 question = get_object_or_404(ExitInterviewQuestion, id=resp_data['question_id'])
@@ -807,7 +837,7 @@ class ExitInterviewDetailView(APIView):
                     boolean_value=resp_data.get('boolean_value'),
                     actor=request.user,
                 )
-        
+
         if serializer.validated_data.get('overall_rating') is not None:
             interview = complete_exit_interview(
                 interview=interview,
@@ -819,7 +849,7 @@ class ExitInterviewDetailView(APIView):
         elif serializer.validated_data.get('notes'):
             interview.notes = serializer.validated_data['notes']
             interview.save(update_fields=['notes', 'modified_at'])
-        
+
         return Response(ExitInterviewSerializer(interview).data)
 
 class OrgChartView(APIView):
@@ -828,7 +858,7 @@ class OrgChartView(APIView):
     def get(self, request):
         organisation = get_active_admin_organisation(request, request.user)
         include_inactive = request.query_params.get('include_inactive', 'false').lower() == 'true'
-        
+
         tree = get_org_chart_tree(organisation, include_inactive=include_inactive)
         serializer = OrgChartNodeSerializer(tree, many=True)
         return Response(serializer.data)
@@ -853,7 +883,7 @@ class EmployeeDirectReportsView(APIView):
             id=employee_id
         )
         include_inactive = request.query_params.get('include_inactive', 'false').lower() == 'true'
-        
+
         direct_reports = get_employee_direct_reports(employee, include_inactive=include_inactive)
         serializer = DirectReportSerializer(direct_reports, many=True)
         return Response(serializer.data)
@@ -864,7 +894,7 @@ class TransferEventListCreateView(APIView):
     def get(self, request):
         organisation = get_active_admin_organisation(request, request.user)
         employee_id = request.query_params.get('employee_id')
-        
+
         if employee_id:
             transfers = EmployeeTransferEvent.objects.filter(
                 employee__organisation=organisation,
@@ -872,7 +902,7 @@ class TransferEventListCreateView(APIView):
             )
         else:
             transfers = EmployeeTransferEvent.objects.filter(employee__organisation=organisation)
-        
+
         transfers = transfers.select_related('employee', 'from_department', 'to_department', 'requested_by', 'approved_by')
         serializer = TransferEventSerializer(transfers, many=True)
         return Response(serializer.data)
@@ -881,26 +911,24 @@ class TransferEventListCreateView(APIView):
         organisation = get_active_admin_organisation(request, request.user)
         serializer = TransferEventWriteSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        
+
         employee = get_object_or_404(
             Employee.objects.filter(organisation=organisation),
             id=serializer.validated_data['employee_id']
         )
-        
+
         to_department = None
         if serializer.validated_data.get('to_department_id'):
-            from departments.models import Department
             to_department = get_object_or_404(Department, id=serializer.validated_data['to_department_id'])
-        
+
         to_location = None
         if serializer.validated_data.get('to_location_id'):
-            from locations.models import OfficeLocation
             to_location = get_object_or_404(OfficeLocation, id=serializer.validated_data['to_location_id'])
-        
+
         to_designation = None
         if serializer.validated_data.get('to_designation_id'):
             to_designation = get_object_or_404(Designation, id=serializer.validated_data['to_designation_id'])
-        
+
         transfer = create_transfer_event(
             employee=employee,
             to_department=to_department,
@@ -910,7 +938,7 @@ class TransferEventListCreateView(APIView):
             reason=serializer.validated_data.get('reason', ''),
             requested_by=request.user,
         )
-        
+
         return Response(
             TransferEventSerializer(transfer).data,
             status=status.HTTP_201_CREATED
@@ -935,9 +963,9 @@ class TransferEventDetailView(APIView):
             EmployeeTransferEvent.objects.filter(employee__organisation=organisation),
             id=transfer_id
         )
-        
+
         action = request.data.get('action')
-        
+
         if action == 'approve':
             notes = request.data.get('notes', '')
             transfer = approve_transfer_event(transfer, approved_by=request.user, notes=notes)
@@ -950,7 +978,7 @@ class TransferEventDetailView(APIView):
         elif action == 'cancel':
             transfer.status = 'CANCELLED'
             transfer.save()
-        
+
         return Response(TransferEventSerializer(transfer).data)
 
 
@@ -960,7 +988,7 @@ class PromotionEventListCreateView(APIView):
     def get(self, request):
         organisation = get_active_admin_organisation(request, request.user)
         employee_id = request.query_params.get('employee_id')
-        
+
         if employee_id:
             promotions = EmployeePromotionEvent.objects.filter(
                 employee__organisation=organisation,
@@ -968,7 +996,7 @@ class PromotionEventListCreateView(APIView):
             )
         else:
             promotions = EmployeePromotionEvent.objects.filter(employee__organisation=organisation)
-        
+
         promotions = promotions.select_related('employee', 'from_designation', 'to_designation', 'requested_by', 'approved_by')
         serializer = PromotionEventSerializer(promotions, many=True)
         return Response(serializer.data)
@@ -977,17 +1005,17 @@ class PromotionEventListCreateView(APIView):
         organisation = get_active_admin_organisation(request, request.user)
         serializer = PromotionEventWriteSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        
+
         employee = get_object_or_404(
             Employee.objects.filter(organisation=organisation),
             id=serializer.validated_data['employee_id']
         )
-        
+
         to_designation = get_object_or_404(
             Designation.objects.filter(organisation=organisation),
             id=serializer.validated_data['to_designation_id']
         )
-        
+
         revised_compensation = None
         if serializer.validated_data.get('revised_compensation_id'):
             from apps.payroll.models import CompensationAssignment
@@ -995,7 +1023,7 @@ class PromotionEventListCreateView(APIView):
                 CompensationAssignment,
                 id=serializer.validated_data['revised_compensation_id']
             )
-        
+
         promotion = create_promotion_event(
             employee=employee,
             to_designation=to_designation,
@@ -1004,7 +1032,7 @@ class PromotionEventListCreateView(APIView):
             reason=serializer.validated_data.get('reason', ''),
             requested_by=request.user,
         )
-        
+
         return Response(
             PromotionEventSerializer(promotion).data,
             status=status.HTTP_201_CREATED
@@ -1029,9 +1057,9 @@ class PromotionEventDetailView(APIView):
             EmployeePromotionEvent.objects.filter(employee__organisation=organisation),
             id=promotion_id
         )
-        
+
         action = request.data.get('action')
-        
+
         if action == 'approve':
             notes = request.data.get('notes', '')
             promotion = approve_promotion_event(promotion, approved_by=request.user, notes=notes)
@@ -1044,7 +1072,7 @@ class PromotionEventDetailView(APIView):
         elif action == 'cancel':
             promotion.status = 'CANCELLED'
             promotion.save()
-        
+
         return Response(PromotionEventSerializer(promotion).data)
 
 
@@ -1057,7 +1085,7 @@ class EmployeeCareerTimelineView(APIView):
             Employee.objects.filter(organisation=organisation),
             id=employee_id
         )
-        
+
         timeline = get_employee_career_timeline(employee)
         serializer = CareerTimelineSerializer(timeline, many=True)
         return Response(serializer.data)

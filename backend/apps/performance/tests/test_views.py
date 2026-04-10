@@ -125,7 +125,7 @@ def test_org_admin_can_create_and_list_goal_cycles(performance_setup):
     client = performance_setup['admin_client']
 
     create_response = client.post(
-        '/api/org/performance/goal-cycles/',
+        '/api/v1/org/performance/goal-cycles/',
         {
             'name': 'Q2 2026',
             'start_date': '2026-04-01',
@@ -133,7 +133,7 @@ def test_org_admin_can_create_and_list_goal_cycles(performance_setup):
         },
         format='json',
     )
-    list_response = client.get('/api/org/performance/goal-cycles/')
+    list_response = client.get('/api/v1/org/performance/goal-cycles/')
 
     assert create_response.status_code == 201
     assert create_response.data['status'] == CycleStatus.DRAFT
@@ -146,7 +146,7 @@ def test_org_admin_can_create_and_list_appraisal_cycles(performance_setup):
     client = performance_setup['admin_client']
 
     create_response = client.post(
-        '/api/org/performance/appraisal-cycles/',
+        '/api/v1/org/performance/appraisal-cycles/',
         {
             'name': 'FY 2026 Appraisal',
             'review_type': ReviewType.SELF,
@@ -155,7 +155,7 @@ def test_org_admin_can_create_and_list_appraisal_cycles(performance_setup):
         },
         format='json',
     )
-    list_response = client.get('/api/org/performance/appraisal-cycles/')
+    list_response = client.get('/api/v1/org/performance/appraisal-cycles/')
 
     assert create_response.status_code == 201
     assert create_response.data['review_type'] == ReviewType.SELF
@@ -182,9 +182,9 @@ def test_employee_can_list_goals_and_update_progress(performance_setup):
         progress_percent=0,
     )
 
-    list_response = client.get('/api/me/performance/goals/')
+    list_response = client.get('/api/v1/me/performance/goals/')
     update_response = client.patch(
-        f'/api/me/performance/goals/{goal.id}/progress/',
+        f'/api/v1/me/performance/goals/{goal.id}/progress/',
         {'progress_percent': 60},
         format='json',
     )
@@ -216,9 +216,9 @@ def test_employee_can_list_reviews_and_submit_owned_review(performance_setup):
         status=ReviewStatus.PENDING,
     )
 
-    list_response = client.get('/api/me/performance/reviews/')
+    list_response = client.get('/api/v1/me/performance/reviews/')
     submit_response = client.post(
-        f'/api/me/performance/reviews/{review.id}/submit/',
+        f'/api/v1/me/performance/reviews/{review.id}/submit/',
         {
             'ratings': {'ownership': 4},
             'comments': 'Delivered the planned work.',

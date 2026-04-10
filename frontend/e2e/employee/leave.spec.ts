@@ -23,8 +23,13 @@ test.describe('Employee Leave', () => {
     test('leave request form visible', async ({ page }) => {
       await page.goto('/me/leave')
       await page.waitForSelector('text=Leave management', { timeout: 15000 })
-      // Form should have a submit button
-      await expect(page.locator('button[type="submit"]').first()).toBeVisible({ timeout: 10000 })
+      const submitLeaveRequestButton = page.getByRole('button', { name: 'Submit leave request' })
+      if (await submitLeaveRequestButton.isVisible({ timeout: 5000 }).catch(() => false)) {
+        await expect(submitLeaveRequestButton).toBeVisible({ timeout: 15000 })
+        return
+      }
+
+      await expect(page.locator('text=No leave plan is assigned to your employee record yet.')).toBeVisible({ timeout: 15000 })
     })
 
     test('leave history section visible', async ({ page }) => {

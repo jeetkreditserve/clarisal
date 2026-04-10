@@ -319,7 +319,7 @@ export function BiometricDevicesPage() {
                 <Fingerprint className="h-4 w-4" />
                 ZK ADMS
               </div>
-              <p className="mt-2">Configure the device to push `ATTLOG` rows to `/api/biometric/adms/iclock/cdata?SN=&lt;serial&gt;`.</p>
+              <p className="mt-2">Configure the device to push `ATTLOG` rows to `/api/v1/biometric/adms/iclock/cdata?SN=&lt;serial&gt;`.</p>
             </div>
             <div className="rounded-[20px] border border-[hsl(var(--border))] bg-[hsl(var(--surface-muted))] px-4 py-3">
               <div className="flex items-center gap-2 font-medium text-[hsl(var(--foreground-strong))]">

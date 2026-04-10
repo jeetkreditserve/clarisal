@@ -1,3 +1,5 @@
+from datetime import date
+
 from django.core.exceptions import PermissionDenied
 from django.db.models import Count, F, Max, Q
 from django.shortcuts import get_object_or_404
@@ -762,7 +764,7 @@ class CtOrganisationAttendanceSupportView(APIView):
         policy_count = AttendancePolicy.objects.filter(organisation=organisation).count()
         source_count = AttendanceSourceConfig.objects.filter(organisation=organisation).count()
         active_source_count = AttendanceSourceConfig.objects.filter(organisation=organisation, is_active=True).count()
-        today = dashboard['date']
+        today = date.fromisoformat(dashboard['date'])
         pending_regularizations = AttendanceRegularizationRequest.objects.filter(
             organisation=organisation,
             status=AttendanceRegularizationStatus.PENDING,

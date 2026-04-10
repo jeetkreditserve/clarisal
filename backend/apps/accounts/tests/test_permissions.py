@@ -111,7 +111,7 @@ def employee_user(organisation):
 class TestAccountPermissions:
     def test_is_org_admin_allows_active_admin_membership(self, request_factory, organisation, org_admin_user):
         request = _attach_session(
-            request_factory.get('/api/org/approvals/workflows/'),
+            request_factory.get('/api/v1/org/approvals/workflows/'),
             active_workspace_kind='ADMIN',
             active_admin_org_id=str(organisation.id),
         )
@@ -128,7 +128,7 @@ class TestAccountPermissions:
             is_active=True,
         )
         request = _attach_session(
-            request_factory.get('/api/org/approvals/workflows/'),
+            request_factory.get('/api/v1/org/approvals/workflows/'),
             active_workspace_kind='ADMIN',
             active_admin_org_id=str(organisation.id),
         )
@@ -140,7 +140,7 @@ class TestAccountPermissions:
         organisation.access_state = OrganisationAccessState.SUSPENDED
         organisation.save(update_fields=['access_state', 'modified_at'])
         request = _attach_session(
-            request_factory.get('/api/org/approvals/workflows/'),
+            request_factory.get('/api/v1/org/approvals/workflows/'),
             active_workspace_kind='ADMIN',
             active_admin_org_id=str(organisation.id),
         )
@@ -150,7 +150,7 @@ class TestAccountPermissions:
 
     def test_org_admin_mutation_allowed_blocks_when_licences_are_expired(self, request_factory, organisation, org_admin_user):
         request = _attach_session(
-            request_factory.post('/api/org/approvals/workflows/'),
+            request_factory.post('/api/v1/org/approvals/workflows/'),
             active_workspace_kind='ADMIN',
             active_admin_org_id=str(organisation.id),
         )
@@ -161,7 +161,7 @@ class TestAccountPermissions:
     def test_org_admin_mutation_allowed_allows_when_paid_batch_is_active(self, request_factory, organisation, org_admin_user):
         _activate_paid_licences(organisation, org_admin_user)
         request = _attach_session(
-            request_factory.post('/api/org/approvals/workflows/'),
+            request_factory.post('/api/v1/org/approvals/workflows/'),
             active_workspace_kind='ADMIN',
             active_admin_org_id=str(organisation.id),
         )
@@ -172,7 +172,7 @@ class TestAccountPermissions:
     def test_approval_actions_allowed_uses_employee_workspace(self, request_factory, organisation, employee_user):
         _activate_paid_licences(organisation, employee_user)
         request = _attach_session(
-            request_factory.post('/api/me/approvals/action/approve/'),
+            request_factory.post('/api/v1/me/approvals/action/approve/'),
             active_workspace_kind='EMPLOYEE',
             active_employee_org_id=str(organisation.id),
         )
@@ -182,7 +182,7 @@ class TestAccountPermissions:
 
     def test_approval_actions_allowed_blocks_employee_workspace_without_paid_licences(self, request_factory, organisation, employee_user):
         request = _attach_session(
-            request_factory.post('/api/me/approvals/action/approve/'),
+            request_factory.post('/api/v1/me/approvals/action/approve/'),
             active_workspace_kind='EMPLOYEE',
             active_employee_org_id=str(organisation.id),
         )

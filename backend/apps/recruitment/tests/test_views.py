@@ -137,7 +137,7 @@ def test_org_admin_can_create_and_list_job_postings(recruitment_api_setup):
     client = recruitment_api_setup['client']
 
     create_response = client.post(
-        '/api/org/recruitment/jobs/',
+        '/api/v1/org/recruitment/jobs/',
         {
             'title': 'Product Designer',
             'description': 'Design internal workflows',
@@ -145,7 +145,7 @@ def test_org_admin_can_create_and_list_job_postings(recruitment_api_setup):
         },
         format='json',
     )
-    list_response = client.get('/api/org/recruitment/jobs/')
+    list_response = client.get('/api/v1/org/recruitment/jobs/')
 
     assert create_response.status_code == 201
     assert create_response.data['status'] == JobPostingStatus.DRAFT
@@ -160,7 +160,7 @@ def test_org_admin_can_filter_applications_by_stage(recruitment_api_setup):
     application.stage = ApplicationStage.INTERVIEW
     application.save(update_fields=['stage', 'modified_at'])
 
-    response = client.get('/api/org/recruitment/applications/', {'stage': ApplicationStage.INTERVIEW})
+    response = client.get('/api/v1/org/recruitment/applications/', {'stage': ApplicationStage.INTERVIEW})
 
     assert response.status_code == 200
     assert len(response.data) == 1
@@ -173,7 +173,7 @@ def test_org_admin_can_advance_application_stage(recruitment_api_setup):
     application = recruitment_api_setup['application']
 
     response = client.post(
-        f'/api/org/recruitment/applications/{application.id}/stage/',
+        f'/api/v1/org/recruitment/applications/{application.id}/stage/',
         {'stage': ApplicationStage.SCREENING},
         format='json',
     )
@@ -191,7 +191,7 @@ def test_org_admin_can_schedule_interview_for_application(recruitment_api_setup)
     interviewer = recruitment_api_setup['interviewer']
 
     response = client.post(
-        f'/api/org/recruitment/applications/{application.id}/interviews/',
+        f'/api/v1/org/recruitment/applications/{application.id}/interviews/',
         {
             'interviewer_id': str(interviewer.id),
             'scheduled_at': '2026-04-15T10:30:00Z',
@@ -214,7 +214,7 @@ def test_org_admin_can_create_offer_letter(recruitment_api_setup):
     application.save(update_fields=['stage', 'modified_at'])
 
     response = client.post(
-        f'/api/org/recruitment/applications/{application.id}/offer/',
+        f'/api/v1/org/recruitment/applications/{application.id}/offer/',
         {
             'ctc_annual': '1450000.00',
             'joining_date': '2026-05-15',
@@ -240,7 +240,7 @@ def test_org_admin_can_accept_offer_and_onboard_candidate(recruitment_api_setup)
         joining_date=date(2026, 5, 15),
     )
 
-    response = client.post(f'/api/org/recruitment/offers/{offer.id}/accept/', format='json')
+    response = client.post(f'/api/v1/org/recruitment/offers/{offer.id}/accept/', format='json')
 
     offer.refresh_from_db()
     application.refresh_from_db()

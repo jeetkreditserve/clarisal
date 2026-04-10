@@ -1,8 +1,15 @@
 from django.urls import path
 
 from .views import (
+    CustomFieldDefinitionDetailView,
+    CustomFieldDefinitionListCreateView,
+    DesignationDetailView,
+    DesignationListCreateView,
+    EmployeeCareerTimelineView,
+    EmployeeCustomFieldValuesView,
     EmployeeDeleteView,
     EmployeeDetailView,
+    EmployeeDirectReportsView,
     EmployeeEndEmploymentView,
     EmployeeListInviteView,
     EmployeeMarkJoinedView,
@@ -10,31 +17,12 @@ from .views import (
     EmployeeOffboardingDetailView,
     EmployeeOffboardingTaskDetailView,
     EmployeeProbationCompleteView,
-)
-
-from .views import (
-    CustomFieldDefinitionDetailView,
-    CustomFieldDefinitionListCreateView,
-    DesignationDetailView,
-    DesignationListCreateView,
-    EmployeeCustomFieldValuesView,
-)
-
-from .views import (
     ExitInterviewDetailView,
     ExitInterviewListCreateView,
     ExitInterviewTemplateDetailView,
     ExitInterviewTemplateListCreateView,
-)
-
-from .views import (
-    EmployeeDirectReportsView,
     OrgChartCyclesView,
     OrgChartView,
-)
-
-from .views import (
-    EmployeeCareerTimelineView,
     PromotionEventDetailView,
     PromotionEventListCreateView,
     TransferEventDetailView,

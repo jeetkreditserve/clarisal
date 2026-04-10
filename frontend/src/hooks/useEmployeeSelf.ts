@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { useAuth } from '@/hooks/useAuth'
+import { acknowledgeMyAssetAssignment, fetchMyAssetAssignments } from '@/lib/api/assets'
 import {
   approveMyApprovalAction,
   createBankAccount,
@@ -8,6 +9,7 @@ import {
   createEmergencyContact,
   createEducation,
   createFamilyMember,
+  createMyInvestmentDeclaration,
   createMyLeaveEncashment,
   createMyLeaveRequest,
   createMyOnDutyRequest,
@@ -15,7 +17,10 @@ import {
   deleteEmergencyContact,
   deleteEducation,
   deleteFamilyMember,
+  deleteMyInvestmentDeclaration,
+  downloadMyForm12BB,
   downloadMyPayslip,
+  downloadMyPayslipsForFiscalYear,
   fetchBankAccounts,
   fetchEducation,
   fetchGovernmentIds,
@@ -30,6 +35,7 @@ import {
   fetchMyDocumentRequests,
   fetchMyDocuments,
   fetchMyEvents,
+  fetchMyInvestmentDeclarations,
   fetchMyLeaveEncashments,
   fetchMyLeaveOverview,
   fetchMyNotices,
@@ -51,6 +57,7 @@ import {
   updateFamilyMember,
   updateMyOnboarding,
   updateMyProfile,
+  updateMyInvestmentDeclaration,
   uploadRequestedDocument,
   uploadMyDocument,
   upsertGovernmentId,
@@ -67,6 +74,21 @@ function useEmployeeScope() {
 export function useMyDashboard() {
   const organisationId = useEmployeeScope()
   return useQuery({ queryKey: ['me', organisationId, 'dashboard'], queryFn: fetchMyDashboard })
+}
+
+export function useMyAssetAssignments() {
+  const organisationId = useEmployeeScope()
+  return useQuery({ queryKey: ['me', organisationId, 'assets'], queryFn: fetchMyAssetAssignments })
+}
+
+export function useAcknowledgeMyAssetAssignment() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: acknowledgeMyAssetAssignment,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['me'] })
+    },
+  })
 }
 
 export function useMyAttendanceSummary() {
@@ -305,9 +327,12 @@ export function useBankAccounts() {
   return useQuery({ queryKey: ['me', organisationId, 'bank-accounts'], queryFn: fetchBankAccounts })
 }
 
-export function useMyPayslips() {
+export function useMyPayslips(params?: { fiscal_year?: string; search?: string }) {
   const organisationId = useEmployeeScope()
-  return useQuery({ queryKey: ['me', organisationId, 'payslips'], queryFn: fetchMyPayslips })
+  return useQuery({
+    queryKey: ['me', organisationId, 'payslips', params],
+    queryFn: () => fetchMyPayslips(params),
+  })
 }
 
 export function useMyPayslip(id: string) {
@@ -322,6 +347,57 @@ export function useMyPayslip(id: string) {
 export function useDownloadMyPayslip() {
   return useMutation({
     mutationFn: downloadMyPayslip,
+  })
+}
+
+export function useDownloadMyPayslipsForFiscalYear() {
+  return useMutation({
+    mutationFn: downloadMyPayslipsForFiscalYear,
+  })
+}
+
+export function useMyInvestmentDeclarations(params?: { fiscal_year?: string }) {
+  const organisationId = useEmployeeScope()
+  return useQuery({
+    queryKey: ['me', organisationId, 'investment-declarations', params],
+    queryFn: () => fetchMyInvestmentDeclarations(params),
+  })
+}
+
+export function useCreateMyInvestmentDeclaration() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: createMyInvestmentDeclaration,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['me'] })
+    },
+  })
+}
+
+export function useUpdateMyInvestmentDeclaration() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Parameters<typeof updateMyInvestmentDeclaration>[1] }) =>
+      updateMyInvestmentDeclaration(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['me'] })
+    },
+  })
+}
+
+export function useDeleteMyInvestmentDeclaration() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: deleteMyInvestmentDeclaration,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['me'] })
+    },
+  })
+}
+
+export function useDownloadMyForm12BB() {
+  return useMutation({
+    mutationFn: downloadMyForm12BB,
   })
 }
 

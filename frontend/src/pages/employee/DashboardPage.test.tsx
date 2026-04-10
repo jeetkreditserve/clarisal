@@ -5,9 +5,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { EmployeeDashboardPage } from '@/pages/employee/DashboardPage'
 
 const useMyDashboard = vi.fn()
+const useMyAttendanceSummary = vi.fn()
 const useMyProfile = vi.fn()
 
 vi.mock('@/hooks/useEmployeeSelf', () => ({
+  useMyAttendanceSummary: () => useMyAttendanceSummary(),
   useMyDashboard: () => useMyDashboard(),
   useMyProfile: () => useMyProfile(),
 }))
@@ -31,6 +33,15 @@ describe('EmployeeDashboardPage', () => {
         },
       },
     })
+    useMyAttendanceSummary.mockReturnValue({
+      data: {
+        today: {
+          status: 'PRESENT',
+          worked_minutes: 480,
+        },
+        pending_regularizations: [],
+      },
+    })
   })
 
   it('renders quick actions, onboarding state, and calendar when dashboard data is loaded', () => {
@@ -44,7 +55,7 @@ describe('EmployeeDashboardPage', () => {
         rejected_documents: 0,
         offboarding: null,
         onboarding_status: 'PENDING',
-        approvals: { items: [] },
+        approvals: { count: 0, items: [] },
         notices: [{ id: 'notice-1', title: 'Office reopening', body: 'Please report by 9 AM.' }],
         calendar: {
           month: '2026-04',
@@ -66,6 +77,8 @@ describe('EmployeeDashboardPage', () => {
     expect(screen.getByText('Quick actions')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Continue onboarding' })).toHaveAttribute('href', '/me/onboarding')
     expect(screen.getByText('No approvals are waiting on you right now.')).toBeInTheDocument()
+    expect(screen.getByText('Today attendance')).toBeInTheDocument()
+    expect(screen.getByText('Pending approvals')).toBeInTheDocument()
     expect(screen.getByText('Month calendar')).toBeInTheDocument()
     expect(screen.getByText('Founders Day')).toBeInTheDocument()
   })
@@ -91,7 +104,7 @@ describe('EmployeeDashboardPage', () => {
           tasks: [{ id: 'task-1', title: 'Return laptop', description: 'Submit device to IT.', status: 'PENDING' }],
         },
         onboarding_status: 'COMPLETE',
-        approvals: { items: [] },
+        approvals: { count: 0, items: [] },
         notices: [],
         calendar: { month: '2026-04', days: [] },
         events: [],

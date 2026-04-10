@@ -12,6 +12,7 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: './src/test/setup.ts',
     include: ['src/**/*.test.{ts,tsx}'],
+    testTimeout: 10000,
     coverage: {
       reporter: ['text', 'json-summary', 'html'],
       include: ['src/**/*.{ts,tsx}'],

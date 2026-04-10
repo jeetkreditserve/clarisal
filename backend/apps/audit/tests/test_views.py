@@ -98,7 +98,7 @@ class TestAuditLogViews:
             },
         )
 
-        response = audit_setup['ct_client'].get(f"/api/ct/audit/?organisation_id={audit_setup['organisation'].id}")
+        response = audit_setup['ct_client'].get(f"/api/v1/ct/audit/?organisation_id={audit_setup['organisation'].id}")
 
         assert response.status_code == 200
         payload = response.data['results'][0]['payload']
@@ -125,7 +125,7 @@ class TestAuditLogViews:
             },
         )
 
-        response = audit_setup['org_admin_client'].get('/api/org/audit/')
+        response = audit_setup['org_admin_client'].get('/api/v1/org/audit/')
 
         assert response.status_code == 200
         payload = response.data['results'][0]['payload']
@@ -154,7 +154,7 @@ class TestAuditLogViews:
             user_agent='Mozilla/5.0 Test Agent',
         )
 
-        response = audit_setup['ct_client'].get(f"/api/ct/audit/?organisation_id={audit_setup['organisation'].id}")
+        response = audit_setup['ct_client'].get(f"/api/v1/ct/audit/?organisation_id={audit_setup['organisation'].id}")
 
         assert response.status_code == 200
         entry = response.data['results'][0]
@@ -173,7 +173,7 @@ class TestAuditLogViews:
             user_agent='Mozilla/5.0 Admin Agent',
         )
 
-        response = audit_setup['org_admin_client'].get('/api/org/audit/')
+        response = audit_setup['org_admin_client'].get('/api/v1/org/audit/')
 
         assert response.status_code == 200
         entry = response.data['results'][0]

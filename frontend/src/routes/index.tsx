@@ -28,13 +28,17 @@ import { GoalCyclesPage } from '@/pages/org/GoalCyclesPage'
 import { AppraisalCyclesPage } from '@/pages/org/AppraisalCyclesPage'
 import { ReportsPage } from '@/pages/org/ReportsPage'
 import { OrgAuditPage } from '@/pages/org/AuditPage'
+import { AssetAssignmentsPage } from '@/pages/org/AssetAssignmentsPage'
+import { AssetsInventoryPage } from '@/pages/org/AssetsInventoryPage'
 import { LocationsPage } from '@/pages/org/LocationsPage'
 import { DepartmentsPage } from '@/pages/org/DepartmentsPage'
 import { AttendanceImportsPage } from '@/pages/org/AttendanceImportsPage'
 import { BiometricDevicesPage } from '@/pages/org/BiometricDevicesPage'
 import { EmployeesPage } from '@/pages/org/EmployeesPage'
 import { EmployeeDetailPage } from '@/pages/org/EmployeeDetailPage'
+import { OrgChartPage } from '@/pages/org/OrgChartPage'
 import { EmployeeDashboardPage } from '@/pages/employee/DashboardPage'
+import { MyAssetsPage } from '@/pages/employee/MyAssetsPage'
 import { AttendancePage } from '@/pages/employee/AttendancePage'
 import { OnboardingPage } from '@/pages/employee/OnboardingPage'
 import { ProfilePage } from '@/pages/employee/ProfilePage'
@@ -44,6 +48,7 @@ import { LeavePage } from '@/pages/employee/LeavePage'
 import { OnDutyPage } from '@/pages/employee/OnDutyPage'
 import { ApprovalsPage } from '@/pages/employee/ApprovalsPage'
 import { PayslipsPage } from '@/pages/employee/PayslipsPage'
+import { TaxDeclarationsPage } from '@/pages/employee/TaxDeclarationsPage'
 import { PerformancePage } from '@/pages/employee/PerformancePage'
 import { HolidaysPage } from '@/pages/org/HolidaysPage'
 import { LeaveCyclesPage } from '@/pages/org/LeaveCyclesPage'
@@ -138,6 +143,8 @@ export const router = createBrowserRouter([
           { path: '/org/profile', element: <OrgProfilePage /> },
           { path: '/org/attendance', element: <AttendanceImportsPage /> },
           { path: '/org/biometric-devices', element: <BiometricDevicesPage /> },
+          { path: '/org/assets', element: <AssetsInventoryPage /> },
+          { path: '/org/assets/assignments', element: <AssetAssignmentsPage /> },
           { path: '/org/payroll', element: <PayrollPage /> },
           { path: '/org/payroll/runs/:id', element: <PayrollRunDetailPage /> },
           { path: '/org/recruitment/jobs', element: <JobPostingsPage /> },
@@ -149,6 +156,7 @@ export const router = createBrowserRouter([
           { path: '/org/locations', element: <LocationsPage /> },
           { path: '/org/departments', element: <DepartmentsPage /> },
           { path: '/org/employees', element: <EmployeesPage /> },
+          { path: '/org/org-chart', element: <OrgChartPage /> },
           { path: '/org/employees/:id', element: <EmployeeDetailPage /> },
           { path: '/org/holidays', element: <HolidaysPage /> },
           { path: '/org/leave-cycles', element: <LeaveCyclesPage /> },
@@ -180,12 +188,14 @@ export const router = createBrowserRouter([
           { path: '/me/onboarding', element: <OnboardingPage /> },
           { path: '/me/dashboard', element: <EmployeeDashboardPage /> },
           { path: '/me/attendance', element: <AttendancePage /> },
+          { path: '/me/assets', element: <MyAssetsPage /> },
           { path: '/me/profile', element: <ProfilePage /> },
           { path: '/me/education', element: <EducationPage /> },
           { path: '/me/documents', element: <DocumentsPage /> },
           { path: '/me/leave', element: <LeavePage /> },
           { path: '/me/od', element: <OnDutyPage /> },
           { path: '/me/payslips', element: <PayslipsPage /> },
+          { path: '/me/tax-declarations', element: <TaxDeclarationsPage /> },
           { path: '/me/performance', element: <PerformancePage /> },
           { path: '/me/approvals', element: <ApprovalsPage /> },
         ],

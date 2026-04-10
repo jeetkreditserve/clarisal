@@ -1,5 +1,5 @@
 import { Outlet, useNavigate } from 'react-router-dom'
-import { CheckSquare, Clock3, FileText, GraduationCap, LayoutDashboard, LogOut, PlaneTakeoff, Target, User } from 'lucide-react'
+import { BriefcaseBusiness, CheckSquare, Clock3, FileText, GraduationCap, LayoutDashboard, LogOut, PlaneTakeoff, Target, User } from 'lucide-react'
 import { SidebarNav, type NavItem } from './SidebarNav'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
 import { useAuth } from '@/hooks/useAuth'
@@ -13,6 +13,8 @@ const navItems: NavItem[] = [
   { label: 'Profile', href: '/me/profile', icon: User },
   { label: 'Education', href: '/me/education', icon: GraduationCap },
   { label: 'Documents', href: '/me/documents', icon: FileText },
+  { label: 'Assets', href: '/me/assets', icon: BriefcaseBusiness },
+  { label: 'Tax Declarations', href: '/me/tax-declarations', icon: FileText },
   { label: 'Attendance', href: '/me/attendance', icon: Clock3 },
   { label: 'Performance', href: '/me/performance', icon: Target },
   { label: 'Leave', href: '/me/leave', icon: LayoutDashboard },

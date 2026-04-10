@@ -1,3 +1,5 @@
+import io
+import zipfile
 
 from celery.result import AsyncResult
 from django.db.models import Count, Q, Sum
@@ -18,13 +20,18 @@ from apps.accounts.permissions import (
 from apps.accounts.workspaces import get_active_admin_organisation, get_active_employee
 from apps.employees.models import Employee, EmployeeStatus
 
-from .filings.payslip_pdf import download_payslip_pdf_response
+from .filings import fiscal_year_bounds
+from .filings.payslip_pdf import (
+    download_payslip_pdf_response,
+    generate_payslip_pdf_bytes,
+)
 from .models import (
     Arrears,
     CompensationAssignment,
     CompensationTemplate,
     CostCentre,
     FullAndFinalSettlement,
+    InvestmentDeclaration,
     LabourWelfareFundRule,
     PayrollRun,
     PayrollRunItem,
@@ -45,6 +52,7 @@ from .serializers import (
     CompensationTemplateSerializer,
     CompensationTemplateWriteSerializer,
     FullAndFinalSettlementSerializer,
+    InvestmentDeclarationReviewSerializer,
     InvestmentDeclarationSerializer,
     InvestmentDeclarationWriteSerializer,
     LabourWelfareFundRuleSerializer,
@@ -134,6 +142,14 @@ def _parse_query_bool(value):
     raise ValueError('Boolean query parameter must be one of true/false, 1/0, yes/no, or on/off.')
 
 
+def _filter_payslips_for_fiscal_year(queryset, fiscal_year):
+    start_date, end_date = fiscal_year_bounds(fiscal_year)
+    return queryset.filter(
+        Q(period_year=start_date.year, period_month__gte=start_date.month)
+        | Q(period_year=end_date.year, period_month__lte=end_date.month)
+    )
+
+
 def _statutory_master_payload(*, state_code=None):
     professional_tax_rules = ProfessionalTaxRule.objects.filter(is_active=True)
     labour_welfare_fund_rules = LabourWelfareFundRule.objects.filter(is_active=True)
@@ -149,16 +165,10 @@ def _statutory_master_payload(*, state_code=None):
     }
 
 
-
-
 class SurchargeRuleSerializer(serializers.ModelSerializer):
     class Meta:
         model = SurchargeRule
         fields = ['id', 'fiscal_year', 'tax_regime', 'income_threshold', 'surcharge_rate_percent', 'effective_from']
-
-
-
-
 
 
 class CostCentreSerializer(serializers.ModelSerializer):
@@ -182,9 +192,6 @@ class CostCentreWriteSerializer(serializers.Serializer):
     gl_code = serializers.CharField(max_length=50, required=False, default='', allow_blank=True)
     parent_id = serializers.UUIDField(required=False, allow_null=True)
     is_active = serializers.BooleanField(default=True)
-
-
-
 
 class OrgCostCentreListCreateView(APIView):
     permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
@@ -782,9 +789,11 @@ class OrgStatutoryFilingBatchDownloadView(APIView):
         organisation = _get_admin_organisation(request)
         batch = get_object_or_404(StatutoryFilingBatch, organisation=organisation, id=pk)
         try:
-            payload, content_type, file_name = download_statutory_filing_batch(batch, actor=request.user)
+            payload, content_type, file_name, download_url = download_statutory_filing_batch(batch, actor=request.user)
         except ValueError as exc:
             return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        if download_url:
+            return Response({'url': download_url, 'content_type': content_type, 'file_name': file_name})
         response = HttpResponse(payload, content_type=content_type or 'application/octet-stream')
         response['Content-Disposition'] = f'attachment; filename="{file_name or "statutory-filing"}"'
         return response
@@ -853,7 +862,14 @@ class MyPayslipListView(APIView):
 
     def get(self, request):
         employee = _get_employee(request)
-        queryset = Payslip.objects.filter(employee=employee)
+        queryset = Payslip.objects.filter(employee=employee).order_by('-period_year', '-period_month', '-created_at')
+        fiscal_year = request.query_params.get('fiscal_year')
+        search = request.query_params.get('search', '').strip()
+
+        if fiscal_year:
+            queryset = _filter_payslips_for_fiscal_year(queryset, fiscal_year)
+        if search:
+            queryset = queryset.filter(slip_number__icontains=search)
         return Response(PayslipSerializer(queryset, many=True).data)
 
 
@@ -882,6 +898,34 @@ class MyPayslipDownloadView(APIView):
         employee = _get_employee(request)
         payslip = get_object_or_404(Payslip, employee=employee, id=pk)
         return download_payslip_pdf_response(payslip)
+
+
+class MyPayslipFiscalYearDownloadView(APIView):
+    permission_classes = [IsEmployee, BelongsToActiveOrg]
+
+    def get(self, request, fiscal_year):
+        employee = _get_employee(request)
+        queryset = _filter_payslips_for_fiscal_year(
+            Payslip.objects.filter(employee=employee).order_by('period_year', 'period_month', 'created_at'),
+            fiscal_year,
+        )
+        if not queryset.exists():
+            return Response(
+                {'error': f'No payslips found for FY {fiscal_year}.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        archive_buffer = io.BytesIO()
+        with zipfile.ZipFile(archive_buffer, mode='w', compression=zipfile.ZIP_DEFLATED) as archive:
+            for payslip in queryset:
+                safe_slip = payslip.slip_number.replace('/', '-')
+                archive.writestr(f'{safe_slip}.pdf', generate_payslip_pdf_bytes(payslip))
+
+        response = HttpResponse(archive_buffer.getvalue(), content_type='application/zip')
+        response['Content-Disposition'] = f'attachment; filename="payslips-{fiscal_year}.zip"'
+        return response
+
+
 class MyForm12BBDownloadView(APIView):
     permission_classes = [IsEmployee, BelongsToActiveOrg]
 
@@ -936,7 +980,7 @@ class OrgForm12BBBulkDownloadView(APIView):
         except Exception:
             pass
 
-        zip_bytes, structured_payloads = generate_form12bb_zip_for_organisation(
+        zip_bytes, _structured_payloads = generate_form12bb_zip_for_organisation(
             organisation,
             fiscal_year=fiscal_year,
             actor=request.user,
@@ -952,12 +996,111 @@ class MyInvestmentDeclarationListCreateView(APIView):
 
     def get(self, request):
         employee = _get_employee(request)
-        queryset = employee.investment_declarations.all()
+        queryset = employee.investment_declarations.select_related('verified_by').all()
+        fiscal_year = request.query_params.get('fiscal_year')
+        if fiscal_year:
+            queryset = queryset.filter(fiscal_year=fiscal_year.replace('/', '-'))
         return Response(InvestmentDeclarationSerializer(queryset, many=True).data)
 
     def post(self, request):
         employee = _get_employee(request)
-        serializer = InvestmentDeclarationWriteSerializer(data=request.data)
+        serializer = InvestmentDeclarationWriteSerializer(data=request.data, context={'employee': employee})
         serializer.is_valid(raise_exception=True)
         declaration = employee.investment_declarations.create(**serializer.validated_data)
         return Response(InvestmentDeclarationSerializer(declaration).data, status=status.HTTP_201_CREATED)
+
+
+class MyInvestmentDeclarationDetailView(APIView):
+    permission_classes = [IsEmployee, BelongsToActiveOrg]
+
+    def get(self, request, pk):
+        employee = _get_employee(request)
+        declaration = get_object_or_404(
+            InvestmentDeclaration.objects.select_related('employee__user', 'verified_by'),
+            employee=employee,
+            id=pk,
+        )
+        return Response(InvestmentDeclarationSerializer(declaration).data)
+
+    def patch(self, request, pk):
+        employee = _get_employee(request)
+        declaration = get_object_or_404(
+            InvestmentDeclaration.objects.select_related('employee__user', 'verified_by'),
+            employee=employee,
+            id=pk,
+        )
+        serializer = InvestmentDeclarationWriteSerializer(
+            declaration,
+            data=request.data,
+            partial=True,
+            context={'employee': employee},
+        )
+        serializer.is_valid(raise_exception=True)
+        for field, value in serializer.validated_data.items():
+            setattr(declaration, field, value)
+        if any(field in serializer.validated_data for field in ('section', 'declared_amount', 'description', 'proof_file_key')):
+            declaration.is_verified = False
+            declaration.verified_by = None
+        declaration.save(update_fields=[*serializer.validated_data.keys(), 'is_verified', 'verified_by', 'modified_at'])
+        return Response(InvestmentDeclarationSerializer(declaration).data)
+
+    def delete(self, request, pk):
+        employee = _get_employee(request)
+        declaration = get_object_or_404(InvestmentDeclaration, employee=employee, id=pk)
+        declaration.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class OrgInvestmentDeclarationListView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+
+    def get(self, request):
+        organisation = _get_admin_organisation(request)
+        queryset = InvestmentDeclaration.objects.filter(employee__organisation=organisation).select_related(
+            'employee__user',
+            'verified_by',
+        )
+
+        employee_id = request.query_params.get('employee_id')
+        fiscal_year = request.query_params.get('fiscal_year')
+        section = request.query_params.get('section')
+        is_verified = request.query_params.get('is_verified')
+
+        if employee_id:
+            queryset = queryset.filter(employee_id=employee_id)
+        if fiscal_year:
+            queryset = queryset.filter(fiscal_year=fiscal_year.replace('/', '-'))
+        if section:
+            queryset = queryset.filter(section=section)
+        if is_verified is not None:
+            queryset = queryset.filter(is_verified=_parse_query_bool(is_verified))
+
+        queryset = queryset.order_by('-fiscal_year', 'employee__user__first_name', 'employee__user__last_name', 'section', '-created_at')
+        return Response(InvestmentDeclarationSerializer(queryset, many=True).data)
+
+
+class OrgInvestmentDeclarationDetailView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
+
+    def get(self, request, pk):
+        organisation = _get_admin_organisation(request)
+        declaration = get_object_or_404(
+            InvestmentDeclaration.objects.select_related('employee__user', 'verified_by'),
+            employee__organisation=organisation,
+            id=pk,
+        )
+        return Response(InvestmentDeclarationSerializer(declaration).data)
+
+    def patch(self, request, pk):
+        organisation = _get_admin_organisation(request)
+        declaration = get_object_or_404(
+            InvestmentDeclaration.objects.select_related('employee__user', 'verified_by'),
+            employee__organisation=organisation,
+            id=pk,
+        )
+        serializer = InvestmentDeclarationReviewSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        declaration.is_verified = serializer.validated_data['is_verified']
+        declaration.verified_by = request.user if declaration.is_verified else None
+        declaration.save(update_fields=['is_verified', 'verified_by', 'modified_at'])
+        return Response(InvestmentDeclarationSerializer(declaration).data)

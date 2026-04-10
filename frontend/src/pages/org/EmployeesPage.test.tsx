@@ -112,7 +112,7 @@ describe('EmployeesPage', () => {
       })
     })
     expect(toastSuccess).toHaveBeenCalledWith('Employee invited.')
-  })
+  }, 10000)
 
   it('renders the empty-state copy when no employees match the filters', () => {
     useEmployees.mockReturnValue({

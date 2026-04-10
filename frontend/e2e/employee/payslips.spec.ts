@@ -3,7 +3,7 @@ import { employeeTest as test, expect } from '../fixtures/auth'
 test.describe('Employee Payslips Preview', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/me/payslips')
-    await expect(page.getByRole('heading', { name: 'Payslips Preview' })).toBeVisible({ timeout: 15000 })
+    await expect(page.getByRole('heading', { name: 'Payslips', exact: true })).toBeVisible({ timeout: 15000 })
   })
 
   test('payslips page renders either an empty state or a slip list', async ({ page }) => {

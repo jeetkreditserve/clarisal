@@ -295,8 +295,8 @@ def test_headcount_attrition_leave_attendance_and_tax_reports_use_current_models
 def test_org_report_view_dispatches_json_and_xlsx_downloads(reports_setup):
     client = reports_setup['client']
 
-    json_response = client.get('/api/org/reports/headcount/')
-    xlsx_response = client.get('/api/org/reports/headcount/', {'file_format': 'xlsx'})
+    json_response = client.get('/api/v1/org/reports/headcount/')
+    xlsx_response = client.get('/api/v1/org/reports/headcount/', {'file_format': 'xlsx'})
 
     assert json_response.status_code == 200
     assert json_response.data['title'] == 'Headcount by Department'

@@ -1048,14 +1048,14 @@ def create_exit_interview_template(
     questions=None,
     actor=None,
 ):
-    from .models import ExitInterviewTemplate, ExitInterviewQuestion
-    
+    from .models import ExitInterviewQuestion, ExitInterviewTemplate
+
     template = ExitInterviewTemplate.objects.create(
         organisation=organisation,
         name=name,
         description=description,
     )
-    
+
     if questions:
         for i, q in enumerate(questions):
             ExitInterviewQuestion.objects.create(
@@ -1066,7 +1066,7 @@ def create_exit_interview_template(
                 order=q.get('order', i),
                 is_required=q.get('is_required', True),
             )
-    
+
     log_audit_event(
         actor,
         'employee.exit_interview.template_created',
@@ -1084,21 +1084,21 @@ def schedule_exit_interview(
     template=None,
     actor=None,
 ):
-    from .models import ExitInterview
-    
+    from .models import ExitInterview, ExitInterviewTemplate
+
     if template is None:
         template = ExitInterviewTemplate.objects.filter(
             organisation=process.organisation,
             is_active=True,
         ).first()
-    
+
     interview = ExitInterview.objects.create(
         process=process,
         template=template,
         stage=stage,
         scheduled_date=scheduled_date,
     )
-    
+
     log_audit_event(
         actor,
         'employee.exit_interview.scheduled',
@@ -1119,7 +1119,7 @@ def record_exit_interview_response(
     actor=None,
 ):
     from .models import ExitInterviewResponse
-    
+
     response, created = ExitInterviewResponse.objects.update_or_create(
         exit_interview=interview,
         question=question,
@@ -1135,13 +1135,13 @@ def record_exit_interview_response(
 
 def complete_exit_interview(interview, notes='', overall_rating=None, conducted_by=None, actor=None):
     from django.utils import timezone
-    
+
     interview.conducted_date = timezone.now()
     interview.notes = notes
     interview.overall_rating = overall_rating
     interview.conducted_by = conducted_by
     interview.save(update_fields=['conducted_date', 'notes', 'overall_rating', 'conducted_by', 'modified_at'])
-    
+
     log_audit_event(
         actor,
         'employee.exit_interview.completed',
@@ -1188,18 +1188,18 @@ def get_exit_interview_summary(interview):
 
 def get_org_chart_tree(organisation, include_inactive=False):
     from .models import Employee, EmployeeStatus
-    
+
     queryset = Employee.objects.filter(organisation=organisation)
     if not include_inactive:
         queryset = queryset.filter(status__in=[EmployeeStatus.ACTIVE, EmployeeStatus.INVITED, EmployeeStatus.PENDING])
-    
+
     employees = list(queryset.select_related('user', 'department', 'designation_ref', 'reporting_to').all())
-    
+
     employee_map = {e.id: e for e in employees}
-    
+
     children_map = {}
     roots = []
-    
+
     for emp in employees:
         manager_id = emp.reporting_to_id
         if manager_id and manager_id in employee_map:
@@ -1208,7 +1208,7 @@ def get_org_chart_tree(organisation, include_inactive=False):
             children_map[manager_id].append(emp)
         else:
             roots.append(emp)
-    
+
     def build_node(emp):
         return {
             'id': str(emp.id),
@@ -1221,57 +1221,57 @@ def get_org_chart_tree(organisation, include_inactive=False):
             'profile_picture': getattr(emp.profile, 'profile_picture', None) if hasattr(emp, 'profile') else None,
             'direct_reports': [build_node(child) for child in sorted(children_map.get(emp.id, []), key=lambda e: e.user.full_name)],
         }
-    
+
     return [build_node(root) for root in sorted(roots, key=lambda e: e.user.full_name)]
 
 
 def get_employee_direct_reports(employee, include_inactive=False):
-    from .models import Employee, EmployeeStatus
-    
+    from .models import EmployeeStatus
+
     queryset = employee.direct_reports
     if not include_inactive:
         queryset = queryset.filter(status__in=[EmployeeStatus.ACTIVE])
-    
+
     return list(queryset.select_related('user', 'department', 'designation_ref').all())
 
 
 def validate_org_chart_cycles(organisation):
     from .models import Employee
-    
+
     employees = Employee.objects.filter(organisation=organisation).exclude(reporting_to=None)
-    
+
     cycles = []
     visited = set()
     rec_stack = set()
-    
+
     def dfs(emp_id, path):
         if emp_id in rec_stack:
             cycle_start = path.index(emp_id)
             cycle = path[cycle_start:] + [emp_id]
             cycles.append([str(e) for e in cycle])
             return True
-        
+
         if emp_id in visited:
             return False
-        
+
         visited.add(emp_id)
         rec_stack.add(emp_id)
         path.append(emp_id)
-        
+
         try:
             emp = Employee.objects.get(id=emp_id)
             if emp.reporting_to_id:
                 dfs(emp.reporting_to_id, path[:])
         except Employee.DoesNotExist:
             pass
-        
+
         rec_stack.discard(emp_id)
         return False
-    
+
     for emp in employees:
         if emp.id not in visited:
             dfs(emp.id, [])
-    
+
     return cycles
 
 
@@ -1285,7 +1285,7 @@ def create_transfer_event(
     requested_by=None,
 ):
     from .models import EmployeeTransferEvent
-    
+
     transfer = EmployeeTransferEvent.objects.create(
         employee=employee,
         from_department=employee.department,
@@ -1299,7 +1299,7 @@ def create_transfer_event(
         requested_by=requested_by,
         status='PENDING',
     )
-    
+
     log_audit_event(
         requested_by,
         'employee.transfer.created',
@@ -1307,19 +1307,46 @@ def create_transfer_event(
         target=transfer,
         payload={'employee_id': str(employee.id), 'effective_date': str(effective_date)},
     )
+
+    try:
+        from apps.approvals.models import ApprovalRequestKind
+        from apps.approvals.services import create_approval_run
+
+        create_approval_run(
+            subject=transfer,
+            request_kind=ApprovalRequestKind.TRANSFER,
+            requester=employee,
+            actor=requested_by,
+            subject_label=f"Transfer: {employee.user.full_name}",
+        )
+    except ValueError:
+        from apps.approvals.services import (
+            create_approval_run,
+            ensure_default_promotion_transfer_workflow,
+        )
+
+        ensure_default_promotion_transfer_workflow(employee.organisation, ApprovalRequestKind.TRANSFER, employee)
+        create_approval_run(
+            subject=transfer,
+            request_kind=ApprovalRequestKind.TRANSFER,
+            requester=employee,
+            actor=requested_by,
+            subject_label=f"Transfer: {employee.user.full_name}",
+        )
+
     return transfer
 
 
 def approve_transfer_event(transfer, approved_by=None, notes=''):
     from django.utils import timezone
-    
+
     transfer.status = 'APPROVED'
     transfer.approved_by = approved_by
     transfer.approved_at = timezone.now()
     if notes:
         transfer.notes = notes
     transfer.save(update_fields=['status', 'approved_by', 'approved_at', 'notes', 'modified_at'])
-    
+
     log_audit_event(
         approved_by,
         'employee.transfer.approved',
@@ -1332,16 +1359,15 @@ def approve_transfer_event(transfer, approved_by=None, notes=''):
 
 def apply_transfer_event(transfer, actor=None):
     from django.utils import timezone
-    from .models import EmployeeTransferEvent
-    
+
     if transfer.status != 'APPROVED':
         raise ValueError('Can only apply approved transfer events')
-    
+
     if transfer.effective_date > timezone.now().date():
         raise ValueError('Transfer effective date has not arrived yet')
-    
+
     employee = transfer.employee
-    
+
     with transaction.atomic():
         if transfer.to_department:
             employee.department = transfer.to_department
@@ -1349,12 +1375,12 @@ def apply_transfer_event(transfer, actor=None):
             employee.office_location = transfer.to_location
         if transfer.to_designation:
             employee.designation_ref = transfer.to_designation
-        
+
         employee.save(update_fields=['department', 'office_location', 'designation_ref', 'modified_at'])
-        
+
         transfer.status = 'EFFECTIVE'
         transfer.save(update_fields=['status', 'modified_at'])
-    
+
     log_audit_event(
         actor,
         'employee.transfer.effective',
@@ -1374,7 +1400,7 @@ def create_promotion_event(
     requested_by=None,
 ):
     from .models import EmployeePromotionEvent
-    
+
     promotion = EmployeePromotionEvent.objects.create(
         employee=employee,
         from_designation=employee.designation_ref,
@@ -1385,7 +1411,7 @@ def create_promotion_event(
         requested_by=requested_by,
         status='PENDING',
     )
-    
+
     log_audit_event(
         requested_by,
         'employee.promotion.created',
@@ -1393,19 +1419,46 @@ def create_promotion_event(
         target=promotion,
         payload={'employee_id': str(employee.id), 'effective_date': str(effective_date)},
     )
+
+    try:
+        from apps.approvals.models import ApprovalRequestKind
+        from apps.approvals.services import create_approval_run
+
+        create_approval_run(
+            subject=promotion,
+            request_kind=ApprovalRequestKind.PROMOTION,
+            requester=employee,
+            actor=requested_by,
+            subject_label=f"Promotion: {employee.user.full_name} to {to_designation.name}",
+        )
+    except ValueError:
+        from apps.approvals.services import (
+            create_approval_run,
+            ensure_default_promotion_transfer_workflow,
+        )
+
+        ensure_default_promotion_transfer_workflow(employee.organisation, ApprovalRequestKind.PROMOTION, employee)
+        create_approval_run(
+            subject=promotion,
+            request_kind=ApprovalRequestKind.PROMOTION,
+            requester=employee,
+            actor=requested_by,
+            subject_label=f"Promotion: {employee.user.full_name} to {to_designation.name}",
+        )
+
     return promotion
 
 
 def approve_promotion_event(promotion, approved_by=None, notes=''):
     from django.utils import timezone
-    
+
     promotion.status = 'APPROVED'
     promotion.approved_by = approved_by
     promotion.approved_at = timezone.now()
     if notes:
         promotion.notes = notes
     promotion.save(update_fields=['status', 'approved_by', 'approved_at', 'notes', 'modified_at'])
-    
+
     log_audit_event(
         approved_by,
         'employee.promotion.approved',
@@ -1418,26 +1471,29 @@ def approve_promotion_event(promotion, approved_by=None, notes=''):
 
 def apply_promotion_event(promotion, actor=None):
     from django.utils import timezone
-    from .models import EmployeePromotionEvent
-    
+
     if promotion.status != 'APPROVED':
         raise ValueError('Can only apply approved promotion events')
-    
+
     if promotion.effective_date > timezone.now().date():
         raise ValueError('Promotion effective date has not arrived yet')
-    
+
     employee = promotion.employee
-    
+
     with transaction.atomic():
         if promotion.to_designation:
             employee.designation = promotion.to_designation.name if hasattr(promotion.to_designation, 'name') else str(promotion.to_designation)
-        
+
         employee.save(update_fields=['designation', 'modified_at'])
-        
+
         if promotion.revised_compensation_assignment is None:
-            from apps.payroll.models import CompensationAssignment, CompensationAssignmentLine, CompensationAssignmentStatus
+            from apps.payroll.models import (
+                CompensationAssignment,
+                CompensationAssignmentLine,
+                CompensationAssignmentStatus,
+            )
             from apps.payroll.services import get_effective_compensation_assignment
-            
+
             current_assignment = get_effective_compensation_assignment(
                 employee, promotion.effective_date
             )
@@ -1466,10 +1522,10 @@ def apply_promotion_event(promotion, actor=None):
                     )
                 promotion.revised_compensation_assignment = revised_assignment
                 promotion.save(update_fields=['revised_compensation_assignment'])
-        
+
         promotion.status = 'EFFECTIVE'
         promotion.save(update_fields=['status', 'modified_at'])
-    
+
     log_audit_event(
         actor,
         'employee.promotion.effective',
@@ -1483,9 +1539,9 @@ def apply_promotion_event(promotion, actor=None):
 def get_employee_career_timeline(employee):
     transfers = list(employee.transfer_events.all().order_by('-effective_date'))
     promotions = list(employee.promotion_events.all().order_by('-effective_date'))
-    
+
     timeline = []
-    
+
     for t in transfers:
         timeline.append({
             'type': 'TRANSFER',
@@ -1502,7 +1558,7 @@ def get_employee_career_timeline(employee):
             'requested_by': t.requested_by.full_name if t.requested_by else None,
             'approved_by': t.approved_by.full_name if t.approved_by else None,
         })
-    
+
     for p in promotions:
         timeline.append({
             'type': 'PROMOTION',
@@ -1516,6 +1572,6 @@ def get_employee_career_timeline(employee):
             'requested_by': p.requested_by.full_name if p.requested_by else None,
             'approved_by': p.approved_by.full_name if p.approved_by else None,
         })
-    
+
     timeline.sort(key=lambda x: x['date'], reverse=True)
     return timeline

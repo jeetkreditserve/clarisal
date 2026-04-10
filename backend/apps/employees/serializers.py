@@ -142,6 +142,7 @@ class OffboardingProcessSerializer(serializers.ModelSerializer):
     has_primary_bank_account = serializers.SerializerMethodField()
     fnf_settlement_id = serializers.SerializerMethodField()
     fnf_status = serializers.SerializerMethodField()
+    asset_summary = serializers.SerializerMethodField()
 
     class Meta:
         model = EmployeeOffboardingProcess
@@ -161,6 +162,7 @@ class OffboardingProcessSerializer(serializers.ModelSerializer):
             'has_primary_bank_account',
             'fnf_settlement_id',
             'fnf_status',
+            'asset_summary',
             'tasks',
         ]
 
@@ -192,6 +194,11 @@ class OffboardingProcessSerializer(serializers.ModelSerializer):
     def get_fnf_status(self, obj):
         fnf_settlement = self._get_fnf_settlement(obj)
         return fnf_settlement.status if fnf_settlement is not None else None
+
+    def get_asset_summary(self, obj):
+        from apps.assets.services import get_employee_asset_summary
+
+        return get_employee_asset_summary(obj.employee)
 
 
 class EmployeeProfileSerializer(serializers.ModelSerializer):
@@ -544,11 +551,11 @@ class ExitInterviewQuestionWriteSerializer(serializers.Serializer):
 class ExitInterviewTemplateSerializer(serializers.ModelSerializer):
     questions = ExitInterviewQuestionSerializer(many=True, read_only=True)
     question_count = serializers.SerializerMethodField()
-    
+
     class Meta:
         model = __import__('apps.employees.models', fromlist=['ExitInterviewTemplate']).ExitInterviewTemplate
         fields = ['id', 'name', 'description', 'is_active', 'questions', 'question_count', 'created_at']
-    
+
     def get_question_count(self, obj):
         return obj.questions.count()
 
@@ -562,7 +569,7 @@ class ExitInterviewTemplateWriteSerializer(serializers.Serializer):
 class ExitInterviewResponseSerializer(serializers.ModelSerializer):
     question_text = serializers.CharField(source='question.question_text', read_only=True)
     question_type = serializers.CharField(source='question.question_type', read_only=True)
-    
+
     class Meta:
         model = __import__('apps.employees.models', fromlist=['ExitInterviewResponse']).ExitInterviewResponse
         fields = ['id', 'question', 'question_text', 'question_type', 'rating_value', 'text_value', 'choice_value', 'boolean_value']
@@ -580,7 +587,7 @@ class ExitInterviewSerializer(serializers.ModelSerializer):
     responses = ExitInterviewResponseSerializer(many=True, read_only=True)
     employee_name = serializers.CharField(source='process.employee.full_name', read_only=True)
     template_name = serializers.CharField(source='template.name', read_only=True)
-    
+
     class Meta:
         model = __import__('apps.employees.models', fromlist=['ExitInterview']).ExitInterview
         fields = [
@@ -612,7 +619,7 @@ class OrgChartNodeSerializer(serializers.Serializer):
     status = serializers.CharField()
     profile_picture = serializers.CharField(allow_null=True)
     direct_reports = serializers.SerializerMethodField()
-    
+
     def get_direct_reports(self, obj):
         return OrgChartNodeSerializer(obj['direct_reports'], many=True).data
 
@@ -621,11 +628,11 @@ class DirectReportSerializer(serializers.ModelSerializer):
     name = serializers.CharField(source='user.full_name')
     designation = serializers.SerializerMethodField()
     department = serializers.CharField(source='department.name', allow_null=True)
-    
+
     class Meta:
         model = __import__('apps.employees.models', fromlist=['Employee']).Employee
         fields = ['id', 'name', 'employee_code', 'designation', 'department', 'status']
-    
+
     def get_designation(self, obj):
         return obj.designation_ref.name if obj.designation_ref else obj.designation
 
@@ -636,7 +643,7 @@ class TransferEventSerializer(serializers.ModelSerializer):
     to_department_name = serializers.CharField(source='to_department.name', read_only=True, allow_null=True)
     requested_by_name = serializers.CharField(source='requested_by.full_name', read_only=True, allow_null=True)
     approved_by_name = serializers.CharField(source='approved_by.full_name', read_only=True, allow_null=True)
-    
+
     class Meta:
         model = __import__('apps.employees.models', fromlist=['EmployeeTransferEvent']).EmployeeTransferEvent
         fields = [
@@ -664,7 +671,7 @@ class PromotionEventSerializer(serializers.ModelSerializer):
     to_designation_name = serializers.CharField(source='to_designation.name', read_only=True, allow_null=True)
     requested_by_name = serializers.CharField(source='requested_by.full_name', read_only=True, allow_null=True)
     approved_by_name = serializers.CharField(source='approved_by.full_name', read_only=True, allow_null=True)
-    
+
     class Meta:
         model = __import__('apps.employees.models', fromlist=['EmployeePromotionEvent']).EmployeePromotionEvent
         fields = [

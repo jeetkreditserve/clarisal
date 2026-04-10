@@ -1,5 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
+import {
+  createAssetAssignment,
+  createAssetCategory,
+  createAssetItem,
+  createAssetMaintenance,
+  fetchAssetAssignments,
+  fetchAssetCategories,
+  fetchAssetItems,
+  fetchAssetMaintenance,
+  markAssetAssignmentLost,
+  returnAssetAssignment,
+} from '@/lib/api/assets'
 import { fetchOrgAuditLogs } from '@/lib/api/audit'
 import { useAuth } from '@/hooks/useAuth'
 import {
@@ -44,8 +56,11 @@ import {
   fetchEmployeeDocuments,
   fetchEmployeeCareerTimeline,
   fetchEmployees,
+  fetchOrgChart,
+  fetchOrgChartCycles,
   fetchOrgFullAndFinalSettlement,
   fetchOrgFullAndFinalSettlements,
+  fetchOrgInvestmentDeclarations,
   fetchOrgArrears,
   fetchHolidayCalendars,
   fetchLeaveCycles,
@@ -98,6 +113,7 @@ import {
   submitCompensationTemplate,
   submitPayrollRun,
   updateCompensationTemplate,
+  updateOrgInvestmentDeclarationReview,
   updateOrgAddress,
   updateOrgProfile,
   updatePayrollTaxSlabSet,
@@ -124,6 +140,100 @@ import {
 function useOrgScope() {
   const { user } = useAuth()
   return user?.organisation_id ?? 'unknown-org'
+}
+
+export function useAssetCategories() {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'asset-categories'],
+    queryFn: fetchAssetCategories,
+  })
+}
+
+export function useCreateAssetCategory() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: createAssetCategory,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useAssetItems(filters?: Parameters<typeof fetchAssetItems>[0]) {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'asset-items', filters],
+    queryFn: () => fetchAssetItems(filters),
+  })
+}
+
+export function useCreateAssetItem() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: createAssetItem,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useAssetAssignments(filters?: Parameters<typeof fetchAssetAssignments>[0]) {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'asset-assignments', filters],
+    queryFn: () => fetchAssetAssignments(filters),
+  })
+}
+
+export function useCreateAssetAssignment() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: createAssetAssignment,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+      queryClient.invalidateQueries({ queryKey: ['me'] })
+    },
+  })
+}
+
+export function useReturnAssetAssignment() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Parameters<typeof returnAssetAssignment>[1] }) => returnAssetAssignment(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+      queryClient.invalidateQueries({ queryKey: ['me'] })
+    },
+  })
+}
+
+export function useMarkAssetAssignmentLost() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Parameters<typeof markAssetAssignmentLost>[1] }) => markAssetAssignmentLost(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useAssetMaintenance() {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'asset-maintenance'],
+    queryFn: fetchAssetMaintenance,
+  })
+}
+
+export function useCreateAssetMaintenance() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: createAssetMaintenance,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
 }
 
 export function useOrgDashboard() {
@@ -292,6 +402,22 @@ export function useEmployees(params?: { status?: string; search?: string; page?:
     queryKey: ['org', organisationId, 'employees', params],
     queryFn: () => fetchEmployees(params),
     enabled,
+  })
+}
+
+export function useOrgChart(includeInactive = false) {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'org-chart', includeInactive],
+    queryFn: () => fetchOrgChart(includeInactive),
+  })
+}
+
+export function useOrgChartCycles() {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'org-chart', 'cycles'],
+    queryFn: fetchOrgChartCycles,
   })
 }
 
@@ -741,6 +867,19 @@ export function usePayrollSummary() {
   })
 }
 
+export function useOrgInvestmentDeclarations(params?: {
+  employee_id?: string
+  fiscal_year?: string
+  section?: string
+  is_verified?: boolean
+}) {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'investment-declarations', params],
+    queryFn: () => fetchOrgInvestmentDeclarations(params),
+  })
+}
+
 export function usePayrollRunDetail(id: string) {
   const organisationId = useOrgScope()
   return useQuery({
@@ -987,6 +1126,18 @@ export function useDownloadPayrollFiling() {
 export function useDownloadOrgForm12BBBulk() {
   return useMutation({
     mutationFn: downloadOrgForm12BBBulk,
+  })
+}
+
+export function useReviewOrgInvestmentDeclaration() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, is_verified }: { id: string; is_verified: boolean }) =>
+      updateOrgInvestmentDeclarationReview(id, { is_verified }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+      queryClient.invalidateQueries({ queryKey: ['me'] })
+    },
   })
 }
 

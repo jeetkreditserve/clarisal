@@ -44,11 +44,11 @@
 > **Audit finding (Gap #18, §4.1):** All API URLs lack a `/api/v1/` prefix. Adding a `/api/v2/` later will require changing URLs across all frontend clients and breaking any external integrations.
 
 - [ ] In `backend/clarisal/urls.py`, wrap all app `include()` calls under a `path('api/v1/', ...)` prefix. Keep the old unversioned paths alive as deprecated aliases returning a `410 Gone` or `301 Redirect` for a transition period — do NOT break existing frontend behaviour.
-- [ ] Update the frontend's API base URL constant in `frontend/src/lib/api/client.ts` (or wherever `axios`/`fetch` base URL is defined) from `/api/` to `/api/v1/`.
+- [x] Update the frontend's API base URL constant in `frontend/src/lib/api/client.ts` (or wherever `axios`/`fetch` base URL is defined) from `/api/` to `/api/v1/`.
 - [ ] Update `CSRF_TRUSTED_ORIGINS` and any hardcoded API paths in frontend test mocks to use the new prefix.
-- [ ] Run the full backend test suite and frontend Vitest suite after the change to catch any missed URL references.
-- [ ] Add a `API_VERSION = "v1"` constant to `settings/base.py` so future version bumps are a one-line change.
-- [ ] Document the versioning policy in `CONTRIBUTING.md`: breaking changes require a new version prefix; additive changes are allowed within a version.
+- [x] Run the full backend test suite and frontend Vitest suite after the change to catch any missed URL references.
+- [x] Add a `API_VERSION = "v1"` constant to `settings/base.py` so future version bumps are a one-line change.
+- [x] Document the versioning policy in `CONTRIBUTING.md`: breaking changes require a new version prefix; additive changes are allowed within a version.
 
 ## Task 2: Add Missing DB Indexes
 

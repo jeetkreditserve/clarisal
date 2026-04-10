@@ -11,6 +11,7 @@ const useDeleteEmployee = vi.fn()
 const useDepartments = vi.fn()
 const useDesignations = vi.fn()
 const useEmployeeDetail = vi.fn()
+const useEmployeeCareerTimeline = vi.fn()
 const useEmployeeDocumentDownload = vi.fn()
 const useEmployeeDocumentRequests = vi.fn()
 const useEmployeeDocuments = vi.fn()
@@ -38,6 +39,7 @@ vi.mock('@/hooks/useOrgAdmin', () => ({
   useDepartments: () => useDepartments(),
   useDesignations: () => useDesignations(),
   useEmployeeDetail: (id: string) => useEmployeeDetail(id),
+  useEmployeeCareerTimeline: (id: string) => useEmployeeCareerTimeline(id),
   useEmployeeDocumentDownload: () => useEmployeeDocumentDownload(),
   useEmployeeDocumentRequests: (id: string) => useEmployeeDocumentRequests(id),
   useEmployeeDocuments: (id: string) => useEmployeeDocuments(id),
@@ -70,6 +72,7 @@ describe('EmployeeDetailPage', () => {
     useDepartments.mockReturnValue({ data: [] })
     useDesignations.mockReturnValue({ data: [{ id: 'des-1', name: 'Engineer', level: 1, is_active: true }] })
     useEmployeeDocumentDownload.mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({ url: 'https://example.com' }) })
+    useEmployeeCareerTimeline.mockReturnValue({ isLoading: false, data: [] })
     useEmployeeDocumentRequests.mockReturnValue({ data: [] })
     useEmployeeDocuments.mockReturnValue({ data: [] })
     useEmployees.mockReturnValue({ data: { results: [] } })
@@ -165,6 +168,22 @@ describe('EmployeeDetailPage', () => {
           pending_required_task_count: 1,
           pending_document_requests: 0,
           has_primary_bank_account: true,
+          asset_summary: {
+            active_assignments: 1,
+            returned_assignments: 0,
+            has_unresolved: true,
+            unresolved_assets: [
+              {
+                id: 'assignment-1',
+                asset_id: 'asset-1',
+                asset_name: 'MacBook Pro',
+                asset_tag: 'LAP-300',
+                category_name: 'Laptops',
+                assigned_at: '2026-05-01T10:00:00Z',
+                expected_return_date: '2026-05-31',
+              },
+            ],
+          },
           tasks: [
             {
               id: 'task-1',
@@ -211,5 +230,37 @@ describe('EmployeeDetailPage', () => {
     await waitFor(() => {
       expect(markProbationComplete).toHaveBeenCalled()
     })
+  })
+
+  it('renders the employee career timeline when career events are available', () => {
+    useEmployeeCareerTimeline.mockReturnValue({
+      isLoading: false,
+      data: [
+        {
+          id: 'promotion-1',
+          type: 'PROMOTION',
+          date: '2026-06-01',
+          status: 'APPROVED',
+          from_department: 'People Operations',
+          to_department: 'People Operations',
+          from_location: 'Registered Office',
+          to_location: 'Registered Office',
+          from_designation: 'Engineer',
+          to_designation: 'Senior Engineer',
+          has_compensation_change: true,
+          reason: 'Strong performance',
+          requested_by: 'Aditi Rao',
+          approved_by: 'Rohan Mehta',
+        },
+      ],
+    })
+
+    renderPage()
+
+    expect(screen.getByText('Career timeline')).toBeInTheDocument()
+    expect(screen.getByText('Promotion')).toBeInTheDocument()
+    expect(screen.getByText(/Engineer → Senior Engineer/)).toBeInTheDocument()
+    expect(screen.getByText('Compensation revision included')).toBeInTheDocument()
+    expect(screen.getByText(/Rohan Mehta/)).toBeInTheDocument()
   })
 })
