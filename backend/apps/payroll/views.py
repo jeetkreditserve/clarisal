@@ -1,6 +1,3 @@
-import json
-
-from .filings.payslip_pdf import download_payslip_pdf_response
 
 from celery.result import AsyncResult
 from django.db.models import Count, Q, Sum
@@ -21,23 +18,24 @@ from apps.accounts.permissions import (
 from apps.accounts.workspaces import get_active_admin_organisation, get_active_employee
 from apps.employees.models import Employee, EmployeeStatus
 
+from .filings.payslip_pdf import download_payslip_pdf_response
 from .models import (
     Arrears,
-    CostCentre,
     CompensationAssignment,
     CompensationTemplate,
+    CostCentre,
     FullAndFinalSettlement,
     LabourWelfareFundRule,
     PayrollRun,
     PayrollRunItem,
     PayrollRunItemStatus,
-    SurchargeRule,
     PayrollTaxSlabSet,
     PayrollTDSChallan,
     Payslip,
     ProfessionalTaxRule,
     StatutoryFilingBatch,
     StatutoryFilingStatus,
+    SurchargeRule,
 )
 from .serializers import (
     ArrearsCreateSerializer,
@@ -53,7 +51,6 @@ from .serializers import (
     PayrollComponentSerializer,
     PayrollRunCalculationStatusSerializer,
     PayrollRunItemDetailSerializer,
-    PayrollRunItemSerializer,
     PayrollRunSerializer,
     PayrollRunWriteSerializer,
     PayrollTaxSlabSetSerializer,
@@ -166,14 +163,14 @@ class SurchargeRuleSerializer(serializers.ModelSerializer):
 class CostCentreSerializer(serializers.ModelSerializer):
     parent_name = serializers.CharField(source='parent.name', read_only=True, allow_null=True)
     children_count = serializers.SerializerMethodField()
-    
+
     class Meta:
         model = CostCentre
         fields = [
             'id', 'code', 'name', 'gl_code', 'parent', 'parent_name',
             'is_active', 'created_at', 'children_count'
         ]
-    
+
     def get_children_count(self, obj):
         return obj.children.filter(is_active=True).count()
 
@@ -194,11 +191,11 @@ class OrgCostCentreListCreateView(APIView):
     def get(self, request):
         organisation = get_active_admin_organisation(request, request.user)
         include_inactive = request.query_params.get('include_inactive', 'false').lower() == 'true'
-        
+
         queryset = CostCentre.objects.filter(organisation=organisation)
         if not include_inactive:
             queryset = queryset.filter(is_active=True)
-        
+
         queryset = queryset.select_related('parent').order_by('code')
         serializer = CostCentreSerializer(queryset, many=True)
         return Response(serializer.data)
@@ -207,14 +204,14 @@ class OrgCostCentreListCreateView(APIView):
         organisation = get_active_admin_organisation(request, request.user)
         serializer = CostCentreWriteSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        
+
         parent = None
         if serializer.validated_data.get('parent_id'):
             parent = CostCentre.objects.filter(
                 organisation=organisation,
                 id=serializer.validated_data['parent_id']
             ).first()
-        
+
         cost_centre = CostCentre.objects.create(
             organisation=organisation,
             code=serializer.validated_data['code'],
@@ -223,7 +220,7 @@ class OrgCostCentreListCreateView(APIView):
             parent=parent,
             is_active=serializer.validated_data.get('is_active', True),
         )
-        
+
         return Response(
             CostCentreSerializer(cost_centre).data,
             status=status.HTTP_201_CREATED
@@ -248,10 +245,10 @@ class OrgCostCentreDetailView(APIView):
             CostCentre.objects.filter(organisation=organisation),
             id=cost_centre_id
         )
-        
+
         serializer = CostCentreWriteSerializer(data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        
+
         if 'code' in serializer.validated_data:
             cost_centre.code = serializer.validated_data['code']
         if 'name' in serializer.validated_data:
@@ -268,9 +265,9 @@ class OrgCostCentreDetailView(APIView):
                 ).first()
             else:
                 cost_centre.parent = None
-        
+
         cost_centre.save()
-        
+
         return Response(CostCentreSerializer(cost_centre).data)
 
     def delete(self, request, cost_centre_id):
@@ -279,10 +276,10 @@ class OrgCostCentreDetailView(APIView):
             CostCentre.objects.filter(organisation=organisation),
             id=cost_centre_id
         )
-        
+
         cost_centre.is_active = False
         cost_centre.save()
-        
+
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -292,13 +289,13 @@ class CtSurchargeRuleListView(APIView):
     def get(self, request):
         fiscal_year = request.query_params.get('fiscal_year')
         tax_regime = request.query_params.get('tax_regime')
-        
+
         queryset = SurchargeRule.objects.all()
         if fiscal_year:
             queryset = queryset.filter(fiscal_year=fiscal_year)
         if tax_regime:
             queryset = queryset.filter(tax_regime=tax_regime.upper())
-        
+
         queryset = queryset.order_by('fiscal_year', 'tax_regime', 'income_threshold')
         serializer = SurchargeRuleSerializer(queryset, many=True)
         return Response(serializer.data)

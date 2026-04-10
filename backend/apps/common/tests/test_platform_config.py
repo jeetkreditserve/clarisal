@@ -1,7 +1,5 @@
 from types import SimpleNamespace
 
-import pytest
-
 from clarisal.settings.base import configure_optional_sentry
 
 
