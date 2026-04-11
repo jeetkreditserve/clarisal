@@ -12,7 +12,9 @@ import { SkeletonPageHeader, SkeletonTable } from '@/components/ui/Skeleton'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import {
   useDownloadPayslipPdf,
+  useDownloadPayrollRunPayslipsZip,
   useFinalizePayrollRun,
+  useNotifyPayrollRunPayslips,
   usePayrollRunDetail,
   usePayrollRunItems,
   useRerunPayrollRun,
@@ -30,6 +32,19 @@ function getStatusBadgeTone(status: string) {
 function getPeriodLabel(month: number, year: number) {
   const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
   return `${monthNames[month - 1]} ${year}`
+}
+
+const PAYROLL_RUN_ITEMS_PAGE_SIZE = 20
+
+function triggerDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  document.body.appendChild(anchor)
+  anchor.click()
+  document.body.removeChild(anchor)
+  URL.revokeObjectURL(url)
 }
 
 function ExpandedRow({ item }: { item: PayrollRunItem }) {
@@ -169,12 +184,18 @@ function PayslipPreviewModal({
 
 function ItemTableRow({
   item,
-  showPreview,
+  canDownloadPayslip,
   onPreview,
+  isSelected,
+  selectable,
+  onToggleSelected,
 }: {
   item: PayrollRunItem
-  showPreview: boolean
+  canDownloadPayslip: boolean
   onPreview: (item: PayrollRunItem) => void
+  isSelected: boolean
+  selectable: boolean
+  onToggleSelected: (itemId: string, checked: boolean) => void
 }) {
   const [expanded, setExpanded] = useState(false)
   const downloadPdfMutation = useDownloadPayslipPdf()
@@ -182,14 +203,7 @@ function ItemTableRow({
   const handleDownloadPayslip = async () => {
     try {
       const result = await downloadPdfMutation.mutateAsync(item.id)
-      const url = URL.createObjectURL(result.blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = result.filename
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
+      triggerDownload(result.blob, result.filename)
     } catch (err) {
       toast.error(getErrorMessage(err))
     }
@@ -200,6 +214,14 @@ function ItemTableRow({
       <tr className="border-b border-[hsl(var(--border))] transition-colors hover:bg-[hsl(var(--muted)/0.3)]">
         <td className="px-4 py-3">
           <div className="flex items-center gap-2">
+            {selectable ? (
+              <input
+                type="checkbox"
+                aria-label={`Select ${item.employee_name}`}
+                checked={isSelected}
+                onChange={(event) => onToggleSelected(item.id, event.target.checked)}
+              />
+            ) : null}
             <button
               type="button"
               onClick={() => setExpanded((e) => !e)}
@@ -229,27 +251,29 @@ function ItemTableRow({
         <td className="px-4 py-3 text-right font-bold tabular-nums text-[hsl(var(--foreground-strong))]">{formatINR(item.net_pay)}</td>
         <td className="px-4 py-3 text-right">
           <div className="flex items-center justify-end gap-1.5">
-            {showPreview && (
-              <button
-                type="button"
-                onClick={() => onPreview(item)}
-                className="btn-secondary flex h-8 items-center gap-1 px-2 text-xs"
-                title="Preview payslip"
-              >
-                <Eye className="h-3.5 w-3.5" />
-                Preview
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={handleDownloadPayslip}
-              disabled={downloadPdfMutation.isPending}
-              className="btn-secondary flex h-8 items-center gap-1 px-2 text-xs"
-              title="Download payslip"
-            >
-              <Download className="h-3.5 w-3.5" />
-              PDF
-            </button>
+            {canDownloadPayslip ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => onPreview(item)}
+                  className="btn-secondary flex h-8 items-center gap-1 px-2 text-xs"
+                  title="Preview payslip"
+                >
+                  <Eye className="h-3.5 w-3.5" />
+                  Preview
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDownloadPayslip}
+                  disabled={downloadPdfMutation.isPending}
+                  className="btn-secondary flex h-8 items-center gap-1 px-2 text-xs"
+                  title="Download payslip"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  PDF
+                </button>
+              </>
+            ) : null}
           </div>
         </td>
       </tr>
@@ -270,12 +294,20 @@ export function PayrollRunDetailPage() {
   const runId = id ?? ''
 
   const { data: run, isLoading: runLoading } = usePayrollRunDetail(runId)
-  const { data: itemsData, isLoading: itemsLoading } = usePayrollRunItems(runId)
   const submitRunMutation = useSubmitPayrollRun()
   const finalizeRunMutation = useFinalizePayrollRun()
   const rerunMutation = useRerunPayrollRun()
+  const downloadSelectedPayslipsMutation = useDownloadPayrollRunPayslipsZip()
+  const notifySelectedPayslipsMutation = useNotifyPayrollRunPayslips()
   const [showExceptionsOnly, setShowExceptionsOnly] = useState(false)
+  const [itemPage, setItemPage] = useState(1)
   const [previewItem, setPreviewItem] = useState<PayrollRunItem | null>(null)
+  const [selectedItemIds, setSelectedItemIds] = useState<string[]>([])
+  const itemQueryParams = {
+    page: itemPage,
+    ...(showExceptionsOnly ? { has_exception: true } : {}),
+  }
+  const { data: itemsData, isLoading: itemsLoading } = usePayrollRunItems(runId, itemQueryParams)
 
   const handleSubmit = async () => {
     try {
@@ -305,6 +337,31 @@ export function PayrollRunDetailPage() {
     }
   }
 
+  const handleDownloadSelectedPayslips = async () => {
+    try {
+      const result = await downloadSelectedPayslipsMutation.mutateAsync({
+        runId,
+        item_ids: selectedItemIds,
+      })
+      triggerDownload(result.blob, result.filename)
+      toast.success('Selected payslips downloaded.')
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+    }
+  }
+
+  const handleNotifySelectedPayslips = async () => {
+    try {
+      await notifySelectedPayslipsMutation.mutateAsync({
+        runId,
+        item_ids: selectedItemIds,
+      })
+      toast.success('Selected payslip notices sent.')
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+    }
+  }
+
   if (runLoading) {
     return (
       <div className="space-y-6">
@@ -328,11 +385,21 @@ export function PayrollRunDetailPage() {
     )
   }
 
-  const items = itemsData?.results ?? []
-  const displayedItems = showExceptionsOnly ? items.filter((i) => i.status === 'EXCEPTION') : items
-  const totalItems = itemsData?.count ?? items.length
-  const exceptionCount = items.filter((i) => i.status === 'EXCEPTION').length
+  const displayedItems = itemsData?.results ?? []
+  const totalItems = itemsData?.count ?? displayedItems.length
+  const exceptionCount = run.exception_count ?? displayedItems.filter((i) => i.status === 'EXCEPTION').length
   const periodLabel = getPeriodLabel(run.period_month, run.period_year)
+  const canBulkManagePayslips = run.status === 'FINALIZED' && displayedItems.length > 0
+  const allDisplayedSelected = displayedItems.length > 0 && displayedItems.every((item) => selectedItemIds.includes(item.id))
+  const pageStart = totalItems === 0 ? 0 : (itemPage - 1) * PAYROLL_RUN_ITEMS_PAGE_SIZE + 1
+  const pageEnd = totalItems === 0 ? 0 : pageStart + displayedItems.length - 1
+  const hasPagination = Boolean(itemsData?.next || itemsData?.previous || itemPage > 1)
+
+  function toggleExceptionFilter() {
+    setShowExceptionsOnly((current) => !current)
+    setItemPage(1)
+    setSelectedItemIds([])
+  }
 
   return (
     <div className="space-y-6">
@@ -368,14 +435,31 @@ export function PayrollRunDetailPage() {
               />
             )}
             {run.status === 'FINALIZED' && (
-              <ConfirmDialog
-                trigger={<button type="button" className="btn-secondary">Create Rerun</button>}
-                title="Create payroll rerun?"
-                description="This will create a new draft run for the same period."
-                confirmLabel="Create rerun"
-                variant="primary"
-                onConfirm={() => void handleRerun()}
-              />
+              <>
+                {selectedItemIds.length ? (
+                  <>
+                    <button type="button" className="btn-secondary" onClick={() => void handleDownloadSelectedPayslips()}>
+                      Download selected payslips
+                    </button>
+                    <ConfirmDialog
+                      trigger={<button type="button" className="btn-secondary">Send selected payslip notices</button>}
+                      title="Send selected payslip notices?"
+                      description="Each selected employee will receive the standard payslip-ready notification and email again."
+                      confirmLabel="Send selected"
+                      variant="primary"
+                      onConfirm={() => void handleNotifySelectedPayslips()}
+                    />
+                  </>
+                ) : null}
+                <ConfirmDialog
+                  trigger={<button type="button" className="btn-secondary">Create Rerun</button>}
+                  title="Create payroll rerun?"
+                  description="This will create a new draft run for the same period."
+                  confirmLabel="Create rerun"
+                  variant="primary"
+                  onConfirm={() => void handleRerun()}
+                />
+              </>
             )}
           </div>
         }
@@ -440,13 +524,37 @@ export function PayrollRunDetailPage() {
           {exceptionCount > 0 && (
             <button
               type="button"
-              onClick={() => setShowExceptionsOnly((s) => !s)}
+              onClick={toggleExceptionFilter}
               className="btn-secondary text-xs"
             >
               {showExceptionsOnly ? 'Show all' : 'Show exceptions only'}
             </button>
           )}
         </div>
+
+        {canBulkManagePayslips ? (
+          <div className="mb-4 flex flex-wrap items-center gap-3">
+            <label className="flex items-center gap-2 text-sm text-[hsl(var(--muted-foreground))]">
+              <input
+                type="checkbox"
+                aria-label="Select all displayed payslips"
+                checked={allDisplayedSelected}
+                onChange={(event) =>
+                  setSelectedItemIds((current) => {
+                    if (!event.target.checked) {
+                      return current.filter((id) => !displayedItems.some((item) => item.id === id))
+                    }
+                    return Array.from(new Set([...current, ...displayedItems.map((item) => item.id)]))
+                  })
+                }
+              />
+              Select all displayed payslips
+            </label>
+            {selectedItemIds.length ? (
+              <span className="text-sm text-[hsl(var(--muted-foreground))]">{selectedItemIds.length} selected</span>
+            ) : null}
+          </div>
+        ) : null}
 
         {itemsLoading ? (
           <SkeletonTable rows={10} />
@@ -474,8 +582,15 @@ export function PayrollRunDetailPage() {
                   <ItemTableRow
                     key={item.id}
                     item={item}
-                    showPreview={run.status === 'APPROVED'}
+                    canDownloadPayslip={run.status === 'FINALIZED'}
                     onPreview={setPreviewItem}
+                    isSelected={selectedItemIds.includes(item.id)}
+                    selectable={canBulkManagePayslips}
+                    onToggleSelected={(itemId, checked) =>
+                      setSelectedItemIds((current) =>
+                        checked ? Array.from(new Set([...current, itemId])) : current.filter((id) => id !== itemId),
+                      )
+                    }
                   />
                 ))}
               </tbody>
@@ -485,9 +600,36 @@ export function PayrollRunDetailPage() {
 
         {itemsData?.next && (
           <p className="mt-3 text-center text-sm text-[hsl(var(--muted-foreground))]">
-            Showing {items.length} of {itemsData.count} items. Full list available via export.
+            More items are available on the next page.
           </p>
         )}
+
+        {hasPagination ? (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[hsl(var(--border))] pt-4">
+            <p className="text-sm text-[hsl(var(--muted-foreground))]">
+              Showing {pageStart}-{pageEnd} of {totalItems} {showExceptionsOnly ? 'exception items' : 'items'}
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="btn-secondary text-xs"
+                disabled={!itemsData?.previous || itemPage <= 1}
+                onClick={() => setItemPage((current) => Math.max(1, current - 1))}
+              >
+                Previous page
+              </button>
+              <span className="text-xs font-medium text-[hsl(var(--muted-foreground))]">Page {itemPage}</span>
+              <button
+                type="button"
+                className="btn-secondary text-xs"
+                disabled={!itemsData?.next}
+                onClick={() => setItemPage((current) => current + 1)}
+              >
+                Next page
+              </button>
+            </div>
+          </div>
+        ) : null}
       </SectionCard>
 
       {previewItem && (

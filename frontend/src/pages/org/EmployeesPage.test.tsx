@@ -143,4 +143,52 @@ describe('EmployeesPage', () => {
       expect(toastError).toHaveBeenCalledWith('Unable to invite employee.')
     })
   })
+
+  it('bulk-invites multiple employees from pasted rows', async () => {
+    const user = userEvent.setup()
+    const inviteMutation = vi.fn().mockResolvedValue(undefined)
+    useInviteEmployee.mockReturnValue({ isPending: false, mutateAsync: inviteMutation })
+    useDesignations.mockReturnValue({
+      data: [
+        { id: 'des-1', name: 'QA Engineer', level: 2, is_active: true },
+        { id: 'des-2', name: 'Support Lead', level: 3, is_active: true },
+      ],
+    })
+
+    renderPage()
+
+    await user.click(screen.getByRole('button', { name: 'Bulk invite' }))
+    await user.type(
+      screen.getByLabelText('Employee rows'),
+      'E2E,Tester,e2e.tester@acme.test,QA Engineer\nPriya,Support,priya.support@acme.test,Support Lead',
+    )
+    await user.click(screen.getByRole('checkbox', { name: /Address Proof/i }))
+    await user.click(screen.getByRole('button', { name: 'Send bulk invites' }))
+
+    await waitFor(() => {
+      expect(inviteMutation).toHaveBeenNthCalledWith(1, {
+        company_email: 'e2e.tester@acme.test',
+        first_name: 'E2E',
+        last_name: 'Tester',
+        designation: 'QA Engineer',
+        employment_type: 'FULL_TIME',
+        date_of_joining: null,
+        department_id: null,
+        office_location_id: null,
+        required_document_type_ids: ['doc-1'],
+      })
+      expect(inviteMutation).toHaveBeenNthCalledWith(2, {
+        company_email: 'priya.support@acme.test',
+        first_name: 'Priya',
+        last_name: 'Support',
+        designation: 'Support Lead',
+        employment_type: 'FULL_TIME',
+        date_of_joining: null,
+        department_id: null,
+        office_location_id: null,
+        required_document_type_ids: ['doc-1'],
+      })
+    })
+    expect(toastSuccess).toHaveBeenCalledWith('2 employees invited.')
+  })
 })

@@ -1,8 +1,12 @@
+import io
+import zipfile
 from datetime import date
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from django.core.management import call_command
+from rest_framework.test import APIClient
 
 from apps.accounts.models import AccountType, User, UserRole
 from apps.employees.models import Employee, EmployeeProfile, EmployeeStatus, GenderChoice, GovernmentIdType
@@ -16,7 +20,7 @@ from apps.organisations.models import (
     OrganisationStatus,
 )
 from apps.organisations.services import create_licence_batch, mark_licence_batch_paid
-from apps.payroll.models import PayrollTDSChallan, StatutoryFilingStatus
+from apps.payroll.models import InvestmentDeclaration, InvestmentSection, PayrollTDSChallan, StatutoryFilingStatus
 from apps.payroll.services import (
     assign_employee_compensation,
     create_compensation_template,
@@ -25,6 +29,7 @@ from apps.payroll.services import (
     download_statutory_filing_batch,
     ensure_org_payroll_setup,
     finalize_pay_run,
+    generate_form12bb_zip_for_organisation,
     generate_statutory_filing_batch,
 )
 
@@ -259,8 +264,7 @@ class TestStatutoryFilings:
         assert batch.status == StatutoryFilingStatus.GENERATED
         assert batch.artifact_storage_backend == "s3"
         assert batch.artifact_storage_key.startswith(f"payroll/filings/{filing_fixture['organisation'].id}/")
-        assert batch.artifact_text == ""
-        assert batch.artifact_binary is None
+        assert batch.artifact_text == _read_fixture("pf_ecr_2026_04.csv")
         assert uploads[0]["key"] == batch.artifact_storage_key
         assert uploads[0]["content_type"] == "text/csv"
         assert uploads[0]["payload"].decode("utf-8") == _read_fixture("pf_ecr_2026_04.csv")
@@ -326,7 +330,7 @@ class TestStatutoryFilings:
         assert batch.status == StatutoryFilingStatus.GENERATED
         assert batch.artifact_text == _read_fixture("professional_tax_2026_04.csv")
 
-    def test_form24q_json_matches_fixture(self, filing_fixture):
+    def test_form24q_xml_matches_fixture(self, filing_fixture):
         batch = generate_statutory_filing_batch(
             filing_fixture["organisation"],
             filing_type="FORM24Q",
@@ -336,10 +340,28 @@ class TestStatutoryFilings:
         )
 
         assert batch.status == StatutoryFilingStatus.GENERATED
-        expected = _read_fixture("form24q_2026_2027_q1.json").replace("__DYNAMIC__", str(filing_fixture["employee"].id))
+        assert batch.artifact_format == "XML"
+        assert batch.content_type == "application/xml"
+        expected = _read_fixture("form24q_2026_2027_q1.xml").replace("__DYNAMIC__", str(filing_fixture["employee"].id))
         assert batch.artifact_text.strip() == expected.strip()
 
-    def test_form16_xml_and_pdf_outputs_generate(self, filing_fixture):
+    def test_form16_xml_and_pdf_outputs_generate(self, filing_fixture, monkeypatch):
+        uploads = []
+
+        def fake_upload_file(file_obj, key, content_type):
+            uploads.append(
+                {
+                    "key": key,
+                    "content_type": content_type,
+                    "payload": file_obj.read(),
+                }
+            )
+
+        monkeypatch.setattr("apps.payroll.services.upload_file", fake_upload_file)
+        monkeypatch.setattr(
+            "apps.payroll.services.generate_presigned_url",
+            lambda key, expiry=900: f"https://files.example.test/{key}?expires={expiry}",
+        )
         xml_batch = generate_statutory_filing_batch(
             filing_fixture["organisation"],
             filing_type="FORM16",
@@ -358,7 +380,18 @@ class TestStatutoryFilings:
         assert xml_batch.status == StatutoryFilingStatus.GENERATED
         assert xml_batch.artifact_text == _read_fixture("form16_2026_2027.xml")
         assert pdf_batch.status == StatutoryFilingStatus.GENERATED
-        assert bytes(pdf_batch.artifact_binary).startswith(b"%PDF-1.4")
+        assert pdf_batch.artifact_storage_backend == "s3"
+        assert pdf_batch.artifact_storage_key.startswith(f"payroll/filings/{filing_fixture['organisation'].id}/")
+        assert uploads[0]["content_type"] == "application/pdf"
+        assert uploads[0]["payload"].startswith(b"%PDF-1.4")
+        payload, content_type, file_name, download_url = download_statutory_filing_batch(
+            pdf_batch,
+            actor=filing_fixture["admin"],
+        )
+        assert payload is None
+        assert content_type == "application/pdf"
+        assert file_name == pdf_batch.file_name
+        assert download_url == f"https://files.example.test/{pdf_batch.artifact_storage_key}?expires=900"
 
     def test_form24q_uses_decrypted_pan_and_real_challan_details(self, filing_fixture):
         april_payslip = filing_fixture["april_run"].payslips.get(employee=filing_fixture["employee"])
@@ -424,6 +457,39 @@ class TestStatutoryFilings:
                 "statement_receipt_number": TEST_STATEMENT_RECEIPT_NUMBER,
             },
         ]
+        assert "<section_code>192</section_code>" in batch.artifact_text
+        assert "<deductee_entries>" in batch.artifact_text
+        assert "<payment_date>30/04/2026</payment_date>" in batch.artifact_text
+        assert "<deposit_date>07/04/2026</deposit_date>" in batch.artifact_text
+
+    def test_form24q_q4_annexure_ii_includes_latest_rpu_fields(self, filing_fixture):
+        _finalize_run(
+            organisation=filing_fixture["organisation"],
+            admin=filing_fixture["admin"],
+            employee=filing_fixture["employee"],
+            period_year=2027,
+            period_month=3,
+            monthly_amount="30000",
+        )
+
+        batch = generate_statutory_filing_batch(
+            filing_fixture["organisation"],
+            filing_type="FORM24Q",
+            actor=filing_fixture["admin"],
+            fiscal_year="2026-2027",
+            quarter="Q4",
+        )
+
+        assert batch.status == StatutoryFilingStatus.GENERATED
+        annexure_row = batch.structured_payload["annexure_ii"][0]
+        assert annexure_row["tax_regime"] == "NEW"
+        assert annexure_row["opting_out_of_section_115bac_1a"] == "NO"
+        assert annexure_row["standard_deduction"] == "75000.00"
+        assert annexure_row["other_special_allowances_under_section_10_14"] == "0.00"
+        assert annexure_row["deduction_80cch_employee_gross"] == "0.00"
+        assert annexure_row["deduction_80cch_central_government_deductible"] == "0.00"
+        assert "<standard_deduction>75000.00</standard_deduction>" in batch.artifact_text
+        assert "<opting_out_of_section_115bac_1a>NO</opting_out_of_section_115bac_1a>" in batch.artifact_text
 
     def test_form24q_blocks_when_tds_exists_without_matching_challans(self, filing_fixture):
         april_payslip = filing_fixture["april_run"].payslips.get(employee=filing_fixture["employee"])
@@ -682,15 +748,6 @@ def test_generate_form12bb_pdf_empty_declaration_edge_case(filing_fixture):
 
     assert result.validation_errors == ["No investment declarations found for FY 2026-2027."]
     assert result.artifact_binary == b""
-import io
-import zipfile
-from unittest.mock import patch
-
-import pytest
-from rest_framework.test import APIClient
-
-from apps.payroll.models import InvestmentDeclaration, InvestmentSection
-from apps.payroll.services import generate_form12bb_zip_for_organisation
 
 
 @pytest.mark.django_db

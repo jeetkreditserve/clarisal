@@ -399,7 +399,7 @@ class ApprovalDelegation(AuditedBaseModel):
         db_table = "approval_delegations"
         ordering = ["-start_date", "-created_at"]
         constraints = [
-            models.CheckConstraint(
+            models.CheckConstraint(  # type: ignore[call-arg]
                 check=Q(end_date__isnull=True)
                 | Q(end_date__gte=models.F("start_date")),
                 name="approval_delegation_end_date_after_start_date",

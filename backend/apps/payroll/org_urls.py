@@ -23,6 +23,8 @@ from .views import (
     OrgPayrollRunForm16View,
     OrgPayrollRunItemListView,
     OrgPayrollRunListCreateView,
+    OrgPayrollRunPayslipBulkDownloadView,
+    OrgPayrollRunPayslipBulkNotifyView,
     OrgPayrollRunRerunView,
     OrgPayrollRunSubmitView,
     OrgPayrollStatutoryMasterListView,
@@ -166,6 +168,16 @@ urlpatterns = [
         "payroll/runs/<uuid:pk>/rerun/",
         OrgPayrollRunRerunView.as_view(),
         name="org-payroll-run-rerun",
+    ),
+    path(
+        "payroll/runs/<uuid:pk>/payslips/download/",
+        OrgPayrollRunPayslipBulkDownloadView.as_view(),
+        name="org-payroll-run-payslip-bulk-download",
+    ),
+    path(
+        "payroll/runs/<uuid:pk>/payslips/notify/",
+        OrgPayrollRunPayslipBulkNotifyView.as_view(),
+        name="org-payroll-run-payslip-bulk-notify",
     ),
     path(
         "payroll/filings/",

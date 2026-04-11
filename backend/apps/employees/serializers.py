@@ -84,6 +84,7 @@ class EmployeeUpdateSerializer(serializers.Serializer):
     leave_approval_workflow_id = serializers.UUIDField(required=False, allow_null=True)
     on_duty_approval_workflow_id = serializers.UUIDField(required=False, allow_null=True)
     attendance_regularization_approval_workflow_id = serializers.UUIDField(required=False, allow_null=True)
+    expense_approval_workflow_id = serializers.UUIDField(required=False, allow_null=True)
 
 
 class EmployeeMarkJoinedSerializer(serializers.Serializer):
@@ -349,6 +350,16 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
         read_only=True,
         allow_null=True,
     )
+    expense_approval_workflow_id = serializers.UUIDField(
+        source='expense_approval_workflow.id',
+        read_only=True,
+        allow_null=True,
+    )
+    expense_approval_workflow_name = serializers.CharField(
+        source='expense_approval_workflow.name',
+        read_only=True,
+        allow_null=True,
+    )
     effective_approval_workflows = serializers.SerializerMethodField()
     offboarding = serializers.SerializerMethodField()
 
@@ -382,6 +393,8 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
             'on_duty_approval_workflow_name',
             'attendance_regularization_approval_workflow_id',
             'attendance_regularization_approval_workflow_name',
+            'expense_approval_workflow_id',
+            'expense_approval_workflow_name',
             'effective_approval_workflows',
             'offboarding',
         ]
@@ -418,6 +431,7 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
             'leave': serialize_effective(ApprovalRequestKind.LEAVE),
             'on_duty': serialize_effective(ApprovalRequestKind.ON_DUTY),
             'attendance_regularization': serialize_effective(ApprovalRequestKind.ATTENDANCE_REGULARIZATION),
+            'expense_claim': serialize_effective(ApprovalRequestKind.EXPENSE_CLAIM),
         }
 
     def get_offboarding(self, obj):
@@ -500,7 +514,7 @@ class CustomFieldDefinitionWriteSerializer(serializers.ModelSerializer):
 
 
 class CustomFieldValueSerializer(serializers.ModelSerializer):
-    field_name = serializers.CharField(source='field_definition.name', read_only=True)
+    field_name = serializers.CharField(source='field_definition.name', read_only=True)  # type: ignore[assignment]
     field_type = serializers.CharField(source='field_definition.field_type', read_only=True)
     display_value = serializers.SerializerMethodField()
 

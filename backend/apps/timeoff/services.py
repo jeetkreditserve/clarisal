@@ -53,7 +53,7 @@ from .repositories import (
 ZERO = Decimal('0.00')
 
 
-def _decimal(value):
+def _decimal(value) -> Decimal:
     return Decimal(str(value)).quantize(Decimal('0.01'))
 
 

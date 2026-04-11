@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { ApprovalDecisionDialog } from '@/components/ui/ApprovalDecisionDialog'
 import { AppCheckbox } from '@/components/ui/AppCheckbox'
 import { AppSelect } from '@/components/ui/AppSelect'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { SkeletonPageHeader, SkeletonTable } from '@/components/ui/Skeleton'
@@ -55,6 +56,7 @@ export function ApprovalWorkflowsPage() {
   const updateDelegationMutation = useUpdateApprovalDelegation()
   const resolvedWorkflows = isCtMode ? configuration?.approval_workflows : workflows
   const pageLoading = isCtMode ? isCtLoading : isLoading
+  const [selectedLeaveActionIds, setSelectedLeaveActionIds] = useState<string[]>([])
   const [delegationForm, setDelegationForm] = useState({
     delegator_employee_id: '',
     delegate_employee_id: '',
@@ -77,6 +79,25 @@ export function ApprovalWorkflowsPage() {
     () => [{ value: '', label: 'Select employee' }, ...((employees?.results ?? []).map((employee) => ({ value: employee.id, label: employee.full_name, hint: employee.designation })))],
     [employees],
   )
+  const selectedLeaveActions = useMemo(
+    () => (inbox ?? []).filter((action) => selectedLeaveActionIds.includes(action.id) && action.request_kind === 'LEAVE' && action.status === 'PENDING'),
+    [inbox, selectedLeaveActionIds],
+  )
+
+  const bulkApproveLeaveRequests = async () => {
+    try {
+      for (const action of selectedLeaveActions) {
+        await approveMutation.mutateAsync({
+          actionId: action.id,
+          comment: 'Bulk approved from the approval inbox.',
+        })
+      }
+      setSelectedLeaveActionIds([])
+      toast.success('Selected leave requests approved.')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to approve the selected leave requests.'))
+    }
+  }
 
   const saveDelegation = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -226,19 +247,48 @@ export function ApprovalWorkflowsPage() {
 
       {!isCtMode && activeTab === 'inbox' ? (
         <SectionCard title="Approval inbox" description="Action pending requests here without mixing them into the workflow design surface.">
+          {selectedLeaveActionIds.length ? (
+            <div className="mb-4 flex justify-end">
+              <ConfirmDialog
+                trigger={<button type="button" className="btn-primary">Approve selected leave requests</button>}
+                title="Approve selected leave requests?"
+                description="Each selected leave request will be approved separately so the existing permission and audit trail rules stay intact."
+                confirmLabel="Approve selected"
+                variant="primary"
+                onConfirm={() => void bulkApproveLeaveRequests()}
+              />
+            </div>
+          ) : null}
           <div className="space-y-3">
             {(inbox ?? []).map((action) => (
               <div key={action.id} className="surface-muted flex flex-col gap-3 rounded-[22px] px-4 py-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
-                  <p className="font-semibold text-[hsl(var(--foreground-strong))]">{action.subject_label}</p>
-                  <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                    {action.requester_name} • {action.stage_name} • Owner: {action.owner_name}
-                  </p>
-                  {action.original_approver_name ? (
-                    <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
-                      Routed via {action.assignment_source.toLowerCase()} from {action.original_approver_name}
-                    </p>
-                  ) : null}
+                  <div className="flex items-start gap-3">
+                    {action.request_kind === 'LEAVE' && action.status === 'PENDING' ? (
+                      <input
+                        type="checkbox"
+                        aria-label="Select leave request"
+                        checked={selectedLeaveActionIds.includes(action.id)}
+                        onChange={(event) =>
+                          setSelectedLeaveActionIds((current) =>
+                            event.target.checked ? [...current, action.id] : current.filter((id) => id !== action.id),
+                          )
+                        }
+                        className="mt-1"
+                      />
+                    ) : null}
+                    <div>
+                      <p className="font-semibold text-[hsl(var(--foreground-strong))]">{action.subject_label}</p>
+                      <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                        {action.requester_name} • {action.stage_name} • Owner: {action.owner_name}
+                      </p>
+                      {action.original_approver_name ? (
+                        <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
+                          Routed via {action.assignment_source.toLowerCase()} from {action.original_approver_name}
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
                   <StatusBadge tone={getApprovalActionTone(action.status)}>{action.status}</StatusBadge>
@@ -304,15 +354,15 @@ export function ApprovalWorkflowsPage() {
             <div className="surface-shell rounded-[20px] px-5 py-4">
               <p className="font-semibold text-[hsl(var(--foreground-strong))]">Recommended baseline</p>
               <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
-                Keep active defaults for leave, on-duty, attendance regularization, payroll processing, salary revision, and compensation template changes.
+                Keep active defaults for leave, on-duty, attendance regularization, expense claims, payroll processing, salary revision, and compensation template changes.
               </p>
             </div>
             <div className="surface-shell rounded-[20px] px-5 py-4">
               <p className="font-semibold text-[hsl(var(--foreground-strong))]">Current posture</p>
               <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
-                {health.defaults >= 5
+                {health.defaults >= 6
                   ? 'Default coverage looks healthy. Review targeted rules and stage count next.'
-                  : 'Review default workflow coverage. Leave, on-duty, attendance regularization, payroll processing, salary revision, and template change each need an active default.'}
+                  : 'Review default workflow coverage. Leave, on-duty, attendance regularization, expense claims, payroll processing, salary revision, and template change each need an active default.'}
               </p>
             </div>
           </div>

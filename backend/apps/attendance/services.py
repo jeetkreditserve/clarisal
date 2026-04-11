@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from io import BytesIO
+from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from django.db import transaction
@@ -1013,7 +1014,7 @@ def _validate_geo_fence(
     latitude: float | None,
     longitude: float | None,
     *,
-    location_id: str | None = None,
+    location_id: str | UUID | None = None,
     enforcement_mode: str = "BLOCK",
 ) -> tuple[bool, str | None]:
     if latitude is None or longitude is None:
@@ -1026,23 +1027,14 @@ def _validate_geo_fence(
         is_active=True,
     ).select_related("location")
     if location_id:
-        policies = policies.filter(location_id=location_id)
+        policies = policies.filter(location_id=UUID(str(location_id)))
 
     if not policies.exists():
         return True, None
 
     for policy in policies:
-        try:
-            distance = _haversine_distance_meters(
-                latitude,
-                longitude,
-                float(policy.latitude),
-                float(policy.longitude),
-            )
-            if distance <= policy.radius_metres:
-                return True, None
-        except Exception:  # noqa: BLE001
-            continue
+        if _policy_matches_geo_fence(policy, latitude=latitude, longitude=longitude):
+            return True, None
 
     if enforcement_mode == GeoFenceEnforcementMode.BLOCK:
         return False, "You are outside all configured geo-fence locations."
@@ -1054,7 +1046,7 @@ def validate_mobile_punch_location(
     latitude: float | None,
     longitude: float | None,
     *,
-    location_id: str | None = None,
+    location_id: str | UUID | None = None,
 ) -> tuple[bool, str | None, str | None]:
     if latitude is None or longitude is None:
         return True, None, None
@@ -1066,27 +1058,31 @@ def validate_mobile_punch_location(
         is_active=True,
     ).select_related("location")
     if location_id:
-        policies = policies.filter(location_id=location_id)
+        policies = policies.filter(location_id=UUID(str(location_id)))
 
     if not policies.exists():
         return True, None, None
 
     for policy in policies:
-        try:
-            distance = _haversine_distance_meters(
-                latitude,
-                longitude,
-                float(policy.latitude),
-                float(policy.longitude),
-            )
-            if distance <= policy.radius_metres:
-                return True, None, None
-        except Exception:  # noqa: BLE001
-            continue
+        if _policy_matches_geo_fence(policy, latitude=latitude, longitude=longitude):
+            return True, None, None
 
     if policies.filter(enforcement_mode=GeoFenceEnforcementMode.BLOCK).exists():
         return False, "BLOCK", "You are outside all configured geo-fence locations. Punch has been blocked."
     return True, "WARN", "Warning: You are outside the approved geo-fence area. Your punch has been recorded."
+
+
+def _policy_matches_geo_fence(policy, *, latitude: float, longitude: float) -> bool:
+    try:
+        distance = _haversine_distance_meters(
+            latitude,
+            longitude,
+            float(policy.latitude),
+            float(policy.longitude),
+        )
+    except (TypeError, ValueError):
+        return False
+    return bool(distance <= float(policy.radius_metres))
 
 
 def calculate_attendance_day_status(

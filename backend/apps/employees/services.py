@@ -374,6 +374,7 @@ def update_employee(employee, actor=None, **fields):
     has_leave_approval_workflow = 'leave_approval_workflow_id' in fields
     has_on_duty_approval_workflow = 'on_duty_approval_workflow_id' in fields
     has_attendance_regularization_approval_workflow = 'attendance_regularization_approval_workflow_id' in fields
+    has_expense_approval_workflow = 'expense_approval_workflow_id' in fields
     department_id = fields.pop('department_id', None) if 'department_id' in fields else None
     office_location_id = fields.pop('office_location_id', None) if 'office_location_id' in fields else None
     leave_approval_workflow_id = fields.pop('leave_approval_workflow_id', None) if 'leave_approval_workflow_id' in fields else None
@@ -383,6 +384,7 @@ def update_employee(employee, actor=None, **fields):
         if 'attendance_regularization_approval_workflow_id' in fields
         else None
     )
+    expense_approval_workflow_id = fields.pop('expense_approval_workflow_id', None) if 'expense_approval_workflow_id' in fields else None
     if department_id is not None:
         employee.department = _get_department(employee.organisation, department_id)
     if office_location_id is not None:
@@ -405,6 +407,12 @@ def update_employee(employee, actor=None, **fields):
             attendance_regularization_approval_workflow_id,
             ApprovalRequestKind.ATTENDANCE_REGULARIZATION,
         )
+    if has_expense_approval_workflow:
+        employee.expense_approval_workflow = _get_approval_workflow(
+            employee.organisation,
+            expense_approval_workflow_id,
+            ApprovalRequestKind.EXPENSE_CLAIM,
+        )
     if 'employee_code' in fields:
         fields['employee_code'] = (fields['employee_code'] or '').strip().upper() or None
     for attr, value in fields.items():
@@ -419,6 +427,11 @@ def update_employee(employee, actor=None, **fields):
             'attendance_regularization_approval_workflow_id': (
                 str(attendance_regularization_approval_workflow_id)
                 if has_attendance_regularization_approval_workflow and attendance_regularization_approval_workflow_id
+                else None
+            ),
+            'expense_approval_workflow_id': (
+                str(expense_approval_workflow_id)
+                if has_expense_approval_workflow and expense_approval_workflow_id
                 else None
             ),
         }

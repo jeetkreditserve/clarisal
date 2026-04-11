@@ -6,8 +6,10 @@ import json
 import math
 import re
 import zipfile
+from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
+from typing import Any, cast
 
 from django.conf import settings
 from django.db import IntegrityError, transaction
@@ -1540,7 +1542,7 @@ def list_tenant_data_exports(organisation: Organisation):
 
 
 def get_tenant_data_export(organisation: Organisation, export_batch_id) -> TenantDataExportBatch:
-    return list_tenant_data_exports(organisation).get(id=export_batch_id)
+    return cast(TenantDataExportBatch, list_tenant_data_exports(organisation).get(id=export_batch_id))
 
 
 def _write_csv_to_archive(archive: zipfile.ZipFile, file_name: str, fieldnames: list[str], rows: list[dict]) -> int:
@@ -1559,22 +1561,26 @@ def _build_employee_export_rows(organisation: Organisation) -> list[dict]:
         .filter(organisation=organisation)
         .order_by('employee_code', 'created_at')
     )
-    return [
-        {
-            'employee_id': str(employee.id),
-            'employee_code': employee.employee_code or '',
-            'full_name': employee.user.full_name,
-            'email': employee.user.email,
-            'designation': employee.designation,
-            'employment_type': employee.employment_type,
-            'status': employee.status,
-            'date_of_joining': employee.date_of_joining.isoformat() if employee.date_of_joining else '',
-            'date_of_exit': employee.date_of_exit.isoformat() if employee.date_of_exit else '',
-            'department': employee.department.name if employee.department_id else '',
-            'office_location': employee.office_location.name if employee.office_location_id else '',
-        }
-        for employee in employees
-    ]
+    rows: list[dict[str, str]] = []
+    for employee in employees:
+        department = employee.department
+        office_location = employee.office_location
+        rows.append(
+            {
+                'employee_id': str(employee.id),
+                'employee_code': employee.employee_code or '',
+                'full_name': employee.user.full_name,
+                'email': employee.user.email,
+                'designation': employee.designation,
+                'employment_type': employee.employment_type,
+                'status': employee.status,
+                'date_of_joining': employee.date_of_joining.isoformat() if employee.date_of_joining else '',
+                'date_of_exit': employee.date_of_exit.isoformat() if employee.date_of_exit else '',
+                'department': department.name if department is not None else '',
+                'office_location': office_location.name if office_location is not None else '',
+            }
+        )
+    return rows
 
 
 def _build_leave_history_export_rows(organisation: Organisation) -> list[dict]:
@@ -1607,17 +1613,20 @@ def _build_audit_log_export_rows(organisation: Organisation) -> list[dict]:
         .filter(organisation=organisation)
         .order_by('-created_at')
     )
-    return [
-        {
-            'created_at': item.created_at.isoformat(),
-            'action': item.action,
-            'actor_email': item.actor.email if item.actor_id else '',
-            'target_type': item.target_type,
-            'target_id': str(item.target_id) if item.target_id else '',
-            'ip_address': item.ip_address or '',
-        }
-        for item in logs
-    ]
+    rows: list[dict[str, str]] = []
+    for item in logs:
+        actor = item.actor
+        rows.append(
+            {
+                'created_at': item.created_at.isoformat(),
+                'action': item.action,
+                'actor_email': actor.email if actor is not None else '',
+                'target_type': item.target_type,
+                'target_id': str(item.target_id) if item.target_id else '',
+                'ip_address': item.ip_address or '',
+            }
+        )
+    return rows
 
 
 def _build_payslip_export_rows(organisation: Organisation) -> list[dict]:
@@ -1645,7 +1654,7 @@ def _build_payslip_export_rows(organisation: Organisation) -> list[dict]:
 
 
 def _build_tenant_data_export_payload(batch: TenantDataExportBatch) -> tuple[io.BytesIO, str, dict]:
-    export_builders = {
+    export_builders: dict[str, tuple[str, list[str], Callable[[Organisation], list[dict[str, Any]]]]] = {
         TenantDataExportType.EMPLOYEES: (
             'employees.csv',
             ['employee_id', 'employee_code', 'full_name', 'email', 'designation', 'employment_type', 'status', 'date_of_joining', 'date_of_exit', 'department', 'office_location'],
@@ -1713,7 +1722,7 @@ def generate_tenant_data_export_batch(export_batch: TenantDataExportBatch) -> Te
             ]
         )
         log_audit_event(
-            batch.requested_by,
+            batch.requested_by if batch.requested_by_id else None,
             'organisation.data_export.completed',
             organisation=batch.organisation,
             target=batch,
@@ -1724,7 +1733,7 @@ def generate_tenant_data_export_batch(export_batch: TenantDataExportBatch) -> Te
         batch.failure_reason = str(exc)
         batch.save(update_fields=['status', 'failure_reason', 'modified_at'])
         log_audit_event(
-            batch.requested_by,
+            batch.requested_by if batch.requested_by_id else None,
             'organisation.data_export.failed',
             organisation=batch.organisation,
             target=batch,
@@ -1736,7 +1745,7 @@ def generate_tenant_data_export_batch(export_batch: TenantDataExportBatch) -> Te
 def generate_tenant_data_export_download_url(batch: TenantDataExportBatch, *, actor=None, request=None, expiry=900) -> str:
     if batch.status != TenantDataExportStatus.COMPLETED or not batch.artifact_key:
         raise ValueError('Export is not ready for download.')
-    url = generate_presigned_url(batch.artifact_key, expiry=expiry)
+    url = cast(str, generate_presigned_url(batch.artifact_key, expiry=expiry))
     log_audit_event(
         actor,
         'organisation.data_export.download_url_generated',

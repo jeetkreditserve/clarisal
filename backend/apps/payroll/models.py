@@ -723,7 +723,6 @@ class StatutoryFilingBatch(AuditedBaseModel):
     metadata = models.JSONField(default=dict, blank=True)
     structured_payload = models.JSONField(default=dict, blank=True)
     artifact_text = models.TextField(blank=True)
-    artifact_binary = models.BinaryField(null=True, blank=True)
     source_pay_runs: models.ManyToManyField = models.ManyToManyField(
         'PayrollRun',
         related_name='statutory_filing_batches',

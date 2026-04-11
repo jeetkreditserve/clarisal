@@ -34,6 +34,7 @@ import {
   downloadNormalizedAttendanceFile,
   downloadOrgForm12BBBulk,
   downloadPayrollFiling,
+  downloadPayrollRunPayslipsZip,
   createApprovalWorkflow,
   createApprovalDelegation,
   createCompensationAssignment,
@@ -62,9 +63,11 @@ import {
   fetchDesignations,
   fetchEmployeeDocumentRequests,
   fetchEmployeeDetail,
+  fetchEmployeeCustomFieldValues,
   fetchEmployeeDocuments,
   fetchEmployeeCareerTimeline,
   fetchEmployees,
+  fetchCustomFieldDefinitions,
   fetchOrgChart,
   fetchOrgChartCycles,
   fetchOrgFullAndFinalSettlement,
@@ -115,6 +118,7 @@ import {
   fetchNotice,
   fetchOnDutyPolicy,
   rerunPayrollRun,
+  notifyPayrollRunPayslips,
   regeneratePayrollFiling,
   uploadAttendanceSheet,
   uploadPunchSheet,
@@ -133,6 +137,7 @@ import {
   updateApprovalDelegation,
   updateDepartment,
   updateEmployee,
+  updateEmployeeCustomFieldValues,
   updateEmployeeOffboarding,
   updateEmployeeOffboardingTask,
   updateHolidayCalendar,
@@ -511,6 +516,33 @@ export function useEmployeeCareerTimeline(employeeId: string) {
     queryKey: ['org', organisationId, 'employees', employeeId, 'career-timeline'],
     queryFn: () => fetchEmployeeCareerTimeline(employeeId),
     enabled: Boolean(employeeId),
+  })
+}
+
+export function useCustomFieldDefinitions(placement = 'CUSTOM') {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'custom-fields', placement],
+    queryFn: () => fetchCustomFieldDefinitions(placement),
+  })
+}
+
+export function useEmployeeCustomFieldValues(employeeId: string) {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'employees', employeeId, 'custom-fields'],
+    queryFn: () => fetchEmployeeCustomFieldValues(employeeId),
+    enabled: Boolean(employeeId),
+  })
+}
+
+export function useUpdateEmployeeCustomFieldValues(employeeId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: Parameters<typeof updateEmployeeCustomFieldValues>[1]) => updateEmployeeCustomFieldValues(employeeId, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
   })
 }
 
@@ -961,6 +993,18 @@ export function usePayrollRunItems(
 export function useDownloadPayslipPdf() {
   return useMutation({
     mutationFn: downloadPayslipPdf,
+  })
+}
+
+export function useDownloadPayrollRunPayslipsZip() {
+  return useMutation({
+    mutationFn: ({ runId, item_ids }: { runId: string; item_ids?: string[] }) => downloadPayrollRunPayslipsZip(runId, { item_ids }),
+  })
+}
+
+export function useNotifyPayrollRunPayslips() {
+  return useMutation({
+    mutationFn: ({ runId, item_ids }: { runId: string; item_ids?: string[] }) => notifyPayrollRunPayslips(runId, { item_ids }),
   })
 }
 

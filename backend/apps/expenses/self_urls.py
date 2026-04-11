@@ -9,7 +9,6 @@ from .views import (
     MyExpenseReceiptUploadView,
 )
 
-
 urlpatterns = [
     path('expenses/policies/', MyExpensePolicyListView.as_view(), name='my-expense-policy-list'),
     path('expenses/claims/', MyExpenseClaimListCreateView.as_view(), name='my-expense-claim-list'),

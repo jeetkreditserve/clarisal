@@ -2,6 +2,41 @@
 import pytest
 
 
+def test_event_stream_uses_configured_redis_url(settings):
+    from apps.biometrics import event_stream
+
+    settings.REDIS_URL = 'redis://redis:6379/0'
+
+    assert event_stream._redis_url() == 'redis://redis:6379/0'
+
+
+@pytest.mark.django_db
+def test_event_stream_degrades_when_pubsub_creation_fails(biometric_setup, monkeypatch):
+    from django.test import RequestFactory
+
+    from apps.biometrics import event_stream
+
+    class FailingRedisClient:
+        def pubsub(self):
+            raise RuntimeError('redis unavailable')
+
+    monkeypatch.setattr(event_stream, 'REDIS_AVAILABLE', True)
+    monkeypatch.setattr(event_stream, '_redis_client', FailingRedisClient())
+
+    request = RequestFactory().get('/api/v1/org/biometrics/events/')
+    request.user = biometric_setup['org_admin_user']
+    request.session = {
+        'active_workspace_kind': 'ADMIN',
+        'active_admin_org_id': str(biometric_setup['organisation'].id),
+    }
+    response = event_stream.AttendanceEventStreamView.as_view()(request)
+
+    assert response.status_code == 200
+    payload = next(response.streaming_content).decode()
+    assert 'event: error' in payload
+    assert 'Event streaming unavailable' in payload
+
+
 @pytest.mark.django_db
 def test_org_admin_can_create_list_and_deactivate_biometric_device(biometric_setup):
     client = biometric_setup['client']

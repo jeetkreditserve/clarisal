@@ -316,7 +316,7 @@ def get_unresolved_asset_assignments(employee):
 
 
 def get_employee_asset_summary(employee):
-    from .models import AssetAssignment, AssetAssignmentStatus, AssetLifecycleStatus
+    from .models import AssetAssignment, AssetAssignmentStatus
     assignments = AssetAssignment.objects.filter(employee=employee)
     active_count = assignments.filter(status=AssetAssignmentStatus.ACTIVE).count()
     returned_count = assignments.filter(status=AssetAssignmentStatus.RETURNED).count()

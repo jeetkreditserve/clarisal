@@ -15,11 +15,13 @@ import { StatusBadge } from '@/components/ui/StatusBadge'
 import {
   useApprovalWorkflows,
   useCompleteEmployeeOffboarding,
+  useCustomFieldDefinitions,
   useDeleteEmployee,
   useDepartments,
   useDesignations,
   useEmployeeDetail,
   useEmployeeCareerTimeline,
+  useEmployeeCustomFieldValues,
   useEmployeeDocumentDownload,
   useEmployeeDocumentRequests,
   useEmployeeDocuments,
@@ -32,17 +34,44 @@ import {
   useUpdateEmployeeOffboarding,
   useUpdateEmployeeOffboardingTask,
   useUpdateEmployee,
+  useUpdateEmployeeCustomFieldValues,
 } from '@/hooks/useOrgAdmin'
 import { getErrorMessage } from '@/lib/errors'
 import { formatDateTime, startCase } from '@/lib/format'
 import { getDocumentRequestStatusTone, getDocumentStatusTone, getEmployeeStatusTone } from '@/lib/status'
-import type { EmploymentType } from '@/types/hr'
+import type { ApprovalRequestKind, CustomFieldDefinition, EmployeeCustomFieldValue, EmploymentType } from '@/types/hr'
 
 function getOffboardingTaskTone(status: string) {
   if (status === 'COMPLETED') return 'success'
   if (status === 'WAIVED') return 'info'
   if (status === 'IN_PROGRESS') return 'warning'
   return 'neutral'
+}
+
+function getExistingCustomFieldValue(values: EmployeeCustomFieldValue[], definitionId: string) {
+  return values.find((value) => value.field_definition === definitionId)
+}
+
+function getResolvedCustomFieldPayload(
+  definition: CustomFieldDefinition,
+  values: EmployeeCustomFieldValue[],
+  draft: Record<string, {
+    field_definition_id: string
+    value_text?: string
+    value_number?: string | null
+    value_date?: string | null
+    value_boolean?: boolean
+  }>,
+) {
+  const existingValue = getExistingCustomFieldValue(values, definition.id)
+  const draftValue = draft[definition.id]
+  return {
+    field_definition_id: definition.id,
+    value_text: draftValue?.value_text ?? existingValue?.value_text ?? '',
+    value_number: draftValue?.value_number ?? existingValue?.value_number ?? null,
+    value_date: draftValue?.value_date ?? existingValue?.value_date ?? null,
+    value_boolean: draftValue?.value_boolean ?? existingValue?.value_boolean ?? false,
+  }
 }
 
 export function EmployeeDetailPage() {
@@ -54,6 +83,8 @@ export function EmployeeDetailPage() {
   const { data: departments } = useDepartments()
   const { data: locations } = useLocations()
   const { data: designations } = useDesignations()
+  const { data: customFieldDefinitions = [] } = useCustomFieldDefinitions()
+  const { data: customFieldValues = [] } = useEmployeeCustomFieldValues(employeeId)
   const { data: approvalWorkflows } = useApprovalWorkflows()
   const { data: managerOptions } = useEmployees({ status: 'ACTIVE', page: 1 })
   const { data: documentRequests } = useEmployeeDocumentRequests(employeeId)
@@ -67,6 +98,7 @@ export function EmployeeDetailPage() {
   const completeOffboardingMutation = useCompleteEmployeeOffboarding(employeeId)
   const probationCompleteMutation = useMarkEmployeeProbationComplete(employeeId)
   const deleteEmployeeMutation = useDeleteEmployee(employeeId)
+  const updateCustomFieldsMutation = useUpdateEmployeeCustomFieldValues(employeeId)
   const downloadDocumentMutation = useEmployeeDocumentDownload()
 
   const [draft, setDraft] = useState<Partial<{
@@ -78,6 +110,7 @@ export function EmployeeDetailPage() {
     leave_approval_workflow_id: string
     on_duty_approval_workflow_id: string
     attendance_regularization_approval_workflow_id: string
+    expense_approval_workflow_id: string
   }>>({})
   const [joinForm, setJoinForm] = useState({
     employee_code: '',
@@ -91,6 +124,13 @@ export function EmployeeDetailPage() {
     exit_reason: '',
     exit_notes: '',
   })
+  const [customFieldDraft, setCustomFieldDraft] = useState<Record<string, {
+    field_definition_id: string
+    value_text?: string
+    value_number?: string | null
+    value_date?: string | null
+    value_boolean?: boolean
+  }>>({})
 
   const employmentTypeOptions = ['FULL_TIME', 'PART_TIME', 'CONTRACT', 'INTERN'].map((type) => ({
     value: type,
@@ -110,7 +150,7 @@ export function EmployeeDetailPage() {
       label: location.name,
     })) ?? []),
   ]
-  const workflowOptionsForKind = (requestKind: 'LEAVE' | 'ON_DUTY' | 'ATTENDANCE_REGULARIZATION') => [
+  const workflowOptionsForKind = (requestKind: ApprovalRequestKind) => [
     { value: '', label: `Use ${requestKind.replace(/_/g, ' ').toLowerCase()} default or rule` },
     ...(
       approvalWorkflows?.filter((workflow) => {
@@ -159,6 +199,7 @@ export function EmployeeDetailPage() {
     on_duty_approval_workflow_id: draft.on_duty_approval_workflow_id ?? employee.on_duty_approval_workflow_id ?? '',
     attendance_regularization_approval_workflow_id:
       draft.attendance_regularization_approval_workflow_id ?? employee.attendance_regularization_approval_workflow_id ?? '',
+    expense_approval_workflow_id: draft.expense_approval_workflow_id ?? employee.expense_approval_workflow_id ?? '',
   }
 
   const handleSave = async (event: React.FormEvent) => {
@@ -173,6 +214,7 @@ export function EmployeeDetailPage() {
         leave_approval_workflow_id: formValues.leave_approval_workflow_id || null,
         on_duty_approval_workflow_id: formValues.on_duty_approval_workflow_id || null,
         attendance_regularization_approval_workflow_id: formValues.attendance_regularization_approval_workflow_id || null,
+        expense_approval_workflow_id: formValues.expense_approval_workflow_id || null,
       })
       toast.success('Employee updated.')
       setDraft({})
@@ -270,6 +312,20 @@ export function EmployeeDetailPage() {
     }
   }
 
+  const activeCustomFieldDefinitions = customFieldDefinitions.filter((field) => field.is_active)
+
+  const handleSaveCustomFields = async () => {
+    try {
+      await updateCustomFieldsMutation.mutateAsync({
+        custom_fields: activeCustomFieldDefinitions.map((definition) => getResolvedCustomFieldPayload(definition, customFieldValues, customFieldDraft)),
+      })
+      toast.success('Custom fields updated.')
+      setCustomFieldDraft({})
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to update custom fields.'))
+    }
+  }
+
   return (
     <div className="space-y-6">
       <Link to="/org/employees" className="inline-flex items-center gap-2 text-sm font-medium text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground-strong))]">
@@ -345,7 +401,7 @@ export function EmployeeDetailPage() {
                 placeholder="On-duty workflow"
               />
             </div>
-            <div className="grid gap-4 md:grid-cols-1">
+            <div className="grid gap-4 md:grid-cols-2">
               <AppSelect
                 value={formValues.attendance_regularization_approval_workflow_id}
                 onValueChange={(value) =>
@@ -353,6 +409,12 @@ export function EmployeeDetailPage() {
                 }
                 options={workflowOptionsForKind('ATTENDANCE_REGULARIZATION')}
                 placeholder="Attendance regularization workflow"
+              />
+              <AppSelect
+                value={formValues.expense_approval_workflow_id}
+                onValueChange={(value) => setDraft((current) => ({ ...current, expense_approval_workflow_id: value }))}
+                options={workflowOptionsForKind('EXPENSE_CLAIM')}
+                placeholder="Expense workflow"
               />
             </div>
             <button type="submit" className="btn-primary" disabled={updateMutation.isPending}>
@@ -396,7 +458,107 @@ export function EmployeeDetailPage() {
                 {employee.effective_approval_workflows.attendance_regularization.source}
               </p>
             </div>
+            <div className="surface-muted rounded-[24px] p-5">
+              <p className="text-sm text-[hsl(var(--muted-foreground))]">Effective expense workflow</p>
+              <p className="mt-2 font-medium text-[hsl(var(--foreground-strong))]">
+                {employee.effective_approval_workflows.expense_claim.workflow_name}
+              </p>
+              <p className="mt-2 text-xs uppercase tracking-[0.12em] text-[hsl(var(--muted-foreground))]">
+                {employee.effective_approval_workflows.expense_claim.source}
+              </p>
+            </div>
           </div>
+
+          {activeCustomFieldDefinitions.length ? (
+            <div className="mt-6 rounded-[24px] border border-[hsl(var(--border)_/_0.72)] bg-[hsl(var(--surface))] p-5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="font-semibold text-[hsl(var(--foreground-strong))]">Custom fields</p>
+                  <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
+                    Capture organisation-specific employee attributes without adding more fixed columns to the core profile.
+                  </p>
+                </div>
+                <button type="button" className="btn-secondary" disabled={updateCustomFieldsMutation.isPending} onClick={() => void handleSaveCustomFields()}>
+                  Save custom fields
+                </button>
+              </div>
+              <div className="mt-5 grid gap-4 md:grid-cols-2">
+                {activeCustomFieldDefinitions.map((definition) => {
+                  const resolvedValue = getResolvedCustomFieldPayload(definition, customFieldValues, customFieldDraft)
+                  if (definition.field_type === 'CHECKBOX') {
+                    return (
+                      <label key={definition.id} className="surface-muted flex items-center justify-between gap-3 rounded-[20px] px-4 py-4">
+                        <span>
+                          <span className="block font-medium text-[hsl(var(--foreground-strong))]">{definition.name}</span>
+                          {definition.help_text ? <span className="mt-1 block text-sm text-[hsl(var(--muted-foreground))]">{definition.help_text}</span> : null}
+                        </span>
+                        <input
+                          type="checkbox"
+                          aria-label={definition.name}
+                          checked={Boolean(resolvedValue.value_boolean)}
+                          onChange={(event) =>
+                            setCustomFieldDraft((current) => ({
+                              ...current,
+                              [definition.id]: { ...resolvedValue, value_boolean: event.target.checked },
+                            }))
+                          }
+                        />
+                      </label>
+                    )
+                  }
+
+                  return (
+                    <div key={definition.id}>
+                      <label className="field-label" htmlFor={`custom-field-${definition.id}`}>{definition.name}</label>
+                      {definition.field_type === 'DROPDOWN' ? (
+                        <AppSelect
+                          id={`custom-field-${definition.id}`}
+                          value={resolvedValue.value_text ?? ''}
+                          onValueChange={(value) =>
+                            setCustomFieldDraft((current) => ({
+                              ...current,
+                              [definition.id]: { ...resolvedValue, value_text: value },
+                            }))
+                          }
+                          options={[
+                            { value: '', label: definition.placeholder || `Select ${definition.name.toLowerCase()}` },
+                            ...definition.dropdown_options.map((option) => ({ value: option, label: option })),
+                          ]}
+                        />
+                      ) : (
+                        <input
+                          id={`custom-field-${definition.id}`}
+                          className="field-input"
+                          type={definition.field_type === 'NUMBER' ? 'number' : definition.field_type === 'DATE' ? 'date' : definition.field_type === 'EMAIL' ? 'email' : definition.field_type === 'PHONE' ? 'tel' : 'text'}
+                          required={definition.is_required}
+                          value={
+                            definition.field_type === 'NUMBER'
+                              ? resolvedValue.value_number ?? ''
+                              : definition.field_type === 'DATE'
+                                ? resolvedValue.value_date ?? ''
+                                : resolvedValue.value_text ?? ''
+                          }
+                          placeholder={definition.placeholder || definition.help_text || ''}
+                          onChange={(event) =>
+                            setCustomFieldDraft((current) => ({
+                              ...current,
+                              [definition.id]: {
+                                ...resolvedValue,
+                                value_text: definition.field_type === 'NUMBER' || definition.field_type === 'DATE' ? resolvedValue.value_text : event.target.value,
+                                value_number: definition.field_type === 'NUMBER' ? event.target.value || null : resolvedValue.value_number,
+                                value_date: definition.field_type === 'DATE' ? event.target.value || null : resolvedValue.value_date,
+                              },
+                            }))
+                          }
+                        />
+                      )}
+                      {definition.help_text ? <p className="mt-2 text-xs text-[hsl(var(--muted-foreground))]">{definition.help_text}</p> : null}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          ) : null}
 
           <div className="mt-6 grid gap-4">
             {employee.probation_end_date ? (

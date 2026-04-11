@@ -25,9 +25,11 @@ import type {
   CompensationAssignment,
   CompensationTemplate,
   CostCentre,
+  CustomFieldDefinition,
   Department,
   DocumentRecord,
   EmployeeDocumentRequest,
+  EmployeeCustomFieldValue,
   EmployeeDetail,
   EmployeeListItem,
   FullAndFinalSettlement,
@@ -282,6 +284,34 @@ export async function fetchEmployeeCareerTimeline(employeeId: string) {
   return data
 }
 
+export async function fetchCustomFieldDefinitions(placement = 'CUSTOM') {
+  const { data } = await api.get<CustomFieldDefinition[]>('/org/custom-fields/', {
+    params: placement ? { placement } : undefined,
+  })
+  return data
+}
+
+export async function fetchEmployeeCustomFieldValues(employeeId: string) {
+  const { data } = await api.get<EmployeeCustomFieldValue[]>(`/org/employees/${employeeId}/custom-fields/`)
+  return data
+}
+
+export async function updateEmployeeCustomFieldValues(
+  employeeId: string,
+  payload: {
+    custom_fields: Array<{
+      field_definition_id: string
+      value_text?: string
+      value_number?: string | null
+      value_date?: string | null
+      value_boolean?: boolean
+    }>
+  },
+) {
+  const { data } = await api.put<EmployeeCustomFieldValue[]>(`/org/employees/${employeeId}/custom-fields/`, payload)
+  return data
+}
+
 export async function updateEmployee(
   id: string,
   payload: Partial<{
@@ -293,6 +323,7 @@ export async function updateEmployee(
     leave_approval_workflow_id: string | null
     on_duty_approval_workflow_id: string | null
     attendance_regularization_approval_workflow_id: string | null
+    expense_approval_workflow_id: string | null
   }>
 ) {
   const { data } = await api.patch<EmployeeDetail>(`/org/employees/${id}/`, payload)
@@ -758,6 +789,21 @@ export async function downloadPayslipPdf(id: string) {
     blob: response.data as Blob,
     filename: response.headers['content-disposition']?.match(/filename="?([^"]+)"?/)?.[1] || `payslip-${id}.pdf`,
   }
+}
+
+export async function downloadPayrollRunPayslipsZip(runId: string, payload: { item_ids?: string[] }) {
+  const response = await api.post<Blob>(`/org/payroll/runs/${runId}/payslips/download/`, payload, {
+    responseType: 'blob',
+  })
+  return {
+    blob: response.data as Blob,
+    filename: response.headers['content-disposition']?.match(/filename="?([^"]+)"?/)?.[1] || `payslips-${runId}.zip`,
+  }
+}
+
+export async function notifyPayrollRunPayslips(runId: string, payload: { item_ids?: string[] }) {
+  const { data } = await api.post<{ selected_count: number; notified_count: number }>(`/org/payroll/runs/${runId}/payslips/notify/`, payload)
+  return data
 }
 
 export async function fetchOrgFullAndFinalSettlements() {

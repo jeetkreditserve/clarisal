@@ -235,6 +235,35 @@ export interface BankAccount {
   modified_at: string
 }
 
+export type CustomFieldType = 'TEXT' | 'NUMBER' | 'DATE' | 'DROPDOWN' | 'CHECKBOX' | 'EMAIL' | 'PHONE'
+
+export interface CustomFieldDefinition {
+  id: string
+  name: string
+  field_key: string
+  field_type: CustomFieldType
+  placement: string
+  is_required: boolean
+  display_order: number
+  dropdown_options: string[]
+  placeholder: string
+  help_text: string
+  is_active: boolean
+  created_at: string
+}
+
+export interface EmployeeCustomFieldValue {
+  id: string
+  field_definition: string
+  field_name: string
+  field_type: CustomFieldType
+  value_text: string
+  value_number: string | null
+  value_date: string | null
+  value_boolean: boolean
+  display_value: string
+}
+
 export interface EmployeeDetail {
   id: string
   employee_code: string | null
@@ -263,10 +292,13 @@ export interface EmployeeDetail {
   on_duty_approval_workflow_name: string | null
   attendance_regularization_approval_workflow_id: string | null
   attendance_regularization_approval_workflow_name: string | null
+  expense_approval_workflow_id: string | null
+  expense_approval_workflow_name: string | null
   effective_approval_workflows: {
     leave: EffectiveApprovalWorkflowSummary
     on_duty: EffectiveApprovalWorkflowSummary
     attendance_regularization: EffectiveApprovalWorkflowSummary
+    expense_claim: EffectiveApprovalWorkflowSummary
   }
   offboarding: OffboardingProcess | null
 }
@@ -1433,6 +1465,8 @@ export interface ExpenseClaim {
   employee: string
   employee_name: string
   employee_code: string | null
+  policy_id: string | null
+  policy_name: string | null
   title: string
   claim_date: string
   currency: string

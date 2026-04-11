@@ -359,25 +359,36 @@ def _summarize_pay_run_exceptions(pay_run):
 
 
 def _notify_employees_payroll_finalized(pay_run, actor=None):
+    period_label = date(pay_run.period_year, pay_run.period_month, 1).strftime('%B %Y')
+    notify_payroll_ready_for_payslips(pay_run.payslips.select_related('employee__user').all(), actor=actor, period_label=period_label)
+
+
+def notify_payroll_ready_for_payslips(payslips, *, actor=None, period_label: str | None = None):
     from apps.notifications.tasks import send_payroll_ready_email
 
-    period_label = date(pay_run.period_year, pay_run.period_month, 1).strftime('%B %Y')
-    for payslip in pay_run.payslips.select_related('employee__user').all():
+    for payslip in payslips:
         recipient = payslip.employee.user
+        resolved_period_label = period_label or date(payslip.period_year, payslip.period_month, 1).strftime('%B %Y')
+
+        def _queue_email(user_id: str = str(recipient.id), label: str = resolved_period_label) -> None:
+            send_payroll_ready_email.delay(user_id, pay_period=label)
+
         create_notification(
             recipient=recipient,
             kind=NotificationKind.PAYROLL_FINALIZED,
-            title=f'Your payslip for {period_label} is ready',
+            title=f'Your payslip for {resolved_period_label} is ready',
             body='Your payslip has been finalized. View it in your payslips section.',
-            organisation=pay_run.organisation,
-            related_object=pay_run,
+            organisation=payslip.organisation,
+            related_object=payslip.pay_run,
             actor=actor,
         )
-        transaction.on_commit(
-            lambda user_id=str(recipient.id), label=period_label: send_payroll_ready_email.delay(
-                user_id,
-                pay_period=label,
-            )
+        transaction.on_commit(_queue_email)
+        log_audit_event(
+            actor,
+            'payroll.payslip.notification_queued',
+            organisation=payslip.organisation,
+            target=payslip,
+            payload={'pay_run_id': str(payslip.pay_run_id)},
         )
 
 
@@ -613,11 +624,8 @@ def tax_category_for_fiscal_year(employee, fiscal_year_str: str) -> str:
         start_year = int(fiscal_year_str.split('-')[0])
     except (ValueError, IndexError):
         return TaxCategory.INDIVIDUAL
-    dob = None
-    try:
-        dob = employee.profile.date_of_birth
-    except Exception:
-        pass
+    profile = getattr(employee, 'profile', None)
+    dob = getattr(profile, 'date_of_birth', None)
     if not dob:
         return TaxCategory.INDIVIDUAL
     fy_start = date(start_year, 4, 1)
@@ -1227,10 +1235,15 @@ def calculate_pay_run(pay_run, *, actor=None):
         total_attendance_paid_days = ZERO
         total_lop_days = ZERO
         total_overtime_minutes = 0
-        employees = list(Employee.objects.filter(
-            organisation=pay_run.organisation,
-            status=EmployeeStatus.ACTIVE,
-        ).select_related('user', 'office_location__organisation_address', 'profile'))
+        employees = list(
+            Employee.objects.filter(
+                organisation=pay_run.organisation,
+                status=EmployeeStatus.ACTIVE,
+            )
+            .select_related('user', 'office_location__organisation_address', 'profile')
+            # Keep the payroll run employee scan aligned with employee_org_status_doj_idx.
+            .order_by('date_of_joining', 'id')
+        )
         employee_states_by_id = {}
         relevant_state_codes = set()
         if org_state_code:
@@ -1986,7 +1999,10 @@ def _apply_filing_batch_result(
     artifact_uploaded_at = None
     store_artifact_in_s3 = (
         not result.validation_errors
-        and getattr(settings, 'PAYROLL_FILING_ARTIFACT_STORAGE', 'database').lower() == 's3'
+        and (
+            bool(result.artifact_binary)
+            or getattr(settings, 'PAYROLL_FILING_ARTIFACT_STORAGE', 'database').lower() == 's3'
+        )
     )
     if store_artifact_in_s3:
         storage_object_id = uuid4()
@@ -2017,8 +2033,7 @@ def _apply_filing_batch_result(
         validation_errors=result.validation_errors,
         metadata=result.metadata | {'source_run_ids': [str(run.id) for run in runs]},
         structured_payload=result.structured_payload,
-        artifact_text=result.artifact_text if not result.validation_errors and not artifact_storage_key else '',
-        artifact_binary=result.artifact_binary if not result.validation_errors and not artifact_storage_key else None,
+        artifact_text=result.artifact_text if not result.validation_errors else '',
     )
     if runs:
         batch.source_pay_runs.set(runs)
@@ -2134,7 +2149,7 @@ def generate_statutory_filing_batch(
             organisation=organisation,
             actor=actor,
             filing_type=filing_type,
-            artifact_format=StatutoryFilingArtifactFormat.JSON,
+            artifact_format=StatutoryFilingArtifactFormat.XML,
             fiscal_year=fiscal_year,
             quarter=quarter,
             runs=runs,
@@ -2227,8 +2242,6 @@ def download_statutory_filing_batch(batch, *, actor=None):
     )
     if download_url:
         return None, batch.content_type, batch.file_name, download_url
-    if batch.artifact_binary:
-        return bytes(batch.artifact_binary), batch.content_type, batch.file_name, ''
     return batch.artifact_text.encode('utf-8'), batch.content_type, batch.file_name, ''
 
 

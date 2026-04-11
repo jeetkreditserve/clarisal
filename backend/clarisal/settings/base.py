@@ -3,6 +3,7 @@ import os
 from datetime import timedelta
 from decimal import Decimal
 from pathlib import Path
+from types import ModuleType
 
 import environ
 
@@ -310,21 +311,23 @@ def configure_optional_sentry(environment, sentry_module):
     return True
 
 
+sentry_sdk_module: ModuleType | None
 try:
-    import sentry_sdk  # noqa: E402
+    import sentry_sdk as sentry_sdk_module  # noqa: E402
 except ImportError:  # pragma: no cover - optional dependency in dev images
-    sentry_sdk = None
+    sentry_sdk_module = None
 
 SENTRY_DSN = env("SENTRY_DSN", default="")
-configure_optional_sentry(env, sentry_sdk)
+configure_optional_sentry(env, sentry_sdk_module)
 
 # ---------------------------------------------------------------------------
 # Logging + structlog
 # ---------------------------------------------------------------------------
+structlog_module: ModuleType | None
 try:
-    import structlog  # noqa: E402
+    import structlog as structlog_module  # noqa: E402
 except ImportError:  # pragma: no cover - optional dependency in dev images
-    structlog = None
+    structlog_module = None
 
 LOGGING = {
     "version": 1,
@@ -340,15 +343,15 @@ LOGGING = {
     },
 }
 
-if structlog is not None:
-    structlog.configure(
+if structlog_module is not None:
+    structlog_module.configure(
         processors=[
-            structlog.contextvars.merge_contextvars,
-            structlog.processors.add_log_level,
-            structlog.processors.TimeStamper(fmt="iso"),
-            structlog.dev.ConsoleRenderer() if DEBUG else structlog.processors.JSONRenderer(),
+            structlog_module.contextvars.merge_contextvars,
+            structlog_module.processors.add_log_level,
+            structlog_module.processors.TimeStamper(fmt="iso"),
+            structlog_module.dev.ConsoleRenderer() if DEBUG else structlog_module.processors.JSONRenderer(),
         ],
-        wrapper_class=structlog.make_filtering_bound_logger(logging.WARNING),
+        wrapper_class=structlog_module.make_filtering_bound_logger(logging.WARNING),
         context_class=dict,
-        logger_factory=structlog.PrintLoggerFactory(),
+        logger_factory=structlog_module.PrintLoggerFactory(),
     )

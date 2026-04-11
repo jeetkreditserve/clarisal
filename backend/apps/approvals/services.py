@@ -127,6 +127,8 @@ def get_employee_assigned_workflow(employee, request_kind):
         workflow = employee.on_duty_approval_workflow
     elif request_kind == ApprovalRequestKind.ATTENDANCE_REGULARIZATION:
         workflow = employee.attendance_regularization_approval_workflow
+    elif request_kind == ApprovalRequestKind.EXPENSE_CLAIM:
+        workflow = employee.expense_approval_workflow
 
     if workflow and workflow.organisation_id == employee.organisation_id and workflow.is_active:
         return workflow

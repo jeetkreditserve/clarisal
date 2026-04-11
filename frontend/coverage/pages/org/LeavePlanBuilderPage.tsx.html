@@ -32,7 +32,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>0/215</span>
+                <span class='fraction'>0/211</span>
             </div>
         
             
@@ -1143,10 +1143,7 @@
 <a name='L1078'></a><a href='#L1078'>1078</a>
 <a name='L1079'></a><a href='#L1079'>1079</a>
 <a name='L1080'></a><a href='#L1080'>1080</a>
-<a name='L1081'></a><a href='#L1081'>1081</a>
-<a name='L1082'></a><a href='#L1082'>1082</a>
-<a name='L1083'></a><a href='#L1083'>1083</a>
-<a name='L1084'></a><a href='#L1084'>1084</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L1081'></a><a href='#L1081'>1081</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -1477,7 +1474,10 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -1486,11 +1486,12 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -1593,8 +1594,6 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -1983,7 +1982,6 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -2217,10 +2215,6 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -2560,9 +2554,14 @@ export function <span class="fstat-no" title="function not covered" >LeavePlanBu
         title={isEditing ? 'Edit leave plan' : 'Create leave plan'}
         description="Build the plan step by step: define the policy, configure leave types, then validate applicability before saving."
         actions={
-          &lt;button type="button" className="btn-secondary" <span class="fstat-no" title="function not covered" >onClick={() =&gt; <span class="cstat-no" title="statement not covered" >n</span>avigate(`${basePath}/leave-plans`)}</span>&gt;
-            Back to plans
-          &lt;/button&gt;
+          &lt;&gt;
+            &lt;button type="button" className="btn-secondary" <span class="fstat-no" title="function not covered" >onClick={() =&gt; <span class="cstat-no" title="statement not covered" >n</span>avigate(`${basePath}/leave-plans`)}</span>&gt;
+              Back to plans
+            &lt;/button&gt;
+            &lt;button type="submit" className="btn-primary" disabled={isSaving}&gt;
+              {isSaving ? 'Saving...' : isEditing ? 'Save changes' : 'Create leave plan'}
+            &lt;/button&gt;
+          &lt;/&gt;
         }
       /&gt;
 &nbsp;
@@ -2598,7 +2597,6 @@ export function <span class="fstat-no" title="function not covered" >LeavePlanBu
         &lt;/ol&gt;
       &lt;/nav&gt;
 &nbsp;
-      {currentStep === 1 ? (
       &lt;SectionCard title="Plan basics" description="Anchor the plan to a leave cycle and define whether it is the default active policy."&gt;
         &lt;div className="grid gap-4 lg:grid-cols-2"&gt;
           &lt;div&gt;
@@ -2668,9 +2666,7 @@ export function <span class="fstat-no" title="function not covered" >LeavePlanBu
           /&gt;
         &lt;/div&gt;
       &lt;/SectionCard&gt;
-      ) : null}
 &nbsp;
-      {currentStep === 2 ? (
       &lt;SectionCard
         title="Leave types"
         description="Bundle multiple leave types into one policy and define accrual, balance, attachment, and request constraints for each one."
@@ -3076,7 +3072,6 @@ export function <span class="fstat-no" title="function not covered" >LeavePlanBu
           ))}
         &lt;/div&gt;
       &lt;/SectionCard&gt;
-      ) : null}
 &nbsp;
       {currentStep === 3 ? (
       &lt;&gt;
@@ -3303,11 +3298,7 @@ export function <span class="fstat-no" title="function not covered" >LeavePlanBu
           &gt;
             Next
           &lt;/button&gt;
-        ) : (
-          &lt;button type="submit" className="btn-primary" disabled={isSaving}&gt;
-            {isSaving ? 'Saving...' : isEditing ? 'Save changes' : 'Create leave plan'}
-          &lt;/button&gt;
-        )}
+        ) : &lt;span className="text-sm text-[hsl(var(--muted-foreground))]"&gt;Ready to save&lt;/span&gt;}
       &lt;/div&gt;
     &lt;/form&gt;
   )
@@ -3319,7 +3310,7 @@ export function <span class="fstat-no" title="function not covered" >LeavePlanBu
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-04-03T15:49:11.005Z
+                at 2026-04-11T11:31:19.575Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

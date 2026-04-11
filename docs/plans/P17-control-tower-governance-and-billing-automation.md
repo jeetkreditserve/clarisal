@@ -93,7 +93,7 @@
 > **Audit v3 finding (§8.2):** No self-service data export exists for tenant offboarding. Enterprise customers expect the ability to download all their data before churning.
 
 - [x] Add a `TenantDataExportBatch` model tracking export type (employees, payslips, leave history, audit log), requested_by, status, and S3 artifact key.
-- [ ] Implement a Celery task that aggregates tenant data into a ZIP archive (CSV + PDF payslips) and uploads it to S3 with a time-limited presigned URL.
+- [x] Implement a Celery task that aggregates tenant data into a ZIP archive (CSV + PDF payslips) and uploads it to S3 with a time-limited presigned URL.
 - [x] Add a CT-only endpoint to trigger export and poll status, and an org-admin self-service endpoint for requesting their own data export.
 - [x] Add the export trigger to the CT Organisation Detail page under a "Data & Compliance" panel.
 - [x] Cover export lifecycle, S3 upload, and presigned URL generation with tests.

@@ -6,6 +6,9 @@ from rest_framework.test import APIClient
 from apps.accounts.models import User, UserRole
 from apps.approvals.models import ApprovalRequestKind, ApprovalWorkflow
 from apps.employees.models import (
+    CustomFieldDefinition,
+    CustomFieldPlacement,
+    CustomFieldType,
     Employee,
     EmployeeOffboardingProcess,
     EmployeeStatus,
@@ -101,6 +104,80 @@ def employee_client(db):
 
 @pytest.mark.django_db
 class TestEmployeeWorkflowAssignments:
+    def test_custom_field_definitions_and_values_can_be_managed(self, org_admin_client):
+        client, organisation = org_admin_client
+        employee_user = User.objects.create_user(
+            email='custom-fields@test.com',
+            password='pass123!',
+            role=UserRole.EMPLOYEE,
+            is_active=True,
+        )
+        employee = Employee.objects.create(
+            organisation=organisation,
+            user=employee_user,
+            status=EmployeeStatus.ACTIVE,
+            employee_code='EMP-CF',
+        )
+        field_definition = CustomFieldDefinition.objects.create(
+            organisation=organisation,
+            name='Shirt size',
+            field_key='shirt_size',
+            field_type=CustomFieldType.TEXT,
+            placement=CustomFieldPlacement.CUSTOM,
+            is_required=False,
+            display_order=1,
+            dropdown_options=[],
+        )
+
+        definition_response = client.get('/api/v1/org/custom-fields/?placement=CUSTOM')
+        assert definition_response.status_code == 200
+        assert definition_response.data[0]['id'] == str(field_definition.id)
+
+        update_response = client.put(
+            f'/api/v1/org/employees/{employee.id}/custom-fields/',
+            {
+                'custom_fields': [
+                    {
+                        'field_definition_id': str(field_definition.id),
+                        'value_text': 'L',
+                    },
+                ],
+            },
+            format='json',
+        )
+
+        assert update_response.status_code == 200
+        assert str(update_response.data[0]['field_definition']) == str(field_definition.id)
+        assert update_response.data[0]['display_value'] == 'L'
+
+        value_response = client.get(f'/api/v1/org/employees/{employee.id}/custom-fields/')
+        assert value_response.status_code == 200
+        assert value_response.data[0]['field_name'] == 'Shirt size'
+        assert value_response.data[0]['value_text'] == 'L'
+
+    def test_custom_field_definition_rejects_invalid_field_key(self, org_admin_client):
+        client, _organisation = org_admin_client
+
+        response = client.post(
+            '/api/v1/org/custom-fields/',
+            {
+                'name': 'Shirt size',
+                'field_key': 'Shirt Size',
+                'field_type': 'TEXT',
+                'placement': 'CUSTOM',
+                'is_required': False,
+                'display_order': 1,
+                'dropdown_options': [],
+                'placeholder': '',
+                'help_text': '',
+                'is_active': True,
+            },
+            format='json',
+        )
+
+        assert response.status_code == 400
+        assert 'field_key' in response.data
+
     def test_employee_detail_exposes_and_updates_workflow_assignments(self, org_admin_client):
         client, organisation = org_admin_client
         leave_workflow = ApprovalWorkflow.objects.create(
@@ -124,6 +201,13 @@ class TestEmployeeWorkflowAssignments:
             default_request_kind=ApprovalRequestKind.ATTENDANCE_REGULARIZATION,
             is_active=True,
         )
+        expense_workflow = ApprovalWorkflow.objects.create(
+            organisation=organisation,
+            name='Expense Workflow',
+            is_default=True,
+            default_request_kind=ApprovalRequestKind.EXPENSE_CLAIM,
+            is_active=True,
+        )
         employee_user = User.objects.create_user(
             email='employee@test.com',
             password='pass123!',
@@ -142,6 +226,8 @@ class TestEmployeeWorkflowAssignments:
         assert response.data['leave_approval_workflow_id'] is None
         assert response.data['effective_approval_workflows']['leave']['workflow_id'] == str(leave_workflow.id)
         assert response.data['effective_approval_workflows']['leave']['source'] == 'DEFAULT'
+        assert response.data['effective_approval_workflows']['expense_claim']['workflow_id'] == str(expense_workflow.id)
+        assert response.data['effective_approval_workflows']['expense_claim']['source'] == 'DEFAULT'
 
         patch_response = client.patch(
             f'/api/v1/org/employees/{employee.id}/',
@@ -149,6 +235,7 @@ class TestEmployeeWorkflowAssignments:
                 'leave_approval_workflow_id': str(leave_workflow.id),
                 'on_duty_approval_workflow_id': str(od_workflow.id),
                 'attendance_regularization_approval_workflow_id': str(regularization_workflow.id),
+                'expense_approval_workflow_id': str(expense_workflow.id),
             },
             format='json',
         )
@@ -157,7 +244,9 @@ class TestEmployeeWorkflowAssignments:
         assert patch_response.data['leave_approval_workflow_id'] == str(leave_workflow.id)
         assert patch_response.data['on_duty_approval_workflow_id'] == str(od_workflow.id)
         assert patch_response.data['attendance_regularization_approval_workflow_id'] == str(regularization_workflow.id)
+        assert patch_response.data['expense_approval_workflow_id'] == str(expense_workflow.id)
         assert patch_response.data['effective_approval_workflows']['leave']['source'] == 'ASSIGNMENT'
+        assert patch_response.data['effective_approval_workflows']['expense_claim']['source'] == 'ASSIGNMENT'
 
     def test_end_employment_creates_offboarding_process(self, org_admin_client):
         client, organisation = org_admin_client

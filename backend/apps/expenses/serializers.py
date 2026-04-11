@@ -82,6 +82,8 @@ class ExpensePolicySerializer(serializers.ModelSerializer):
 class ExpenseClaimSerializer(serializers.ModelSerializer):
     employee_name = serializers.CharField(source='employee.user.full_name', read_only=True)
     employee_code = serializers.CharField(source='employee.employee_code', read_only=True)
+    policy_id = serializers.UUIDField(source='policy.id', read_only=True, allow_null=True)
+    policy_name = serializers.CharField(source='policy.name', read_only=True, allow_null=True)
     approval_run_id = serializers.UUIDField(source='approval_run.id', read_only=True, allow_null=True)
     reimbursement_pay_run_id = serializers.UUIDField(source='reimbursement_pay_run.id', read_only=True, allow_null=True)
     total_amount = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
@@ -94,6 +96,8 @@ class ExpenseClaimSerializer(serializers.ModelSerializer):
             'employee',
             'employee_name',
             'employee_code',
+            'policy_id',
+            'policy_name',
             'title',
             'claim_date',
             'currency',

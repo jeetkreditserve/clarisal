@@ -714,7 +714,7 @@ def seed_statutory_master_data():
 
 def seed_surcharge_rules(using='default'):
     from decimal import Decimal
-    from django.db import connection
+
     from apps.payroll.models import SurchargeRule
     
     surcharge_data = [

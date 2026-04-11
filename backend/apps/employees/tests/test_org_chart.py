@@ -1,12 +1,13 @@
 import pytest
-from datetime import date
 
 from apps.accounts.models import User, UserRole
 from apps.employees.models import Employee, EmployeeStatus
-from apps.employees.services import (
-    get_org_chart_tree,
-    get_employee_direct_reports,
-    validate_org_chart_cycles,
+from apps.employees.services import get_employee_direct_reports, get_org_chart_tree, validate_org_chart_cycles
+from apps.organisations.models import (
+    Organisation,
+    OrganisationAccessState,
+    OrganisationBillingStatus,
+    OrganisationStatus,
 )
 
 
@@ -22,7 +23,6 @@ def org_admin(db):
 
 @pytest.fixture
 def organisation(db, org_admin):
-    from apps.organisations.models import Organisation, OrganisationAccessState, OrganisationBillingStatus, OrganisationStatus
     return Organisation.objects.create(
         name='Test Org',
         created_by=org_admin,
@@ -88,7 +88,7 @@ class TestOrgChartTree:
 
     def test_employees_without_manager_are_roots(self, organisation, org_admin):
         user1 = User.objects.create_user(email='orphan@test.com', password='pass123!', role=UserRole.EMPLOYEE, first_name='Orphan', last_name='Emp')
-        orphan = Employee.objects.create(organisation=organisation, user=user1, employee_code='ORP001', status=EmployeeStatus.ACTIVE)
+        Employee.objects.create(organisation=organisation, user=user1, employee_code='ORP001', status=EmployeeStatus.ACTIVE)
         
         tree = get_org_chart_tree(organisation)
         

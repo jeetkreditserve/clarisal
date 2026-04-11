@@ -168,6 +168,7 @@ class EmployeeDetailView(APIView):
                 'leave_approval_workflow',
                 'on_duty_approval_workflow',
                 'attendance_regularization_approval_workflow',
+                'expense_approval_workflow',
                 'offboarding_process',
             ),
             organisation=organisation,

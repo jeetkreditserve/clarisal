@@ -215,6 +215,18 @@ class TestResolveWorkflow:
             default_request_kind=ApprovalRequestKind.ATTENDANCE_REGULARIZATION,
             is_active=True,
         )
+        assigned_expense_workflow = ApprovalWorkflow.objects.create(
+            organisation=organisation,
+            name='Assigned Expense Workflow',
+            is_active=True,
+        )
+        default_expense_workflow = ApprovalWorkflow.objects.create(
+            organisation=organisation,
+            name='Default Expense Workflow',
+            is_default=True,
+            default_request_kind=ApprovalRequestKind.EXPENSE_CLAIM,
+            is_active=True,
+        )
 
         ApprovalWorkflowRule.objects.create(
             workflow=rule_workflow,
@@ -231,6 +243,7 @@ class TestResolveWorkflow:
         employee.leave_approval_workflow = assigned_workflow
         employee.on_duty_approval_workflow = default_od_workflow
         employee.attendance_regularization_approval_workflow = default_regularization_workflow
+        employee.expense_approval_workflow = assigned_expense_workflow
         employee.save(
             update_fields=[
                 'department',
@@ -238,6 +251,7 @@ class TestResolveWorkflow:
                 'leave_approval_workflow',
                 'on_duty_approval_workflow',
                 'attendance_regularization_approval_workflow',
+                'expense_approval_workflow',
                 'modified_at',
             ]
         )
@@ -275,6 +289,8 @@ class TestResolveWorkflow:
         assert resolve_workflow(unresolved_employee, ApprovalRequestKind.LEAVE, leave_type=leave_type) == default_leave_workflow
         assert resolve_workflow(employee, ApprovalRequestKind.ON_DUTY) == default_od_workflow
         assert resolve_workflow(employee, ApprovalRequestKind.ATTENDANCE_REGULARIZATION) == default_regularization_workflow
+        assert resolve_workflow(employee, ApprovalRequestKind.EXPENSE_CLAIM) == assigned_expense_workflow
+        assert resolve_workflow(unresolved_employee, ApprovalRequestKind.EXPENSE_CLAIM) == default_expense_workflow
 
     def test_ensure_default_workflow_configured_requires_all_defaults(self, organisation):
         ApprovalWorkflow.objects.create(
@@ -386,6 +402,12 @@ class TestResolveWorkflow:
         assert get_employee_assigned_workflow(employee, ApprovalRequestKind.LEAVE) is None
         employee.leave_approval_workflow = active_workflow
         assert get_employee_assigned_workflow(employee, ApprovalRequestKind.LEAVE) == active_workflow
+        employee.expense_approval_workflow = cross_org_workflow
+        assert get_employee_assigned_workflow(employee, ApprovalRequestKind.EXPENSE_CLAIM) is None
+        employee.expense_approval_workflow = inactive_workflow
+        assert get_employee_assigned_workflow(employee, ApprovalRequestKind.EXPENSE_CLAIM) is None
+        employee.expense_approval_workflow = active_workflow
+        assert get_employee_assigned_workflow(employee, ApprovalRequestKind.EXPENSE_CLAIM) == active_workflow
 
 
 def _create_pending_action(*, organisation, requester, approver_user, subject, request_kind, subject_label):

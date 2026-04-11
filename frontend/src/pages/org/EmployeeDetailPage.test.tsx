@@ -7,9 +7,11 @@ import { EmployeeDetailPage } from '@/pages/org/EmployeeDetailPage'
 
 const useApprovalWorkflows = vi.fn()
 const useCompleteEmployeeOffboarding = vi.fn()
+const useCustomFieldDefinitions = vi.fn()
 const useDeleteEmployee = vi.fn()
 const useDepartments = vi.fn()
 const useDesignations = vi.fn()
+const useEmployeeCustomFieldValues = vi.fn()
 const useEmployeeDetail = vi.fn()
 const useEmployeeCareerTimeline = vi.fn()
 const useEmployeeDocumentDownload = vi.fn()
@@ -22,6 +24,7 @@ const useMarkEmployeeJoined = vi.fn()
 const useMarkEmployeeProbationComplete = vi.fn()
 const useOrgFullAndFinalSettlements = vi.fn()
 const useUpdateEmployee = vi.fn()
+const useUpdateEmployeeCustomFieldValues = vi.fn()
 const useUpdateEmployeeOffboarding = vi.fn()
 const useUpdateEmployeeOffboardingTask = vi.fn()
 
@@ -35,9 +38,11 @@ vi.mock('sonner', () => ({
 vi.mock('@/hooks/useOrgAdmin', () => ({
   useApprovalWorkflows: () => useApprovalWorkflows(),
   useCompleteEmployeeOffboarding: () => useCompleteEmployeeOffboarding(),
+  useCustomFieldDefinitions: () => useCustomFieldDefinitions(),
   useDeleteEmployee: () => useDeleteEmployee(),
   useDepartments: () => useDepartments(),
   useDesignations: () => useDesignations(),
+  useEmployeeCustomFieldValues: (id: string) => useEmployeeCustomFieldValues(id),
   useEmployeeDetail: (id: string) => useEmployeeDetail(id),
   useEmployeeCareerTimeline: (id: string) => useEmployeeCareerTimeline(id),
   useEmployeeDocumentDownload: () => useEmployeeDocumentDownload(),
@@ -50,6 +55,7 @@ vi.mock('@/hooks/useOrgAdmin', () => ({
   useMarkEmployeeProbationComplete: (id: string) => useMarkEmployeeProbationComplete(id),
   useOrgFullAndFinalSettlements: () => useOrgFullAndFinalSettlements(),
   useUpdateEmployee: (id: string) => useUpdateEmployee(id),
+  useUpdateEmployeeCustomFieldValues: (id: string) => useUpdateEmployeeCustomFieldValues(id),
   useUpdateEmployeeOffboarding: (id: string) => useUpdateEmployeeOffboarding(id),
   useUpdateEmployeeOffboardingTask: (id: string) => useUpdateEmployeeOffboardingTask(id),
 }))
@@ -69,8 +75,41 @@ describe('EmployeeDetailPage', () => {
     vi.clearAllMocks()
 
     useApprovalWorkflows.mockReturnValue({ data: [] })
+    useCustomFieldDefinitions.mockReturnValue({
+      data: [
+        {
+          id: 'field-1',
+          name: 'Shirt size',
+          field_key: 'shirt_size',
+          field_type: 'TEXT',
+          placement: 'CUSTOM',
+          is_required: false,
+          display_order: 1,
+          dropdown_options: [],
+          placeholder: 'Enter shirt size',
+          help_text: 'Used for welcome kit orders.',
+          is_active: true,
+          created_at: '2026-04-01T00:00:00Z',
+        },
+      ],
+    })
     useDepartments.mockReturnValue({ data: [] })
     useDesignations.mockReturnValue({ data: [{ id: 'des-1', name: 'Engineer', level: 1, is_active: true }] })
+    useEmployeeCustomFieldValues.mockReturnValue({
+      data: [
+        {
+          id: 'value-1',
+          field_definition: 'field-1',
+          field_name: 'Shirt size',
+          field_type: 'TEXT',
+          value_text: 'M',
+          value_number: null,
+          value_date: null,
+          value_boolean: false,
+          display_value: 'M',
+        },
+      ],
+    })
     useEmployeeDocumentDownload.mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({ url: 'https://example.com' }) })
     useEmployeeCareerTimeline.mockReturnValue({ isLoading: false, data: [] })
     useEmployeeDocumentRequests.mockReturnValue({ data: [] })
@@ -113,6 +152,7 @@ describe('EmployeeDetailPage', () => {
       useMarkEmployeeJoined,
       useMarkEmployeeProbationComplete,
       useUpdateEmployee,
+      useUpdateEmployeeCustomFieldValues,
       useUpdateEmployeeOffboarding,
       useUpdateEmployeeOffboardingTask,
     ]) {
@@ -149,10 +189,13 @@ describe('EmployeeDetailPage', () => {
         on_duty_approval_workflow_name: null,
         attendance_regularization_approval_workflow_id: null,
         attendance_regularization_approval_workflow_name: null,
+        expense_approval_workflow_id: null,
+        expense_approval_workflow_name: null,
         effective_approval_workflows: {
           leave: { workflow_id: null, workflow_name: 'Default Leave', source: 'DEFAULT' },
           on_duty: { workflow_id: null, workflow_name: 'Default On Duty', source: 'DEFAULT' },
           attendance_regularization: { workflow_id: null, workflow_name: 'Default Attendance', source: 'DEFAULT' },
+          expense_claim: { workflow_id: null, workflow_name: 'Default Expense', source: 'DEFAULT' },
         },
         offboarding: {
           id: 'off-1',
@@ -262,5 +305,31 @@ describe('EmployeeDetailPage', () => {
     expect(screen.getByText(/Engineer → Senior Engineer/)).toBeInTheDocument()
     expect(screen.getByText('Compensation revision included')).toBeInTheDocument()
     expect(screen.getByText(/Rohan Mehta/)).toBeInTheDocument()
+  })
+
+  it('renders and updates custom employee fields', async () => {
+    const user = userEvent.setup()
+    renderPage()
+
+    const customFieldInput = screen.getByLabelText('Shirt size')
+    expect(customFieldInput).toHaveValue('M')
+
+    await user.clear(customFieldInput)
+    await user.type(customFieldInput, 'L')
+    await user.click(screen.getByRole('button', { name: 'Save custom fields' }))
+
+    await waitFor(() => {
+      expect(useUpdateEmployeeCustomFieldValues('emp-1').mutateAsync).toHaveBeenCalledWith({
+        custom_fields: [
+          {
+            field_definition_id: 'field-1',
+            value_text: 'L',
+            value_number: null,
+            value_date: null,
+            value_boolean: false,
+          },
+        ],
+      })
+    })
   })
 })

@@ -38,6 +38,14 @@ const inviteDefaults = {
   office_location_id: '',
 }
 
+const bulkInviteDefaults = {
+  rows: '',
+  employment_type: 'FULL_TIME' as EmploymentType,
+  date_of_joining: '',
+  department_id: '',
+  office_location_id: '',
+}
+
 const EMPLOYMENT_TYPE_SELECT_OPTIONS = EMPLOYMENT_TYPE_OPTIONS.map((type) => ({
   value: type,
   label: startCase(type),
@@ -48,14 +56,37 @@ const EMPLOYEE_STATUS_SELECT_OPTIONS = EMPLOYEE_STATUS_OPTIONS.map((employeeStat
   label: employeeStatus ? startCase(employeeStatus) : 'All statuses',
 }))
 
+function parseBulkInviteRows(rawRows: string) {
+  const rows = rawRows
+    .split(/\r?\n/)
+    .map((row) => row.trim())
+    .filter(Boolean)
+
+  if (rows.length === 0) {
+    throw new Error('Add at least one employee row before sending bulk invites.')
+  }
+
+  return rows.map((row, index) => {
+    const [first_name, last_name, company_email, designation] = row.split(',').map((value) => value.trim())
+    if (!first_name || !last_name || !company_email || !designation) {
+      throw new Error(`Row ${index + 1} must use "First name, Last name, Email, Designation".`)
+    }
+    return { first_name, last_name, company_email, designation }
+  })
+}
+
 export function EmployeesPage() {
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState<EmployeeStatus | ''>('')
   const [page, setPage] = useState(1)
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false)
+  const [isBulkInviteModalOpen, setIsBulkInviteModalOpen] = useState(false)
   const [inviteForm, setInviteForm] = useState(inviteDefaults)
   const [selectedDocumentTypeIds, setSelectedDocumentTypeIds] = useState<string[]>([])
   const [inviteFieldErrors, setInviteFieldErrors] = useState<Record<string, string>>({})
+  const [bulkInviteForm, setBulkInviteForm] = useState(bulkInviteDefaults)
+  const [bulkSelectedDocumentTypeIds, setBulkSelectedDocumentTypeIds] = useState<string[]>([])
+  const [bulkInviteError, setBulkInviteError] = useState('')
 
   const { data, isLoading } = useEmployees({
     search: search || undefined,
@@ -92,6 +123,30 @@ export function EmployeesPage() {
     }
   }
 
+  const handleBulkInvite = async (event: React.FormEvent) => {
+    event.preventDefault()
+    setBulkInviteError('')
+    try {
+      const parsedRows = parseBulkInviteRows(bulkInviteForm.rows)
+      for (const row of parsedRows) {
+        await inviteMutation.mutateAsync({
+          ...row,
+          employment_type: bulkInviteForm.employment_type,
+          date_of_joining: bulkInviteForm.date_of_joining || null,
+          department_id: bulkInviteForm.department_id || null,
+          office_location_id: bulkInviteForm.office_location_id || null,
+          required_document_type_ids: bulkSelectedDocumentTypeIds,
+        })
+      }
+      toast.success(`${parsedRows.length} employee${parsedRows.length === 1 ? '' : 's'} invited.`)
+      setBulkInviteForm(bulkInviteDefaults)
+      setBulkSelectedDocumentTypeIds([])
+      setIsBulkInviteModalOpen(false)
+    } catch (error) {
+      setBulkInviteError(getErrorMessage(error, 'Unable to send bulk invites.'))
+    }
+  }
+
   return (
     <div className="space-y-6">
       {isLoading && !data ? (
@@ -102,10 +157,15 @@ export function EmployeesPage() {
           title="Employees"
           description="Invite employees, define onboarding documents, and manage lifecycle progression from invite to active join."
           actions={
-            <button onClick={() => setIsInviteModalOpen(true)} className="btn-primary">
-              <UserPlus className="h-4 w-4" />
-              Invite employee
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={() => setIsBulkInviteModalOpen(true)} className="btn-secondary">
+                Bulk invite
+              </button>
+              <button onClick={() => setIsInviteModalOpen(true)} className="btn-primary">
+                <UserPlus className="h-4 w-4" />
+                Invite employee
+              </button>
+            </div>
           }
         />
       )}
@@ -370,6 +430,133 @@ export function EmployeesPage() {
           </div>
           <div className="surface-muted rounded-[26px] p-5 text-sm leading-6 text-[hsl(var(--muted-foreground))] lg:col-span-3">
             Employee codes are assigned only when you mark a pending employee as joined. If the invite is accepted but the employee never joins, you do not waste a code.
+          </div>
+        </form>
+      </AppDialog>
+
+      <AppDialog
+        open={isBulkInviteModalOpen}
+        onOpenChange={(open) => {
+          setIsBulkInviteModalOpen(open)
+          if (!open) {
+            setBulkInviteForm(bulkInviteDefaults)
+            setBulkSelectedDocumentTypeIds([])
+            setBulkInviteError('')
+          }
+        }}
+        title="Bulk invite employees"
+        description="Paste one employee per line using: First name, Last name, Email, Designation. Shared employment settings and onboarding documents apply to every row."
+        contentClassName="sm:w-[min(92vw,64rem)]"
+        footer={
+          <div className="flex flex-wrap justify-end gap-3">
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => {
+                setIsBulkInviteModalOpen(false)
+                setBulkInviteForm(bulkInviteDefaults)
+                setBulkSelectedDocumentTypeIds([])
+                setBulkInviteError('')
+              }}
+            >
+              Cancel
+            </button>
+            <button type="submit" form="bulk-invite-employee-form" className="btn-primary" disabled={inviteMutation.isPending}>
+              {inviteMutation.isPending ? 'Sending invites...' : 'Send bulk invites'}
+            </button>
+          </div>
+        }
+      >
+        <form id="bulk-invite-employee-form" onSubmit={handleBulkInvite} className="grid gap-4 lg:grid-cols-2">
+          <div className="lg:col-span-2">
+            <label className="field-label" htmlFor="bulk-invite-rows">
+              Employee rows
+            </label>
+            <textarea
+              id="bulk-invite-rows"
+              className="field-input min-h-40"
+              value={bulkInviteForm.rows}
+              onChange={(event) => setBulkInviteForm((current) => ({ ...current, rows: event.target.value }))}
+              placeholder={'Ava, Patel, ava.patel@acme.test, People Manager\nNikhil, Rao, nikhil.rao@acme.test, HR Business Partner'}
+            />
+            <FieldErrorText message={bulkInviteError} />
+          </div>
+          <div>
+            <label className="field-label" htmlFor="bulk-employment_type">
+              Employment type
+            </label>
+            <AppSelect
+              id="bulk-employment_type"
+              value={bulkInviteForm.employment_type}
+              onValueChange={(value) => setBulkInviteForm((current) => ({ ...current, employment_type: value as EmploymentType }))}
+              options={EMPLOYMENT_TYPE_SELECT_OPTIONS}
+            />
+          </div>
+          <div>
+            <label className="field-label" htmlFor="bulk-date_of_joining">
+              Joining date
+            </label>
+            <AppDatePicker
+              id="bulk-date_of_joining"
+              value={bulkInviteForm.date_of_joining}
+              onChange={(value) => setBulkInviteForm((current) => ({ ...current, date_of_joining: value }))}
+            />
+          </div>
+          <div>
+            <label className="field-label" htmlFor="bulk-department_id">
+              Department
+            </label>
+            <AppSelect
+              id="bulk-department_id"
+              value={bulkInviteForm.department_id}
+              onValueChange={(value) => setBulkInviteForm((current) => ({ ...current, department_id: value }))}
+              options={[
+                { value: '', label: 'Select department' },
+                ...(departments?.map((department) => ({ value: department.id, label: department.name })) ?? []),
+              ]}
+            />
+          </div>
+          <div>
+            <label className="field-label" htmlFor="bulk-office_location_id">
+              Office location
+            </label>
+            <AppSelect
+              id="bulk-office_location_id"
+              value={bulkInviteForm.office_location_id}
+              onValueChange={(value) => setBulkInviteForm((current) => ({ ...current, office_location_id: value }))}
+              options={[
+                { value: '', label: 'Select location' },
+                ...(locations?.map((location) => ({ value: location.id, label: location.name })) ?? []),
+              ]}
+            />
+          </div>
+          <div className="lg:col-span-2">
+            <label className="field-label" htmlFor="bulk-required_documents">
+              Required onboarding documents
+            </label>
+            <div id="bulk-required_documents" className="grid gap-2 rounded-[20px] border border-[hsl(var(--border)_/_0.72)] bg-[hsl(var(--surface))] p-4 md:grid-cols-2">
+              {(documentTypes ?? []).map((documentType) => (
+                <label
+                  key={documentType.id}
+                  className="flex items-start gap-3 rounded-[16px] border border-[hsl(var(--border)_/_0.6)] bg-white/70 px-4 py-3"
+                >
+                  <AppCheckbox
+                    checked={bulkSelectedDocumentTypeIds.includes(documentType.id)}
+                    onCheckedChange={(checked) => {
+                      setBulkSelectedDocumentTypeIds((current) => (
+                        checked
+                          ? [...current, documentType.id]
+                          : current.filter((value) => value !== documentType.id)
+                      ))
+                    }}
+                  />
+                  <span>
+                    <span className="block font-medium text-[hsl(var(--foreground-strong))]">{documentType.name}</span>
+                    <span className="text-sm text-[hsl(var(--muted-foreground))]">{startCase(documentType.category)}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
           </div>
         </form>
       </AppDialog>

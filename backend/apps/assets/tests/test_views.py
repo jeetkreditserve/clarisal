@@ -123,10 +123,9 @@ class TestAssetViews:
         assert acknowledge_response.data['id'] == str(assignment.id)
         assert acknowledge_response.data['acknowledged_at'] is not None
 
-    def test_legacy_my_assets_alias_remains_available(self, asset_view_setup):
+    def test_legacy_my_assets_alias_is_removed(self, asset_view_setup):
         employee_client = asset_view_setup['employee_client']
 
         response = employee_client.get('/api/v1/me/my/assets/')
 
-        assert response.status_code == 200
-        assert response.data[0]['asset_name'] == 'MacBook Pro'
+        assert response.status_code == 410

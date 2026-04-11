@@ -1,5 +1,6 @@
 import os
 
+from django.conf import settings
 from django.contrib import admin
 from django.http import JsonResponse
 from django.urls import include, path
@@ -18,7 +19,7 @@ def api_health_check(request):
 
 def legacy_api_gone(request, legacy_path=''):
     return JsonResponse(
-        {'error': 'This API route has moved to /api/v1/.'},
+        {'error': f'This API route has moved to /api/{settings.API_VERSION}/.'},
         status=410,
     )
 
@@ -66,7 +67,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('health/', health_check),
     path('api/health/', api_health_check, name='health-check'),
-    path('api/v1/', include(api_v1_patterns)),
+    path(f'api/{settings.API_VERSION}/', include(api_v1_patterns)),
     path('api/', legacy_api_gone, name='legacy-api-root-gone'),
     path('api/<path:legacy_path>', legacy_api_gone, name='legacy-api-gone'),
 ]

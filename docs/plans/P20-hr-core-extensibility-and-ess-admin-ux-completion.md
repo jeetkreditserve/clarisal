@@ -69,9 +69,9 @@
 
 ## Task 5: Add Bulk Operations
 
-- [ ] Add bulk employee invite, bulk leave approval, and bulk payslip send/export flows first.
-- [ ] Ensure bulk actions are permission-aware, confirmable, and individually audited.
-- [ ] Reuse shared selection and confirmation components instead of one-off page-local implementations.
+- [x] Add bulk employee invite, bulk leave approval, and bulk payslip send/export flows first.
+- [x] Ensure bulk actions are permission-aware, confirmable, and individually audited.
+- [x] Reuse shared selection and confirmation components instead of one-off page-local implementations. Reused `ConfirmDialog` plus the existing checkbox/table selection patterns for bulk leave and payroll actions.
 
 ## Task 6: Close Remaining ESS/Admin UX Gaps
 
@@ -81,8 +81,8 @@
 
 ## Task 7: Cleanup and Verification
 
-- [ ] Remove stale fixed-field assumptions from serializers, forms, and employee detail screens once dynamic fields are introduced.
-- [ ] Add full coverage for dynamic-field validation, org-chart projections, exit interviews, bulk actions, and ESS flows.
+- [x] Remove stale fixed-field assumptions from serializers, forms, and employee detail screens once dynamic fields are introduced. Employee detail now renders and saves organisation-defined custom fields through dedicated custom-field APIs instead of assuming a fixed extended-profile shape.
+- [x] Add full coverage for dynamic-field validation, org-chart projections, exit interviews, bulk actions, and ESS flows.
 - [x] Run UI interaction tests for the new employee-detail, org-chart, dashboard, and payslip behaviors.
 
 ## Task 8: Add Transfer and Promotion Event Models

@@ -6,6 +6,8 @@ from rest_framework.test import APIClient
 
 from apps.accounts.models import UserRole
 from apps.approvals.models import ApprovalRequestKind
+from apps.expenses.models import ExpenseCategory, ExpensePolicy
+from apps.expenses.services import create_expense_claim
 from apps.organisations.models import OrganisationMembership, OrganisationMembershipStatus
 from apps.payroll.tests.test_service_setup import (
     _create_active_organisation,
@@ -13,9 +15,6 @@ from apps.payroll.tests.test_service_setup import (
     _create_user,
     _create_workflow,
 )
-
-from apps.expenses.models import ExpenseCategory, ExpensePolicy
-from apps.expenses.services import create_expense_claim
 
 
 @pytest.fixture
@@ -157,7 +156,6 @@ def test_employee_can_edit_claim_upload_receipt_and_submit(expense_api_setup, mo
 
 @pytest.mark.django_db
 def test_org_admin_can_manage_policies_and_view_claim_summary(expense_api_setup):
-    organisation = expense_api_setup['organisation']
     employee = expense_api_setup['employee']
     employee_user = expense_api_setup['employee_user']
     org_admin_client = expense_api_setup['org_admin_client']

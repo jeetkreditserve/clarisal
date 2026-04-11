@@ -1,26 +1,26 @@
+from datetime import date
+
 import pytest
 
 from apps.accounts.models import User, UserRole
-from apps.employees.models import Employee
-
-from apps.assets.models import (
-    AssetCategory,
-    AssetItem,
-    AssetAssignment,
-    AssetAssignmentStatus,
-    AssetCondition,
-    AssetLifecycleStatus,
-)
+from apps.assets.models import AssetAssignmentStatus, AssetCondition, AssetLifecycleStatus
 from apps.assets.services import (
-    create_asset_category,
-    create_asset_item,
-    assign_asset_to_employee,
     acknowledge_asset_assignment,
-    return_asset,
-    mark_asset_as_lost,
-    create_asset_incident,
-    create_asset_maintenance,
+    assign_asset_to_employee,
     complete_asset_maintenance,
+    create_asset_category,
+    create_asset_incident,
+    create_asset_item,
+    create_asset_maintenance,
+    mark_asset_as_lost,
+    return_asset,
+)
+from apps.employees.models import Employee
+from apps.organisations.models import (
+    Organisation,
+    OrganisationAccessState,
+    OrganisationBillingStatus,
+    OrganisationStatus,
 )
 
 
@@ -46,7 +46,6 @@ def employee_user(db):
 
 @pytest.fixture
 def organisation(db, org_admin):
-    from apps.organisations.models import Organisation, OrganisationAccessState, OrganisationBillingStatus, OrganisationStatus
     return Organisation.objects.create(
         name='Test Org',
         created_by=org_admin,
@@ -255,9 +254,9 @@ class TestAssetOffboardingIntegration:
     def test_get_unresolved_asset_assignments(self, organisation, employee, org_admin):
         category = create_asset_category(organisation=organisation, name="Laptops")
         asset = create_asset_item(organisation=organisation, name="MacBook", category=category)
-        
-        assignment = assign_asset_to_employee(asset=asset, employee=employee, actor=org_admin)
-        
+
+        assign_asset_to_employee(asset=asset, employee=employee, actor=org_admin)
+
         from apps.assets.services import get_unresolved_asset_assignments
         unresolved = list(get_unresolved_asset_assignments(employee))
         
@@ -267,9 +266,9 @@ class TestAssetOffboardingIntegration:
     def test_get_employee_asset_summary(self, organisation, employee, org_admin):
         category = create_asset_category(organisation=organisation, name="Laptops")
         asset = create_asset_item(organisation=organisation, name="MacBook", category=category)
-        
-        assignment = assign_asset_to_employee(asset=asset, employee=employee, actor=org_admin)
-        
+
+        assign_asset_to_employee(asset=asset, employee=employee, actor=org_admin)
+
         from apps.assets.services import get_employee_asset_summary
         summary = get_employee_asset_summary(employee)
         
@@ -295,18 +294,15 @@ class TestAssetOffboardingIntegration:
 
 class TestAssetOffboardingServiceIntegration:
     def test_offboarding_summary_includes_asset_info(self, organisation, org_admin):
-        from apps.accounts.models import User, UserRole
-        from apps.employees.models import Employee
-        
         user = User.objects.create_user(email='emp2@test.com', password='pass123!', role=UserRole.EMPLOYEE, is_active=True)
         employee2 = Employee.objects.create(organisation=organisation, user=user, employee_code='EMP002')
-        
+
         category = create_asset_category(organisation=organisation, name="Phones")
         asset = create_asset_item(organisation=organisation, name="iPhone", category=category)
         assign_asset_to_employee(asset=asset, employee=employee2, actor=org_admin)
-        
-        from apps.employees.services import get_employee_offboarding_summary, create_or_update_offboarding_process
-        from datetime import date
+
+        from apps.employees.services import create_or_update_offboarding_process, get_employee_offboarding_summary
+
         create_or_update_offboarding_process(
             employee=employee2,
             exit_status='NOTICE_PERIOD',

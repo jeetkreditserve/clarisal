@@ -27,7 +27,7 @@ class ConnectivityMode(str, Enum):  # noqa: UP042
 class AuthType(str, Enum):  # noqa: UP042
     DEVICE_SERIAL = "DEVICE_SERIAL"
     API_KEY = "API_KEY"
-    SHARED_SECRET = "SHARED_SECRET"
+    SHARED_SECRET = "SHARED_SECRET"  # nosec B105
     DIGEST_AUTH = "DIGEST_AUTH"
     OAUTH_SESSION = "OAUTH_SESSION"
     AEBAS_BRIDGE = "AEBAS_BRIDGE"

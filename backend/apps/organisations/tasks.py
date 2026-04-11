@@ -1,15 +1,19 @@
 import logging
+from types import ModuleType
+from typing import Any
 
-try:
-    import structlog
-except ImportError:  # pragma: no cover - optional dependency in dev images
-    structlog = None
 from celery import shared_task
 
 from .models import Organisation, TenantDataExportBatch
 from .services import aggregate_org_usage_stat, generate_tenant_data_export_batch
 
-logger = structlog.get_logger(__name__) if structlog is not None else logging.getLogger(__name__)
+structlog_module: ModuleType | None
+try:
+    import structlog as structlog_module
+except ImportError:  # pragma: no cover - optional dependency in dev images
+    structlog_module = None
+
+logger: Any = structlog_module.get_logger(__name__) if structlog_module is not None else logging.getLogger(__name__)
 
 
 @shared_task(name='organisations.aggregate_daily_usage_stats')

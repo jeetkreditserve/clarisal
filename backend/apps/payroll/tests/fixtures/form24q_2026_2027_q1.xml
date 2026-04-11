@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<form24q schema_reference="protean-rpu-4.7" data_structure_reference="cbdt-notification-2006-annexure-a" fvu_reference="protean-fvu-9.0" fiscal_year="2026-2027" quarter="Q1">
+  <statement_details>
+    <statement_type>REGULAR</statement_type>
+    <quarter>Q1</quarter>
+    <financial_year>2026-2027</financial_year>
+    <deductor_category>COMPANY</deductor_category>
+  </statement_details>
+  <deductor_details>
+    <tan>BLRN12345A</tan>
+    <pan>AACCN1234F</pan>
+    <name>Northstar Labs</name>
+    <address></address>
+    <phone></phone>
+    <email></email>
+    <gstin></gstin>
+  </deductor_details>
+  <responsible_person_details>
+    <name>Nina Admin</name>
+    <pan></pan>
+    <address></address>
+    <phone></phone>
+    <email>payroll-admin@test.com</email>
+  </responsible_person_details>
+  <tax_deducted_and_paid_to_central_government>
+  </tax_deducted_and_paid_to_central_government>
+  <annexure_i_employee_summaries>
+    <employee>
+      <employee_id>__DYNAMIC__</employee_id>
+      <employee_code>EMP001</employee_code>
+      <employee_name>Priya Sharma</employee_name>
+      <employee_pan>ABCDE1234F</employee_pan>
+      <section_code>192</section_code>
+      <pay_periods>
+        <period year="2026" month="4" />
+        <period year="2026" month="5" />
+      </pay_periods>
+      <gross_salary>45000.00</gross_salary>
+      <taxable_income>225000.00</taxable_income>
+      <tax_deducted>0.00</tax_deducted>
+      <health_and_education_cess>0.00</health_and_education_cess>
+      <challan_refs>
+      </challan_refs>
+    </employee>
+  </annexure_i_employee_summaries>
+</form24q>

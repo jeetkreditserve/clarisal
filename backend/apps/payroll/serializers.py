@@ -538,7 +538,7 @@ class StatutoryFilingBatchWriteSerializer(serializers.Serializer):
         if filing_type == StatutoryFilingType.FORM24Q:
             if not attrs.get('fiscal_year') or not attrs.get('quarter'):
                 raise serializers.ValidationError({'quarter': 'fiscal_year and quarter are required for Form 24Q exports.'})
-            attrs['artifact_format'] = StatutoryFilingArtifactFormat.JSON
+            attrs['artifact_format'] = StatutoryFilingArtifactFormat.XML
 
         if filing_type == StatutoryFilingType.FORM16:
             if not attrs.get('fiscal_year'):

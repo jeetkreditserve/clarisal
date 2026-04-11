@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { Link, Outlet, useNavigate } from 'react-router-dom'
-import { BarChart3, Bell, BriefcaseBusiness, Building, Building2, CalendarDays, ClipboardCheck, Clock3, Fingerprint, GitBranch, Landmark, LayoutDashboard, LogOut, MapPin, PlaneTakeoff, Repeat, ScrollText, Target, Users, Wrench } from 'lucide-react'
+import { BarChart3, Bell, BriefcaseBusiness, Building, Building2, CalendarDays, ClipboardCheck, Clock3, Fingerprint, GitBranch, Landmark, LayoutDashboard, LogOut, MapPin, PlaneTakeoff, ReceiptText, Repeat, ScrollText, Target, Users, Wrench } from 'lucide-react'
 import { SidebarNav, type NavGroup } from './SidebarNav'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
 import { useAuth } from '@/hooks/useAuth'
@@ -54,6 +54,8 @@ function buildNavGroups(featureFlags: Record<string, boolean> | undefined): NavG
       label: 'Operations',
       items: [
         ...(isFeatureEnabled(featureFlags, 'PAYROLL') ? [{ label: 'Payroll Preview', href: '/org/payroll', icon: Landmark }] : []),
+        { label: 'Expense policies', href: '/org/expenses/policies', icon: ReceiptText },
+        { label: 'Expense claims', href: '/org/expenses/claims', icon: ReceiptText },
         { label: 'Assets', href: '/org/assets', icon: BriefcaseBusiness },
         { label: 'Asset assignments', href: '/org/assets/assignments', icon: Wrench },
         ...(isFeatureEnabled(featureFlags, 'RECRUITMENT')

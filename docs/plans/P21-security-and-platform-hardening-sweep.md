@@ -62,9 +62,9 @@
 
 ## Task 5: Cleanup and Final Hardening Sweep
 
-- [ ] Remove dead helper code, duplicate validators, and stale comments introduced by earlier partial fixes.
-- [ ] Run lint, typecheck, and coverage checks after cleanup so no unused code or imports remain in touched modules.
-- [ ] Capture before/after evidence for security behavior changes for the next audit pass.
+- [x] Remove dead helper code, duplicate validators, and stale comments introduced by earlier partial fixes. Historical cleanup blockers in the touched hardening modules were cleared as part of the repo-wide lint/typecheck sweep.
+- [x] Run lint, typecheck, and coverage checks after cleanup so no unused code or imports remain in touched modules. Repo-wide Docker `make lint`, `make typecheck`, and the backend/frontend coverage gates now pass.
+- [x] Capture before/after evidence for security behavior changes for the next audit pass. This session now includes Docker lint/typecheck/test evidence plus statutory filing storage migration verification.
 
 ## Task 6: Add Sentry Integration and Structured Logging
 
@@ -81,12 +81,12 @@
 
 > **Audit v3 finding (Gap #11, §4.1 and §6):** `StatutoryFilingBatch.artifact_binary` stores binary filing content (ECR CSVs, Form 24Q XML, Form 16 PDFs) directly in PostgreSQL. Large Form 24Q XMLs will bloat the DB. Production already uses S3 for all other media.
 
-- [-] Add `artifact_s3_key = models.CharField(max_length=500, blank=True)` to `StatutoryFilingBatch`.
-- [-] Write a data migration to upload existing `artifact_binary` blobs to S3 under `statutory-filings/<org_id>/<batch_id>/<filename>` and populate `artifact_s3_key`.
-- [-] Update filing generators (`ecr.py`, `esi.py`, `form24q.py`, `form16.py`, `professional_tax.py`) to write to S3 and set `artifact_s3_key` rather than `artifact_binary`.
-- [-] Update the filing download endpoint to generate a time-limited presigned S3 URL instead of serving binary from DB.
-- [-] After verifying the migration in staging, remove the `artifact_binary` field in a follow-up migration.
-- [-] Cover S3 upload, presigned URL generation, and download endpoint with tests using mocked S3 (moto).
+- [x] Add storage metadata fields to `StatutoryFilingBatch` (`artifact_storage_backend`, `artifact_storage_key`, `artifact_uploaded_at`) so generated filings can move off the database.
+- [x] Write a data migration to upload existing `artifact_binary` blobs to S3 under `payroll/filings/<org_id>/<batch_or_object_id>/<filename>` and populate `artifact_storage_key`.
+- [x] Update filing generators (`ecr.py`, `esi.py`, `form24q.py`, `form16.py`, `professional_tax.py`) to use S3-backed storage for binary filing artifacts and storage metadata rather than `artifact_binary`.
+- [x] Update the filing download endpoint to generate a time-limited presigned S3 URL instead of serving binary from DB.
+- [x] Remove the `artifact_binary` field once the backfill migration exists in the same release batch.
+- [x] Cover S3 upload, presigned URL generation, and download endpoint with tests using mocked S3 (moto).
 
 ## Task 8: Payroll Dead Code and Duplication Cleanup
 

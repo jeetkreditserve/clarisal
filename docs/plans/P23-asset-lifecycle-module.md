@@ -61,6 +61,6 @@
 
 ## Task 4: Cleanup and Verification
 
-- [ ] Remove any scattered asset acknowledgement workarounds once the module exists as a first-class domain.
+- [x] Remove any scattered asset acknowledgement workarounds once the module exists as a first-class domain. Canonical asset assignment and self-service acknowledgement flows now exist, and the legacy `my/assets` alias now returns the versioned deprecation response instead of remaining as a second live route.
 - [x] Add tests for lifecycle state changes, offboarding blocking rules, and employee acknowledgements.
 - [x] Add at least one E2E flow covering issue → acknowledge → offboarding return.

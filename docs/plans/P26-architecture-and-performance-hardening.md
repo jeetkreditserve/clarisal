@@ -43,9 +43,9 @@
 
 > **Audit finding (Gap #18, §4.1):** All API URLs lack a `/api/v1/` prefix. Adding a `/api/v2/` later will require changing URLs across all frontend clients and breaking any external integrations.
 
-- [ ] In `backend/clarisal/urls.py`, wrap all app `include()` calls under a `path('api/v1/', ...)` prefix. Keep the old unversioned paths alive as deprecated aliases returning a `410 Gone` or `301 Redirect` for a transition period — do NOT break existing frontend behaviour.
+- [x] In `backend/clarisal/urls.py`, wrap all app `include()` calls under a `path('api/v1/', ...)` prefix. Keep the old unversioned paths alive as deprecated aliases returning a `410 Gone` or `301 Redirect` for a transition period — do NOT break existing frontend behaviour.
 - [x] Update the frontend's API base URL constant in `frontend/src/lib/api/client.ts` (or wherever `axios`/`fetch` base URL is defined) from `/api/` to `/api/v1/`.
-- [ ] Update `CSRF_TRUSTED_ORIGINS` and any hardcoded API paths in frontend test mocks to use the new prefix.
+- [x] Update `CSRF_TRUSTED_ORIGINS` and any hardcoded API paths in frontend test mocks to use the new prefix.
 - [x] Run the full backend test suite and frontend Vitest suite after the change to catch any missed URL references.
 - [x] Add a `API_VERSION = "v1"` constant to `settings/base.py` so future version bumps are a one-line change.
 - [x] Document the versioning policy in `CONTRIBUTING.md`: breaking changes require a new version prefix; additive changes are allowed within a version.
@@ -76,7 +76,7 @@ indexes = [
 ]
 ```
 
-- [-] Verify with `EXPLAIN ANALYZE` on a dev DB with 10,000+ employee rows that the payroll run query uses the new index (add a `# noqa: S608` or test comment documenting the expected query plan).
+- [x] Verify with `EXPLAIN ANALYZE` on a dev DB with 10,000+ employee rows that the payroll run query uses the new index. Regression coverage now lives in `backend/apps/payroll/tests/test_query_plans.py` and asserts `employee_org_status_doj_idx` and `comp_assign_emp_status_eff_idx` appear in the PostgreSQL execution plans.
 - [x] Check `PayrollRunItem` — confirm the existing `(pay_run, employee)` composite index is already present (audit said it is); if not, add it.
 
 ## Task 3: Add Cost Centre Model
@@ -102,7 +102,7 @@ class CostCentre(models.Model):
 - [x] Add `cost_centre = models.ForeignKey(CostCentre, null=True, blank=True, on_delete=models.SET_NULL)` to `CompensationTemplateLine` and `CompensationAssignmentLine`.
 - [x] Add CRUD endpoints for `CostCentre` (org-admin only): list, create, update, deactivate. No delete — deactivate only to preserve historical references.
 - [x] Expose `cost_centre` in payslip and run-item serializers so cost centre appears in the payroll run detail page and future GL export reports.
-- [ ] Add UI: a `CostCentresPage` (or section within the payroll Setup tab) for managing cost centres, and an optional cost centre selector on compensation template lines.
+- [x] Add UI: a `CostCentresPage` (or section within the payroll Setup tab) for managing cost centres, and an optional cost centre selector on compensation template lines.
 - [x] Cover CRUD, deactivation, and FK enforcement with tests.
 
 ## Task 4: Add Celery Idempotency Keys for Payroll Calculation

@@ -2,6 +2,7 @@ import io
 import zipfile
 from datetime import date
 from decimal import Decimal
+from unittest.mock import patch
 
 import pytest
 from django.core.management import call_command
@@ -1351,6 +1352,64 @@ class TestPayrollViews:
         assert response['Content-Type'] == 'application/pdf'
         assert response.content[:4] == b'%PDF'
         assert payslip.slip_number.replace('/', '-') in response['Content-Disposition']
+
+    def test_org_admin_can_download_selected_payroll_run_payslips_as_zip(self, payroll_setup):
+        organisation = payroll_setup['organisation']
+        org_admin_user = payroll_setup['org_admin_user']
+        org_admin_client = payroll_setup['org_admin_client']
+        employee = payroll_setup['employee']
+
+        pay_run = _finalize_basic_pay_run(
+            organisation=organisation,
+            org_admin_user=org_admin_user,
+            employee=employee,
+            monthly_amount='32000',
+        )
+        payslip = Payslip.objects.get(employee=employee, pay_run=pay_run)
+
+        response = org_admin_client.post(
+            f'/api/v1/org/payroll/runs/{pay_run.id}/payslips/download/',
+            {'item_ids': [str(payslip.pay_run_item_id)]},
+            format='json',
+        )
+
+        assert response.status_code == 200
+        assert response['Content-Type'] == 'application/zip'
+        assert f'payslips-{pay_run.period_year}-{pay_run.period_month:02d}.zip' in response['Content-Disposition']
+        archive = zipfile.ZipFile(io.BytesIO(response.content))
+        names = archive.namelist()
+        assert len(names) == 1
+        assert names[0].endswith('.pdf')
+        assert archive.read(names[0]).startswith(b'%PDF')
+
+    def test_org_admin_can_resend_selected_payroll_run_payslip_notifications(self, payroll_setup):
+        organisation = payroll_setup['organisation']
+        org_admin_user = payroll_setup['org_admin_user']
+        org_admin_client = payroll_setup['org_admin_client']
+        employee = payroll_setup['employee']
+
+        pay_run = _finalize_basic_pay_run(
+            organisation=organisation,
+            org_admin_user=org_admin_user,
+            employee=employee,
+            monthly_amount='32000',
+        )
+        payslip = Payslip.objects.get(employee=employee, pay_run=pay_run)
+
+        with patch('apps.notifications.tasks.send_payroll_ready_email.delay') as mock_delay, patch(
+            'django.db.transaction.on_commit',
+            side_effect=lambda fn: fn(),
+        ):
+            response = org_admin_client.post(
+                f'/api/v1/org/payroll/runs/{pay_run.id}/payslips/notify/',
+                {'item_ids': [str(payslip.pay_run_item_id)]},
+                format='json',
+            )
+
+        assert response.status_code == 200
+        assert response.data['selected_count'] == 1
+        assert response.data['notified_count'] == 1
+        mock_delay.assert_called_once()
 
     def test_org_admin_cannot_download_another_org_payslip(self, payroll_setup):
         """Cross-org payslip download should be forbidden — returns 404."""

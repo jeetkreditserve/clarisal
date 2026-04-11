@@ -8,7 +8,6 @@ from .views import (
     OrgExpensePolicyListCreateView,
 )
 
-
 urlpatterns = [
     path('expenses/policies/', OrgExpensePolicyListCreateView.as_view(), name='org-expense-policy-list'),
     path('expenses/policies/<uuid:pk>/', OrgExpensePolicyDetailView.as_view(), name='org-expense-policy-detail'),

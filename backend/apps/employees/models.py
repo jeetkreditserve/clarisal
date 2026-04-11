@@ -212,6 +212,13 @@ class Employee(SoftDeleteModel):
         on_delete=models.SET_NULL,
         related_name='assigned_attendance_regularization_employees',
     )
+    expense_approval_workflow = models.ForeignKey(
+        'approvals.ApprovalWorkflow',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='assigned_expense_employees',
+    )
 
     class Meta:
         db_table = 'employees'

@@ -32,7 +32,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>0/10</span>
+                <span class='fraction'>0/8</span>
             </div>
         
             
@@ -126,14 +126,7 @@
 <a name='L61'></a><a href='#L61'>61</a>
 <a name='L62'></a><a href='#L62'>62</a>
 <a name='L63'></a><a href='#L63'>63</a>
-<a name='L64'></a><a href='#L64'>64</a>
-<a name='L65'></a><a href='#L65'>65</a>
-<a name='L66'></a><a href='#L66'>66</a>
-<a name='L67'></a><a href='#L67'>67</a>
-<a name='L68'></a><a href='#L68'>68</a>
-<a name='L69'></a><a href='#L69'>69</a>
-<a name='L70'></a><a href='#L70'>70</a>
-<a name='L71'></a><a href='#L71'>71</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L64'></a><a href='#L64'>64</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -157,6 +150,9 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -166,16 +162,6 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -204,7 +190,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">import { Outlet, useNavigate } from 'react-router-dom'
-import { CheckSquare, Clock3, FileText, GraduationCap, LayoutDashboard, LogOut, PlaneTakeoff, Target, User } from 'lucide-react'
+import { BriefcaseBusiness, CheckSquare, Clock3, FileText, GraduationCap, LayoutDashboard, LogOut, PlaneTakeoff, ReceiptText, Target, User } from 'lucide-react'
 import { SidebarNav, type NavItem } from './SidebarNav'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
 import { useAuth } from '@/hooks/useAuth'
@@ -218,6 +204,9 @@ const navItems: NavItem[] = <span class="cstat-no" title="statement not covered"
   { label: 'Profile', href: '/me/profile', icon: User },
   { label: 'Education', href: '/me/education', icon: GraduationCap },
   { label: 'Documents', href: '/me/documents', icon: FileText },
+  { label: 'Assets', href: '/me/assets', icon: BriefcaseBusiness },
+  { label: 'Tax Declarations', href: '/me/tax-declarations', icon: FileText },
+  { label: 'Expenses', href: '/me/expenses', icon: ReceiptText },
   { label: 'Attendance', href: '/me/attendance', icon: Clock3 },
   { label: 'Performance', href: '/me/performance', icon: Target },
   { label: 'Leave', href: '/me/leave', icon: LayoutDashboard },
@@ -239,30 +228,20 @@ export function <span class="fstat-no" title="function not covered" >EmployeeLay
     &lt;div className="min-h-screen lg:flex"&gt;
       &lt;SidebarNav items={navItems} title="Clarisal" subtitle="Employee Self-Service" /&gt;
       &lt;div className="flex min-w-0 flex-1 flex-col px-4 pb-6 lg:pl-0 lg:pr-6"&gt;
-        &lt;header className="shell-topbar sticky top-4 z-20 mt-0 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"&gt;
-          &lt;div&gt;
-            &lt;p className="text-sm font-medium text-[hsl(var(--muted-foreground))]"&gt;Personal workspace&lt;/p&gt;
-            &lt;div className="mt-2 flex flex-wrap items-center gap-3"&gt;
-              &lt;h1 className="text-xl font-semibold tracking-tight text-[hsl(var(--foreground-strong))]"&gt;{user?.full_name || 'Employee profile'}&lt;/h1&gt;
-              &lt;StatusBadge tone="info"&gt;{user?.organisation_name || 'Clarisal'}&lt;/StatusBadge&gt;
-              {user?.active_employee_onboarding_status ? (
-                &lt;StatusBadge tone={user.active_employee_onboarding_status === 'COMPLETE' ? 'success' : 'warning'}&gt;
-                  {user.active_employee_onboarding_status}
-                &lt;/StatusBadge&gt;
-              ) : null}
-            &lt;/div&gt;
-          &lt;/div&gt;
+        &lt;header className="shell-topbar sticky top-4 z-20 mt-0 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"&gt;
           &lt;div className="flex flex-wrap items-center gap-3"&gt;
+            &lt;h1 className="text-base font-semibold tracking-tight text-[hsl(var(--foreground-strong))]"&gt;{user?.full_name || 'Employee profile'}&lt;/h1&gt;
+            &lt;StatusBadge tone="info"&gt;{user?.organisation_name || 'Clarisal'}&lt;/StatusBadge&gt;
+            {user?.active_employee_onboarding_status &amp;&amp; user.active_employee_onboarding_status !== 'COMPLETE' ? (
+              &lt;StatusBadge tone="warning"&gt;{user.active_employee_onboarding_status}&lt;/StatusBadge&gt;
+            ) : null}
+          &lt;/div&gt;
+          &lt;div className="flex flex-wrap items-center gap-2"&gt;
             &lt;NotificationBell /&gt;
             &lt;ThemeToggle /&gt;
             &lt;WorkspaceSwitcher currentMode="EMPLOYEE" /&gt;
-            &lt;div className="shell-user-card rounded-[22px] px-4 py-2 text-right text-sm"&gt;
-              &lt;p className="font-semibold"&gt;{user?.full_name || user?.email}&lt;/p&gt;
-              &lt;p className="text-xs opacity-80"&gt;{user?.email}&lt;/p&gt;
-            &lt;/div&gt;
-            &lt;button onClick={handleLogout} className="btn-secondary"&gt;
+            &lt;button onClick={handleLogout} className="btn-secondary px-2.5 py-2" aria-label="Sign out"&gt;
               &lt;LogOut className="h-4 w-4" /&gt;
-              Sign out
             &lt;/button&gt;
           &lt;/div&gt;
         &lt;/header&gt;
@@ -280,7 +259,7 @@ export function <span class="fstat-no" title="function not covered" >EmployeeLay
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-04-03T15:49:11.005Z
+                at 2026-04-11T11:31:19.575Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

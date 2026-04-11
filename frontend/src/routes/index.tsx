@@ -21,6 +21,8 @@ import { OrgSetupPage } from '@/pages/org/SetupPage'
 import { OrgProfilePage } from '@/pages/org/ProfilePage'
 import { PayrollPage } from '@/pages/org/PayrollPage'
 import { PayrollRunDetailPage } from '@/pages/org/PayrollRunDetailPage'
+import { ExpensePoliciesPage } from '@/pages/org/ExpensePoliciesPage'
+import { ExpenseClaimsPage } from '@/pages/org/ExpenseClaimsPage'
 import { JobPostingsPage } from '@/pages/org/JobPostingsPage'
 import { ApplicationsPage } from '@/pages/org/ApplicationsPage'
 import { CandidateDetailPage } from '@/pages/org/CandidateDetailPage'
@@ -50,6 +52,7 @@ import { ApprovalsPage } from '@/pages/employee/ApprovalsPage'
 import { PayslipsPage } from '@/pages/employee/PayslipsPage'
 import { TaxDeclarationsPage } from '@/pages/employee/TaxDeclarationsPage'
 import { PerformancePage } from '@/pages/employee/PerformancePage'
+import { ExpensesPage } from '@/pages/employee/ExpensesPage'
 import { HolidaysPage } from '@/pages/org/HolidaysPage'
 import { LeaveCyclesPage } from '@/pages/org/LeaveCyclesPage'
 import { LeavePlansPage } from '@/pages/org/LeavePlansPage'
@@ -147,6 +150,8 @@ export const router = createBrowserRouter([
           { path: '/org/assets/assignments', element: <AssetAssignmentsPage /> },
           { path: '/org/payroll', element: <PayrollPage /> },
           { path: '/org/payroll/runs/:id', element: <PayrollRunDetailPage /> },
+          { path: '/org/expenses/policies', element: <ExpensePoliciesPage /> },
+          { path: '/org/expenses/claims', element: <ExpenseClaimsPage /> },
           { path: '/org/recruitment/jobs', element: <JobPostingsPage /> },
           { path: '/org/recruitment/applications', element: <ApplicationsPage /> },
           { path: '/org/recruitment/candidates/:id', element: <CandidateDetailPage /> },
@@ -196,6 +201,7 @@ export const router = createBrowserRouter([
           { path: '/me/od', element: <OnDutyPage /> },
           { path: '/me/payslips', element: <PayslipsPage /> },
           { path: '/me/tax-declarations', element: <TaxDeclarationsPage /> },
+          { path: '/me/expenses', element: <ExpensesPage /> },
           { path: '/me/performance', element: <PerformancePage /> },
           { path: '/me/approvals', element: <ApprovalsPage /> },
         ],

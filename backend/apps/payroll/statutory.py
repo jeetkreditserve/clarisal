@@ -6,6 +6,8 @@ from calendar import monthrange
 from datetime import date
 from decimal import Decimal
 
+from django.db.utils import DatabaseError
+
 ZERO = Decimal('0.00')
 
 # India statutory defaults.
@@ -137,8 +139,8 @@ def get_surcharge_tiers_from_db(fiscal_year: str, tax_regime: str):
         ).order_by('income_threshold')
         if rules.exists():
             return [(rule.income_threshold, rule.surcharge_rate_percent / Decimal('100')) for rule in rules]
-    except Exception:
-        pass
+    except DatabaseError:
+        return surcharge_tiers_for_regime(tax_regime)
     return surcharge_tiers_for_regime(tax_regime)
 
 

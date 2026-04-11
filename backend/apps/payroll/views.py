@@ -1,5 +1,6 @@
 import io
 import zipfile
+from datetime import date
 
 from celery.result import AsyncResult
 from django.db.models import Count, Q, Sum
@@ -18,6 +19,7 @@ from apps.accounts.permissions import (
     OrgAdminMutationAllowed,
 )
 from apps.accounts.workspaces import get_active_admin_organisation, get_active_employee
+from apps.audit.services import log_audit_event
 from apps.employees.models import Employee, EmployeeStatus
 
 from .filings import fiscal_year_bounds
@@ -84,6 +86,7 @@ from .services import (
     generate_form16_data,
     generate_statutory_filing_batch,
     list_statutory_filing_batches,
+    notify_payroll_ready_for_payslips,
     regenerate_statutory_filing_batch,
     rerun_payroll_run,
     submit_compensation_assignment_for_approval,
@@ -129,6 +132,13 @@ def _get_employee(request):
     if employee is None:
         raise ValueError('Select an employee workspace to continue.')
     return employee
+
+
+def _selected_pay_run_payslips(*, pay_run, item_ids: list[str] | None = None):
+    queryset = Payslip.objects.filter(pay_run=pay_run).select_related('employee__user', 'pay_run')
+    if not item_ids:
+        return queryset.order_by('employee__employee_code', 'employee__user__last_name', 'created_at')
+    return queryset.filter(pay_run_item_id__in=item_ids).order_by('employee__employee_code', 'employee__user__last_name', 'created_at')
 
 
 def _parse_query_bool(value):
@@ -891,8 +901,59 @@ class OrgPayslipDownloadView(APIView):
 
     def get(self, request, pk):
         organisation = _get_admin_organisation(request)
-        payslip = get_object_or_404(Payslip, organisation=organisation, id=pk)
+        payslip = Payslip.objects.filter(organisation=organisation).filter(Q(id=pk) | Q(pay_run_item_id=pk)).first()
+        if payslip is None:
+            return Response({'error': 'Payslip not found.'}, status=status.HTTP_404_NOT_FOUND)
+        log_audit_event(request.user, 'payroll.payslip.downloaded', organisation=organisation, target=payslip)
         return download_payslip_pdf_response(payslip)
+
+
+class OrgPayrollRunPayslipBulkDownloadView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+
+    def post(self, request, pk):
+        organisation = _get_admin_organisation(request)
+        pay_run = get_object_or_404(PayrollRun, organisation=organisation, id=pk)
+        item_ids = request.data.get('item_ids') or []
+        payslips = list(_selected_pay_run_payslips(pay_run=pay_run, item_ids=item_ids))
+        if not payslips:
+            return Response({'error': 'Select at least one payslip from this payroll run.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        archive_buffer = io.BytesIO()
+        with zipfile.ZipFile(archive_buffer, mode='w', compression=zipfile.ZIP_DEFLATED) as archive:
+            for payslip in payslips:
+                safe_slip = payslip.slip_number.replace('/', '-')
+                archive.writestr(f'{safe_slip}.pdf', generate_payslip_pdf_bytes(payslip))
+                log_audit_event(
+                    request.user,
+                    'payroll.payslip.downloaded',
+                    organisation=organisation,
+                    target=payslip,
+                    payload={'pay_run_id': str(pay_run.id), 'bulk': True},
+                )
+
+        response = HttpResponse(archive_buffer.getvalue(), content_type='application/zip')
+        response['Content-Disposition'] = f'attachment; filename="payslips-{pay_run.period_year}-{pay_run.period_month:02d}.zip"'
+        return response
+
+
+class OrgPayrollRunPayslipBulkNotifyView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
+
+    def post(self, request, pk):
+        organisation = _get_admin_organisation(request)
+        pay_run = get_object_or_404(PayrollRun, organisation=organisation, id=pk)
+        if pay_run.status != 'FINALIZED':
+            return Response({'error': 'Payslip notifications can only be resent for finalized payroll runs.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        item_ids = request.data.get('item_ids') or []
+        payslips = list(_selected_pay_run_payslips(pay_run=pay_run, item_ids=item_ids))
+        if not payslips:
+            return Response({'error': 'Select at least one payslip from this payroll run.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        period_label = f'{date(pay_run.period_year, pay_run.period_month, 1):%B %Y}'
+        notify_payroll_ready_for_payslips(payslips, actor=request.user, period_label=period_label)
+        return Response({'selected_count': len(item_ids) or len(payslips), 'notified_count': len(payslips)})
 
 
 class MyPayslipDownloadView(APIView):
@@ -935,33 +996,31 @@ class MyForm12BBDownloadView(APIView):
 
     def get(self, request, fiscal_year):
         employee = _get_employee(request)
-        try:
-            from apps.approvals.services import get_org_operations_guard
+        from apps.approvals import services as approval_services
 
-            guard = get_org_operations_guard(employee.organisation)
-            if guard.get("approval_actions_blocked"):
-                return Response(
-                    {"error": guard.get("reason", "Operations are blocked.")},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-        except Exception:
-            pass
+        guard = approval_services.get_org_operations_guard(employee.organisation)
+        if guard.get("approval_actions_blocked"):
+            return Response(
+                {"error": guard.get("reason", "Operations are blocked.")},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         from .filings.form12bb import generate_form12bb_pdf
 
         result = generate_form12bb_pdf(employee=employee, fiscal_year=fiscal_year)
-        if result.validation_errors and not result.artifact_binary:
+        payload = result.payload_bytes()
+        if result.validation_errors and not payload:
             return Response(
                 {"error": result.validation_errors[0]},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        if not result.artifact_binary:
+        if not payload:
             return Response(
                 {"error": f"No Form 12BB available for FY {fiscal_year}."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         response = HttpResponse(
-            result.artifact_binary, content_type=result.content_type
+            payload, content_type=result.content_type
         )
         response["Content-Disposition"] = f'attachment; filename="{result.file_name}"'
         return response
@@ -972,17 +1031,14 @@ class OrgForm12BBBulkDownloadView(APIView):
 
     def get(self, request, fiscal_year):
         organisation = _get_admin_organisation(request)
-        try:
-            from apps.approvals.services import get_org_operations_guard
+        from apps.approvals import services as approval_services
 
-            guard = get_org_operations_guard(organisation)
-            if guard.get("approval_actions_blocked"):
-                return Response(
-                    {"error": guard.get("reason", "Operations are blocked.")},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-        except Exception:
-            pass
+        guard = approval_services.get_org_operations_guard(organisation)
+        if guard.get("approval_actions_blocked"):
+            return Response(
+                {"error": guard.get("reason", "Operations are blocked.")},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         zip_bytes, _structured_payloads = generate_form12bb_zip_for_organisation(
             organisation,
