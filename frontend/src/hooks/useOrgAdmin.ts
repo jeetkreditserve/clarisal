@@ -13,6 +13,13 @@ import {
   returnAssetAssignment,
 } from '@/lib/api/assets'
 import { fetchOrgAuditLogs } from '@/lib/api/audit'
+import {
+  createOrgExpensePolicy,
+  fetchOrgExpenseClaimSummary,
+  fetchOrgExpenseClaims,
+  fetchOrgExpensePolicies,
+  updateOrgExpensePolicy,
+} from '@/lib/api/expenses'
 import { useAuth } from '@/hooks/useAuth'
 import {
   approveApprovalAction,
@@ -265,6 +272,53 @@ export function useOrgAuditLogs(params?: Parameters<typeof fetchOrgAuditLogs>[0]
     queryKey: ['org', organisationId, 'audit', params],
     queryFn: () => fetchOrgAuditLogs(params),
     enabled,
+  })
+}
+
+export function useOrgExpensePolicies(enabled = true) {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'expense-policies'],
+    queryFn: fetchOrgExpensePolicies,
+    enabled,
+  })
+}
+
+export function useOrgExpenseClaims(params?: { status?: string; reimbursement_status?: string; employee?: string }, enabled = true) {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'expense-claims', params],
+    queryFn: () => fetchOrgExpenseClaims(params),
+    enabled,
+  })
+}
+
+export function useOrgExpenseClaimSummary(enabled = true) {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'expense-claim-summary'],
+    queryFn: fetchOrgExpenseClaimSummary,
+    enabled,
+  })
+}
+
+export function useCreateOrgExpensePolicy() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: createOrgExpensePolicy,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useUpdateOrgExpensePolicy() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Record<string, unknown> }) => updateOrgExpensePolicy(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
   })
 }
 

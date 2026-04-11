@@ -3,6 +3,15 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '@/hooks/useAuth'
 import { acknowledgeMyAssetAssignment, fetchMyAssetAssignments } from '@/lib/api/assets'
 import {
+  cancelMyExpenseClaim,
+  createMyExpenseClaim,
+  fetchMyExpenseClaims,
+  fetchMyExpensePolicies,
+  submitMyExpenseClaim,
+  updateMyExpenseClaim,
+  uploadMyExpenseReceipt,
+} from '@/lib/api/expenses'
+import {
   approveMyApprovalAction,
   createBankAccount,
   createMyAttendanceRegularization,
@@ -87,6 +96,77 @@ export function useAcknowledgeMyAssetAssignment() {
     mutationFn: acknowledgeMyAssetAssignment,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['me'] })
+    },
+  })
+}
+
+export function useMyExpensePolicies() {
+  const organisationId = useEmployeeScope()
+  return useQuery({
+    queryKey: ['me', organisationId, 'expense-policies'],
+    queryFn: fetchMyExpensePolicies,
+  })
+}
+
+export function useMyExpenseClaims() {
+  const organisationId = useEmployeeScope()
+  return useQuery({
+    queryKey: ['me', organisationId, 'expense-claims'],
+    queryFn: fetchMyExpenseClaims,
+  })
+}
+
+export function useCreateMyExpenseClaim() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: createMyExpenseClaim,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['me'] })
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useUpdateMyExpenseClaim() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Record<string, unknown> }) => updateMyExpenseClaim(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['me'] })
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useUploadMyExpenseReceipt() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ claimId, lineId, file }: { claimId: string; lineId: string; file: File }) => uploadMyExpenseReceipt(claimId, lineId, file),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['me'] })
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useSubmitMyExpenseClaim() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: submitMyExpenseClaim,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['me'] })
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useCancelMyExpenseClaim() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: cancelMyExpenseClaim,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['me'] })
+      queryClient.invalidateQueries({ queryKey: ['org'] })
     },
   })
 }
