@@ -93,6 +93,8 @@ import {
   fetchPayrollSummary,
   fetchApprovalInbox,
   fetchApprovalDelegations,
+  fetchApprovalWorkflowCatalog,
+  fetchApprovalWorkflowReadiness,
   fetchAttendanceDashboard,
   fetchAttendanceDays,
   fetchAttendanceImports,
@@ -119,6 +121,7 @@ import {
   fetchNotice,
   fetchOnDutyPolicy,
   rerunPayrollRun,
+  simulateApprovalWorkflow,
   notifyPayrollRunPayslips,
   regeneratePayrollFiling,
   uploadAttendanceSheet,
@@ -720,6 +723,30 @@ export function useApprovalWorkflow(id: string, enabled = true) {
     queryKey: ['org', organisationId, 'approval-workflows', id],
     queryFn: () => fetchApprovalWorkflow(id),
     enabled: enabled && Boolean(id),
+  })
+}
+
+export function useApprovalWorkflowCatalog(enabled = true) {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'approval-workflow-catalog'],
+    queryFn: fetchApprovalWorkflowCatalog,
+    enabled,
+  })
+}
+
+export function useApprovalWorkflowReadiness(enabled = true) {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'approval-workflow-readiness'],
+    queryFn: fetchApprovalWorkflowReadiness,
+    enabled,
+  })
+}
+
+export function useSimulateApprovalWorkflow() {
+  return useMutation({
+    mutationFn: simulateApprovalWorkflow,
   })
 }
 

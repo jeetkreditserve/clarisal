@@ -28,6 +28,7 @@ api_v1_patterns = [
     path('health/', api_health_check, name='versioned-health-check'),
     path('auth/', include('apps.accounts.urls')),
     path('ct/', include('apps.organisations.urls')),
+    path('ct/', include('apps.access_control.ct_urls')),
     path('ct/', include('apps.invitations.urls')),
     path('ct/', include('apps.audit.urls')),
     path('ct/', include('apps.payroll.ct_urls')),

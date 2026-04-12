@@ -9,6 +9,7 @@ from apps.notifications.models import NotificationKind
 from apps.notifications.services import create_notification
 from apps.organisations.services import get_org_operations_guard
 
+from .catalog import APPROVAL_REQUEST_KIND_CATALOG, get_required_default_request_kinds
 from .models import (
     ApprovalAction,
     ApprovalActionAssignmentSource,
@@ -21,14 +22,20 @@ from .models import (
     ApprovalRunStatus,
     ApprovalStageMode,
     ApprovalWorkflow,
+    ApprovalWorkflowAssignment,
     ApprovalWorkflowRule,
 )
 
-DEFAULT_APPROVAL_REQUEST_KINDS = [
-    ApprovalRequestKind.LEAVE,
-    ApprovalRequestKind.ON_DUTY,
-    ApprovalRequestKind.ATTENDANCE_REGULARIZATION,
-]
+DEFAULT_APPROVAL_REQUEST_KINDS = get_required_default_request_kinds()
+
+
+ROLE_CODE_ALIASES = {
+    ApprovalApproverType.HR_BUSINESS_PARTNER: 'ORG_HR_ADMIN',
+    ApprovalApproverType.PAYROLL_ADMIN: 'ORG_PAYROLL_ADMIN',
+    ApprovalApproverType.FINANCE_APPROVER: 'ORG_FINANCE_APPROVER',
+    ApprovalApproverType.LOCATION_ADMIN: 'ORG_LOCATION_ADMIN',
+    ApprovalApproverType.DEPARTMENT_HEAD: 'ORG_DEPARTMENT_HEAD',
+}
 
 
 def ensure_default_workflow_configured(organisation):
@@ -92,7 +99,8 @@ def ensure_default_promotion_transfer_workflow(organisation, request_kind, emplo
 
     return workflow
 
-def _matches_rule(rule, employee, request_kind, leave_type=None):
+def _matches_rule(rule, employee, request_kind, leave_type=None, amount=None, context=None):
+    context = context or {}
     if not rule.is_active or rule.request_kind != request_kind:
         return False
     if rule.department_id and employee.department_id != rule.department_id:
@@ -107,6 +115,15 @@ def _matches_rule(rule, employee, request_kind, leave_type=None):
         return False
     if rule.leave_type_id and (leave_type is None or leave_type.id != rule.leave_type_id):
         return False
+    if rule.min_amount is not None and (amount is None or amount < rule.min_amount):
+        return False
+    if rule.max_amount is not None and (amount is None or amount > rule.max_amount):
+        return False
+    for field_name in ('grade', 'band', 'cost_centre', 'legal_entity'):
+        configured = getattr(rule, field_name)
+        actual = str(context.get(field_name, '') or '')
+        if configured and configured.strip().lower() != actual.strip().lower():
+            return False
     return True
 
 
@@ -120,16 +137,35 @@ def get_default_workflow(organisation, request_kind):
 
 
 def get_employee_assigned_workflow(employee, request_kind):
-    workflow = None
-    if request_kind == ApprovalRequestKind.LEAVE:
-        workflow = employee.leave_approval_workflow
-    elif request_kind == ApprovalRequestKind.ON_DUTY:
-        workflow = employee.on_duty_approval_workflow
-    elif request_kind == ApprovalRequestKind.ATTENDANCE_REGULARIZATION:
-        workflow = employee.attendance_regularization_approval_workflow
-    elif request_kind == ApprovalRequestKind.EXPENSE_CLAIM:
-        workflow = employee.expense_approval_workflow
+    meta = APPROVAL_REQUEST_KIND_CATALOG.get(str(request_kind))
+    if meta is None or not meta.supports_employee_assignment:
+        return None
 
+    assignment = (
+        ApprovalWorkflowAssignment.objects.select_related('workflow')
+        .filter(
+            organisation=employee.organisation,
+            employee=employee,
+            request_kind=request_kind,
+            is_active=True,
+            workflow__is_active=True,
+            workflow__organisation=employee.organisation,
+        )
+        .first()
+    )
+    if assignment:
+        return assignment.workflow
+
+    workflow = None
+    legacy_fields = {
+        ApprovalRequestKind.LEAVE: 'leave_approval_workflow',
+        ApprovalRequestKind.ON_DUTY: 'on_duty_approval_workflow',
+        ApprovalRequestKind.ATTENDANCE_REGULARIZATION: 'attendance_regularization_approval_workflow',
+        ApprovalRequestKind.EXPENSE_CLAIM: 'expense_approval_workflow',
+    }
+    legacy_field = legacy_fields.get(request_kind)
+    if legacy_field:
+        workflow = getattr(employee, legacy_field, None)
     if workflow and workflow.organisation_id == employee.organisation_id and workflow.is_active:
         return workflow
     return None
@@ -139,7 +175,7 @@ def _requester_user_for_context(requester):
     return requester.user if requester is not None else None
 
 
-def resolve_workflow_with_source(employee, request_kind, leave_type=None):
+def resolve_workflow_with_source(employee, request_kind, leave_type=None, amount=None, context=None):
     assigned_workflow = get_employee_assigned_workflow(employee, request_kind)
     if assigned_workflow is not None:
         return assigned_workflow, 'ASSIGNMENT'
@@ -156,7 +192,7 @@ def resolve_workflow_with_source(employee, request_kind, leave_type=None):
         .order_by('priority', 'created_at')
     )
     for rule in rules:
-        if _matches_rule(rule, employee, request_kind, leave_type=leave_type):
+        if _matches_rule(rule, employee, request_kind, leave_type=leave_type, amount=amount, context=context):
             return rule.workflow, 'RULE'
 
     default_workflow = get_default_workflow(organisation, request_kind)
@@ -165,8 +201,14 @@ def resolve_workflow_with_source(employee, request_kind, leave_type=None):
     return default_workflow, 'DEFAULT'
 
 
-def resolve_workflow(employee, request_kind, leave_type=None):
-    workflow, _ = resolve_workflow_with_source(employee, request_kind, leave_type=leave_type)
+def resolve_workflow(employee, request_kind, leave_type=None, amount=None, context=None):
+    workflow, _ = resolve_workflow_with_source(
+        employee,
+        request_kind,
+        leave_type=leave_type,
+        amount=amount,
+        context=context,
+    )
     return workflow
 
 
@@ -260,9 +302,70 @@ def upsert_approval_delegation(
     return delegation
 
 
-def _resolve_stage_fallback(stage, organisation):
+def _manager_at_level(employee, level):
+    if employee is None:
+        return None
+    current = employee
+    for _ in range(max(level, 1)):
+        current = getattr(current, 'reporting_to', None)
+        if current is None:
+            return None
+    return current
+
+
+def _normalise_role_code(role_code):
+    code = str(role_code or '').strip().upper()
+    return ROLE_CODE_ALIASES.get(code, code)
+
+
+def _employees_for_role(organisation, role_code, **scope):
+    from apps.access_control.services import employees_with_permission_role, employees_with_scope
+
+    resolved_role_code = _normalise_role_code(role_code)
+    if scope:
+        return employees_with_scope(organisation, resolved_role_code, **scope)
+    return employees_with_permission_role(organisation, resolved_role_code)
+
+
+def _department_head(employee):
+    if employee is None or not employee.department_id:
+        return None
+    head = getattr(employee.department, 'head', None)
+    if head and head.organisation_id == employee.organisation_id:
+        return head
+    return _employees_for_role(
+        employee.organisation,
+        ApprovalApproverType.DEPARTMENT_HEAD,
+        department_id=employee.department_id,
+    ).first()
+
+
+def _location_admin(employee):
+    if employee is None or not employee.office_location_id:
+        return None
+    return _employees_for_role(
+        employee.organisation,
+        ApprovalApproverType.LOCATION_ADMIN,
+        office_location_id=employee.office_location_id,
+    ).first()
+
+
+def _direct_assignment(employee, organisation, request_kind):
+    return _resolve_assignment_with_delegation(employee.user, employee, organisation, request_kind)
+
+
+def _resolve_stage_fallback(stage, organisation, requester=None, request_kind=None):
     if stage.fallback_type == ApprovalFallbackType.NONE:
         return None
+    if stage.fallback_type == ApprovalFallbackType.REPORTING_MANAGER:
+        manager = _manager_at_level(requester, 1)
+        return (manager.user, manager) if manager else None
+    if stage.fallback_type == ApprovalFallbackType.DEPARTMENT_HEAD:
+        department_head = _department_head(requester)
+        return (department_head.user, department_head) if department_head else None
+    if stage.fallback_type == ApprovalFallbackType.ROLE:
+        employee = _employees_for_role(organisation, stage.fallback_role_code).first()
+        return (employee.user, employee) if employee else None
     if stage.fallback_type == ApprovalFallbackType.SPECIFIC_EMPLOYEE and stage.fallback_employee:
         return stage.fallback_employee.user, stage.fallback_employee
     if stage.fallback_type == ApprovalFallbackType.PRIMARY_ORG_ADMIN:
@@ -300,51 +403,79 @@ def _resolve_assignment_with_delegation(approver_user, approver_employee, organi
     return assignment
 
 
-def _resolve_stage_approvers(stage, requester, organisation, request_kind):
+def _append_employee_assignment(resolved, employee, organisation, request_kind):
+    if employee is not None:
+        resolved.append(_direct_assignment(employee, organisation, request_kind))
+
+
+def _resolve_stage_approvers(stage, requester, organisation, request_kind, *, raise_on_missing=True):
     resolved = []
     requester_user = _requester_user_for_context(requester)
     for stage_approver in stage.approvers.select_related('approver_employee__user').all():
-        approver_user = None
-        approver_employee = None
-
         if stage_approver.approver_type == ApprovalApproverType.REPORTING_MANAGER:
-            manager = requester.reporting_to if requester is not None else None
-            if manager and manager.id != requester.id:
-                approver_user = manager.user
-                approver_employee = manager
+            manager = _manager_at_level(requester, 1)
+            if manager:
+                _append_employee_assignment(resolved, manager, organisation, request_kind)
             else:
-                fallback = _resolve_stage_fallback(stage, organisation)
+                fallback = _resolve_stage_fallback(stage, organisation, requester=requester, request_kind=request_kind)
                 if fallback:
-                    approver_user, approver_employee = fallback
+                    resolved.append(_resolve_assignment_with_delegation(fallback[0], fallback[1], organisation, request_kind))
+        elif stage_approver.approver_type == ApprovalApproverType.NTH_LEVEL_MANAGER:
+            _append_employee_assignment(
+                resolved,
+                _manager_at_level(requester, stage_approver.manager_level),
+                organisation,
+                request_kind,
+            )
+        elif stage_approver.approver_type == ApprovalApproverType.DEPARTMENT_HEAD:
+            _append_employee_assignment(resolved, _department_head(requester), organisation, request_kind)
+        elif stage_approver.approver_type == ApprovalApproverType.LOCATION_ADMIN:
+            _append_employee_assignment(resolved, _location_admin(requester), organisation, request_kind)
+        elif stage_approver.approver_type in {
+            ApprovalApproverType.HR_BUSINESS_PARTNER,
+            ApprovalApproverType.PAYROLL_ADMIN,
+            ApprovalApproverType.FINANCE_APPROVER,
+            ApprovalApproverType.ROLE,
+        }:
+            role_code = stage_approver.role_code or stage_approver.approver_type
+            for employee in _employees_for_role(organisation, role_code):
+                _append_employee_assignment(resolved, employee, organisation, request_kind)
         elif stage_approver.approver_type == ApprovalApproverType.SPECIFIC_EMPLOYEE and stage_approver.approver_employee:
-            approver_user = stage_approver.approver_employee.user
-            approver_employee = stage_approver.approver_employee
+            _append_employee_assignment(resolved, stage_approver.approver_employee, organisation, request_kind)
         elif stage_approver.approver_type == ApprovalApproverType.PRIMARY_ORG_ADMIN:
             approver_user = organisation.primary_admin_user
+            if approver_user is not None:
+                resolved.append(_resolve_assignment_with_delegation(approver_user, None, organisation, request_kind))
 
-        if approver_user is None:
-            continue
+    filtered = []
+    for assignment in resolved:
+        approver_user = assignment['approver_user']
         if requester_user is not None and approver_user.id == requester_user.id and request_kind not in {
             ApprovalRequestKind.PAYROLL_PROCESSING,
             ApprovalRequestKind.SALARY_REVISION,
             ApprovalRequestKind.COMPENSATION_TEMPLATE_CHANGE,
         }:
-            fallback = _resolve_stage_fallback(stage, organisation)
+            fallback = _resolve_stage_fallback(stage, organisation, requester=requester, request_kind=request_kind)
             if fallback:
-                approver_user, approver_employee = fallback
+                filtered.append(_resolve_assignment_with_delegation(fallback[0], fallback[1], organisation, request_kind))
             else:
                 continue
-        resolved.append(_resolve_assignment_with_delegation(approver_user, approver_employee, organisation, request_kind))
+        else:
+            filtered.append(assignment)
 
     deduped = []
     seen = set()
-    for assignment in resolved:
+    for assignment in filtered:
         user = assignment['approver_user']
         if user.id in seen:
             continue
         seen.add(user.id)
         deduped.append(assignment)
     if not deduped:
+        fallback = _resolve_stage_fallback(stage, organisation, requester=requester, request_kind=request_kind)
+        if fallback:
+            deduped.append(_resolve_assignment_with_delegation(fallback[0], fallback[1], organisation, request_kind))
+    if not deduped and raise_on_missing:
         raise ValueError(f'No approvers could be resolved for stage "{stage.name}".')
     return deduped
 
@@ -388,8 +519,8 @@ def _create_stage_actions(approval_run, stage):
     return actions
 
 
-def create_approval_run(subject, request_kind, requester, actor=None, leave_type=None, subject_label=''):
-    workflow = resolve_workflow(requester, request_kind, leave_type=leave_type)
+def create_approval_run(subject, request_kind, requester, actor=None, leave_type=None, subject_label='', amount=None, context=None):
+    workflow = resolve_workflow(requester, request_kind, leave_type=leave_type, amount=amount, context=context)
     first_stage = workflow.stages.prefetch_related('approvers__approver_employee__user').order_by('sequence').first()
     if first_stage is None:
         raise ValueError('The selected approval workflow does not contain any stages.')
@@ -596,6 +727,16 @@ def _resolve_escalation_target(action):
     policy = _get_stage_sla_policy(action.stage)
     if policy is None:
         return None, None
+    requester = action.approval_run.requested_by
+    if policy.escalation_target_type == ApprovalFallbackType.REPORTING_MANAGER:
+        manager = _manager_at_level(requester, 1)
+        return (manager.user, manager) if manager else (None, None)
+    if policy.escalation_target_type == ApprovalFallbackType.DEPARTMENT_HEAD:
+        department_head = _department_head(requester)
+        return (department_head.user, department_head) if department_head else (None, None)
+    if policy.escalation_target_type == ApprovalFallbackType.ROLE:
+        employee = _employees_for_role(action.approval_run.organisation, policy.escalation_role_code).first()
+        return (employee.user, employee) if employee else (None, None)
     if policy.escalation_target_type == ApprovalFallbackType.SPECIFIC_EMPLOYEE and policy.escalation_employee:
         return policy.escalation_employee.user, policy.escalation_employee
     if (
@@ -747,3 +888,80 @@ def cancel_approval_run(approval_run, actor=None, *, subject_status='CANCELLED')
             _apply_subject_status(approval_run, subject_status)
     log_audit_event(actor, 'approval.run.cancelled', organisation=approval_run.organisation, target=approval_run)
     return approval_run
+
+
+def _user_display_name(user):
+    get_full_name = getattr(user, 'get_full_name', None)
+    if callable(get_full_name):
+        return get_full_name() or user.email
+    return getattr(user, 'full_name', '') or user.email
+
+
+def simulate_workflow(employee, request_kind, *, amount=None, leave_type=None, context=None):
+    workflow, source = resolve_workflow_with_source(
+        employee,
+        request_kind,
+        leave_type=leave_type,
+        amount=amount,
+        context=context,
+    )
+    stages = []
+    for stage in workflow.stages.prefetch_related('approvers__approver_employee__user').order_by('sequence'):
+        approvers = _resolve_stage_approvers(
+            stage,
+            employee,
+            employee.organisation,
+            request_kind,
+            raise_on_missing=False,
+        )
+        warnings = []
+        if not approvers:
+            warnings.append('No approver resolved for this stage.')
+        stages.append(
+            {
+                'sequence': stage.sequence,
+                'name': stage.name,
+                'mode': stage.mode,
+                'approvers': [
+                    {
+                        'employee_id': str(item['approver_employee'].id) if item['approver_employee'] else None,
+                        'user_id': str(item['approver_user'].id),
+                        'name': _user_display_name(item['approver_user']),
+                        'assignment_source': item['assignment_source'],
+                    }
+                    for item in approvers
+                ],
+                'warnings': warnings,
+            }
+        )
+    return {
+        'workflow_id': str(workflow.id),
+        'workflow_name': workflow.name,
+        'source': source,
+        'stages': stages,
+    }
+
+
+def get_workflow_readiness(organisation):
+    result = []
+    for meta in APPROVAL_REQUEST_KIND_CATALOG.values():
+        default = get_default_workflow(organisation, meta.kind)
+        active_rules = ApprovalWorkflowRule.objects.filter(
+            workflow__organisation=organisation,
+            request_kind=meta.kind,
+            is_active=True,
+            workflow__is_active=True,
+        ).count()
+        result.append(
+            {
+                'kind': meta.kind,
+                'label': meta.label,
+                'module': meta.module,
+                'requires_default_workflow': meta.requires_default_workflow,
+                'has_default_workflow': default is not None,
+                'default_workflow_id': str(default.id) if default else None,
+                'active_rule_count': active_rules,
+                'ready': (default is not None) if meta.requires_default_workflow else True,
+            }
+        )
+    return result

@@ -24,7 +24,14 @@ from ..models import (
     AccessScope,
     DataScopeKind,
 )
-from ..services import has_permission, mask_serializer_data, scope_employee_queryset, summarize_effective_scopes
+from ..services import (
+    employees_with_permission_role,
+    employees_with_scope,
+    has_permission,
+    mask_serializer_data,
+    scope_employee_queryset,
+    summarize_effective_scopes,
+)
 
 
 @pytest.fixture
@@ -232,3 +239,83 @@ def test_mask_serializer_data_hides_sensitive_fields_without_permission(organisa
     assert masked['government_ids'] == []
     assert masked['bank_accounts'] == []
     assert masked['full_name'] == 'Masked User'
+
+
+@pytest.mark.django_db
+def test_employees_with_permission_role_uses_real_assignments_and_scopes(
+    organisation,
+    ct_user,
+    location_hq,
+    location_remote,
+):
+    call_command('sync_access_control')
+    finance_user = User.objects.create_user(
+        email='finance-approver@test.com',
+        password='pass123!',  # pragma: allowlist secret
+        role=UserRole.ORG_ADMIN,
+        account_type=AccountType.WORKFORCE,
+        is_active=True,
+    )
+    unrelated_user = User.objects.create_user(
+        email='ordinary-admin@test.com',
+        password='pass123!',  # pragma: allowlist secret
+        role=UserRole.ORG_ADMIN,
+        account_type=AccountType.WORKFORCE,
+        is_active=True,
+    )
+    OrganisationMembership.objects.create(
+        user=finance_user,
+        organisation=organisation,
+        is_org_admin=True,
+        status=OrganisationMembershipStatus.ACTIVE,
+        invited_by=ct_user,
+    )
+    OrganisationMembership.objects.create(
+        user=unrelated_user,
+        organisation=organisation,
+        is_org_admin=True,
+        status=OrganisationMembershipStatus.ACTIVE,
+        invited_by=ct_user,
+    )
+    finance_employee = Employee.objects.create(
+        organisation=organisation,
+        user=finance_user,
+        employee_code='FIN001',
+        office_location=location_hq,
+        status=EmployeeStatus.ACTIVE,
+        date_of_joining=date(2024, 1, 1),
+    )
+    Employee.objects.create(
+        organisation=organisation,
+        user=unrelated_user,
+        employee_code='ADM001',
+        office_location=location_remote,
+        status=EmployeeStatus.ACTIVE,
+        date_of_joining=date(2024, 1, 1),
+    )
+    assignment = AccessRoleAssignment.objects.create(
+        user=finance_user,
+        organisation=organisation,
+        role=AccessRole.objects.get(code='ORG_FINANCE_APPROVER'),
+    )
+    AccessScope.objects.create(
+        assignment=assignment,
+        scope_kind=DataScopeKind.SELECTED_OFFICE_LOCATIONS,
+        office_location=location_hq,
+    )
+
+    all_finance_approvers = employees_with_permission_role(organisation, 'ORG_FINANCE_APPROVER')
+    hq_finance_approvers = employees_with_scope(
+        organisation,
+        'ORG_FINANCE_APPROVER',
+        office_location_id=location_hq.id,
+    )
+    remote_finance_approvers = employees_with_scope(
+        organisation,
+        'ORG_FINANCE_APPROVER',
+        office_location_id=location_remote.id,
+    )
+
+    assert list(all_finance_approvers) == [finance_employee]
+    assert list(hq_finance_approvers) == [finance_employee]
+    assert list(remote_finance_approvers) == []

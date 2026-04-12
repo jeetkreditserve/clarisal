@@ -10,6 +10,7 @@ import type { OrgAdminSetupState } from '@/types/organisation'
 import type {
   ApprovalActionItem,
   ApprovalDelegation,
+  ApprovalWorkflowCatalog,
   AttendanceDayRecord,
   AttendanceImportJob,
   AttendancePolicy,
@@ -21,6 +22,9 @@ import type {
   AttendanceShift,
   AttendanceShiftAssignment,
   ApprovalWorkflowConfig,
+  ApprovalWorkflowReadinessRow,
+  ApprovalWorkflowSimulationRequest,
+  ApprovalWorkflowSimulationResult,
   Arrears,
   CompensationAssignment,
   CompensationTemplate,
@@ -452,6 +456,21 @@ export async function fetchApprovalWorkflows() {
 
 export async function fetchApprovalWorkflow(id: string) {
   const { data } = await api.get<ApprovalWorkflowConfig>(`/org/approvals/workflows/${id}/`)
+  return data
+}
+
+export async function fetchApprovalWorkflowCatalog() {
+  const { data } = await api.get<ApprovalWorkflowCatalog>('/org/approvals/workflows/catalog/')
+  return data
+}
+
+export async function fetchApprovalWorkflowReadiness() {
+  const { data } = await api.get<ApprovalWorkflowReadinessRow[]>('/org/approvals/workflows/readiness/')
+  return data
+}
+
+export async function simulateApprovalWorkflow(payload: ApprovalWorkflowSimulationRequest) {
+  const { data } = await api.post<ApprovalWorkflowSimulationResult>('/org/approvals/workflows/simulate/', payload)
   return data
 }
 

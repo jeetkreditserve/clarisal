@@ -10,11 +10,13 @@ import { SectionCard } from '@/components/ui/SectionCard'
 import { SkeletonPageHeader, SkeletonTable } from '@/components/ui/Skeleton'
 import {
   useApprovalWorkflow,
+  useApprovalWorkflowCatalog,
   useCreateApprovalWorkflow,
   useDepartments,
   useEmployees,
   useLeavePlans,
   useLocations,
+  useSimulateApprovalWorkflow,
   useUpdateApprovalWorkflow,
 } from '@/hooks/useOrgAdmin'
 import {
@@ -33,7 +35,7 @@ import {
 } from '@/lib/constants'
 import { getErrorMessage, getFieldErrors } from '@/lib/errors'
 import { formatDateTime, startCase } from '@/lib/format'
-import type { ApprovalWorkflowConfig } from '@/types/hr'
+import type { ApprovalRequestKind, ApprovalWorkflowConfig, ApprovalWorkflowSimulationResult } from '@/types/hr'
 
 interface WorkflowRuleForm {
   id?: string
@@ -47,12 +49,20 @@ interface WorkflowRuleForm {
   employment_type: string
   designation: string
   leave_type_id: string | null
+  min_amount: string | null
+  max_amount: string | null
+  grade: string
+  band: string
+  cost_centre: string
+  legal_entity: string
 }
 
 interface WorkflowApproverForm {
   id?: string
   approver_type: string
   approver_employee_id?: string | null
+  manager_level: number
+  role_code: string
 }
 
 interface WorkflowStageForm {
@@ -62,10 +72,12 @@ interface WorkflowStageForm {
   mode: string
   fallback_type: string
   fallback_employee_id?: string | null
+  fallback_role_code: string
   reminder_after_hours?: number | null
   escalate_after_hours?: number | null
   escalation_target_type: string
   escalation_employee_id?: string | null
+  escalation_role_code: string
   approvers: WorkflowApproverForm[]
 }
 
@@ -79,6 +91,19 @@ interface WorkflowForm {
   stages: WorkflowStageForm[]
 }
 
+interface SimulationForm {
+  employee_id: string
+  request_kind: ApprovalRequestKind
+  amount: string
+  grade: string
+  band: string
+  cost_centre: string
+  legal_entity: string
+  leave_type_id: string
+}
+
+const ROLE_APPROVER_TYPES = new Set(['HR_BUSINESS_PARTNER', 'PAYROLL_ADMIN', 'FINANCE_APPROVER', 'ROLE'])
+
 function createEmptyRule(): WorkflowRuleForm {
   return {
     name: '',
@@ -91,6 +116,12 @@ function createEmptyRule(): WorkflowRuleForm {
     employment_type: '',
     designation: '',
     leave_type_id: null,
+    min_amount: null,
+    max_amount: null,
+    grade: '',
+    band: '',
+    cost_centre: '',
+    legal_entity: '',
   }
 }
 
@@ -101,11 +132,13 @@ function createEmptyStage(sequence: number): WorkflowStageForm {
     mode: 'ALL',
     fallback_type: 'NONE',
     fallback_employee_id: null,
+    fallback_role_code: '',
     reminder_after_hours: null,
     escalate_after_hours: null,
     escalation_target_type: 'NONE',
     escalation_employee_id: null,
-    approvers: [{ approver_type: 'PRIMARY_ORG_ADMIN', approver_employee_id: null }],
+    escalation_role_code: '',
+    approvers: [{ approver_type: 'PRIMARY_ORG_ADMIN', approver_employee_id: null, manager_level: 1, role_code: '' }],
   }
 }
 
@@ -128,6 +161,12 @@ function mapWorkflowToForm(workflow: ApprovalWorkflowConfig): WorkflowForm {
       employment_type: rule.employment_type,
       designation: rule.designation,
       leave_type_id: rule.leave_type ?? '',
+      min_amount: rule.min_amount,
+      max_amount: rule.max_amount,
+      grade: rule.grade,
+      band: rule.band,
+      cost_centre: rule.cost_centre,
+      legal_entity: rule.legal_entity,
     })),
     stages: workflow.stages.map((stage) => ({
       id: stage.id,
@@ -136,14 +175,18 @@ function mapWorkflowToForm(workflow: ApprovalWorkflowConfig): WorkflowForm {
       mode: stage.mode,
       fallback_type: stage.fallback_type,
       fallback_employee_id: stage.fallback_employee_id,
+      fallback_role_code: stage.fallback_role_code,
       reminder_after_hours: stage.reminder_after_hours,
       escalate_after_hours: stage.escalate_after_hours,
       escalation_target_type: stage.escalation_target_type,
       escalation_employee_id: stage.escalation_employee_id,
+      escalation_role_code: stage.escalation_role_code,
       approvers: stage.approvers.map((approver) => ({
         id: approver.id,
         approver_type: approver.approver_type,
         approver_employee_id: approver.approver_employee_id,
+        manager_level: approver.manager_level,
+        role_code: approver.role_code,
       })),
     })),
   }
@@ -160,20 +203,30 @@ function buildPayload(form: WorkflowForm) {
       office_location_id: rule.office_location_id || null,
       specific_employee_id: rule.specific_employee_id || null,
       leave_type_id: rule.request_kind === 'LEAVE' ? rule.leave_type_id || null : null,
+      min_amount: rule.min_amount || null,
+      max_amount: rule.max_amount || null,
+      grade: rule.grade,
+      band: rule.band,
+      cost_centre: rule.cost_centre,
+      legal_entity: rule.legal_entity,
     })),
     stages: form.stages.map((stage, index) => ({
       ...(stage.id ? { id: stage.id } : {}),
       ...stage,
       sequence: index + 1,
       fallback_employee_id: stage.fallback_employee_id || null,
+      fallback_role_code: stage.fallback_type === 'ROLE' ? stage.fallback_role_code : '',
       reminder_after_hours: stage.reminder_after_hours || null,
       escalate_after_hours: stage.escalate_after_hours || null,
       escalation_target_type: stage.escalation_target_type,
       escalation_employee_id: stage.escalation_target_type === 'SPECIFIC_EMPLOYEE' ? stage.escalation_employee_id || null : null,
+      escalation_role_code: stage.escalation_target_type === 'ROLE' ? stage.escalation_role_code : '',
       approvers: stage.approvers.map((approver) => ({
         ...(approver.id ? { id: approver.id } : {}),
         approver_type: approver.approver_type,
         approver_employee_id: approver.approver_type === 'SPECIFIC_EMPLOYEE' ? approver.approver_employee_id || null : null,
+        manager_level: approver.manager_level,
+        role_code: approver.approver_type === 'ROLE' ? approver.role_code : '',
       })),
     })),
   }
@@ -190,14 +243,27 @@ export function ApprovalWorkflowBuilderPage() {
   const { data: locations } = useLocations(true, !isCtMode)
   const { data: employees } = useEmployees({ page: 1 }, !isCtMode)
   const { data: leavePlans } = useLeavePlans(!isCtMode)
+  const { data: catalog } = useApprovalWorkflowCatalog(!isCtMode)
   const { data: configuration, isLoading: isCtLoading } = useCtOrgConfiguration(organisationId ?? '', isCtMode)
   const { data: ctEmployees } = useCtOrgEmployees(organisationId ?? '', { page: 1 }, isCtMode)
   const createMutation = useCreateApprovalWorkflow()
   const updateMutation = useUpdateApprovalWorkflow(id ?? '')
   const createCtMutation = useCreateCtApprovalWorkflow(organisationId ?? '')
   const updateCtMutation = useUpdateCtApprovalWorkflow(organisationId ?? '')
+  const simulationMutation = useSimulateApprovalWorkflow()
   const [form, setForm] = useState<WorkflowForm>(createDefaultApprovalWorkflow() as unknown as WorkflowForm)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+  const [simulationForm, setSimulationForm] = useState<SimulationForm>({
+    employee_id: '',
+    request_kind: 'LEAVE',
+    amount: '',
+    grade: '',
+    band: '',
+    cost_centre: '',
+    legal_entity: '',
+    leave_type_id: '',
+  })
+  const [simulationResult, setSimulationResult] = useState<ApprovalWorkflowSimulationResult | null>(null)
   const workflow = isCtMode ? configuration?.approval_workflows.find((item) => item.id === id) : orgWorkflow
   const resolvedDepartments = isCtMode ? configuration?.departments : departments
   const resolvedLocations = isCtMode ? configuration?.locations : locations
@@ -229,25 +295,34 @@ export function ApprovalWorkflowBuilderPage() {
     () => [{ value: '', label: 'Any employment type' }, ...EMPLOYMENT_TYPE_OPTIONS.map((value) => ({ value, label: startCase(value) }))],
     [],
   )
-  const canShowAttendanceRegularizationOption = true
+  const catalogKindMap = useMemo(
+    () => new Map((catalog?.request_kinds ?? []).map((item) => [item.kind, item])),
+    [catalog],
+  )
+  const requestKindMeta = (kind: string) => catalogKindMap.get(kind as ApprovalRequestKind)
+  const supportsLeaveTypeRules = (kind: string) => requestKindMeta(kind)?.supports_leave_type_rules ?? kind === 'LEAVE'
+  const supportsAmountRules = (kind: string) =>
+    requestKindMeta(kind)?.supports_amount_rules ?? ['EXPENSE_CLAIM', 'PAYROLL_PROCESSING', 'SALARY_REVISION', 'PROMOTION'].includes(kind)
   const requestKindOptions = useMemo(
     () =>
-      APPROVAL_REQUEST_KIND_OPTIONS.filter(
-        (value) => value !== 'ATTENDANCE_REGULARIZATION' || canShowAttendanceRegularizationOption,
-      ).map((value) => ({ value, label: startCase(value) })),
-    [canShowAttendanceRegularizationOption],
+      (catalog?.request_kinds ?? APPROVAL_REQUEST_KIND_OPTIONS.map((kind) => ({
+        kind,
+        label: startCase(kind),
+        module: 'Core',
+      }))).map((item) => ({ value: item.kind, label: item.label, hint: item.module })),
+    [catalog],
   )
   const approverTypeOptions = useMemo(
-    () => APPROVAL_APPROVER_TYPE_OPTIONS.map((value) => ({ value, label: startCase(value) })),
-    [],
+    () => (catalog?.approver_types ?? APPROVAL_APPROVER_TYPE_OPTIONS).map((value) => ({ value, label: startCase(value) })),
+    [catalog],
   )
   const fallbackTypeOptions = useMemo(
-    () => APPROVAL_FALLBACK_TYPE_OPTIONS.map((value) => ({ value, label: startCase(value) })),
-    [],
+    () => (catalog?.fallback_types ?? APPROVAL_FALLBACK_TYPE_OPTIONS).map((value) => ({ value, label: startCase(value) })),
+    [catalog],
   )
   const stageModeOptions = useMemo(
-    () => APPROVAL_STAGE_MODE_OPTIONS.map((value) => ({ value, label: startCase(value) })),
-    [],
+    () => (catalog?.stage_modes ?? APPROVAL_STAGE_MODE_OPTIONS).map((value) => ({ value, label: startCase(value) })),
+    [catalog],
   )
   const leaveTypeOptions = useMemo(
     () => [
@@ -262,6 +337,29 @@ export function ApprovalWorkflowBuilderPage() {
     ],
     [resolvedLeavePlans],
   )
+
+  const runSimulation = async () => {
+    if (!simulationForm.employee_id) {
+      toast.error('Select an employee before previewing approvers.')
+      return
+    }
+    try {
+      const result = await simulationMutation.mutateAsync({
+        employee_id: simulationForm.employee_id,
+        request_kind: simulationForm.request_kind,
+        amount: simulationForm.amount || undefined,
+        leave_type_id: simulationForm.leave_type_id || undefined,
+        grade: simulationForm.grade,
+        band: simulationForm.band,
+        cost_centre: simulationForm.cost_centre,
+        legal_entity: simulationForm.legal_entity,
+      })
+      setSimulationResult(result)
+    } catch (error) {
+      setSimulationResult(null)
+      toast.error(getErrorMessage(error, 'Unable to preview approvers.'))
+    }
+  }
 
   const saveWorkflow = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -328,15 +426,6 @@ export function ApprovalWorkflowBuilderPage() {
           </>
         }
       />
-
-      {!canShowAttendanceRegularizationOption ? (
-        <div className="rounded-[24px] border border-[hsl(var(--warning)_/_0.32)] bg-[hsl(var(--warning)_/_0.12)] px-5 py-4 text-sm text-[hsl(var(--foreground-strong))]">
-          <p className="font-semibold">Attendance regularization workflows are restricted for this screen state.</p>
-          <p className="mt-1 text-[hsl(var(--muted-foreground))]">
-            Create leave, on-duty, attendance, and payroll-related workflows here once the request kind is allowed for the current route and mode.
-          </p>
-        </div>
-      ) : null}
 
       <SectionCard title="Workflow basics" description="Set the default workflow and keep naming clear so admins understand where this routing will apply.">
         <div className="grid gap-4 lg:grid-cols-2">
@@ -453,7 +542,15 @@ export function ApprovalWorkflowBuilderPage() {
                       setForm((current) => ({
                         ...current,
                         rules: current.rules.map((item, itemIndex) =>
-                          itemIndex === index ? { ...item, request_kind: value, leave_type_id: value === 'LEAVE' ? item.leave_type_id : null } : item,
+                          itemIndex === index
+                            ? {
+                                ...item,
+                                request_kind: value,
+                                leave_type_id: supportsLeaveTypeRules(value) ? item.leave_type_id : null,
+                                min_amount: supportsAmountRules(value) ? item.min_amount : null,
+                                max_amount: supportsAmountRules(value) ? item.max_amount : null,
+                              }
+                            : item,
                         ),
                       }))
                     }
@@ -553,9 +650,65 @@ export function ApprovalWorkflowBuilderPage() {
                       }))
                     }
                     options={leaveTypeOptions}
-                    disabled={rule.request_kind !== 'LEAVE'}
+                    disabled={!supportsLeaveTypeRules(rule.request_kind)}
                   />
                 </div>
+                {supportsAmountRules(rule.request_kind) ? (
+                  <>
+                    <div>
+                      <label className="field-label">Minimum amount</label>
+                      <input
+                        className="field-input"
+                        inputMode="decimal"
+                        value={rule.min_amount ?? ''}
+                        onChange={(event) =>
+                          setForm((current) => ({
+                            ...current,
+                            rules: current.rules.map((item, itemIndex) =>
+                              itemIndex === index ? { ...item, min_amount: event.target.value || null } : item,
+                            ),
+                          }))
+                        }
+                        placeholder="Optional"
+                      />
+                    </div>
+                    <div>
+                      <label className="field-label">Maximum amount</label>
+                      <input
+                        className="field-input"
+                        inputMode="decimal"
+                        value={rule.max_amount ?? ''}
+                        onChange={(event) =>
+                          setForm((current) => ({
+                            ...current,
+                            rules: current.rules.map((item, itemIndex) =>
+                              itemIndex === index ? { ...item, max_amount: event.target.value || null } : item,
+                            ),
+                          }))
+                        }
+                        placeholder="Optional"
+                      />
+                    </div>
+                  </>
+                ) : null}
+                {(['grade', 'band', 'cost_centre', 'legal_entity'] as const).map((fieldName) => (
+                  <div key={fieldName}>
+                    <label className="field-label">{startCase(fieldName)}</label>
+                    <input
+                      className="field-input"
+                      value={rule[fieldName]}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          rules: current.rules.map((item, itemIndex) =>
+                            itemIndex === index ? { ...item, [fieldName]: event.target.value } : item,
+                          ),
+                        }))
+                      }
+                      placeholder="Any"
+                    />
+                  </div>
+                ))}
               </div>
               <div className="mt-4">
                 <AppCheckbox
@@ -658,13 +811,38 @@ export function ApprovalWorkflowBuilderPage() {
                       setForm((current) => ({
                         ...current,
                         stages: current.stages.map((item, itemIndex) =>
-                          itemIndex === stageIndex ? { ...item, fallback_type: value, fallback_employee_id: value === 'SPECIFIC_EMPLOYEE' ? item.fallback_employee_id : null } : item,
+                          itemIndex === stageIndex
+                            ? {
+                                ...item,
+                                fallback_type: value,
+                                fallback_employee_id: value === 'SPECIFIC_EMPLOYEE' ? item.fallback_employee_id : null,
+                                fallback_role_code: value === 'ROLE' ? item.fallback_role_code : '',
+                              }
+                            : item,
                         ),
                       }))
                     }
                     options={fallbackTypeOptions}
                   />
                 </div>
+                {stage.fallback_type === 'ROLE' ? (
+                  <div>
+                    <label className="field-label">Fallback role code</label>
+                    <input
+                      className="field-input"
+                      value={stage.fallback_role_code}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          stages: current.stages.map((item, itemIndex) =>
+                            itemIndex === stageIndex ? { ...item, fallback_role_code: event.target.value } : item,
+                          ),
+                        }))
+                      }
+                      placeholder="ORG_HR_ADMIN"
+                    />
+                  </div>
+                ) : null}
                 {stage.fallback_type === 'SPECIFIC_EMPLOYEE' ? (
                   <div className="xl:col-span-2">
                     <label className="field-label">Fallback employee</label>
@@ -739,6 +917,7 @@ export function ApprovalWorkflowBuilderPage() {
                                 ...item,
                                 escalation_target_type: value,
                                 escalation_employee_id: value === 'SPECIFIC_EMPLOYEE' ? item.escalation_employee_id : null,
+                                escalation_role_code: value === 'ROLE' ? item.escalation_role_code : '',
                               }
                             : item,
                         ),
@@ -764,6 +943,24 @@ export function ApprovalWorkflowBuilderPage() {
                     />
                   </div>
                 ) : null}
+                {stage.escalation_target_type === 'ROLE' ? (
+                  <div>
+                    <label className="field-label">Escalation role code</label>
+                    <input
+                      className="field-input"
+                      value={stage.escalation_role_code}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          stages: current.stages.map((item, itemIndex) =>
+                            itemIndex === stageIndex ? { ...item, escalation_role_code: event.target.value } : item,
+                          ),
+                        }))
+                      }
+                      placeholder="ORG_HR_ADMIN"
+                    />
+                  </div>
+                ) : null}
               </div>
 
               <div className="mt-5 space-y-3">
@@ -777,7 +974,10 @@ export function ApprovalWorkflowBuilderPage() {
                         ...current,
                         stages: current.stages.map((item, itemIndex) =>
                           itemIndex === stageIndex
-                            ? { ...item, approvers: [...item.approvers, { approver_type: 'SPECIFIC_EMPLOYEE', approver_employee_id: null }] }
+                            ? {
+                                ...item,
+                                approvers: [...item.approvers, { approver_type: 'SPECIFIC_EMPLOYEE', approver_employee_id: null, manager_level: 1, role_code: '' }],
+                              }
                             : item,
                         ),
                       }))
@@ -802,7 +1002,12 @@ export function ApprovalWorkflowBuilderPage() {
                                       ...stageItem,
                                       approvers: stageItem.approvers.map((approverItem, approverItemIndex) =>
                                         approverItemIndex === approverIndex
-                                          ? { ...approverItem, approver_type: value, approver_employee_id: value === 'SPECIFIC_EMPLOYEE' ? approverItem.approver_employee_id : null }
+                                          ? {
+                                              ...approverItem,
+                                              approver_type: value,
+                                              approver_employee_id: value === 'SPECIFIC_EMPLOYEE' ? approverItem.approver_employee_id : null,
+                                              role_code: ROLE_APPROVER_TYPES.has(value) ? approverItem.role_code : '',
+                                            }
                                           : approverItem,
                                       ),
                                     }
@@ -836,6 +1041,59 @@ export function ApprovalWorkflowBuilderPage() {
                           }
                           options={employeeOptions}
                           disabled={approver.approver_type !== 'SPECIFIC_EMPLOYEE'}
+                        />
+                      </div>
+                      <div>
+                        <label className="field-label">Manager level</label>
+                        <input
+                          type="number"
+                          min={1}
+                          className="field-input"
+                          value={approver.manager_level}
+                          disabled={approver.approver_type !== 'NTH_LEVEL_MANAGER'}
+                          onChange={(event) =>
+                            setForm((current) => ({
+                              ...current,
+                              stages: current.stages.map((stageItem, stageItemIndex) =>
+                                stageItemIndex === stageIndex
+                                  ? {
+                                      ...stageItem,
+                                      approvers: stageItem.approvers.map((approverItem, approverItemIndex) =>
+                                        approverItemIndex === approverIndex
+                                          ? { ...approverItem, manager_level: Number(event.target.value || 1) }
+                                          : approverItem,
+                                      ),
+                                    }
+                                  : stageItem,
+                              ),
+                            }))
+                          }
+                        />
+                      </div>
+                      <div>
+                        <label className="field-label">Role code</label>
+                        <input
+                          className="field-input"
+                          value={approver.role_code}
+                          disabled={!ROLE_APPROVER_TYPES.has(approver.approver_type)}
+                          onChange={(event) =>
+                            setForm((current) => ({
+                              ...current,
+                              stages: current.stages.map((stageItem, stageItemIndex) =>
+                                stageItemIndex === stageIndex
+                                  ? {
+                                      ...stageItem,
+                                      approvers: stageItem.approvers.map((approverItem, approverItemIndex) =>
+                                        approverItemIndex === approverIndex
+                                          ? { ...approverItem, role_code: event.target.value }
+                                          : approverItem,
+                                      ),
+                                    }
+                                  : stageItem,
+                              ),
+                            }))
+                          }
+                          placeholder="Optional for seeded roles"
                         />
                       </div>
                       <div className="flex items-end justify-end">
@@ -894,6 +1152,104 @@ export function ApprovalWorkflowBuilderPage() {
           </div>
         </div>
       </SectionCard>
+
+      {!isCtMode ? (
+        <SectionCard title="Approver preview" description="Check the active workflow path for a real employee before publishing changes.">
+          <div className="grid gap-4 xl:grid-cols-3">
+            <div>
+              <label className="field-label">Employee</label>
+              <AppSelect
+                value={simulationForm.employee_id}
+                onValueChange={(value) => setSimulationForm((current) => ({ ...current, employee_id: value }))}
+                options={employeeOptions}
+                searchable
+              />
+            </div>
+            <div>
+              <label className="field-label">Request kind</label>
+              <AppSelect
+                value={simulationForm.request_kind}
+                onValueChange={(value) => setSimulationForm((current) => ({ ...current, request_kind: value as ApprovalRequestKind }))}
+                options={requestKindOptions}
+                searchable
+              />
+            </div>
+            {supportsAmountRules(simulationForm.request_kind) ? (
+              <div>
+                <label className="field-label">Amount</label>
+                <input
+                  className="field-input"
+                  inputMode="decimal"
+                  value={simulationForm.amount}
+                  onChange={(event) => setSimulationForm((current) => ({ ...current, amount: event.target.value }))}
+                  placeholder="Optional"
+                />
+              </div>
+            ) : null}
+            {supportsLeaveTypeRules(simulationForm.request_kind) ? (
+              <div>
+                <label className="field-label">Leave type</label>
+                <AppSelect
+                  value={simulationForm.leave_type_id}
+                  onValueChange={(value) => setSimulationForm((current) => ({ ...current, leave_type_id: value }))}
+                  options={leaveTypeOptions}
+                />
+              </div>
+            ) : null}
+            {(['grade', 'band', 'cost_centre', 'legal_entity'] as const).map((fieldName) => (
+              <div key={fieldName}>
+                <label className="field-label">{startCase(fieldName)}</label>
+                <input
+                  className="field-input"
+                  value={simulationForm[fieldName]}
+                  onChange={(event) => setSimulationForm((current) => ({ ...current, [fieldName]: event.target.value }))}
+                  placeholder="Optional"
+                />
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 flex justify-end">
+            <button type="button" className="btn-secondary" disabled={simulationMutation.isPending} onClick={() => void runSimulation()}>
+              {simulationMutation.isPending ? 'Previewing...' : 'Preview approvers'}
+            </button>
+          </div>
+          {simulationResult ? (
+            <div className="mt-5 space-y-3">
+              <div className="surface-muted rounded-[18px] px-4 py-3">
+                <p className="text-sm font-semibold text-[hsl(var(--foreground-strong))]">{simulationResult.workflow_name}</p>
+                <p className="text-xs uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">{simulationResult.source}</p>
+              </div>
+              {simulationResult.stages.map((stage) => (
+                <div key={`${stage.sequence}-${stage.name}`} className="surface-shell rounded-[18px] p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <p className="font-medium text-[hsl(var(--foreground-strong))]">
+                      {stage.sequence}. {stage.name}
+                    </p>
+                    <span className="text-sm text-[hsl(var(--muted-foreground))]">{stage.mode}</span>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {stage.approvers.map((approver) => (
+                      <span key={approver.user_id} className="rounded-full bg-[hsl(var(--brand)/0.12)] px-3 py-1 text-sm text-[hsl(var(--foreground-strong))]">
+                        {approver.name}
+                      </span>
+                    ))}
+                    {stage.approvers.length === 0 ? (
+                      <span className="text-sm text-[hsl(var(--danger))]">No approver resolved.</span>
+                    ) : null}
+                  </div>
+                  {stage.warnings.length ? (
+                    <ul className="mt-3 list-disc pl-5 text-sm text-[hsl(var(--warning))]">
+                      {stage.warnings.map((warning) => (
+                        <li key={warning}>{warning}</li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </SectionCard>
+      ) : null}
     </form>
   )
 }

@@ -29,12 +29,22 @@ class ApprovalStageMode(models.TextChoices):
 
 class ApprovalApproverType(models.TextChoices):
     REPORTING_MANAGER = "REPORTING_MANAGER", "Reporting Manager"
+    NTH_LEVEL_MANAGER = "NTH_LEVEL_MANAGER", "Nth Level Manager"
+    DEPARTMENT_HEAD = "DEPARTMENT_HEAD", "Department Head"
+    LOCATION_ADMIN = "LOCATION_ADMIN", "Location Admin"
+    HR_BUSINESS_PARTNER = "HR_BUSINESS_PARTNER", "HR Business Partner"
+    PAYROLL_ADMIN = "PAYROLL_ADMIN", "Payroll Admin"
+    FINANCE_APPROVER = "FINANCE_APPROVER", "Finance Approver"
+    ROLE = "ROLE", "Role"
     SPECIFIC_EMPLOYEE = "SPECIFIC_EMPLOYEE", "Specific Employee"
     PRIMARY_ORG_ADMIN = "PRIMARY_ORG_ADMIN", "Primary Organisation Admin"
 
 
 class ApprovalFallbackType(models.TextChoices):
     NONE = "NONE", "None"
+    REPORTING_MANAGER = "REPORTING_MANAGER", "Reporting Manager"
+    DEPARTMENT_HEAD = "DEPARTMENT_HEAD", "Department Head"
+    ROLE = "ROLE", "Role"
     SPECIFIC_EMPLOYEE = "SPECIFIC_EMPLOYEE", "Specific Employee"
     PRIMARY_ORG_ADMIN = "PRIMARY_ORG_ADMIN", "Primary Organisation Admin"
 
@@ -139,6 +149,12 @@ class ApprovalWorkflowRule(AuditedBaseModel):
         on_delete=models.CASCADE,
         related_name="approval_rules",
     )
+    min_amount = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    max_amount = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    grade = models.CharField(max_length=120, blank=True)
+    band = models.CharField(max_length=120, blank=True)
+    cost_centre = models.CharField(max_length=120, blank=True)
+    legal_entity = models.CharField(max_length=120, blank=True)
 
     class Meta:
         db_table = "approval_workflow_rules"
@@ -146,6 +162,40 @@ class ApprovalWorkflowRule(AuditedBaseModel):
 
     def __str__(self):
         return f"{self.workflow.name} [{self.request_kind}]"
+
+
+class ApprovalWorkflowAssignment(AuditedBaseModel):
+    organisation = models.ForeignKey(
+        "organisations.Organisation",
+        on_delete=models.CASCADE,
+        related_name="approval_workflow_assignments",
+    )
+    employee = models.ForeignKey(
+        "employees.Employee",
+        on_delete=models.CASCADE,
+        related_name="approval_workflow_assignments",
+    )
+    request_kind = models.CharField(max_length=32, choices=ApprovalRequestKind.choices)
+    workflow = models.ForeignKey(
+        ApprovalWorkflow,
+        on_delete=models.CASCADE,
+        related_name="employee_assignments",
+    )
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = "approval_workflow_assignments"
+        ordering = ["request_kind", "employee__employee_code", "created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["organisation", "employee", "request_kind"],
+                condition=Q(is_active=True),
+                name="unique_active_approval_workflow_assignment",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.employee_id} {self.request_kind} -> {self.workflow_id}"
 
 
 class ApprovalStage(AuditedBaseModel):
@@ -171,6 +221,7 @@ class ApprovalStage(AuditedBaseModel):
         on_delete=models.SET_NULL,
         related_name="approval_stage_fallbacks",
     )
+    fallback_role_code = models.CharField(max_length=120, blank=True)
 
     class Meta:
         db_table = "approval_stages"
@@ -206,6 +257,7 @@ class ApprovalStageEscalationPolicy(AuditedBaseModel):
         on_delete=models.SET_NULL,
         related_name="approval_stage_escalation_policies",
     )
+    escalation_role_code = models.CharField(max_length=120, blank=True)
     is_active = models.BooleanField(default=True)
 
     class Meta:
@@ -231,6 +283,8 @@ class ApprovalStageApprover(AuditedBaseModel):
         on_delete=models.SET_NULL,
         related_name="stage_approver_assignments",
     )
+    manager_level = models.PositiveSmallIntegerField(default=1)
+    role_code = models.CharField(max_length=120, blank=True)
 
     class Meta:
         db_table = "approval_stage_approvers"

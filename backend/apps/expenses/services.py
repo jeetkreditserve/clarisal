@@ -165,6 +165,7 @@ def submit_expense_claim(claim, *, requester, actor=None):
             ApprovalRequestKind.EXPENSE_CLAIM,
             requester,
             actor=actor,
+            amount=claim.total_amount,
             subject_label=claim.title,
         )
         claim.approval_run = approval_run

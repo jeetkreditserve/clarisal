@@ -1,20 +1,26 @@
 import { Outlet, useNavigate } from 'react-router-dom'
-import { Building2, CreditCard, Landmark, LayoutDashboard, LogOut } from 'lucide-react'
+import { Building2, CreditCard, Landmark, LayoutDashboard, LockKeyhole, LogOut } from 'lucide-react'
 import { SidebarNav, type NavItem } from './SidebarNav'
 import { useAuth } from '@/hooks/useAuth'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { ThemeToggle } from '@/components/ui/ThemeToggle'
+import { hasAnyPermission } from '@/lib/rbac'
 
-const navItems: NavItem[] = [
-  { label: 'Dashboard', href: '/ct/dashboard', icon: LayoutDashboard },
-  { label: 'Payroll Masters', href: '/ct/payroll', icon: Landmark },
-  { label: 'Billing', href: '/ct/billing', icon: CreditCard },
-  { label: 'Organisations', href: '/ct/organisations', icon: Building2 },
-]
+function buildNavItems(permissionCodes: string[] | undefined): NavItem[] {
+  const canReadAccessControl = hasAnyPermission({ effective_permissions: permissionCodes ?? [] }, ['ct.organisations.read', 'ct.organisations.write'])
+  return [
+    { label: 'Dashboard', href: '/ct/dashboard', icon: LayoutDashboard },
+    { label: 'Payroll Masters', href: '/ct/payroll', icon: Landmark },
+    { label: 'Billing', href: '/ct/billing', icon: CreditCard },
+    ...(canReadAccessControl ? [{ label: 'Access Control', href: '/ct/access-control', icon: LockKeyhole }] : []),
+    { label: 'Organisations', href: '/ct/organisations', icon: Building2 },
+  ]
+}
 
 export function CTLayout() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
+  const navItems = buildNavItems(user?.effective_permissions)
 
   const handleLogout = async () => {
     await logout()

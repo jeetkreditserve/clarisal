@@ -1,4 +1,5 @@
 from datetime import timedelta
+from decimal import Decimal
 from unittest.mock import patch
 
 import pytest
@@ -20,6 +21,7 @@ from apps.approvals.models import (
     ApprovalStageEscalationPolicy,
     ApprovalStageMode,
     ApprovalWorkflow,
+    ApprovalWorkflowAssignment,
     ApprovalWorkflowRule,
 )
 from apps.approvals.services import (
@@ -38,6 +40,7 @@ from apps.approvals.services import (
     process_pending_action_escalations,
     reject_action,
     resolve_workflow,
+    resolve_workflow_with_source,
     send_pending_action_reminders,
     upsert_approval_delegation,
 )
@@ -292,6 +295,56 @@ class TestResolveWorkflow:
         assert resolve_workflow(employee, ApprovalRequestKind.EXPENSE_CLAIM) == assigned_expense_workflow
         assert resolve_workflow(unresolved_employee, ApprovalRequestKind.EXPENSE_CLAIM) == default_expense_workflow
 
+    def test_employee_specific_assignment_supports_promotion(self, organisation, employee):
+        promotion_workflow = ApprovalWorkflow.objects.create(
+            organisation=organisation,
+            name='Promotion Assignment Workflow',
+            is_active=True,
+        )
+        ApprovalWorkflowAssignment.objects.create(
+            organisation=organisation,
+            employee=employee,
+            request_kind=ApprovalRequestKind.PROMOTION,
+            workflow=promotion_workflow,
+        )
+
+        workflow, source = resolve_workflow_with_source(employee, ApprovalRequestKind.PROMOTION)
+
+        assert workflow == promotion_workflow
+        assert source == 'ASSIGNMENT'
+
+    def test_expense_amount_rule_wins_before_default(self, organisation, employee):
+        high_value_workflow = ApprovalWorkflow.objects.create(
+            organisation=organisation,
+            name='High Value Expense Workflow',
+            is_active=True,
+        )
+        default_workflow = ApprovalWorkflow.objects.create(
+            organisation=organisation,
+            name='Default Expense Workflow',
+            is_default=True,
+            default_request_kind=ApprovalRequestKind.EXPENSE_CLAIM,
+            is_active=True,
+        )
+        ApprovalWorkflowRule.objects.create(
+            workflow=high_value_workflow,
+            name='High value expense',
+            request_kind=ApprovalRequestKind.EXPENSE_CLAIM,
+            priority=1,
+            min_amount=Decimal('50000.00'),
+            is_active=True,
+        )
+
+        workflow, source = resolve_workflow_with_source(
+            employee,
+            ApprovalRequestKind.EXPENSE_CLAIM,
+            amount=Decimal('75000.00'),
+        )
+
+        assert workflow == high_value_workflow
+        assert workflow != default_workflow
+        assert source == 'RULE'
+
     def test_ensure_default_workflow_configured_requires_all_defaults(self, organisation):
         ApprovalWorkflow.objects.create(
             organisation=organisation,
@@ -318,6 +371,25 @@ class TestResolveWorkflow:
             default_request_kind=ApprovalRequestKind.ATTENDANCE_REGULARIZATION,
             is_active=True,
         )
+
+        with pytest.raises(ValueError, match='Create and activate a default approval workflow'):
+            ensure_default_workflow_configured(organisation)
+
+        for request_kind in [
+            ApprovalRequestKind.EXPENSE_CLAIM,
+            ApprovalRequestKind.PAYROLL_PROCESSING,
+            ApprovalRequestKind.SALARY_REVISION,
+            ApprovalRequestKind.COMPENSATION_TEMPLATE_CHANGE,
+            ApprovalRequestKind.PROMOTION,
+            ApprovalRequestKind.TRANSFER,
+        ]:
+            ApprovalWorkflow.objects.create(
+                organisation=organisation,
+                name=f'Default {request_kind}',
+                is_default=True,
+                default_request_kind=request_kind,
+                is_active=True,
+            )
 
         ensure_default_workflow_configured(organisation)
 
@@ -408,6 +480,65 @@ class TestResolveWorkflow:
         assert get_employee_assigned_workflow(employee, ApprovalRequestKind.EXPENSE_CLAIM) is None
         employee.expense_approval_workflow = active_workflow
         assert get_employee_assigned_workflow(employee, ApprovalRequestKind.EXPENSE_CLAIM) == active_workflow
+
+    def test_create_approval_run_resolves_finance_approver_from_access_control_assignment(
+        self,
+        organisation,
+        employee,
+        department,
+    ):
+        from apps.access_control.models import AccessRole, AccessRoleAssignment
+        from apps.access_control.services import sync_access_control
+
+        sync_access_control()
+        finance_user = User.objects.create_user(
+            email='finance-approver@test.com',
+            password='pass123!',
+            role=UserRole.EMPLOYEE,
+            is_active=True,
+        )
+        finance_employee = Employee.objects.create(
+            organisation=organisation,
+            user=finance_user,
+            employee_code='EMP-FIN',
+            status=EmployeeStatus.ACTIVE,
+        )
+        role = AccessRole.objects.get(code='ORG_FINANCE_APPROVER', organisation__isnull=True)
+        AccessRoleAssignment.objects.create(
+            user=finance_user,
+            organisation=organisation,
+            role=role,
+            is_active=True,
+        )
+        workflow = ApprovalWorkflow.objects.create(
+            organisation=organisation,
+            name='Finance approval workflow',
+            is_default=True,
+            default_request_kind=ApprovalRequestKind.EXPENSE_CLAIM,
+            is_active=True,
+        )
+        stage = ApprovalStage.objects.create(
+            workflow=workflow,
+            name='Finance review',
+            sequence=1,
+            fallback_type=ApprovalFallbackType.PRIMARY_ORG_ADMIN,
+        )
+        ApprovalStageApprover.objects.create(
+            stage=stage,
+            approver_type=ApprovalApproverType.FINANCE_APPROVER,
+        )
+
+        approval_run = create_approval_run(
+            department,
+            ApprovalRequestKind.EXPENSE_CLAIM,
+            requester=employee,
+            actor=employee.user,
+            subject_label='High value expense',
+        )
+
+        action = approval_run.actions.get()
+        assert action.approver_user == finance_user
+        assert action.approver_employee == finance_employee
 
 
 def _create_pending_action(*, organisation, requester, approver_user, subject, request_kind, subject_label):

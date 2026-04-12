@@ -11,7 +11,9 @@ from apps.accounts.models import User, UserRole
 from apps.approvals.models import (
     ApprovalAction,
     ApprovalActionStatus,
+    ApprovalApproverType,
     ApprovalDelegation,
+    ApprovalFallbackType,
     ApprovalRequestKind,
     ApprovalRun,
     ApprovalRunStatus,
@@ -194,6 +196,75 @@ class TestApprovalWorkflowApi:
 
         assert response.status_code == 201
         assert response.data['default_request_kind'] == ApprovalRequestKind.PAYROLL_PROCESSING
+
+    def test_catalog_readiness_and_simulation_cover_all_request_kinds(self, org_admin_client):
+        client, organisation = org_admin_client
+        manager_user = User.objects.create_user(
+            email='simulation-manager@test.com',
+            password='pass123!',
+            role=UserRole.EMPLOYEE,
+            is_active=True,
+        )
+        employee_user = User.objects.create_user(
+            email='simulation-employee@test.com',
+            password='pass123!',
+            role=UserRole.EMPLOYEE,
+            is_active=True,
+        )
+        manager = Employee.objects.create(
+            organisation=organisation,
+            user=manager_user,
+            employee_code='EMP-SIM-MGR',
+            status=EmployeeStatus.ACTIVE,
+        )
+        employee = Employee.objects.create(
+            organisation=organisation,
+            user=employee_user,
+            employee_code='EMP-SIM',
+            reporting_to=manager,
+            status=EmployeeStatus.ACTIVE,
+        )
+        workflow = ApprovalWorkflow.objects.create(
+            organisation=organisation,
+            name='Default salary revision',
+            is_default=True,
+            default_request_kind=ApprovalRequestKind.SALARY_REVISION,
+            is_active=True,
+        )
+        stage = ApprovalStage.objects.create(
+            workflow=workflow,
+            name='Manager review',
+            sequence=1,
+            fallback_type=ApprovalFallbackType.PRIMARY_ORG_ADMIN,
+        )
+        ApprovalStageApprover.objects.create(
+            stage=stage,
+            approver_type=ApprovalApproverType.REPORTING_MANAGER,
+        )
+
+        catalog_response = client.get('/api/v1/org/approvals/workflows/catalog/')
+        readiness_response = client.get('/api/v1/org/approvals/workflows/readiness/')
+        simulation_response = client.post(
+            '/api/v1/org/approvals/workflows/simulate/',
+            {
+                'employee_id': str(employee.id),
+                'request_kind': ApprovalRequestKind.SALARY_REVISION,
+                'amount': '120000.00',
+            },
+            format='json',
+        )
+
+        assert catalog_response.status_code == 200
+        request_kinds = {item['kind'] for item in catalog_response.data['request_kinds']}
+        assert ApprovalRequestKind.PROMOTION in request_kinds
+        assert ApprovalRequestKind.TRANSFER in request_kinds
+        assert ApprovalApproverType.FINANCE_APPROVER in catalog_response.data['approver_types']
+        assert readiness_response.status_code == 200
+        assert len(readiness_response.data) == 9
+        assert simulation_response.status_code == 200
+        assert simulation_response.data['workflow_id'] == str(workflow.id)
+        assert simulation_response.data['source'] == 'DEFAULT'
+        assert simulation_response.data['stages'][0]['approvers'][0]['employee_id'] == str(manager.id)
 
     def test_create_accepts_stage_sla_fields(self, org_admin_client):
         client, organisation = org_admin_client

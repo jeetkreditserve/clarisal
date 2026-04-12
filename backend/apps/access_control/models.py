@@ -50,7 +50,14 @@ class AccessPermission(AuditedBaseModel):
 
 
 class AccessRole(AuditedBaseModel):
-    code = models.CharField(max_length=80, unique=True)
+    organisation = models.ForeignKey(
+        "organisations.Organisation",
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="access_roles",
+    )
+    code = models.CharField(max_length=120)
     scope = models.CharField(max_length=32, choices=AccessRoleScope.choices)
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
@@ -65,6 +72,18 @@ class AccessRole(AuditedBaseModel):
     class Meta:
         db_table = "access_roles"
         ordering = ["scope", "name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["organisation", "code"],
+                condition=Q(organisation__isnull=False),
+                name="unique_org_access_role_code",
+            ),
+            models.UniqueConstraint(
+                fields=["code"],
+                condition=Q(organisation__isnull=True),
+                name="unique_global_access_role_code",
+            ),
+        ]
 
     def __str__(self):
         return self.code

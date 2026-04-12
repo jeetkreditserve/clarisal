@@ -172,9 +172,16 @@ export function ApprovalWorkflowsPage() {
               </button>
             ) : null}
             {activeTab === 'workflows' ? (
-              <button type="button" className="btn-primary" onClick={() => navigate(`${basePath}/approval-workflows/new`)}>
-                Build workflow
-              </button>
+              <>
+                {!isCtMode ? (
+                  <button type="button" className="btn-secondary" onClick={() => navigate('/org/approval-workflows/readiness')}>
+                    Check readiness
+                  </button>
+                ) : null}
+                <button type="button" className="btn-primary" onClick={() => navigate(`${basePath}/approval-workflows/new`)}>
+                  Build workflow
+                </button>
+              </>
             ) : null}
           </>
         }

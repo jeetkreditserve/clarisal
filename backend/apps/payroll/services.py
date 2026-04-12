@@ -16,7 +16,7 @@ from django.db.models import Q, Sum
 from django.utils import timezone
 
 from apps.approvals.models import ApprovalRequestKind, ApprovalRun, ApprovalRunStatus
-from apps.approvals.services import cancel_approval_run, get_default_workflow
+from apps.approvals.services import cancel_approval_run, get_default_workflow, resolve_workflow
 from apps.audit.services import log_audit_event
 from apps.documents.s3 import generate_presigned_url, upload_file
 from apps.employees.models import Employee, EmployeeStatus, GovernmentIdType
@@ -887,8 +887,11 @@ def _resolve_payroll_requester_context(requester_user=None, requester_employee=N
     return organisation, requester_user, None
 
 
-def _create_payroll_approval_run(subject, request_kind, organisation, requester_user, requester_employee=None, subject_label=''):
-    workflow = get_default_workflow(organisation, request_kind)
+def _create_payroll_approval_run(subject, request_kind, organisation, requester_user, requester_employee=None, subject_label='', amount=None, context=None):
+    if requester_employee is not None:
+        workflow = resolve_workflow(requester_employee, request_kind, amount=amount, context=context)
+    else:
+        workflow = get_default_workflow(organisation, request_kind)
     if workflow is None:
         raise ValueError(f'No active default approval workflow is configured for {request_kind.lower().replace("_", " ")} requests.')
     first_stage = workflow.stages.prefetch_related('approvers__approver_employee__user').order_by('sequence').first()
@@ -1084,6 +1087,7 @@ def submit_compensation_template_for_approval(template, *, requester_user, reque
         organisation,
         requester_user,
         requester_employee=requester_employee,
+        amount=template.lines.aggregate(total=Sum('monthly_amount'))['total'] or Decimal('0.00'),
         subject_label=template.name,
     )
     template.approval_run = approval_run
@@ -1156,6 +1160,7 @@ def submit_compensation_assignment_for_approval(assignment, *, requester_user, r
         organisation,
         requester_user,
         requester_employee=requester_employee,
+        amount=assignment.lines.aggregate(total=Sum('monthly_amount'))['total'] or Decimal('0.00'),
         subject_label=f'{assignment.employee.user.full_name} salary revision',
     )
     assignment.approval_run = approval_run
@@ -2486,6 +2491,7 @@ def submit_pay_run_for_approval(pay_run, *, requester_user, requester_employee=N
         organisation,
         requester_user,
         requester_employee=requester_employee,
+        amount=pay_run.items.filter(status=PayrollRunItemStatus.READY).aggregate(total=Sum('gross_pay'))['total'] or Decimal('0.00'),
         subject_label=pay_run.name,
     )
     pay_run.approval_run = approval_run

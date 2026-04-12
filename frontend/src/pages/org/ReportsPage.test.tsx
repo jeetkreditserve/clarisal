@@ -11,12 +11,14 @@ const {
   toastError,
   usePayrollSummary,
   downloadOrgReport,
+  useAuth,
 } = vi.hoisted(() => ({
   toastLoading: vi.fn(() => 'toast-id'),
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
   usePayrollSummary: vi.fn(),
   downloadOrgReport: vi.fn(),
+  useAuth: vi.fn(),
 }))
 
 vi.mock('sonner', () => ({
@@ -29,6 +31,10 @@ vi.mock('sonner', () => ({
 
 vi.mock('@/hooks/useOrgAdmin', () => ({
   usePayrollSummary: () => usePayrollSummary(),
+}))
+
+vi.mock('@/hooks/useAuth', () => ({
+  useAuth: () => useAuth(),
 }))
 
 vi.mock('@/components/ui/AppDatePicker', () => ({
@@ -54,6 +60,11 @@ vi.mock('@/lib/api/org-admin', async () => {
 describe('ReportsPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    useAuth.mockReturnValue({
+      user: {
+        effective_permissions: ['org.reports.read', 'org.reports.builder.manage', 'org.reports.export'],
+      },
+    })
     usePayrollSummary.mockReturnValue({
       data: {
         pay_runs: [
@@ -103,5 +114,33 @@ describe('ReportsPage', () => {
     await user.selectOptions(screen.getByLabelText('Report type'), 'attrition')
 
     expect(screen.getAllByTestId('app-date-picker')).toHaveLength(2)
+  })
+
+  it('shows saved-template and builder actions only when the user can access them', () => {
+    const { rerender } = render(
+      <MemoryRouter>
+        <ReportsPage />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByRole('link', { name: /saved templates/i })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /create report/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /download report/i })).toBeInTheDocument()
+
+    useAuth.mockReturnValue({
+      user: {
+        effective_permissions: ['org.reports.read'],
+      },
+    })
+
+    rerender(
+      <MemoryRouter>
+        <ReportsPage />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByRole('link', { name: /saved templates/i })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /^create report$/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /download report/i })).not.toBeInTheDocument()
   })
 })

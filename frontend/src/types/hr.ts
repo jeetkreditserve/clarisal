@@ -48,6 +48,8 @@ export type ApprovalRequestKind =
   | 'PAYROLL_PROCESSING'
   | 'SALARY_REVISION'
   | 'COMPENSATION_TEMPLATE_CHANGE'
+  | 'PROMOTION'
+  | 'TRANSFER'
 export type ApprovalActionStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'SKIPPED' | 'CANCELLED'
 export type ApprovalActionAssignmentSource = 'DIRECT' | 'DELEGATED' | 'ESCALATED'
 export type ExpenseClaimStatus = 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'CANCELLED'
@@ -57,8 +59,18 @@ export type HolidayClassification = 'PUBLIC' | 'RESTRICTED' | 'COMPANY'
 export type LeaveCycleType = 'CALENDAR_YEAR' | 'FINANCIAL_YEAR' | 'CUSTOM_FIXED_START' | 'EMPLOYEE_JOINING_DATE'
 export type LeaveCreditFrequency = 'MANUAL' | 'MONTHLY' | 'QUARTERLY' | 'HALF_YEARLY' | 'YEARLY'
 export type CarryForwardMode = 'NONE' | 'CAPPED' | 'UNLIMITED'
-export type ApprovalApproverType = 'REPORTING_MANAGER' | 'SPECIFIC_EMPLOYEE' | 'PRIMARY_ORG_ADMIN'
-export type ApprovalFallbackType = 'NONE' | 'SPECIFIC_EMPLOYEE' | 'PRIMARY_ORG_ADMIN'
+export type ApprovalApproverType =
+  | 'REPORTING_MANAGER'
+  | 'NTH_LEVEL_MANAGER'
+  | 'DEPARTMENT_HEAD'
+  | 'LOCATION_ADMIN'
+  | 'HR_BUSINESS_PARTNER'
+  | 'PAYROLL_ADMIN'
+  | 'FINANCE_APPROVER'
+  | 'ROLE'
+  | 'SPECIFIC_EMPLOYEE'
+  | 'PRIMARY_ORG_ADMIN'
+export type ApprovalFallbackType = 'NONE' | 'REPORTING_MANAGER' | 'DEPARTMENT_HEAD' | 'ROLE' | 'SPECIFIC_EMPLOYEE' | 'PRIMARY_ORG_ADMIN'
 export type ApprovalStageMode = 'ALL' | 'ANY'
 export type EffectiveApprovalWorkflowSource = 'ASSIGNMENT' | 'RULE' | 'DEFAULT' | 'UNCONFIGURED'
 export type NoticeStatus = 'DRAFT' | 'SCHEDULED' | 'PUBLISHED' | 'EXPIRED' | 'ARCHIVED'
@@ -1388,6 +1400,8 @@ export interface ApprovalStageApproverConfig {
   approver_type: ApprovalApproverType
   approver_employee_id: string | null
   approver_employee_name: string | null
+  manager_level: number
+  role_code: string
 }
 
 export interface ApprovalStageConfig {
@@ -1396,6 +1410,7 @@ export interface ApprovalStageConfig {
   sequence: number
   mode: ApprovalStageMode
   fallback_type: ApprovalFallbackType
+  fallback_role_code: string
   fallback_employee_id: string | null
   fallback_employee_name: string | null
   reminder_after_hours: number | null
@@ -1403,6 +1418,7 @@ export interface ApprovalStageConfig {
   escalation_target_type: ApprovalFallbackType
   escalation_employee_id: string | null
   escalation_employee_name: string | null
+  escalation_role_code: string
   approvers: ApprovalStageApproverConfig[]
 }
 
@@ -1436,6 +1452,12 @@ export interface ApprovalWorkflowRuleConfig {
   designation: string
   leave_type: string | null
   leave_type_name: string | null
+  min_amount: string | null
+  max_amount: string | null
+  grade: string
+  band: string
+  cost_centre: string
+  legal_entity: string
 }
 
 export interface ApprovalWorkflowConfig {
@@ -1456,6 +1478,69 @@ export interface EffectiveApprovalWorkflowSummary {
   workflow_id: string | null
   workflow_name: string | null
   source: EffectiveApprovalWorkflowSource
+}
+
+export interface ApprovalRequestKindMeta {
+  kind: ApprovalRequestKind
+  label: string
+  module: string
+  subject_label: string
+  requires_default_workflow: boolean
+  supports_employee_assignment: boolean
+  supports_amount_rules: boolean
+  supports_leave_type_rules: boolean
+  recommended_minimum_stages: number
+}
+
+export interface ApprovalWorkflowCatalog {
+  request_kinds: ApprovalRequestKindMeta[]
+  approver_types: ApprovalApproverType[]
+  fallback_types: ApprovalFallbackType[]
+  stage_modes: ApprovalStageMode[]
+}
+
+export interface ApprovalWorkflowReadinessRow {
+  kind: ApprovalRequestKind
+  label: string
+  module: string
+  requires_default_workflow: boolean
+  has_default_workflow: boolean
+  default_workflow_id: string | null
+  active_rule_count: number
+  ready: boolean
+}
+
+export interface ApprovalWorkflowSimulationRequest {
+  employee_id: string
+  request_kind: ApprovalRequestKind
+  amount?: string
+  leave_type_id?: string
+  grade?: string
+  band?: string
+  cost_centre?: string
+  legal_entity?: string
+}
+
+export interface ApprovalWorkflowSimulationApprover {
+  employee_id: string | null
+  user_id: string
+  name: string
+  assignment_source: ApprovalActionAssignmentSource
+}
+
+export interface ApprovalWorkflowSimulationStage {
+  sequence: number
+  name: string
+  mode: ApprovalStageMode
+  approvers: ApprovalWorkflowSimulationApprover[]
+  warnings: string[]
+}
+
+export interface ApprovalWorkflowSimulationResult {
+  workflow_id: string
+  workflow_name: string
+  source: EffectiveApprovalWorkflowSource
+  stages: ApprovalWorkflowSimulationStage[]
 }
 
 export type PayrollComponentType = 'EARNING' | 'EMPLOYEE_DEDUCTION' | 'EMPLOYER_CONTRIBUTION' | 'REIMBURSEMENT'

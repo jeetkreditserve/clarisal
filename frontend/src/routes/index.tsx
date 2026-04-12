@@ -31,6 +31,9 @@ import { GoalCyclesPage } from '@/pages/org/GoalCyclesPage'
 import { AppraisalCyclesPage } from '@/pages/org/AppraisalCyclesPage'
 import { CalibrationPage } from '@/pages/org/CalibrationPage'
 import { ReportsPage } from '@/pages/org/ReportsPage'
+import { ReportBuilderPage } from '@/pages/org/ReportBuilderPage'
+import { ReportTemplateListPage } from '@/pages/org/ReportTemplateListPage'
+import { ReportRunDetailPage } from '@/pages/org/ReportRunDetailPage'
 import { OrgAuditPage } from '@/pages/org/AuditPage'
 import { AssetAssignmentsPage } from '@/pages/org/AssetAssignmentsPage'
 import { AssetsInventoryPage } from '@/pages/org/AssetsInventoryPage'
@@ -65,11 +68,15 @@ import { OnDutyPoliciesPage } from '@/pages/org/OnDutyPoliciesPage'
 import { OnDutyPolicyBuilderPage } from '@/pages/org/OnDutyPolicyBuilderPage'
 import { ApprovalWorkflowsPage } from '@/pages/org/ApprovalWorkflowsPage'
 import { ApprovalWorkflowBuilderPage } from '@/pages/org/ApprovalWorkflowBuilderPage'
+import { ApprovalWorkflowReadinessPage } from '@/pages/org/ApprovalWorkflowReadinessPage'
+import { OrgAccessControlPage } from '@/pages/org/OrgAccessControlPage'
+import { AccessSimulatorPage } from '@/pages/org/AccessSimulatorPage'
 import { NoticesPage } from '@/pages/org/NoticesPage'
 import { NoticeEditorPage } from '@/pages/org/NoticeEditorPage'
 import { PayrollMastersPage } from '@/pages/ct/PayrollMastersPage'
 import { CtOrgPayrollPage } from '@/pages/ct/CtOrgPayrollPage'
 import { CtBillingPage } from '@/pages/ct/CtBillingPage'
+import { CtAccessControlPage } from '@/pages/ct/CtAccessControlPage'
 
 function withErrorBoundary(element: ReactNode) {
   return <AppErrorBoundary>{element}</AppErrorBoundary>
@@ -116,6 +123,7 @@ export const router = createBrowserRouter([
           { path: '/ct/dashboard', element: <CTDashboardPage /> },
           { path: '/ct/payroll', element: <PayrollMastersPage /> },
           { path: '/ct/billing', element: <CtBillingPage /> },
+          { path: '/ct/access-control', element: <CtAccessControlPage /> },
           { path: '/ct/organisations', element: <OrganisationsPage /> },
           { path: '/ct/organisations/new', element: <NewOrganisationPage /> },
           { path: '/ct/organisations/:id/first-licence-batch', element: <FirstLicenceBatchPage /> },
@@ -166,6 +174,11 @@ export const router = createBrowserRouter([
           { path: '/org/performance/appraisals', element: <AppraisalCyclesPage /> },
           { path: '/org/performance/appraisals/:id/calibration', element: <CalibrationPage /> },
           { path: '/org/reports', element: <ReportsPage /> },
+          { path: '/org/reports/builder', element: <ReportBuilderPage /> },
+          { path: '/org/reports/templates', element: <ReportTemplateListPage /> },
+          { path: '/org/reports/runs/:runId', element: <ReportRunDetailPage /> },
+          { path: '/org/access-control', element: <OrgAccessControlPage /> },
+          { path: '/org/access-control/simulator', element: <AccessSimulatorPage /> },
           { path: '/org/locations', element: <LocationsPage /> },
           { path: '/org/departments', element: <DepartmentsPage /> },
           { path: '/org/employees', element: <EmployeesPage /> },
@@ -181,6 +194,7 @@ export const router = createBrowserRouter([
           { path: '/org/on-duty-policies/:id', element: <OnDutyPolicyBuilderPage /> },
           { path: '/org/approval-workflows', element: <ApprovalWorkflowsPage /> },
           { path: '/org/approval-workflows/new', element: <ApprovalWorkflowBuilderPage /> },
+          { path: '/org/approval-workflows/readiness', element: <ApprovalWorkflowReadinessPage /> },
           { path: '/org/approval-workflows/:id', element: <ApprovalWorkflowBuilderPage /> },
           { path: '/org/notices', element: <NoticesPage /> },
           { path: '/org/notices/new', element: <NoticeEditorPage /> },

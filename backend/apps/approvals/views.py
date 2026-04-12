@@ -7,6 +7,7 @@ from rest_framework.views import APIView
 from apps.accounts.permissions import (
     ApprovalActionsAllowed,
     BelongsToActiveOrg,
+    HasPermission,
     IsEmployee,
     IsOrgAdmin,
     OrgAdminMutationAllowed,
@@ -18,6 +19,7 @@ from apps.employees.services import get_reporting_team
 from apps.locations.models import OfficeLocation
 from apps.timeoff.models import LeaveType
 
+from .catalog import APPROVAL_REQUEST_KIND_CATALOG
 from .models import (
     ApprovalAction,
     ApprovalApproverType,
@@ -26,6 +28,7 @@ from .models import (
     ApprovalStage,
     ApprovalStageApprover,
     ApprovalStageEscalationPolicy,
+    ApprovalStageMode,
     ApprovalWorkflow,
     ApprovalWorkflowRule,
 )
@@ -35,12 +38,15 @@ from .serializers import (
     ApprovalDelegationSerializer,
     ApprovalDelegationWriteSerializer,
     ApprovalWorkflowSerializer,
+    ApprovalWorkflowSimulationRequestSerializer,
     ApprovalWorkflowWriteSerializer,
 )
 from .services import (
     approve_action,
     get_pending_approval_actions_for_user,
+    get_workflow_readiness,
     reject_action,
+    simulate_workflow,
     upsert_approval_delegation,
 )
 
@@ -126,6 +132,12 @@ def _upsert_workflow(organisation, payload, actor, workflow=None):
                 'employment_type': rule_payload.get('employment_type', ''),
                 'designation': rule_payload.get('designation', ''),
                 'leave_type': _get_leave_type(organisation, rule_payload.get('leave_type_id')),
+                'min_amount': rule_payload.get('min_amount'),
+                'max_amount': rule_payload.get('max_amount'),
+                'grade': rule_payload.get('grade', ''),
+                'band': rule_payload.get('band', ''),
+                'cost_centre': rule_payload.get('cost_centre', ''),
+                'legal_entity': rule_payload.get('legal_entity', ''),
             }
             if rule_id:
                 rule = workflow.rules.get(id=rule_id)
@@ -147,9 +159,12 @@ def _upsert_workflow(organisation, payload, actor, workflow=None):
                 'mode': stage_payload.get('mode'),
                 'fallback_type': stage_payload.get('fallback_type', ApprovalFallbackType.NONE),
                 'fallback_employee': _get_employee_record(organisation, stage_payload.get('fallback_employee_id')),
+                'fallback_role_code': stage_payload.get('fallback_role_code', ''),
             }
             if stage_data['fallback_type'] == ApprovalFallbackType.SPECIFIC_EMPLOYEE and stage_data['fallback_employee'] is None:
                 raise ValueError('A fallback employee is required for specific-employee fallback.')
+            if stage_data['fallback_type'] == ApprovalFallbackType.ROLE and not stage_data['fallback_role_code'].strip():
+                raise ValueError('A fallback role is required for role fallback.')
 
             if stage_id:
                 stage = workflow.stages.get(id=stage_id)
@@ -164,7 +179,10 @@ def _upsert_workflow(organisation, payload, actor, workflow=None):
             escalate_after_hours = stage_payload.get('escalate_after_hours')
             escalation_target_type = stage_payload.get('escalation_target_type', ApprovalFallbackType.NONE)
             escalation_employee = _get_employee_record(organisation, stage_payload.get('escalation_employee_id'))
+            escalation_role_code = stage_payload.get('escalation_role_code', '')
             if reminder_after_hours or escalate_after_hours or escalation_target_type != ApprovalFallbackType.NONE:
+                if escalation_target_type == ApprovalFallbackType.ROLE and not escalation_role_code.strip():
+                    raise ValueError('An escalation role is required for role escalation.')
                 ApprovalStageEscalationPolicy.objects.update_or_create(
                     stage=stage,
                     defaults={
@@ -172,6 +190,7 @@ def _upsert_workflow(organisation, payload, actor, workflow=None):
                         'escalate_after_hours': escalate_after_hours,
                         'escalation_target_type': escalation_target_type,
                         'escalation_employee': escalation_employee,
+                        'escalation_role_code': escalation_role_code,
                         'is_active': True,
                     },
                 )
@@ -185,9 +204,13 @@ def _upsert_workflow(organisation, payload, actor, workflow=None):
                 approver_employee = _get_employee_record(organisation, approver_payload.get('approver_employee_id'))
                 if approver_type == ApprovalApproverType.SPECIFIC_EMPLOYEE and approver_employee is None:
                     raise ValueError('A specific employee approver must be selected.')
+                if approver_type == ApprovalApproverType.ROLE and not approver_payload.get('role_code', '').strip():
+                    raise ValueError('A role code is required for role approvers.')
                 approver_data = {
                     'approver_type': approver_type,
                     'approver_employee': approver_employee,
+                    'manager_level': approver_payload.get('manager_level', 1),
+                    'role_code': approver_payload.get('role_code', ''),
                 }
                 if approver_id:
                     approver = stage.approvers.get(id=approver_id)
@@ -206,8 +229,104 @@ def _upsert_workflow(organisation, payload, actor, workflow=None):
     return workflow
 
 
+def _workflow_catalog_payload():
+    return {
+        'request_kinds': [
+            {
+                'kind': meta.kind,
+                'label': meta.label,
+                'module': meta.module,
+                'subject_label': meta.subject_label,
+                'requires_default_workflow': meta.requires_default_workflow,
+                'supports_employee_assignment': meta.supports_employee_assignment,
+                'supports_amount_rules': meta.supports_amount_rules,
+                'supports_leave_type_rules': meta.supports_leave_type_rules,
+                'recommended_minimum_stages': meta.recommended_minimum_stages,
+            }
+            for meta in APPROVAL_REQUEST_KIND_CATALOG.values()
+        ],
+        'approver_types': [choice.value for choice in ApprovalApproverType],
+        'fallback_types': [choice.value for choice in ApprovalFallbackType],
+        'stage_modes': [choice.value for choice in ApprovalStageMode],
+    }
+
+
+class OrgApprovalWorkflowCatalogView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, HasPermission]
+    permission_code = 'org.approvals.workflow.manage'
+
+    def get(self, request):
+        _get_admin_organisation(request)
+        return Response(_workflow_catalog_payload())
+
+
+class OrgApprovalWorkflowPresetView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, HasPermission]
+    permission_code = 'org.approvals.workflow.manage'
+
+    def get(self, request, request_kind):
+        _get_admin_organisation(request)
+        meta = APPROVAL_REQUEST_KIND_CATALOG.get(request_kind)
+        if meta is None:
+            return Response({'error': 'Unknown approval request kind.'}, status=status.HTTP_404_NOT_FOUND)
+        return Response(
+            {
+                'kind': meta.kind,
+                'presets': [
+                    {
+                        'name': preset.name,
+                        'sequence': preset.sequence,
+                        'mode': preset.mode,
+                        'approver_types': list(preset.approver_types),
+                        'fallback_type': preset.fallback_type,
+                        'reminder_after_hours': preset.reminder_after_hours,
+                        'escalate_after_hours': preset.escalate_after_hours,
+                    }
+                    for preset in meta.presets
+                ],
+            }
+        )
+
+
+class OrgApprovalWorkflowReadinessView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, HasPermission]
+    permission_code = 'org.approvals.workflow.manage'
+
+    def get(self, request):
+        organisation = _get_admin_organisation(request)
+        return Response(get_workflow_readiness(organisation))
+
+
+class OrgApprovalWorkflowSimulationView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, HasPermission]
+    permission_code = 'org.approvals.workflow.manage'
+
+    def post(self, request):
+        organisation = _get_admin_organisation(request)
+        serializer = ApprovalWorkflowSimulationRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        employee = _get_employee_record(organisation, serializer.validated_data['employee_id'])
+        leave_type = _get_leave_type(organisation, serializer.validated_data.get('leave_type_id'))
+        context = {
+            field_name: serializer.validated_data.get(field_name, '')
+            for field_name in ('grade', 'band', 'cost_centre', 'legal_entity')
+        }
+        try:
+            result = simulate_workflow(
+                employee,
+                serializer.validated_data['request_kind'],
+                amount=serializer.validated_data.get('amount'),
+                leave_type=leave_type,
+                context=context,
+            )
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(result)
+
+
 class OrgApprovalWorkflowListCreateView(APIView):
-    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, HasPermission, OrgAdminMutationAllowed]
+    permission_code = 'org.approvals.workflow.manage'
 
     def get(self, request):
         organisation = _get_admin_organisation(request)
@@ -234,7 +353,8 @@ class OrgApprovalWorkflowListCreateView(APIView):
 
 
 class OrgApprovalWorkflowDetailView(APIView):
-    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, HasPermission, OrgAdminMutationAllowed]
+    permission_code = 'org.approvals.workflow.manage'
 
     def get(self, request, pk):
         organisation = _get_admin_organisation(request)

@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { Link, Outlet, useNavigate } from 'react-router-dom'
-import { BarChart3, Bell, BriefcaseBusiness, Building, Building2, CalendarDays, ClipboardCheck, Clock3, CreditCard, Fingerprint, GitBranch, Landmark, LayoutDashboard, LogOut, MapPin, PlaneTakeoff, ReceiptText, Repeat, ScrollText, Target, Users, Wrench } from 'lucide-react'
+import { BarChart3, Bell, BriefcaseBusiness, Building, Building2, CalendarDays, ClipboardCheck, Clock3, CreditCard, Fingerprint, GitBranch, Landmark, LayoutDashboard, LockKeyhole, LogOut, MapPin, PlaneTakeoff, ReceiptText, Repeat, ScrollText, Target, Users, Wrench } from 'lucide-react'
 import { SidebarNav, type NavGroup } from './SidebarNav'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
 import { useAuth } from '@/hooks/useAuth'
@@ -11,7 +11,7 @@ import { getAccessStateTone } from '@/lib/status'
 import { OrgSetupBanner } from '@/components/org/OrgSetupBanner'
 import { useRefreshCtImpersonation, useStopCtImpersonation } from '@/hooks/useCtOrganisations'
 import { formatDateTime } from '@/lib/format'
-import { hasAnyPermission, hasPermission } from '@/lib/rbac'
+import { canManageAccessControl, hasAnyPermission, hasPermission } from '@/lib/rbac'
 import type { AuthUser } from '@/types/auth'
 import { toast } from 'sonner'
 
@@ -24,8 +24,10 @@ function buildNavGroups(user: AuthUser | null | undefined): NavGroup[] {
   const canReadEmployees = hasPermission(user, 'org.employees.read')
   const canReadPayroll = hasPermission(user, 'org.payroll.read')
   const canReadReports = hasPermission(user, 'org.reports.read')
+  const canManageReports = hasPermission(user, 'org.reports.builder.manage')
   const canAccessApprovals = hasAnyPermission(user, ['org.approvals.workflow.manage', 'org.approvals.action.approve'])
   const canReadAudit = hasPermission(user, 'org.audit.read')
+  const canAccessControl = canManageAccessControl(user)
 
   return [
     {
@@ -81,8 +83,16 @@ function buildNavGroups(user: AuthUser | null | undefined): NavGroup[] {
             ]
           : []),
         ...(isFeatureEnabled(featureFlags, 'REPORTS') && canReadReports ? [{ label: 'Reports', href: '/org/reports', icon: BarChart3 }] : []),
+        ...(canReadReports ? [{ label: 'Saved templates', href: '/org/reports/templates', icon: BarChart3 }] : []),
+        ...(canManageReports ? [{ label: 'Report builder', href: '/org/reports/builder', icon: BarChart3 }] : []),
         ...(isFeatureEnabled(featureFlags, 'APPROVALS') && canAccessApprovals
           ? [{ label: 'Approvals', href: '/org/approval-workflows', icon: ClipboardCheck }]
+          : []),
+        ...(canAccessControl
+          ? [
+              { label: 'Access control', href: '/org/access-control', icon: LockKeyhole },
+              { label: 'Access simulator', href: '/org/access-control/simulator', icon: LockKeyhole },
+            ]
           : []),
         ...(isFeatureEnabled(featureFlags, 'NOTICES') ? [{ label: 'Notices', href: '/org/notices', icon: Bell }] : []),
         ...(canReadAudit ? [{ label: 'Audit Timeline', href: '/org/audit', icon: ScrollText }] : []),

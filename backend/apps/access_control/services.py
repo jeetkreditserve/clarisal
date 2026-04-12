@@ -53,6 +53,7 @@ def sync_access_control() -> dict[str, int]:
     for role_spec in SEED_ROLES.values():
         role, _ = AccessRole.objects.update_or_create(
             code=role_spec.code,
+            organisation=None,
             defaults={
                 "scope": role_spec.scope,
                 "name": role_spec.name,
@@ -187,6 +188,52 @@ def scope_employee_queryset(
     return queryset.filter(organisation=organisation).filter(filters).distinct()
 
 
+def employees_with_permission_role(organisation: Organisation, role_code: str) -> QuerySet[Employee]:
+    role_codes = _candidate_role_codes(role_code)
+    assignment_user_ids = AccessRoleAssignment.objects.filter(
+        organisation=organisation,
+        role__code__in=role_codes,
+        role__scope=AccessRoleScope.ORGANISATION,
+        role__is_active=True,
+        is_active=True,
+    ).values_list("user_id", flat=True)
+    return Employee.objects.filter(
+        organisation=organisation,
+        user_id__in=assignment_user_ids,
+        status=EmployeeStatus.ACTIVE,
+    ).select_related("user").order_by("employee_code", "user__email")
+
+
+def employees_with_scope(organisation: Organisation, role_code: str, **scope) -> QuerySet[Employee]:
+    role_codes = _candidate_role_codes(role_code)
+    assignments = AccessRoleAssignment.objects.filter(
+        organisation=organisation,
+        role__code__in=role_codes,
+        role__scope=AccessRoleScope.ORGANISATION,
+        role__is_active=True,
+        is_active=True,
+    ).prefetch_related("scopes")
+
+    matching_user_ids: list[str] = []
+    for assignment in assignments:
+        scopes = list(assignment.scopes.all())
+        if _assignment_matches_scope(scopes, scope):
+            matching_user_ids.append(assignment.user_id)
+
+    queryset = Employee.objects.filter(
+        organisation=organisation,
+        user_id__in=matching_user_ids,
+        status=EmployeeStatus.ACTIVE,
+    )
+    if scope.get("office_location_id"):
+        queryset = queryset.filter(office_location_id=scope["office_location_id"])
+    if scope.get("department_id"):
+        queryset = queryset.filter(department_id=scope["department_id"])
+    if scope.get("employee_id"):
+        queryset = queryset.filter(id=scope["employee_id"])
+    return queryset.select_related("user").order_by("employee_code", "user__email")
+
+
 def mask_serializer_data(
     data: dict[str, Any],
     field_permissions: dict[str, str],
@@ -232,6 +279,37 @@ def _get_explicit_assignments(user: User, *, organisation: Organisation | None) 
     if organisation is None:
         return queryset.filter(role__scope=AccessRoleScope.CONTROL_TOWER, organisation__isnull=True)
     return queryset.filter(role__scope=AccessRoleScope.ORGANISATION, organisation=organisation)
+
+
+def _candidate_role_codes(role_code: str) -> tuple[str, ...]:
+    normalized = role_code.strip().upper()
+    if normalized.startswith("ORG_"):
+        return (normalized,)
+    return (normalized, f"ORG_{normalized}")
+
+
+def _assignment_matches_scope(scope_records: list[AccessScope], scope: dict[str, Any]) -> bool:
+    if not scope_records:
+        return True
+    if scope.get("office_location_id"):
+        return any(
+            item.scope_kind == DataScopeKind.SELECTED_OFFICE_LOCATIONS
+            and str(item.office_location_id) == str(scope["office_location_id"])
+            for item in scope_records
+        )
+    if scope.get("department_id"):
+        return any(
+            item.scope_kind == DataScopeKind.SELECTED_DEPARTMENTS
+            and str(item.department_id) == str(scope["department_id"])
+            for item in scope_records
+        )
+    if scope.get("employee_id"):
+        return any(
+            item.scope_kind == DataScopeKind.SELECTED_EMPLOYEES
+            and str(item.employee_id) == str(scope["employee_id"])
+            for item in scope_records
+        )
+    return True
 
 
 def _bundle_from_assignment(assignment: AccessRoleAssignment) -> EffectiveRoleBundle:
