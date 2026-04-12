@@ -1,6 +1,6 @@
 # P30 — ESS UX Completion & Document Management
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Close the five medium/low ESS and document-management gaps from the v4 audit: replace the plain-text proof upload in IT declarations with a real file picker, remove the stale `rendered_text` pre-block from payslips, add the missing EPF column to the payroll run detail table, add document expiry tracking to the documents module, and surface the exit interview form in the Employee Detail Page.
 

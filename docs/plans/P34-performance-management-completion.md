@@ -1,6 +1,6 @@
 # P34 — Performance Management Module Completion
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Wire the Performance Management module from scaffolded models to a fully functional review cycle system. Goal cycles → review triggers → 360 feedback → calibration workflow. The models and UI scaffolding exist; this plan adds the missing service logic, state machines, and frontend interactions to make the module production-usable.
 

@@ -139,6 +139,20 @@ def default_workflows(organisation, org_admin):
         stage=stage,
         approver_type=ApprovalApproverType.PRIMARY_ORG_ADMIN,
     )
+    # Seed the remaining required kinds (no rules needed — just existence check)
+    from apps.approvals.catalog import get_required_default_request_kinds
+    existing_kinds = {ApprovalRequestKind.LEAVE, ApprovalRequestKind.ON_DUTY, ApprovalRequestKind.ATTENDANCE_REGULARIZATION}
+    for request_kind in get_required_default_request_kinds():
+        if request_kind not in existing_kinds:
+            ApprovalWorkflow.objects.create(
+                organisation=organisation,
+                name=f'Default {request_kind} Workflow',
+                is_default=True,
+                default_request_kind=request_kind,
+                is_active=True,
+                created_by=org_admin,
+            )
+
     organisation.primary_admin_user = org_admin
     organisation.save(update_fields=['primary_admin_user', 'modified_at'])
     return {

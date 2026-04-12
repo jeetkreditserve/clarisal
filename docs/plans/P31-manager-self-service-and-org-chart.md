@@ -1,6 +1,6 @@
 # P31 — Manager Self-Service (MSS) & Interactive Org Chart
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Add a dedicated Manager Self-Service layer that gives managers a "My Team" view with direct-report leave balances, attendance deviations, and approval queues filtered to their team. Replace the CSS-only indented org chart with a D3-based interactive graphical chart with zoom, pan, and search.
 

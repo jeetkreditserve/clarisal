@@ -5,7 +5,7 @@ import pytest
 from rest_framework.test import APIClient
 
 from apps.accounts.models import AccountType, User, UserRole
-from apps.approvals.models import ApprovalRequestKind, ApprovalWorkflow
+from apps.approvals.models import ApprovalWorkflow
 from apps.employees.models import Employee, EmployeeStatus
 from apps.invitations.models import Invitation
 from apps.organisations.models import (
@@ -30,14 +30,11 @@ from apps.recruitment.models import (
 
 
 def _seed_default_workflows(organisation, actor):
-    for request_kind, label in (
-        (ApprovalRequestKind.LEAVE, 'Leave'),
-        (ApprovalRequestKind.ON_DUTY, 'On Duty'),
-        (ApprovalRequestKind.ATTENDANCE_REGULARIZATION, 'Attendance Regularization'),
-    ):
+    from apps.approvals.catalog import get_required_default_request_kinds
+    for request_kind in get_required_default_request_kinds():
         ApprovalWorkflow.objects.create(
             organisation=organisation,
-            name=f'Default {label} Workflow',
+            name=f'Default {request_kind} Workflow',
             is_default=True,
             default_request_kind=request_kind,
             is_active=True,

@@ -1,6 +1,6 @@
 # P33 — CT Guided Onboarding Wizard
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Convert the Control Tower's "new organisation" flow from a flat form + detail-tab checklist into a step-driven wizard UX that guides CT users through all required configuration steps at org creation time. Also clean up the stale P17 T6 inline CT setup logic that was never completed.
 

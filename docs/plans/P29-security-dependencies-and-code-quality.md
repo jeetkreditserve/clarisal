@@ -1,6 +1,6 @@
 # P29 — Security, Dependencies & Code Quality
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Close all security vulnerabilities (Pillow CVE, Django behind, missing security headers), fix the `ensure_default_document_types` hot-path write antipattern, add per-org error isolation to Celery tasks, and clean up the `__import__()` antipattern and `soft_delete()` bypass in services. All changes are surgical with no architectural impact.
 
