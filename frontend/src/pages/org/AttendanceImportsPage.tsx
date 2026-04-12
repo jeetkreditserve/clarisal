@@ -623,7 +623,7 @@ export function AttendanceImportsPage() {
                   </div>
                   {source.kind === 'API' ? (
                     <p className="mt-3 text-sm text-[hsl(var(--muted-foreground))]">
-                      POST punches to <span className="font-medium text-[hsl(var(--foreground-strong))]">/api/org/attendance/public-sources/{source.id}/punches/</span> with header <span className="font-medium text-[hsl(var(--foreground-strong))]">X-Attendance-Source-Key</span>.
+                      POST punches to <span className="font-medium text-[hsl(var(--foreground-strong))]">/api/v1/org/attendance/public-sources/{source.id}/punches/</span> with header <span className="font-medium text-[hsl(var(--foreground-strong))]">X-Attendance-Source-Key</span>.
                     </p>
                   ) : null}
                   {source.last_error ? <p className="mt-3 text-sm text-[hsl(var(--danger))]">{source.last_error}</p> : null}

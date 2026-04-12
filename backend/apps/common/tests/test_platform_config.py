@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from clarisal.settings.base import configure_optional_sentry
+from clarisal.settings.base import API_VERSION, configure_optional_sentry
 
 
 class FakeEnv:
@@ -57,3 +57,34 @@ def test_api_health_endpoint_returns_status_and_version(client, monkeypatch):
         "status": "ok",
         "version": "health-sha",
     }
+
+
+def test_versioned_api_health_endpoint_returns_status_and_version(client, monkeypatch):
+    monkeypatch.setenv("GIT_SHA", "health-sha")
+
+    response = client.get("/api/v1/health/")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "ok",
+        "version": "health-sha",
+    }
+
+
+def test_legacy_application_api_routes_return_gone(client):
+    response = client.get("/api/auth/csrf/")
+
+    assert response.status_code == 410
+    assert response.json() == {
+        "error": "This API route has moved to /api/v1/.",
+    }
+
+
+def test_versioned_application_api_routes_remain_active(client):
+    response = client.get("/api/v1/auth/csrf/")
+
+    assert response.status_code == 200
+
+
+def test_default_api_version_is_v1():
+    assert API_VERSION == "v1"

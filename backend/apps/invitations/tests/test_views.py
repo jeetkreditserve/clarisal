@@ -40,7 +40,7 @@ class TestInviteOrgAdmin:
         client, _ = ct_client
         with patch('apps.invitations.tasks.send_invite_email.delay'):
             response = client.post(
-                f'/api/ct/organisations/{paid_org.id}/admins/invite/',
+                f'/api/v1/ct/organisations/{paid_org.id}/admins/invite/',
                 {'email': 'admin@acme.com', 'first_name': 'Alice', 'last_name': 'Smith'},
                 format='json',
             )
@@ -51,7 +51,7 @@ class TestInviteOrgAdmin:
         client, ct = ct_client
         org = Organisation.objects.create(name='Pending Org', licence_count=5, created_by=ct, status=OrganisationStatus.PENDING)
         response = client.post(
-            f'/api/ct/organisations/{org.id}/admins/invite/',
+            f'/api/v1/ct/organisations/{org.id}/admins/invite/',
             {'email': 'a@b.com', 'first_name': 'A', 'last_name': 'B'},
             format='json',
         )
@@ -71,13 +71,13 @@ class TestValidateInviteToken:
             expires_at=timezone.now() + timezone.timedelta(hours=48),
         )
         client = APIClient()
-        response = client.get(f'/api/auth/invite/validate/{raw_token}/')
+        response = client.get(f'/api/v1/auth/invite/validate/{raw_token}/')
         assert response.status_code == 200
         assert response.data['email'] == 'a@b.com'
 
     def test_invalid_token_returns_400(self):
         client = APIClient()
-        response = client.get('/api/auth/invite/validate/bad-token/')
+        response = client.get('/api/v1/auth/invite/validate/bad-token/')
         assert response.status_code == 400
 
 
@@ -101,7 +101,7 @@ class TestAcceptInvite:
             expires_at=timezone.now() + timezone.timedelta(hours=48),
         )
         client = APIClient()
-        response = client.post('/api/auth/invite/accept/', {
+        response = client.post('/api/v1/auth/invite/accept/', {
             'token': raw_token,
             'password': 'SecurePass123!',
             'confirm_password': 'SecurePass123!',

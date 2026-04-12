@@ -1,6 +1,13 @@
 import axios, { type AxiosError } from 'axios'
 
-const BASE_URL = import.meta.env.DEV ? '/api' : import.meta.env.VITE_API_BASE_URL || '/api'
+export const API_VERSION = import.meta.env.VITE_API_VERSION || 'v1'
+
+function normalizeApiBaseUrl(baseUrl: string) {
+  const trimmed = baseUrl.replace(/\/$/, '')
+  return trimmed.endsWith('/api') ? `${trimmed}/${API_VERSION}` : trimmed
+}
+
+export const API_BASE_URL = normalizeApiBaseUrl(import.meta.env.VITE_API_BASE_URL || `/api/${API_VERSION}`)
 
 function getCookie(name: string): string | null {
   const match = document.cookie
@@ -10,11 +17,11 @@ function getCookie(name: string): string | null {
 }
 
 async function fetchCsrfCookie(): Promise<void> {
-  await axios.get(`${BASE_URL}/auth/csrf/`, { withCredentials: true })
+  await axios.get(`${API_BASE_URL}/auth/csrf/`, { withCredentials: true })
 }
 
 export const api = axios.create({
-  baseURL: BASE_URL,
+  baseURL: API_BASE_URL,
   withCredentials: true,
   headers: {
     'Content-Type': 'application/json',

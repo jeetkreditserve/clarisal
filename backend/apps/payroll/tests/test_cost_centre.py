@@ -1,13 +1,18 @@
 import pytest
-from datetime import date
+from django.db import IntegrityError
 
 from apps.accounts.models import User, UserRole
-from apps.employees.models import Employee
+from apps.organisations.models import (
+    Organisation,
+    OrganisationAccessState,
+    OrganisationBillingStatus,
+    OrganisationStatus,
+)
 from apps.payroll.models import (
+    CompensationTemplateLine,
     CostCentre,
     PayrollComponent,
     PayrollComponentType,
-    CompensationTemplateLine,
 )
 
 
@@ -23,7 +28,6 @@ def org_admin(db):
 
 @pytest.fixture
 def organisation(db, org_admin):
-    from apps.organisations.models import Organisation, OrganisationAccessState, OrganisationBillingStatus, OrganisationStatus
     return Organisation.objects.create(
         name='Test Org',
         created_by=org_admin,
@@ -76,7 +80,7 @@ class TestCostCentreModel:
             code='CC001',
             name='Engineering',
         )
-        with pytest.raises(Exception):
+        with pytest.raises(IntegrityError):
             CostCentre.objects.create(
                 organisation=organisation,
                 code='CC001',
@@ -103,11 +107,7 @@ class TestCostCentreInCompensationTemplateLine:
             code='CC001',
             name='Engineering',
         )
-        
-        class MockTemplate:
-            id = 'test-id'
-            organisation = organisation
-        
+
         line = CompensationTemplateLine(
             template_id='test-id',
             component=component,

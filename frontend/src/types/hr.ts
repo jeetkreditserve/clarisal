@@ -44,18 +44,33 @@ export type ApprovalRequestKind =
   | 'LEAVE'
   | 'ON_DUTY'
   | 'ATTENDANCE_REGULARIZATION'
+  | 'EXPENSE_CLAIM'
   | 'PAYROLL_PROCESSING'
   | 'SALARY_REVISION'
   | 'COMPENSATION_TEMPLATE_CHANGE'
+  | 'PROMOTION'
+  | 'TRANSFER'
 export type ApprovalActionStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'SKIPPED' | 'CANCELLED'
 export type ApprovalActionAssignmentSource = 'DIRECT' | 'DELEGATED' | 'ESCALATED'
+export type ExpenseClaimStatus = 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'CANCELLED'
+export type ExpenseReimbursementStatus = 'NOT_READY' | 'PENDING_PAYROLL' | 'INCLUDED_IN_PAYROLL' | 'PAID'
 export type HolidayCalendarStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED'
 export type HolidayClassification = 'PUBLIC' | 'RESTRICTED' | 'COMPANY'
 export type LeaveCycleType = 'CALENDAR_YEAR' | 'FINANCIAL_YEAR' | 'CUSTOM_FIXED_START' | 'EMPLOYEE_JOINING_DATE'
 export type LeaveCreditFrequency = 'MANUAL' | 'MONTHLY' | 'QUARTERLY' | 'HALF_YEARLY' | 'YEARLY'
 export type CarryForwardMode = 'NONE' | 'CAPPED' | 'UNLIMITED'
-export type ApprovalApproverType = 'REPORTING_MANAGER' | 'SPECIFIC_EMPLOYEE' | 'PRIMARY_ORG_ADMIN'
-export type ApprovalFallbackType = 'NONE' | 'SPECIFIC_EMPLOYEE' | 'PRIMARY_ORG_ADMIN'
+export type ApprovalApproverType =
+  | 'REPORTING_MANAGER'
+  | 'NTH_LEVEL_MANAGER'
+  | 'DEPARTMENT_HEAD'
+  | 'LOCATION_ADMIN'
+  | 'HR_BUSINESS_PARTNER'
+  | 'PAYROLL_ADMIN'
+  | 'FINANCE_APPROVER'
+  | 'ROLE'
+  | 'SPECIFIC_EMPLOYEE'
+  | 'PRIMARY_ORG_ADMIN'
+export type ApprovalFallbackType = 'NONE' | 'REPORTING_MANAGER' | 'DEPARTMENT_HEAD' | 'ROLE' | 'SPECIFIC_EMPLOYEE' | 'PRIMARY_ORG_ADMIN'
 export type ApprovalStageMode = 'ALL' | 'ANY'
 export type EffectiveApprovalWorkflowSource = 'ASSIGNMENT' | 'RULE' | 'DEFAULT' | 'UNCONFIGURED'
 export type NoticeStatus = 'DRAFT' | 'SCHEDULED' | 'PUBLISHED' | 'EXPIRED' | 'ARCHIVED'
@@ -69,6 +84,9 @@ export type BiometricProtocol = 'ZK_ADMS' | 'ESSL_EBIOSERVER' | 'MATRIX_COSEC' |
 export type OffboardingProcessStatus = 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED'
 export type OffboardingTaskStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'WAIVED'
 export type OffboardingTaskOwner = 'ORG_ADMIN' | 'MANAGER' | 'EMPLOYEE' | 'PAYROLL' | 'IT'
+export type AssetCondition = 'NEW' | 'GOOD' | 'FAIR' | 'POOR' | 'DAMAGED'
+export type AssetLifecycleStatus = 'AVAILABLE' | 'ASSIGNED' | 'IN_MAINTENANCE' | 'RETIRED' | 'LOST' | 'RETURNED'
+export type AssetAssignmentStatus = 'ACTIVE' | 'RETURNED' | 'LOST'
 
 export interface LinkedOrganisationAddress {
   id: string
@@ -112,6 +130,18 @@ export interface Department {
   is_active: boolean
   created_at: string
   modified_at: string
+}
+
+export interface CostCentre {
+  id: string
+  code: string
+  name: string
+  gl_code: string
+  parent: string | null
+  parent_name: string | null
+  is_active: boolean
+  created_at: string
+  children_count: number
 }
 
 export interface EmployeeListItem {
@@ -217,6 +247,35 @@ export interface BankAccount {
   modified_at: string
 }
 
+export type CustomFieldType = 'TEXT' | 'NUMBER' | 'DATE' | 'DROPDOWN' | 'CHECKBOX' | 'EMAIL' | 'PHONE'
+
+export interface CustomFieldDefinition {
+  id: string
+  name: string
+  field_key: string
+  field_type: CustomFieldType
+  placement: string
+  is_required: boolean
+  display_order: number
+  dropdown_options: string[]
+  placeholder: string
+  help_text: string
+  is_active: boolean
+  created_at: string
+}
+
+export interface EmployeeCustomFieldValue {
+  id: string
+  field_definition: string
+  field_name: string
+  field_type: CustomFieldType
+  value_text: string
+  value_number: string | null
+  value_date: string | null
+  value_boolean: boolean
+  display_value: string
+}
+
 export interface EmployeeDetail {
   id: string
   employee_code: string | null
@@ -245,10 +304,13 @@ export interface EmployeeDetail {
   on_duty_approval_workflow_name: string | null
   attendance_regularization_approval_workflow_id: string | null
   attendance_regularization_approval_workflow_name: string | null
+  expense_approval_workflow_id: string | null
+  expense_approval_workflow_name: string | null
   effective_approval_workflows: {
     leave: EffectiveApprovalWorkflowSummary
     on_duty: EffectiveApprovalWorkflowSummary
     attendance_regularization: EffectiveApprovalWorkflowSummary
+    expense_claim: EffectiveApprovalWorkflowSummary
   }
   offboarding: OffboardingProcess | null
 }
@@ -267,6 +329,21 @@ export interface OffboardingTask {
   completed_by_name: string
 }
 
+export interface OffboardingAssetSummary {
+  active_assignments: number
+  returned_assignments: number
+  has_unresolved: boolean
+  unresolved_assets: Array<{
+    id: string
+    asset_id: string
+    asset_name: string
+    asset_tag: string
+    category_name: string | null
+    assigned_at: string | null
+    expected_return_date: string | null
+  }>
+}
+
 export interface OffboardingProcess {
   id: string
   status: OffboardingProcessStatus
@@ -281,7 +358,83 @@ export interface OffboardingProcess {
   pending_required_task_count: number
   pending_document_requests: number
   has_primary_bank_account: boolean
+  asset_summary: OffboardingAssetSummary
   tasks: OffboardingTask[]
+}
+
+export interface EmployeeExitInterview {
+  id: string | null
+  interview_date: string | null
+  exit_reason: string
+  interviewer_id: string | null
+  interviewer_name: string | null
+  overall_satisfaction: number | null
+  would_recommend_org: boolean | null
+  feedback: string
+  areas_of_improvement: string
+  submitted_at: string | null
+}
+
+export interface AssetCategory {
+  id: string
+  name: string
+  description: string
+  is_active: boolean
+  created_at: string
+}
+
+export interface AssetItem {
+  id: string
+  name: string
+  asset_tag: string
+  serial_number: string
+  vendor: string
+  category: string | null
+  category_name: string | null
+  purchase_date: string | null
+  purchase_cost: string | null
+  warranty_expiry: string | null
+  condition: AssetCondition
+  lifecycle_status: AssetLifecycleStatus
+  notes: string
+  metadata: Record<string, unknown>
+  current_assignee: {
+    id: string
+    name: string
+    employee_code: string | null
+  } | null
+  created_at: string
+}
+
+export interface AssetAssignment {
+  id: string
+  asset: string
+  asset_name: string
+  asset_tag: string
+  employee: string
+  employee_name: string
+  employee_code: string | null
+  assigned_at: string
+  acknowledged_at: string | null
+  expected_return_date: string | null
+  returned_at: string | null
+  condition_on_issue: AssetCondition
+  condition_on_return: AssetCondition | null
+  status: AssetAssignmentStatus
+  notes: string
+}
+
+export interface AssetMaintenance {
+  id: string
+  asset: string
+  asset_name: string
+  maintenance_type: string
+  description: string
+  scheduled_date: string
+  completed_date: string | null
+  cost: string | null
+  vendor: string
+  notes: string
 }
 
 export type FNFStatus = 'DRAFT' | 'CALCULATED' | 'APPROVED' | 'PAID' | 'CANCELLED'
@@ -509,6 +662,10 @@ export interface DocumentRecord {
   status: DocumentStatus
   metadata: Record<string, unknown>
   version: number
+  expiry_date: string | null
+  alert_days_before: number
+  expires_soon: boolean
+  is_expired: boolean
   uploaded_by_email: string | null
   reviewed_by_email: string | null
   reviewed_at: string | null
@@ -564,6 +721,7 @@ export interface ApprovalActionItem {
   status: ApprovalActionStatus
   comment: string
   acted_at: string | null
+  approval_run_id: string
   request_kind: ApprovalRequestKind
   subject_label: string
   requester_name: string
@@ -578,6 +736,18 @@ export interface ApprovalActionItem {
   escalated_from_action_id: string | null
   created_at: string
   modified_at: string
+}
+
+export interface TeamMemberSummary {
+  id: string
+  name: string
+  employee_code: string | null
+  designation: string | null
+  department: string | null
+  status: EmployeeStatus
+  pending_leave_requests: number
+  attendance_deviations_this_month: number
+  leave_balance_summary: LeaveBalanceSnapshot[]
 }
 
 export interface LeaveBalanceSnapshot {
@@ -837,8 +1007,16 @@ export interface RecruitmentCandidateDetail {
   email: string
   phone: string
   source: string
+  converted_to_employee_id: string | null
+  converted_to_employee_name: string | null
+  converted_at: string | null
   created_at: string
   applications: RecruitmentApplication[]
+}
+
+export interface RecruitmentCandidateConversionResponse {
+  employee: EmployeeListItem
+  message: string
 }
 
 export interface RecruitmentJobPosting {
@@ -863,6 +1041,7 @@ export interface PerformanceGoalCycle {
   start_date: string
   end_date: string
   status: string
+   auto_create_review_cycle: boolean
   created_at: string
 }
 
@@ -885,16 +1064,33 @@ export interface PerformanceAppraisalCycle {
   id: string
   name: string
   review_type: string
+  goal_cycle: string | null
   start_date: string
   end_date: string
   status: string
   is_probation_review: boolean
+  self_assessment_deadline: string | null
+  peer_review_deadline: string | null
+  manager_review_deadline: string | null
+  calibration_deadline: string | null
+  activated_at: string | null
+  completed_at: string | null
+  completion_stats: {
+    self_submitted: number
+    self_total: number
+    manager_submitted: number
+    manager_total: number
+    feedback_submitted: number
+    feedback_total: number
+  }
   created_at: string
 }
 
 export interface PerformanceReview {
   id: string
   cycle: string
+  cycle_name: string
+  cycle_status: string
   employee: string
   reviewer: string | null
   relationship: string
@@ -902,6 +1098,43 @@ export interface PerformanceReview {
   comments: string
   status: string
   submitted_at: string | null
+}
+
+export interface PerformanceReviewCycleSummary {
+  id: string
+  name: string
+  review_type: string
+  status: string
+  start_date: string
+  end_date: string
+  self_assessment_deadline: string | null
+  peer_review_deadline: string | null
+  manager_review_deadline: string | null
+  calibration_deadline: string | null
+  feedback_summary_visible: boolean
+  self_assessment: PerformanceReview | null
+}
+
+export interface PerformanceFeedbackSummary {
+  response_count: number
+  dimensions: Record<string, { avg: number; count: number }>
+  comments: string[]
+}
+
+export interface PerformanceCalibrationEntry {
+  id: string
+  employee: string
+  employee_name: string
+  original_rating: number | null
+  current_rating: number | null
+  reason: string
+}
+
+export interface PerformanceCalibrationSession {
+  id: string
+  cycle: string
+  locked_at: string | null
+  entries: PerformanceCalibrationEntry[]
 }
 
 export interface OrgAttendanceDashboard {
@@ -1167,6 +1400,8 @@ export interface ApprovalStageApproverConfig {
   approver_type: ApprovalApproverType
   approver_employee_id: string | null
   approver_employee_name: string | null
+  manager_level: number
+  role_code: string
 }
 
 export interface ApprovalStageConfig {
@@ -1175,6 +1410,7 @@ export interface ApprovalStageConfig {
   sequence: number
   mode: ApprovalStageMode
   fallback_type: ApprovalFallbackType
+  fallback_role_code: string
   fallback_employee_id: string | null
   fallback_employee_name: string | null
   reminder_after_hours: number | null
@@ -1182,6 +1418,7 @@ export interface ApprovalStageConfig {
   escalation_target_type: ApprovalFallbackType
   escalation_employee_id: string | null
   escalation_employee_name: string | null
+  escalation_role_code: string
   approvers: ApprovalStageApproverConfig[]
 }
 
@@ -1215,6 +1452,12 @@ export interface ApprovalWorkflowRuleConfig {
   designation: string
   leave_type: string | null
   leave_type_name: string | null
+  min_amount: string | null
+  max_amount: string | null
+  grade: string
+  band: string
+  cost_centre: string
+  legal_entity: string
 }
 
 export interface ApprovalWorkflowConfig {
@@ -1235,6 +1478,69 @@ export interface EffectiveApprovalWorkflowSummary {
   workflow_id: string | null
   workflow_name: string | null
   source: EffectiveApprovalWorkflowSource
+}
+
+export interface ApprovalRequestKindMeta {
+  kind: ApprovalRequestKind
+  label: string
+  module: string
+  subject_label: string
+  requires_default_workflow: boolean
+  supports_employee_assignment: boolean
+  supports_amount_rules: boolean
+  supports_leave_type_rules: boolean
+  recommended_minimum_stages: number
+}
+
+export interface ApprovalWorkflowCatalog {
+  request_kinds: ApprovalRequestKindMeta[]
+  approver_types: ApprovalApproverType[]
+  fallback_types: ApprovalFallbackType[]
+  stage_modes: ApprovalStageMode[]
+}
+
+export interface ApprovalWorkflowReadinessRow {
+  kind: ApprovalRequestKind
+  label: string
+  module: string
+  requires_default_workflow: boolean
+  has_default_workflow: boolean
+  default_workflow_id: string | null
+  active_rule_count: number
+  ready: boolean
+}
+
+export interface ApprovalWorkflowSimulationRequest {
+  employee_id: string
+  request_kind: ApprovalRequestKind
+  amount?: string
+  leave_type_id?: string
+  grade?: string
+  band?: string
+  cost_centre?: string
+  legal_entity?: string
+}
+
+export interface ApprovalWorkflowSimulationApprover {
+  employee_id: string | null
+  user_id: string
+  name: string
+  assignment_source: ApprovalActionAssignmentSource
+}
+
+export interface ApprovalWorkflowSimulationStage {
+  sequence: number
+  name: string
+  mode: ApprovalStageMode
+  approvers: ApprovalWorkflowSimulationApprover[]
+  warnings: string[]
+}
+
+export interface ApprovalWorkflowSimulationResult {
+  workflow_id: string
+  workflow_name: string
+  source: EffectiveApprovalWorkflowSource
+  stages: ApprovalWorkflowSimulationStage[]
 }
 
 export type PayrollComponentType = 'EARNING' | 'EMPLOYEE_DEDUCTION' | 'EMPLOYER_CONTRIBUTION' | 'REIMBURSEMENT'
@@ -1285,6 +1591,86 @@ export interface CompensationTemplateLine {
   component: PayrollComponent
   monthly_amount: string
   sequence: number
+  cost_centre_id: string | null
+  cost_centre_code: string | null
+  cost_centre_name: string | null
+}
+
+export interface ExpenseReceipt {
+  id: string
+  file_name: string
+  file_size: number
+  mime_type: string
+  download_url: string
+  created_at: string
+}
+
+export interface ExpenseCategory {
+  id: string
+  code: string
+  name: string
+  per_claim_limit: string | null
+  requires_receipt: boolean
+  is_active: boolean
+}
+
+export interface ExpensePolicy {
+  id: string
+  name: string
+  description: string
+  currency: string
+  is_active: boolean
+  categories: ExpenseCategory[]
+  created_at: string
+  modified_at: string
+}
+
+export interface ExpenseClaimLine {
+  id: string
+  category: string | null
+  category_name: string
+  expense_date: string
+  merchant: string
+  description: string
+  amount: string
+  currency: string
+  receipts: ExpenseReceipt[]
+}
+
+export interface ExpenseClaim {
+  id: string
+  employee: string
+  employee_name: string
+  employee_code: string | null
+  policy_id: string | null
+  policy_name: string | null
+  title: string
+  claim_date: string
+  currency: string
+  status: ExpenseClaimStatus
+  reimbursement_status: ExpenseReimbursementStatus
+  approval_run_id: string | null
+  reimbursement_pay_run_id: string | null
+  submitted_at: string | null
+  approved_at: string | null
+  rejected_at: string | null
+  reimbursed_at: string | null
+  rejection_reason: string
+  total_amount: string
+  lines: ExpenseClaimLine[]
+  created_at: string
+}
+
+export interface ExpenseClaimSummaryBucket {
+  count: number
+  amount: string
+}
+
+export interface ExpenseClaimSummary {
+  total_claims: number
+  total_amount: string
+  by_status: Record<string, ExpenseClaimSummaryBucket>
+  by_reimbursement_status: Record<string, ExpenseClaimSummaryBucket>
 }
 
 export interface CompensationTemplate {
@@ -1306,6 +1692,9 @@ export interface CompensationAssignmentLine {
   monthly_amount: string
   is_taxable: boolean
   sequence: number
+  cost_centre_id: string | null
+  cost_centre_code: string | null
+  cost_centre_name: string | null
 }
 
 export interface CompensationAssignment {
@@ -1341,9 +1730,12 @@ export interface PayrollRunItem {
   message: string
   arrears: string
   lop_days: string
+  epf_employee: string
   esi_employee: string
   esi_employer: string
   pf_employer: string
+  eps_employer?: string
+  epf_employer?: string
   lwf_employee: string
   lwf_employer: string
   pt_monthly: string
@@ -1407,8 +1799,29 @@ export interface Payslip {
   period_year: number
   period_month: number
   snapshot: Record<string, unknown>
+  /** @deprecated Legacy raw text fallback; use structured snapshot data and PDF download instead. */
   rendered_text: string
   created_at: string
+}
+
+export interface InvestmentDeclaration {
+  id: string
+  employee_id: string
+  employee_name: string
+  fiscal_year: string
+  section: string
+  description: string
+  declared_amount: string
+  proof_file_key: string | null
+  proof_document_id: string | null
+  proof_document_file_name: string | null
+  proof_document_url: string | null
+  is_verified: boolean
+  verified_by_id: string | null
+  verified_by_name: string | null
+  section_limit: string | null
+  created_at: string
+  modified_at: string
 }
 
 export interface StatutoryFilingBatch {
@@ -1455,6 +1868,7 @@ export interface PayrollTdsChallan {
 export interface OrgPayrollSummary {
   tax_slab_sets: PayrollTaxSlabSet[]
   components: PayrollComponent[]
+  cost_centres: CostCentre[]
   compensation_templates: CompensationTemplate[]
   compensation_assignments: CompensationAssignment[]
   pay_runs: PayrollRun[]

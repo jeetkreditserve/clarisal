@@ -212,6 +212,13 @@ class Employee(SoftDeleteModel):
         on_delete=models.SET_NULL,
         related_name='assigned_attendance_regularization_employees',
     )
+    expense_approval_workflow = models.ForeignKey(
+        'approvals.ApprovalWorkflow',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='assigned_expense_employees',
+    )
 
     class Meta:
         db_table = 'employees'
@@ -229,6 +236,14 @@ class Employee(SoftDeleteModel):
             models.Index(
                 fields=['organisation', 'status', 'date_of_joining'],
                 name='employee_org_status_doj_idx',
+            ),
+            models.Index(
+                fields=['organisation', 'reporting_to', 'status'],
+                name='emp_org_mgr_status_idx',
+            ),
+            models.Index(
+                fields=['organisation', 'department', 'status'],
+                name='emp_org_dept_status_idx',
             ),
         ]
 
@@ -701,7 +716,7 @@ class ExitInterview(AuditedBaseModel):
         ('EXIT', 'Exit'),
         ('AFTER_EXIT', 'After Exit'),
     ]
-    
+
     process = models.ForeignKey(
         EmployeeOffboardingProcess,
         on_delete=models.CASCADE,
@@ -766,7 +781,7 @@ class EmployeeTransferEvent(AuditedBaseModel):
         ('EFFECTIVE', 'Effective'),
         ('CANCELLED', 'Cancelled'),
     ]
-    
+
     employee = models.ForeignKey(
         Employee,
         on_delete=models.CASCADE,
@@ -837,6 +852,11 @@ class EmployeeTransferEvent(AuditedBaseModel):
 
     def __str__(self):
         return f"Transfer: {self.employee} - {self.effective_date}"
+    def handle_approval_status_change(self, new_status, rejection_reason=''):
+        self.status = new_status
+        if rejection_reason:
+            self.notes = rejection_reason
+        self.save(update_fields=['status', 'notes', 'modified_at'])
 
 
 class EmployeePromotionEvent(AuditedBaseModel):
@@ -848,7 +868,7 @@ class EmployeePromotionEvent(AuditedBaseModel):
         ('EFFECTIVE', 'Effective'),
         ('CANCELLED', 'Cancelled'),
     ]
-    
+
     employee = models.ForeignKey(
         Employee,
         on_delete=models.CASCADE,
@@ -902,3 +922,9 @@ class EmployeePromotionEvent(AuditedBaseModel):
 
     def __str__(self):
         return f"Promotion: {self.employee} - {self.effective_date}"
+
+    def handle_approval_status_change(self, new_status, rejection_reason=''):
+        self.status = new_status
+        if rejection_reason:
+            self.notes = rejection_reason
+        self.save(update_fields=['status', 'notes', 'modified_at'])

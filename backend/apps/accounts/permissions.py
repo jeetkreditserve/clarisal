@@ -1,5 +1,6 @@
 from rest_framework.permissions import SAFE_METHODS, BasePermission
 
+from apps.access_control.services import has_permission as has_access_permission
 from apps.organisations.models import OrganisationAccessState, OrganisationBillingStatus
 from apps.organisations.services import get_org_operations_guard, is_org_feature_enabled
 
@@ -7,6 +8,7 @@ from .models import AccountType
 from .workspaces import (
     get_active_admin_organisation,
     get_active_employee,
+    get_current_organisation,
     get_workspace_state,
     is_control_tower_impersonating,
     is_ct_action_allowed_during_impersonation,
@@ -151,3 +153,36 @@ class ApprovalActionsAllowed(BasePermission):
         if organisation is None:
             return False
         return not get_org_operations_guard(organisation)['approval_actions_blocked']
+
+
+class HasPermission(BasePermission):
+    message = 'You do not have permission to perform this action.'
+
+    def _permission_code(self, request, view):
+        resolver = getattr(view, 'get_permission_code', None)
+        if callable(resolver):
+            return resolver(request)
+        return getattr(view, 'permission_code', None)
+
+    def has_permission(self, request, view):
+        permission_code = self._permission_code(request, view)
+        if not permission_code:
+            return True
+        organisation = get_current_organisation(request, request.user)
+        allowed = has_access_permission(
+            request.user,
+            permission_code,
+            organisation=organisation,
+            request=request,
+        )
+        if not allowed:
+            self.message = f'Missing permission: {permission_code}'
+        return allowed
+
+
+class ScopedOrgAccess(HasPermission):
+    pass
+
+
+class ScopedControlTowerAccess(HasPermission):
+    pass

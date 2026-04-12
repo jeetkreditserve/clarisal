@@ -41,6 +41,30 @@ def _create_employee(*, date_of_joining=None):
     )
 
 
+def _assign_basic_compensation(employee, *, monthly_amount='26000.00', effective_from=date(2026, 1, 1), name='FNF Basic'):
+    template = create_compensation_template(
+        employee.organisation,
+        name=name,
+        actor=employee.user,
+        lines=[
+            {
+                'component_code': 'BASIC',
+                'name': 'Basic Pay',
+                'component_type': 'EARNING',
+                'monthly_amount': monthly_amount,
+                'is_taxable': True,
+            },
+        ],
+    )
+    assign_employee_compensation(
+        employee,
+        template,
+        effective_from=effective_from,
+        actor=employee.user,
+        auto_approve=True,
+    )
+
+
 @pytest.mark.django_db
 class TestFullAndFinalSettlement:
     def test_fnf_created_on_offboarding_initiation(self):
@@ -137,6 +161,35 @@ class TestFullAndFinalSettlement:
         assert fnf.gratuity == Decimal('75000.00')
         assert fnf.gross_payable == Decimal('101000.00')
         assert fnf.net_payable == Decimal('101000.00')
+
+    @pytest.mark.parametrize(
+        ('date_of_joining', 'expected_gratuity'),
+        [
+            (date(2021, 6, 30), Decimal('75000.00')),
+            (date(2021, 8, 31), Decimal('0.00')),
+            (date(2021, 1, 31), Decimal('75000.00')),
+            (date(2021, 7, 30), Decimal('75000.00')),
+            (date(2023, 1, 31), Decimal('0.00')),
+        ],
+    )
+    def test_fnf_gratuity_gate_uses_gratuity_service_years_rounding(self, date_of_joining, expected_gratuity):
+        from apps.payroll.services import create_full_and_final_settlement
+
+        employee = _create_employee(date_of_joining=date_of_joining)
+        _assign_basic_compensation(
+            employee,
+            monthly_amount='26000.00',
+            effective_from=date(2026, 1, 1),
+            name=f'Eligibility Basic {date_of_joining.isoformat()}',
+        )
+
+        fnf = create_full_and_final_settlement(
+            employee=employee,
+            last_working_day=date(2026, 1, 31),
+            initiated_by=employee.user,
+        )
+
+        assert fnf.gratuity == expected_gratuity
 
     def test_fnf_uses_encashable_leave_balance_and_respects_cap(self):
         from apps.payroll.services import create_full_and_final_settlement
@@ -256,3 +309,65 @@ class TestFullAndFinalSettlement:
         )
 
         assert fnf.leave_encashment == Decimal('0.00')
+
+    def test_fnf_exemption_breakdown_caps_non_government_components(self):
+        from apps.payroll.services import _calculate_fnf_exemption_breakdown
+
+        employee = _create_employee(date_of_joining=date(2021, 1, 1))
+
+        breakdown = _calculate_fnf_exemption_breakdown(
+            employee=employee,
+            gratuity=Decimal('2500000.00'),
+            leave_encashment=Decimal('3000000.00'),
+        )
+
+        assert breakdown['gratuity_exemption'] == Decimal('2000000.00')
+        assert breakdown['gratuity_taxable'] == Decimal('500000.00')
+        assert breakdown['leave_encashment_exemption'] == Decimal('2500000.00')
+        assert breakdown['leave_encashment_taxable'] == Decimal('500000.00')
+
+    def test_fnf_exemption_breakdown_fully_exempts_government_body_employee(self):
+        from apps.payroll.services import _calculate_fnf_exemption_breakdown
+
+        employee = _create_employee(date_of_joining=date(2021, 1, 1))
+        employee.organisation.entity_type = 'GOVERNMENT_BODY'
+        employee.organisation.save(update_fields=['entity_type', 'modified_at'])
+
+        breakdown = _calculate_fnf_exemption_breakdown(
+            employee=employee,
+            gratuity=Decimal('2500000.00'),
+            leave_encashment=Decimal('3000000.00'),
+        )
+
+        assert breakdown['gratuity_exemption'] == Decimal('2500000.00')
+        assert breakdown['gratuity_taxable'] == Decimal('0.00')
+        assert breakdown['leave_encashment_exemption'] == Decimal('3000000.00')
+        assert breakdown['leave_encashment_taxable'] == Decimal('0.00')
+
+    def test_fnf_recalculates_tds_for_taxable_other_credits(self):
+        from apps.payroll.services import create_full_and_final_settlement
+
+        employee = _create_employee(date_of_joining=date(2021, 1, 1))
+        _assign_basic_compensation(
+            employee,
+            monthly_amount='26000.00',
+            effective_from=date(2026, 1, 1),
+            name='FNF TDS Basic',
+        )
+
+        settlement = create_full_and_final_settlement(
+            employee=employee,
+            last_working_day=date(2026, 1, 31),
+            initiated_by=employee.user,
+        )
+        settlement.other_credits = Decimal('1500000.00')
+        settlement.save(update_fields=['other_credits', 'modified_at'])
+
+        settlement = create_full_and_final_settlement(
+            employee=employee,
+            last_working_day=date(2026, 1, 31),
+            initiated_by=employee.user,
+        )
+
+        assert settlement.tds_deduction == Decimal('101556.00')
+        assert settlement.net_payable == Decimal('1499444.00')

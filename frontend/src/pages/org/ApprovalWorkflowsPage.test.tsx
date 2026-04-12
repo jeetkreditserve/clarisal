@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ApprovalWorkflowsPage } from '@/pages/org/ApprovalWorkflowsPage'
 
+const toastSuccess = vi.fn()
 const useApprovalWorkflows = vi.fn()
 const useApprovalInbox = vi.fn()
 const useApprovalDelegations = vi.fn()
@@ -14,6 +15,13 @@ const useEmployees = vi.fn()
 const useRejectApprovalAction = vi.fn()
 const useUpdateApprovalDelegation = vi.fn()
 const useCtOrgConfiguration = vi.fn()
+const approveMutation = vi.fn()
+
+vi.mock('sonner', () => ({
+  toast: {
+    success: (...args: unknown[]) => toastSuccess(...args),
+  },
+}))
 
 vi.mock('@/hooks/useOrgAdmin', () => ({
   useApprovalWorkflows: () => useApprovalWorkflows(),
@@ -67,6 +75,7 @@ describe('ApprovalWorkflowsPage', () => {
       data: [
         {
           id: 'action-1',
+          request_kind: 'LEAVE',
           subject_label: 'Leave request',
           requester_name: 'Rohan Mehta',
           stage_name: 'Manager review',
@@ -76,6 +85,20 @@ describe('ApprovalWorkflowsPage', () => {
           original_approver_name: 'Nikhil Rao',
           is_overdue: true,
           due_at: '2026-04-02T00:00:00Z',
+          escalated_from_action_id: null,
+        },
+        {
+          id: 'action-2',
+          request_kind: 'EXPENSE_CLAIM',
+          subject_label: 'Expense claim',
+          requester_name: 'Ari Sharma',
+          stage_name: 'Finance review',
+          status: 'PENDING',
+          owner_name: 'Ava Patel',
+          assignment_source: 'PRIMARY',
+          original_approver_name: null,
+          is_overdue: false,
+          due_at: '2026-04-03T00:00:00Z',
           escalated_from_action_id: null,
         },
       ],
@@ -95,7 +118,8 @@ describe('ApprovalWorkflowsPage', () => {
         },
       ],
     })
-    useApproveApprovalAction.mockReturnValue({ isPending: false, mutateAsync: vi.fn() })
+    approveMutation.mockReset()
+    useApproveApprovalAction.mockReturnValue({ isPending: false, mutateAsync: approveMutation })
     useCreateApprovalDelegation.mockReturnValue({ isPending: false, mutateAsync: vi.fn() })
     useEmployees.mockReturnValue({
       data: { results: [{ id: 'employee-1', full_name: 'Ava Patel', designation: 'Manager' }, { id: 'employee-2', full_name: 'Nikhil Rao', designation: 'Lead' }] },
@@ -159,5 +183,23 @@ describe('ApprovalWorkflowsPage', () => {
     await user.click(screen.getByRole('button', { name: 'Deactivate' }))
 
     expect(useUpdateApprovalDelegation().mutateAsync).toHaveBeenCalled()
+  })
+
+  it('bulk-approves selected leave requests from the inbox', async () => {
+    const user = userEvent.setup()
+    approveMutation.mockResolvedValue(undefined)
+
+    renderOrgPage('/org/approval-workflows?tab=inbox')
+
+    await user.click(screen.getByRole('checkbox', { name: 'Select leave request' }))
+    await user.click(screen.getByRole('button', { name: 'Approve selected leave requests' }))
+    await user.click(screen.getByRole('button', { name: 'Approve selected' }))
+
+    expect(approveMutation).toHaveBeenCalledWith({
+      actionId: 'action-1',
+      comment: 'Bulk approved from the approval inbox.',
+    })
+    expect(approveMutation).toHaveBeenCalledTimes(1)
+    expect(toastSuccess).toHaveBeenCalledWith('Selected leave requests approved.')
   })
 })

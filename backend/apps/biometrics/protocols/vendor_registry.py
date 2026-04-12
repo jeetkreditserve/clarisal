@@ -27,7 +27,7 @@ class ConnectivityMode(str, Enum):  # noqa: UP042
 class AuthType(str, Enum):  # noqa: UP042
     DEVICE_SERIAL = "DEVICE_SERIAL"
     API_KEY = "API_KEY"
-    SHARED_SECRET = "SHARED_SECRET"
+    SHARED_SECRET = "SHARED_SECRET"  # nosec B105
     DIGEST_AUTH = "DIGEST_AUTH"
     OAUTH_SESSION = "OAUTH_SESSION"
     AEBAS_BRIDGE = "AEBAS_BRIDGE"
@@ -59,7 +59,7 @@ def _zk_adms_capability() -> VendorCapability:
     return VendorCapability(
         transport=ConnectivityMode.PUSH,
         auth_type=AuthType.DEVICE_SERIAL,
-        push_endpoint="/api/biometric/adms/iclock/cdata",
+        push_endpoint="/api/v1/biometric/adms/iclock/cdata",
         supports_direction=True,
         supports_work_code=True,
     )
@@ -69,7 +69,7 @@ def _essl_ebioserver_capability() -> VendorCapability:
     return VendorCapability(
         transport=ConnectivityMode.PUSH,
         auth_type=AuthType.SHARED_SECRET,
-        push_endpoint="/api/biometric/essl/webhook",
+        push_endpoint="/api/v1/biometric/essl/webhook",
         supports_direction=True,
     )
 

@@ -95,7 +95,7 @@ class TestLeaveEncashmentViews:
         )
 
         create_response = employee_client.post(
-            '/api/me/leave-encashments/',
+            '/api/v1/me/leave-encashments/',
             {
                 'leave_type_id': str(leave_type.id),
                 'cycle_start': '2026-01-01',
@@ -108,7 +108,7 @@ class TestLeaveEncashmentViews:
         assert create_response.status_code == 201
         assert create_response.data['status'] == 'PENDING'
 
-        list_response = employee_client.get('/api/me/leave-encashments/')
+        list_response = employee_client.get('/api/v1/me/leave-encashments/')
 
         assert list_response.status_code == 200
         assert len(list_response.data) == 1
@@ -143,7 +143,7 @@ class TestLeaveEncashmentViews:
             actor=employee.user,
         )
 
-        response = org_admin_client.get('/api/org/leave-encashments/')
+        response = org_admin_client.get('/api/v1/org/leave-encashments/')
 
         assert response.status_code == 200
         assert len(response.data) == 1

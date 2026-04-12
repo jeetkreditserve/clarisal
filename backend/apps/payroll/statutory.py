@@ -6,6 +6,8 @@ from calendar import monthrange
 from datetime import date
 from decimal import Decimal
 
+from django.db.utils import DatabaseError
+
 ZERO = Decimal('0.00')
 
 # India statutory defaults.
@@ -137,8 +139,8 @@ def get_surcharge_tiers_from_db(fiscal_year: str, tax_regime: str):
         ).order_by('income_threshold')
         if rules.exists():
             return [(rule.income_threshold, rule.surcharge_rate_percent / Decimal('100')) for rule in rules]
-    except Exception:
-        pass
+    except DatabaseError:
+        return surcharge_tiers_for_regime(tax_regime)
     return surcharge_tiers_for_regime(tax_regime)
 
 
@@ -218,10 +220,20 @@ def calculate_epf_contributions(
 ):
     basic = normalize_decimal(basic_pay) or ZERO
     eligible_basic = min(basic, wage_ceiling) if cap_wages and wage_ceiling is not None else basic
+    employee_contribution = (eligible_basic * employee_rate).quantize(Decimal('0.01'))
+    employer_contribution = (eligible_basic * employer_rate).quantize(Decimal('0.01'))
+    if employer_contribution <= ZERO:
+        eps_employer = ZERO
+        epf_employer = ZERO
+    else:
+        eps_employer = min((eligible_basic * Decimal('0.0833')).quantize(Decimal('0.01')), Decimal('1250.00'), employer_contribution)
+        epf_employer = max(ZERO, employer_contribution - eps_employer).quantize(Decimal('0.01'))
     return {
         'eligible_basic': eligible_basic.quantize(Decimal('0.01')),
-        'employee': (eligible_basic * employee_rate).quantize(Decimal('0.01')),
-        'employer': (eligible_basic * employer_rate).quantize(Decimal('0.01')),
+        'employee': employee_contribution,
+        'employer': employer_contribution,
+        'eps_employer': eps_employer,
+        'epf_employer': epf_employer,
     }
 
 

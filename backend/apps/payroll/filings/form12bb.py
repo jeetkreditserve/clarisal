@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
-from typing import Any
+from typing import Any, cast
 
 import weasyprint
 from django.template import Context, Template
@@ -285,19 +285,19 @@ class Form12BBData:
 
     @property
     def hra_total(self) -> Decimal:
-        return sum(r.amount for r in self.hra_rows)
+        return sum((row.amount for row in self.hra_rows), Decimal("0.00"))
 
     @property
     def lta_total(self) -> Decimal:
-        return sum(r.amount for r in self.lta_rows)
+        return sum((row.amount for row in self.lta_rows), Decimal("0.00"))
 
     @property
     def home_loan_total(self) -> Decimal:
-        return sum(r.amount for r in self.home_loan_rows)
+        return sum((row.amount for row in self.home_loan_rows), Decimal("0.00"))
 
     @property
     def chapter_via_total(self) -> Decimal:
-        return sum(r.amount for r in self.chapter_via_rows)
+        return sum((row.amount for row in self.chapter_via_rows), Decimal("0.00"))
 
     @property
     def grand_total(self) -> Decimal:
@@ -508,7 +508,7 @@ def generate_form12bb_pdf(*, employee, fiscal_year: str) -> FilingGenerationResu
 
     data = _build_form12bb_data(employee, fiscal_year)
     html_content = _render_form12bb_html(data)
-    pdf_bytes = b"" if blockers else weasyprint.HTML(string=html_content).write_pdf()
+    pdf_bytes = b"" if blockers else cast(bytes, weasyprint.HTML(string=html_content).write_pdf())
 
     return FilingGenerationResult(
         artifact_format="PDF",

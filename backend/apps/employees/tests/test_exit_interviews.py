@@ -1,16 +1,23 @@
+from datetime import date
+
 import pytest
-from datetime import date, datetime
 from django.utils import timezone
 
 from apps.accounts.models import User, UserRole
-from apps.employees.models import Employee, EmployeeOffboardingProcess, OffboardingProcessStatus
+from apps.employees.models import Employee
 from apps.employees.services import (
-    create_exit_interview_template,
-    schedule_exit_interview,
-    record_exit_interview_response,
     complete_exit_interview,
-    get_exit_interview_summary,
+    create_exit_interview_template,
     create_or_update_offboarding_process,
+    get_exit_interview_summary,
+    record_exit_interview_response,
+    schedule_exit_interview,
+)
+from apps.organisations.models import (
+    Organisation,
+    OrganisationAccessState,
+    OrganisationBillingStatus,
+    OrganisationStatus,
 )
 
 
@@ -36,7 +43,6 @@ def employee_user(db):
 
 @pytest.fixture
 def organisation(db, org_admin):
-    from apps.organisations.models import Organisation, OrganisationAccessState, OrganisationBillingStatus, OrganisationStatus
     return Organisation.objects.create(
         name='Test Org',
         created_by=org_admin,

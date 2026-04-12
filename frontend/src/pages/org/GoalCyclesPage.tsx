@@ -15,6 +15,7 @@ const emptyForm = {
   name: '',
   start_date: '',
   end_date: '',
+  auto_create_review_cycle: true,
 }
 
 function getCycleTone(status: string) {
@@ -104,6 +105,17 @@ export function GoalCyclesPage() {
                 />
               </div>
             </div>
+            <label className="flex items-start gap-3 rounded-[18px] border border-[hsl(var(--border)_/_0.85)] px-4 py-3 text-sm text-[hsl(var(--muted-foreground))]">
+              <input
+                className="mt-1 h-4 w-4"
+                type="checkbox"
+                checked={form.auto_create_review_cycle}
+                onChange={(event) => setForm((current) => ({ ...current, auto_create_review_cycle: event.target.checked }))}
+              />
+              <span>
+                Auto-create a review cycle when this goal cycle ends.
+              </span>
+            </label>
             <button type="submit" className="btn-primary" disabled={createMutation.isPending}>
               {createMutation.isPending ? 'Creating…' : 'Create goal cycle'}
             </button>
@@ -127,6 +139,11 @@ export function GoalCyclesPage() {
                       <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
                         {cycle.start_date} to {cycle.end_date}
                       </p>
+                      {cycle.auto_create_review_cycle ? (
+                        <p className="mt-2 text-xs font-medium uppercase tracking-[0.16em] text-[hsl(var(--brand))]">
+                          Review cycle auto-trigger enabled
+                        </p>
+                      ) : null}
                     </div>
                     <StatusBadge tone={getCycleTone(cycle.status)}>{cycle.status}</StatusBadge>
                   </div>

@@ -13,10 +13,12 @@ from apps.organisations.models import (
 from apps.performance.models import (
     AppraisalCycle,
     CycleStatus,
+    FeedbackRequest,
     Goal,
     GoalCycle,
     GoalStatus,
     ReviewRelationship,
+    ReviewStatus,
     ReviewType,
 )
 
@@ -39,6 +41,27 @@ def _create_user(email, *, organisation=None, role=UserRole.EMPLOYEE):
         organisation=organisation,
         is_active=True,
     )
+
+
+def _create_employee(
+    organisation,
+    *,
+    email,
+    code,
+    role=UserRole.EMPLOYEE,
+    reporting_to=None,
+    designation='Engineer',
+):
+    user = _create_user(email, organisation=organisation, role=role)
+    employee = Employee.objects.create(
+        organisation=organisation,
+        user=user,
+        employee_code=code,
+        status=EmployeeStatus.ACTIVE,
+        designation=designation,
+        reporting_to=reporting_to,
+    )
+    return user, employee
 
 
 @pytest.mark.django_db
@@ -177,3 +200,221 @@ class TestProbationReviewSchedule:
         assert review.employee == employee
         assert review.reviewer == manager_employee
         assert review.relationship == ReviewRelationship.MANAGER
+
+
+@pytest.mark.django_db
+class TestAppraisalWorkflowServices:
+    def test_trigger_review_from_goal_cycle_creates_linked_appraisal_cycle(self):
+        from apps.performance.services import trigger_review_from_goal_cycle
+
+        organisation = _create_organisation()
+        actor = _create_user('performance-trigger@test.com', organisation=organisation, role=UserRole.ORG_ADMIN)
+        cycle = GoalCycle.objects.create(
+            organisation=organisation,
+            name='FY 2026 Goals',
+            start_date=date(2026, 4, 1),
+            end_date=date(2026, 6, 30),
+            status=CycleStatus.ACTIVE,
+            auto_create_review_cycle=True,
+            created_by=actor,
+            modified_by=actor,
+        )
+
+        appraisal_cycle = trigger_review_from_goal_cycle(cycle, actor=actor)
+
+        assert appraisal_cycle.goal_cycle == cycle
+        assert appraisal_cycle.status == CycleStatus.DRAFT
+        assert appraisal_cycle.name == 'Review - FY 2026 Goals'
+        assert appraisal_cycle.self_assessment_deadline == date(2026, 7, 7)
+        assert appraisal_cycle.peer_review_deadline == date(2026, 7, 14)
+        assert appraisal_cycle.manager_review_deadline == date(2026, 7, 21)
+
+    def test_activate_appraisal_cycle_creates_reviews_and_feedback_requests(self):
+        from apps.performance.services import activate_appraisal_cycle
+
+        organisation = _create_organisation()
+        actor = _create_user('performance-activator@test.com', organisation=organisation, role=UserRole.ORG_ADMIN)
+        _, manager = _create_employee(
+            organisation,
+            email='manager-activate@test.com',
+            code='EMP300',
+            role=UserRole.ORG_ADMIN,
+            designation='Engineering Manager',
+        )
+        _, employee = _create_employee(
+            organisation,
+            email='employee-activate@test.com',
+            code='EMP301',
+            reporting_to=manager,
+        )
+        _, peer = _create_employee(
+            organisation,
+            email='peer-activate@test.com',
+            code='EMP302',
+        )
+        cycle = AppraisalCycle.objects.create(
+            organisation=organisation,
+            name='FY 2026 Review',
+            review_type=ReviewType.REVIEW_360,
+            start_date=date(2026, 7, 1),
+            end_date=date(2026, 7, 31),
+            status=CycleStatus.DRAFT,
+            self_assessment_deadline=date(2026, 7, 7),
+            peer_review_deadline=date(2026, 7, 14),
+            manager_review_deadline=date(2026, 7, 21),
+            created_by=actor,
+            modified_by=actor,
+        )
+
+        activate_appraisal_cycle(cycle, actor=actor)
+
+        cycle.refresh_from_db()
+        relationships = set(
+            cycle.reviews.filter(employee=employee).values_list('relationship', flat=True)
+        )
+        feedback_requests = FeedbackRequest.objects.filter(cycle=cycle, employee=employee)
+
+        assert cycle.status == CycleStatus.ACTIVE
+        assert ReviewRelationship.SELF in relationships
+        assert ReviewRelationship.MANAGER in relationships
+        assert feedback_requests.count() == 1
+        assert feedback_requests.first().requested_from == peer
+
+    def test_aggregate_360_feedback_returns_dimension_averages(self):
+        from apps.performance.models import FeedbackResponse
+        from apps.performance.services import aggregate_360_feedback
+
+        organisation = _create_organisation()
+        actor = _create_user('performance-feedback@test.com', organisation=organisation, role=UserRole.ORG_ADMIN)
+        _, manager = _create_employee(
+            organisation,
+            email='manager-feedback@test.com',
+            code='EMP400',
+            role=UserRole.ORG_ADMIN,
+            designation='Manager',
+        )
+        _, employee = _create_employee(
+            organisation,
+            email='employee-feedback@test.com',
+            code='EMP401',
+            reporting_to=manager,
+        )
+        _, peer_one = _create_employee(organisation, email='peer-one-feedback@test.com', code='EMP402')
+        _, peer_two = _create_employee(organisation, email='peer-two-feedback@test.com', code='EMP403')
+        cycle = AppraisalCycle.objects.create(
+            organisation=organisation,
+            name='360 Cycle',
+            review_type=ReviewType.REVIEW_360,
+            start_date=date(2026, 7, 1),
+            end_date=date(2026, 7, 31),
+            status=CycleStatus.MANAGER_REVIEW,
+            created_by=actor,
+            modified_by=actor,
+        )
+        request_one = FeedbackRequest.objects.create(
+            cycle=cycle,
+            employee=employee,
+            requested_from=peer_one,
+            due_date=date(2026, 7, 12),
+            created_by=actor,
+            modified_by=actor,
+        )
+        request_two = FeedbackRequest.objects.create(
+            cycle=cycle,
+            employee=employee,
+            requested_from=peer_two,
+            due_date=date(2026, 7, 12),
+            created_by=actor,
+            modified_by=actor,
+        )
+        FeedbackResponse.objects.create(
+            request=request_one,
+            ratings={'ownership': 4, 'communication': 3},
+            comments='Clear communicator',
+            created_by=actor,
+            modified_by=actor,
+        )
+        FeedbackResponse.objects.create(
+            request=request_two,
+            ratings={'ownership': 5, 'communication': 4},
+            comments='Trusted partner',
+            created_by=actor,
+            modified_by=actor,
+        )
+
+        summary = aggregate_360_feedback(cycle, employee)
+
+        assert summary['response_count'] == 2
+        assert summary['dimensions']['ownership']['avg'] == pytest.approx(4.5)
+        assert summary['dimensions']['communication']['avg'] == pytest.approx(3.5)
+        assert summary['comments'] == ['Clear communicator', 'Trusted partner']
+
+    def test_lock_calibration_session_completes_cycle_and_prevents_late_changes(self):
+        from apps.performance.services import (
+            adjust_calibration_rating,
+            create_calibration_session,
+            lock_calibration_session,
+        )
+
+        organisation = _create_organisation()
+        actor = _create_user('performance-calibration@test.com', organisation=organisation, role=UserRole.ORG_ADMIN)
+        _, manager = _create_employee(
+            organisation,
+            email='manager-calibration@test.com',
+            code='EMP500',
+            role=UserRole.ORG_ADMIN,
+            designation='Manager',
+        )
+        _, employee = _create_employee(
+            organisation,
+            email='employee-calibration@test.com',
+            code='EMP501',
+            reporting_to=manager,
+        )
+        cycle = AppraisalCycle.objects.create(
+            organisation=organisation,
+            name='Calibration Cycle',
+            review_type=ReviewType.MANAGER,
+            start_date=date(2026, 7, 1),
+            end_date=date(2026, 7, 31),
+            status=CycleStatus.CALIBRATION,
+            created_by=actor,
+            modified_by=actor,
+        )
+        review = cycle.reviews.create(
+            employee=employee,
+            reviewer=manager,
+            relationship=ReviewRelationship.MANAGER,
+            ratings={'delivery': 3, 'collaboration': 4},
+            status=ReviewStatus.SUBMITTED,
+            created_by=actor,
+            modified_by=actor,
+        )
+
+        session = create_calibration_session(cycle, actor=actor)
+        entry = adjust_calibration_rating(
+            session,
+            employee,
+            new_rating=4.5,
+            reason='Raised after cross-team calibration',
+            actor=actor,
+        )
+        lock_calibration_session(session, actor=actor)
+
+        cycle.refresh_from_db()
+        session.refresh_from_db()
+        review.refresh_from_db()
+
+        assert entry.original_rating == pytest.approx(3.5)
+        assert entry.current_rating == pytest.approx(4.5)
+        assert cycle.status == CycleStatus.COMPLETED
+        assert session.locked_at is not None
+
+        with pytest.raises(ValueError, match='locked'):
+            adjust_calibration_rating(
+                session,
+                employee,
+                new_rating=4.8,
+                reason='Late override',
+                actor=actor,
+            )

@@ -6,7 +6,6 @@ from .models import (
     AssetCondition,
     AssetIncident,
     AssetItem,
-    AssetLifecycleStatus,
     AssetMaintenance,
 )
 

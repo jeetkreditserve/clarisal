@@ -1,5 +1,8 @@
 from django.core.exceptions import ObjectDoesNotExist
+from django.utils import timezone
 from rest_framework import serializers
+
+from apps.access_control.services import mask_serializer_data
 
 from .models import (
     BloodTypeChoice,
@@ -15,11 +18,25 @@ from .models import (
     EmployeeOffboardingProcess,
     EmployeeOffboardingTask,
     EmployeeProfile,
+    EmployeePromotionEvent,
     EmployeeStatus,
+    EmployeeTransferEvent,
     EmploymentType,
+    ExitInterview,
+    ExitInterviewQuestion,
+    ExitInterviewResponse,
+    ExitInterviewTemplate,
     GovernmentIdType,
     OffboardingTaskStatus,
 )
+
+EMPLOYEE_SENSITIVE_FIELD_PERMISSIONS = {
+    'profile': 'org.employee_sensitive.read',
+    'government_ids': 'org.employee_sensitive.read',
+    'bank_accounts': 'org.employee_sensitive.read',
+    'family_members': 'org.employee_sensitive.read',
+    'emergency_contacts': 'org.employee_sensitive.read',
+}
 
 
 class EmployeeListSerializer(serializers.ModelSerializer):
@@ -84,6 +101,7 @@ class EmployeeUpdateSerializer(serializers.Serializer):
     leave_approval_workflow_id = serializers.UUIDField(required=False, allow_null=True)
     on_duty_approval_workflow_id = serializers.UUIDField(required=False, allow_null=True)
     attendance_regularization_approval_workflow_id = serializers.UUIDField(required=False, allow_null=True)
+    expense_approval_workflow_id = serializers.UUIDField(required=False, allow_null=True)
 
 
 class EmployeeMarkJoinedSerializer(serializers.Serializer):
@@ -142,6 +160,7 @@ class OffboardingProcessSerializer(serializers.ModelSerializer):
     has_primary_bank_account = serializers.SerializerMethodField()
     fnf_settlement_id = serializers.SerializerMethodField()
     fnf_status = serializers.SerializerMethodField()
+    asset_summary = serializers.SerializerMethodField()
 
     class Meta:
         model = EmployeeOffboardingProcess
@@ -161,6 +180,7 @@ class OffboardingProcessSerializer(serializers.ModelSerializer):
             'has_primary_bank_account',
             'fnf_settlement_id',
             'fnf_status',
+            'asset_summary',
             'tasks',
         ]
 
@@ -192,6 +212,11 @@ class OffboardingProcessSerializer(serializers.ModelSerializer):
     def get_fnf_status(self, obj):
         fnf_settlement = self._get_fnf_settlement(obj)
         return fnf_settlement.status if fnf_settlement is not None else None
+
+    def get_asset_summary(self, obj):
+        from apps.assets.services import get_employee_asset_summary
+
+        return get_employee_asset_summary(obj.employee)
 
 
 class EmployeeProfileSerializer(serializers.ModelSerializer):
@@ -342,6 +367,16 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
         read_only=True,
         allow_null=True,
     )
+    expense_approval_workflow_id = serializers.UUIDField(
+        source='expense_approval_workflow.id',
+        read_only=True,
+        allow_null=True,
+    )
+    expense_approval_workflow_name = serializers.CharField(
+        source='expense_approval_workflow.name',
+        read_only=True,
+        allow_null=True,
+    )
     effective_approval_workflows = serializers.SerializerMethodField()
     offboarding = serializers.SerializerMethodField()
 
@@ -375,6 +410,8 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
             'on_duty_approval_workflow_name',
             'attendance_regularization_approval_workflow_id',
             'attendance_regularization_approval_workflow_name',
+            'expense_approval_workflow_id',
+            'expense_approval_workflow_name',
             'effective_approval_workflows',
             'offboarding',
         ]
@@ -411,6 +448,7 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
             'leave': serialize_effective(ApprovalRequestKind.LEAVE),
             'on_duty': serialize_effective(ApprovalRequestKind.ON_DUTY),
             'attendance_regularization': serialize_effective(ApprovalRequestKind.ATTENDANCE_REGULARIZATION),
+            'expense_claim': serialize_effective(ApprovalRequestKind.EXPENSE_CLAIM),
         }
 
     def get_offboarding(self, obj):
@@ -419,6 +457,20 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
         except EmployeeOffboardingProcess.DoesNotExist:
             return None
         return OffboardingProcessSerializer(process).data
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if user is None or not getattr(user, 'is_authenticated', False):
+            return data
+        return mask_serializer_data(
+            data,
+            EMPLOYEE_SENSITIVE_FIELD_PERMISSIONS,
+            user,
+            organisation=instance.organisation,
+            request=request,
+        )
 
 
 class CtEmployeeDetailSerializer(serializers.ModelSerializer):
@@ -493,7 +545,7 @@ class CustomFieldDefinitionWriteSerializer(serializers.ModelSerializer):
 
 
 class CustomFieldValueSerializer(serializers.ModelSerializer):
-    field_name = serializers.CharField(source='field_definition.name', read_only=True)
+    field_name = serializers.CharField(source='field_definition.name', read_only=True)  # type: ignore[assignment]
     field_type = serializers.CharField(source='field_definition.field_type', read_only=True)
     display_value = serializers.SerializerMethodField()
 
@@ -526,7 +578,7 @@ class EmployeeCustomFieldsSerializer(serializers.Serializer):
 
 class ExitInterviewQuestionSerializer(serializers.ModelSerializer):
     class Meta:
-        model = __import__('apps.employees.models', fromlist=['ExitInterviewQuestion']).ExitInterviewQuestion
+        model = ExitInterviewQuestion
         fields = ['id', 'question_text', 'question_type', 'options', 'order', 'is_required']
 
 
@@ -544,11 +596,11 @@ class ExitInterviewQuestionWriteSerializer(serializers.Serializer):
 class ExitInterviewTemplateSerializer(serializers.ModelSerializer):
     questions = ExitInterviewQuestionSerializer(many=True, read_only=True)
     question_count = serializers.SerializerMethodField()
-    
+
     class Meta:
-        model = __import__('apps.employees.models', fromlist=['ExitInterviewTemplate']).ExitInterviewTemplate
+        model = ExitInterviewTemplate
         fields = ['id', 'name', 'description', 'is_active', 'questions', 'question_count', 'created_at']
-    
+
     def get_question_count(self, obj):
         return obj.questions.count()
 
@@ -562,9 +614,9 @@ class ExitInterviewTemplateWriteSerializer(serializers.Serializer):
 class ExitInterviewResponseSerializer(serializers.ModelSerializer):
     question_text = serializers.CharField(source='question.question_text', read_only=True)
     question_type = serializers.CharField(source='question.question_type', read_only=True)
-    
+
     class Meta:
-        model = __import__('apps.employees.models', fromlist=['ExitInterviewResponse']).ExitInterviewResponse
+        model = ExitInterviewResponse
         fields = ['id', 'question', 'question_text', 'question_type', 'rating_value', 'text_value', 'choice_value', 'boolean_value']
 
 
@@ -578,11 +630,11 @@ class ExitInterviewResponseWriteSerializer(serializers.Serializer):
 
 class ExitInterviewSerializer(serializers.ModelSerializer):
     responses = ExitInterviewResponseSerializer(many=True, read_only=True)
-    employee_name = serializers.CharField(source='process.employee.full_name', read_only=True)
+    employee_name = serializers.CharField(source='process.employee.user.full_name', read_only=True)
     template_name = serializers.CharField(source='template.name', read_only=True)
-    
+
     class Meta:
-        model = __import__('apps.employees.models', fromlist=['ExitInterview']).ExitInterview
+        model = ExitInterview
         fields = [
             'id', 'process', 'template', 'stage', 'scheduled_date', 'conducted_date',
             'conducted_by', 'notes', 'overall_rating', 'responses', 'employee_name',
@@ -602,6 +654,29 @@ class ExitInterviewWriteSerializer(serializers.Serializer):
     responses = ExitInterviewResponseWriteSerializer(many=True, required=False)
 
 
+class EmployeeExitInterviewSerializer(serializers.Serializer):
+    id = serializers.UUIDField(allow_null=True)
+    interview_date = serializers.DateField(allow_null=True)
+    exit_reason = serializers.CharField(allow_blank=True)
+    interviewer_id = serializers.UUIDField(allow_null=True)
+    interviewer_name = serializers.CharField(allow_null=True, allow_blank=True)
+    overall_satisfaction = serializers.IntegerField(allow_null=True)
+    would_recommend_org = serializers.BooleanField(allow_null=True)
+    feedback = serializers.CharField(allow_blank=True)
+    areas_of_improvement = serializers.CharField(allow_blank=True)
+    submitted_at = serializers.DateTimeField(allow_null=True)
+
+
+class EmployeeExitInterviewWriteSerializer(serializers.Serializer):
+    interview_date = serializers.DateField(required=False, allow_null=True)
+    exit_reason = serializers.CharField(required=False, allow_blank=True, default='')
+    interviewer_id = serializers.UUIDField(required=False, allow_null=True)
+    overall_satisfaction = serializers.IntegerField(required=False, allow_null=True, min_value=1, max_value=5)
+    would_recommend_org = serializers.BooleanField(required=False, allow_null=True)
+    feedback = serializers.CharField(required=False, allow_blank=True, default='')
+    areas_of_improvement = serializers.CharField(required=False, allow_blank=True, default='')
+
+
 class OrgChartNodeSerializer(serializers.Serializer):
     id = serializers.CharField()
     name = serializers.CharField()
@@ -612,7 +687,7 @@ class OrgChartNodeSerializer(serializers.Serializer):
     status = serializers.CharField()
     profile_picture = serializers.CharField(allow_null=True)
     direct_reports = serializers.SerializerMethodField()
-    
+
     def get_direct_reports(self, obj):
         return OrgChartNodeSerializer(obj['direct_reports'], many=True).data
 
@@ -621,13 +696,63 @@ class DirectReportSerializer(serializers.ModelSerializer):
     name = serializers.CharField(source='user.full_name')
     designation = serializers.SerializerMethodField()
     department = serializers.CharField(source='department.name', allow_null=True)
-    
+
     class Meta:
-        model = __import__('apps.employees.models', fromlist=['Employee']).Employee
+        model = Employee
         fields = ['id', 'name', 'employee_code', 'designation', 'department', 'status']
-    
+
     def get_designation(self, obj):
         return obj.designation_ref.name if obj.designation_ref else obj.designation
+
+
+class TeamMemberSummarySerializer(serializers.ModelSerializer):
+    name = serializers.CharField(source='user.full_name')
+    designation = serializers.SerializerMethodField()
+    department = serializers.CharField(source='department.name', allow_null=True)
+    pending_leave_requests = serializers.SerializerMethodField()
+    attendance_deviations_this_month = serializers.SerializerMethodField()
+    leave_balance_summary = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Employee
+        fields = [
+            'id',
+            'name',
+            'employee_code',
+            'designation',
+            'department',
+            'status',
+            'pending_leave_requests',
+            'attendance_deviations_this_month',
+            'leave_balance_summary',
+        ]
+
+    def get_designation(self, obj):
+        return obj.designation_ref.name if obj.designation_ref else obj.designation
+
+    def get_pending_leave_requests(self, obj):
+        from apps.timeoff.models import LeaveRequest, LeaveRequestStatus
+
+        return LeaveRequest.objects.filter(
+            employee=obj,
+            status=LeaveRequestStatus.PENDING,
+        ).count()
+
+    def get_attendance_deviations_this_month(self, obj):
+        from apps.attendance.models import AttendanceDay
+
+        today = timezone.localdate()
+        return AttendanceDay.objects.filter(
+            employee=obj,
+            attendance_date__year=today.year,
+            attendance_date__month=today.month,
+            needs_regularization=True,
+        ).count()
+
+    def get_leave_balance_summary(self, obj):
+        from apps.timeoff.services import get_employee_leave_balances
+
+        return get_employee_leave_balances(obj)
 
 
 class TransferEventSerializer(serializers.ModelSerializer):
@@ -636,9 +761,9 @@ class TransferEventSerializer(serializers.ModelSerializer):
     to_department_name = serializers.CharField(source='to_department.name', read_only=True, allow_null=True)
     requested_by_name = serializers.CharField(source='requested_by.full_name', read_only=True, allow_null=True)
     approved_by_name = serializers.CharField(source='approved_by.full_name', read_only=True, allow_null=True)
-    
+
     class Meta:
-        model = __import__('apps.employees.models', fromlist=['EmployeeTransferEvent']).EmployeeTransferEvent
+        model = EmployeeTransferEvent
         fields = [
             'id', 'employee', 'employee_name', 'from_department', 'from_department_name',
             'to_department', 'to_department_name', 'from_location', 'to_location',
@@ -664,9 +789,9 @@ class PromotionEventSerializer(serializers.ModelSerializer):
     to_designation_name = serializers.CharField(source='to_designation.name', read_only=True, allow_null=True)
     requested_by_name = serializers.CharField(source='requested_by.full_name', read_only=True, allow_null=True)
     approved_by_name = serializers.CharField(source='approved_by.full_name', read_only=True, allow_null=True)
-    
+
     class Meta:
-        model = __import__('apps.employees.models', fromlist=['EmployeePromotionEvent']).EmployeePromotionEvent
+        model = EmployeePromotionEvent
         fields = [
             'id', 'employee', 'employee_name', 'from_designation', 'from_designation_name',
             'to_designation', 'to_designation_name', 'revised_compensation_assignment',

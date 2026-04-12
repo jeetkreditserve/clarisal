@@ -1,13 +1,15 @@
 import { useState } from 'react'
 import { BarChart3, Calculator, Download, FileSpreadsheet, Users } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Link, Navigate } from 'react-router-dom'
 import { toast } from 'sonner'
 
 import { AppDatePicker } from '@/components/ui/AppDatePicker'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
+import { useAuth } from '@/hooks/useAuth'
 import { downloadOrgReport, type OrgReportFormat } from '@/lib/api/org-admin'
 import { getErrorMessage } from '@/lib/errors'
+import { hasPermission } from '@/lib/rbac'
 import { usePayrollSummary } from '@/hooks/useOrgAdmin'
 
 const REPORT_TYPES = [
@@ -69,6 +71,7 @@ function triggerDownload(blob: Blob, filename: string) {
 }
 
 export function ReportsPage() {
+  const { user } = useAuth()
   const [reportType, setReportType] = useState('headcount')
   const [fileFormat, setFileFormat] = useState<Exclude<OrgReportFormat, 'json'>>('xlsx')
   const [attendanceMonth, setAttendanceMonth] = useState(getCurrentMonthValue())
@@ -79,6 +82,13 @@ export function ReportsPage() {
   const [isDownloading, setIsDownloading] = useState(false)
 
   const { data: payrollSummary } = usePayrollSummary()
+  const canReadReports = hasPermission(user, 'org.reports.read')
+  const canManageReports = hasPermission(user, 'org.reports.builder.manage')
+  const canExportReports = hasPermission(user, 'org.reports.export')
+
+  if (!canReadReports && !canExportReports) {
+    return <Navigate to="/org/dashboard" replace />
+  }
 
   const selectedReport = REPORT_TYPES.find((report) => report.value === reportType) ?? REPORT_TYPES[0]
   const payRunOptions = payrollSummary?.pay_runs ?? []
@@ -131,10 +141,24 @@ export function ReportsPage() {
         title="Reports"
         description="Export payroll, workforce, attendance, leave, and tax views without leaving the organisation workspace."
         actions={
-          <button type="button" className="btn-primary" onClick={() => void handleDownload()} disabled={isDownloading}>
-            <Download className="h-4 w-4" />
-            {isDownloading ? 'Generating…' : 'Download report'}
-          </button>
+          <>
+            {canReadReports ? (
+              <Link to="/org/reports/templates" className="btn-secondary">
+                Saved templates
+              </Link>
+            ) : null}
+            {canManageReports ? (
+              <Link to="/org/reports/builder" className="btn-secondary">
+                Create report
+              </Link>
+            ) : null}
+            {canExportReports ? (
+              <button type="button" className="btn-primary" onClick={() => void handleDownload()} disabled={isDownloading}>
+                <Download className="h-4 w-4" />
+                {isDownloading ? 'Generating…' : 'Download report'}
+              </button>
+            ) : null}
+          </>
         }
       />
 
@@ -169,7 +193,11 @@ export function ReportsPage() {
 
       <SectionCard
         title={`${selectedReport.label} configuration`}
-        description="Choose the export format and any required period filters. Report generation runs synchronously and downloads immediately."
+        description={
+          canExportReports
+            ? 'Choose the export format and any required period filters. Report generation runs synchronously and downloads immediately.'
+            : 'You can review report definitions here, but export access is delegated to another admin.'
+        }
       >
         <div className="grid gap-5 md:grid-cols-2">
           <label className="grid gap-2">
@@ -247,6 +275,11 @@ export function ReportsPage() {
             </>
           ) : null}
         </div>
+        {!canExportReports ? (
+          <div className="mt-5 rounded-[22px] border border-[hsl(var(--warning)_/_0.22)] bg-[hsl(var(--warning)_/_0.08)] px-4 py-4 text-sm text-[hsl(var(--foreground-strong))]">
+            Download actions stay hidden until `org.reports.export` is granted.
+          </div>
+        ) : null}
       </SectionCard>
 
       <SectionCard

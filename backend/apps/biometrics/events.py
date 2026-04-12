@@ -10,6 +10,7 @@ from django.utils import timezone
 logger = logging.getLogger(__name__)
 
 REDIS_AVAILABLE = False
+_redis_client: Any = None
 try:
     import redis
 

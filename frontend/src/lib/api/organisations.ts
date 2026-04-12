@@ -152,12 +152,20 @@ export async function createOrganisation(payload: {
 export async function updateOrganisation(id: string, payload: {
   name?: string
   pan_number?: string
+  tan_number?: string
   phone?: string
   email?: string
   country_code?: string
   currency?: string
   entity_type?: OrganisationEntityType
   logo_url?: string
+  esi_branch_code?: string
+  primary_admin?: {
+    first_name: string
+    last_name: string
+    email: string
+    phone?: string
+  }
 }): Promise<OrganisationDetail> {
   const { data } = await api.patch(`/ct/organisations/${id}/`, payload)
   return data
@@ -562,6 +570,25 @@ export async function fetchCtOrgOnboardingProgress(id: string): Promise<Onboardi
 
 export async function syncCtOrgOnboardingProgress(id: string): Promise<OnboardingProgress> {
   const { data } = await api.post(`/ct/organisations/${id}/onboarding/`)
+  return data
+}
+
+export async function seedCtOrgMasters(id: string): Promise<{
+  seeded: {
+    payroll_components: {
+      created_count: number
+      existing_count: number
+      total_count: number
+      codes: string[]
+    }
+    document_types: {
+      created_count: number
+      existing_count: number
+      total_count: number
+    }
+  }
+}> {
+  const { data } = await api.post(`/ct/organisations/${id}/seed-masters/`)
   return data
 }
 

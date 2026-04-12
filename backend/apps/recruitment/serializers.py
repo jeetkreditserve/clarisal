@@ -85,11 +85,25 @@ class ApplicationSerializer(serializers.ModelSerializer):
 
 class CandidateSerializer(serializers.ModelSerializer):
     full_name = serializers.SerializerMethodField()
+    converted_to_employee_id = serializers.UUIDField(read_only=True, allow_null=True)
+    converted_to_employee_name = serializers.CharField(source='converted_to_employee.user.full_name', read_only=True, allow_null=True)
 
     class Meta:
         model = Candidate
-        fields = ['id', 'first_name', 'last_name', 'full_name', 'email', 'phone', 'source', 'created_at']
-        read_only_fields = ['id', 'created_at', 'full_name']
+        fields = [
+            'id',
+            'first_name',
+            'last_name',
+            'full_name',
+            'email',
+            'phone',
+            'source',
+            'converted_to_employee_id',
+            'converted_to_employee_name',
+            'converted_at',
+            'created_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'full_name', 'converted_to_employee_id', 'converted_to_employee_name', 'converted_at']
 
     def get_full_name(self, obj):
         return f'{obj.first_name} {obj.last_name}'.strip()

@@ -7,10 +7,14 @@ import { EmployeeDetailPage } from '@/pages/org/EmployeeDetailPage'
 
 const useApprovalWorkflows = vi.fn()
 const useCompleteEmployeeOffboarding = vi.fn()
+const useCustomFieldDefinitions = vi.fn()
 const useDeleteEmployee = vi.fn()
 const useDepartments = vi.fn()
 const useDesignations = vi.fn()
+const useEmployeeCustomFieldValues = vi.fn()
 const useEmployeeDetail = vi.fn()
+const useEmployeeCareerTimeline = vi.fn()
+const useEmployeeExitInterview = vi.fn()
 const useEmployeeDocumentDownload = vi.fn()
 const useEmployeeDocumentRequests = vi.fn()
 const useEmployeeDocuments = vi.fn()
@@ -21,8 +25,10 @@ const useMarkEmployeeJoined = vi.fn()
 const useMarkEmployeeProbationComplete = vi.fn()
 const useOrgFullAndFinalSettlements = vi.fn()
 const useUpdateEmployee = vi.fn()
+const useUpdateEmployeeCustomFieldValues = vi.fn()
 const useUpdateEmployeeOffboarding = vi.fn()
 const useUpdateEmployeeOffboardingTask = vi.fn()
+const useSubmitEmployeeExitInterview = vi.fn()
 
 vi.mock('sonner', () => ({
   toast: {
@@ -34,10 +40,14 @@ vi.mock('sonner', () => ({
 vi.mock('@/hooks/useOrgAdmin', () => ({
   useApprovalWorkflows: () => useApprovalWorkflows(),
   useCompleteEmployeeOffboarding: () => useCompleteEmployeeOffboarding(),
+  useCustomFieldDefinitions: () => useCustomFieldDefinitions(),
   useDeleteEmployee: () => useDeleteEmployee(),
   useDepartments: () => useDepartments(),
   useDesignations: () => useDesignations(),
+  useEmployeeCustomFieldValues: (id: string) => useEmployeeCustomFieldValues(id),
   useEmployeeDetail: (id: string) => useEmployeeDetail(id),
+  useEmployeeCareerTimeline: (id: string) => useEmployeeCareerTimeline(id),
+  useEmployeeExitInterview: (id: string) => useEmployeeExitInterview(id),
   useEmployeeDocumentDownload: () => useEmployeeDocumentDownload(),
   useEmployeeDocumentRequests: (id: string) => useEmployeeDocumentRequests(id),
   useEmployeeDocuments: (id: string) => useEmployeeDocuments(id),
@@ -48,8 +58,10 @@ vi.mock('@/hooks/useOrgAdmin', () => ({
   useMarkEmployeeProbationComplete: (id: string) => useMarkEmployeeProbationComplete(id),
   useOrgFullAndFinalSettlements: () => useOrgFullAndFinalSettlements(),
   useUpdateEmployee: (id: string) => useUpdateEmployee(id),
+  useUpdateEmployeeCustomFieldValues: (id: string) => useUpdateEmployeeCustomFieldValues(id),
   useUpdateEmployeeOffboarding: (id: string) => useUpdateEmployeeOffboarding(id),
   useUpdateEmployeeOffboardingTask: (id: string) => useUpdateEmployeeOffboardingTask(id),
+  useSubmitEmployeeExitInterview: (id: string) => useSubmitEmployeeExitInterview(id),
 }))
 
 function renderPage() {
@@ -67,9 +79,44 @@ describe('EmployeeDetailPage', () => {
     vi.clearAllMocks()
 
     useApprovalWorkflows.mockReturnValue({ data: [] })
+    useCustomFieldDefinitions.mockReturnValue({
+      data: [
+        {
+          id: 'field-1',
+          name: 'Shirt size',
+          field_key: 'shirt_size',
+          field_type: 'TEXT',
+          placement: 'CUSTOM',
+          is_required: false,
+          display_order: 1,
+          dropdown_options: [],
+          placeholder: 'Enter shirt size',
+          help_text: 'Used for welcome kit orders.',
+          is_active: true,
+          created_at: '2026-04-01T00:00:00Z',
+        },
+      ],
+    })
     useDepartments.mockReturnValue({ data: [] })
     useDesignations.mockReturnValue({ data: [{ id: 'des-1', name: 'Engineer', level: 1, is_active: true }] })
+    useEmployeeCustomFieldValues.mockReturnValue({
+      data: [
+        {
+          id: 'value-1',
+          field_definition: 'field-1',
+          field_name: 'Shirt size',
+          field_type: 'TEXT',
+          value_text: 'M',
+          value_number: null,
+          value_date: null,
+          value_boolean: false,
+          display_value: 'M',
+        },
+      ],
+    })
     useEmployeeDocumentDownload.mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({ url: 'https://example.com' }) })
+    useEmployeeCareerTimeline.mockReturnValue({ isLoading: false, data: [] })
+    useEmployeeExitInterview.mockReturnValue({ isLoading: false, data: null })
     useEmployeeDocumentRequests.mockReturnValue({ data: [] })
     useEmployeeDocuments.mockReturnValue({ data: [] })
     useEmployees.mockReturnValue({ data: { results: [] } })
@@ -110,8 +157,10 @@ describe('EmployeeDetailPage', () => {
       useMarkEmployeeJoined,
       useMarkEmployeeProbationComplete,
       useUpdateEmployee,
+      useUpdateEmployeeCustomFieldValues,
       useUpdateEmployeeOffboarding,
       useUpdateEmployeeOffboardingTask,
+      useSubmitEmployeeExitInterview,
     ]) {
       hook.mockReturnValue({ isPending: false, mutateAsync: vi.fn().mockResolvedValue(undefined) })
     }
@@ -146,10 +195,13 @@ describe('EmployeeDetailPage', () => {
         on_duty_approval_workflow_name: null,
         attendance_regularization_approval_workflow_id: null,
         attendance_regularization_approval_workflow_name: null,
+        expense_approval_workflow_id: null,
+        expense_approval_workflow_name: null,
         effective_approval_workflows: {
           leave: { workflow_id: null, workflow_name: 'Default Leave', source: 'DEFAULT' },
           on_duty: { workflow_id: null, workflow_name: 'Default On Duty', source: 'DEFAULT' },
           attendance_regularization: { workflow_id: null, workflow_name: 'Default Attendance', source: 'DEFAULT' },
+          expense_claim: { workflow_id: null, workflow_name: 'Default Expense', source: 'DEFAULT' },
         },
         offboarding: {
           id: 'off-1',
@@ -165,6 +217,22 @@ describe('EmployeeDetailPage', () => {
           pending_required_task_count: 1,
           pending_document_requests: 0,
           has_primary_bank_account: true,
+          asset_summary: {
+            active_assignments: 1,
+            returned_assignments: 0,
+            has_unresolved: true,
+            unresolved_assets: [
+              {
+                id: 'assignment-1',
+                asset_id: 'asset-1',
+                asset_name: 'MacBook Pro',
+                asset_tag: 'LAP-300',
+                category_name: 'Laptops',
+                assigned_at: '2026-05-01T10:00:00Z',
+                expected_return_date: '2026-05-31',
+              },
+            ],
+          },
           tasks: [
             {
               id: 'task-1',
@@ -211,5 +279,146 @@ describe('EmployeeDetailPage', () => {
     await waitFor(() => {
       expect(markProbationComplete).toHaveBeenCalled()
     })
+  })
+
+  it('does not crash when the page rerenders from loading to loaded state', async () => {
+    const loadedEmployeeDetail = useEmployeeDetail()
+    let loading = true
+
+    useEmployeeDetail.mockImplementation(() => (
+      loading
+        ? { isLoading: true, data: null }
+        : loadedEmployeeDetail
+    ))
+
+    const view = renderPage()
+
+    loading = false
+    view.rerender(
+      <MemoryRouter initialEntries={['/org/employees/emp-1']}>
+        <Routes>
+          <Route path="/org/employees/:id" element={<EmployeeDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Employee One' })).toBeInTheDocument()
+    })
+    expect(screen.getByText('Employee detail')).toBeInTheDocument()
+  })
+
+  it('renders the employee career timeline when career events are available', () => {
+    useEmployeeCareerTimeline.mockReturnValue({
+      isLoading: false,
+      data: [
+        {
+          id: 'promotion-1',
+          type: 'PROMOTION',
+          date: '2026-06-01',
+          status: 'APPROVED',
+          from_department: 'People Operations',
+          to_department: 'People Operations',
+          from_location: 'Registered Office',
+          to_location: 'Registered Office',
+          from_designation: 'Engineer',
+          to_designation: 'Senior Engineer',
+          has_compensation_change: true,
+          reason: 'Strong performance',
+          requested_by: 'Aditi Rao',
+          approved_by: 'Rohan Mehta',
+        },
+      ],
+    })
+
+    renderPage()
+
+    expect(screen.getByText('Career timeline')).toBeInTheDocument()
+    expect(screen.getByText('Promotion')).toBeInTheDocument()
+    expect(screen.getByText(/Engineer → Senior Engineer/)).toBeInTheDocument()
+    expect(screen.getByText('Compensation revision included')).toBeInTheDocument()
+    expect(screen.getByText(/Rohan Mehta/)).toBeInTheDocument()
+  })
+
+  it('renders and updates custom employee fields', async () => {
+    const user = userEvent.setup()
+    renderPage()
+
+    const customFieldInput = screen.getByLabelText('Shirt size')
+    expect(customFieldInput).toHaveValue('M')
+
+    await user.clear(customFieldInput)
+    await user.type(customFieldInput, 'L')
+    await user.click(screen.getByRole('button', { name: 'Save custom fields' }))
+
+    await waitFor(() => {
+      expect(useUpdateEmployeeCustomFieldValues('emp-1').mutateAsync).toHaveBeenCalledWith({
+        custom_fields: [
+          {
+            field_definition_id: 'field-1',
+            value_text: 'L',
+            value_number: null,
+            value_date: null,
+            value_boolean: false,
+          },
+        ],
+      })
+    })
+  })
+
+  it('shows a record-exit-interview action when no interview exists', () => {
+    renderPage()
+
+    expect(screen.getByRole('button', { name: 'Record exit interview' })).toBeInTheDocument()
+  })
+
+  it('shows document expiry badges for expiring and expired files', () => {
+    useEmployeeDocuments.mockReturnValue({
+      data: [
+        {
+          id: 'doc-1',
+          document_type: 'PASSPORT',
+          document_type_code: 'PASSPORT',
+          document_request: null,
+          file_name: 'passport.pdf',
+          file_size: 128,
+          mime_type: 'application/pdf',
+          status: 'VERIFIED',
+          metadata: {},
+          version: 1,
+          uploaded_by_email: 'employee.one@test.com',
+          reviewed_by_email: 'admin@test.com',
+          reviewed_at: '2026-04-01T00:00:00Z',
+          created_at: '2026-04-01T00:00:00Z',
+          expiry_date: '2026-04-20',
+          alert_days_before: 30,
+          expires_soon: true,
+        },
+        {
+          id: 'doc-2',
+          document_type: 'WORK_PERMIT',
+          document_type_code: 'WORK_PERMIT',
+          document_request: null,
+          file_name: 'permit.pdf',
+          file_size: 128,
+          mime_type: 'application/pdf',
+          status: 'VERIFIED',
+          metadata: {},
+          version: 1,
+          uploaded_by_email: 'employee.one@test.com',
+          reviewed_by_email: 'admin@test.com',
+          reviewed_at: '2026-04-01T00:00:00Z',
+          created_at: '2026-04-01T00:00:00Z',
+          expiry_date: '2026-03-20',
+          alert_days_before: 30,
+          expires_soon: false,
+        },
+      ],
+    })
+
+    renderPage()
+
+    expect(screen.getByText('Expiring soon')).toBeInTheDocument()
+    expect(screen.getByText('Expired')).toBeInTheDocument()
   })
 })

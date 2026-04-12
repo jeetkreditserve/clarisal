@@ -1,6 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { useAuth } from '@/hooks/useAuth'
+import { acknowledgeMyAssetAssignment, fetchMyAssetAssignments } from '@/lib/api/assets'
+import {
+  cancelMyExpenseClaim,
+  createMyExpenseClaim,
+  fetchMyExpenseClaims,
+  fetchMyExpensePolicies,
+  submitMyExpenseClaim,
+  updateMyExpenseClaim,
+  uploadMyExpenseReceipt,
+} from '@/lib/api/expenses'
 import {
   approveMyApprovalAction,
   createBankAccount,
@@ -8,6 +18,7 @@ import {
   createEmergencyContact,
   createEducation,
   createFamilyMember,
+  createMyInvestmentDeclaration,
   createMyLeaveEncashment,
   createMyLeaveRequest,
   createMyOnDutyRequest,
@@ -15,7 +26,10 @@ import {
   deleteEmergencyContact,
   deleteEducation,
   deleteFamilyMember,
+  deleteMyInvestmentDeclaration,
+  downloadMyForm12BB,
   downloadMyPayslip,
+  downloadMyPayslipsForFiscalYear,
   fetchBankAccounts,
   fetchEducation,
   fetchGovernmentIds,
@@ -30,6 +44,7 @@ import {
   fetchMyDocumentRequests,
   fetchMyDocuments,
   fetchMyEvents,
+  fetchMyInvestmentDeclarations,
   fetchMyLeaveEncashments,
   fetchMyLeaveOverview,
   fetchMyNotices,
@@ -40,6 +55,9 @@ import {
   fetchMyPayslip,
   fetchMyPayslips,
   fetchMyProfile,
+  fetchMyTeam,
+  fetchMyTeamAttendance,
+  fetchMyTeamLeave,
   getMyDocumentDownloadUrl,
   punchIn,
   punchOut,
@@ -51,6 +69,7 @@ import {
   updateFamilyMember,
   updateMyOnboarding,
   updateMyProfile,
+  updateMyInvestmentDeclaration,
   uploadRequestedDocument,
   uploadMyDocument,
   upsertGovernmentId,
@@ -67,6 +86,92 @@ function useEmployeeScope() {
 export function useMyDashboard() {
   const organisationId = useEmployeeScope()
   return useQuery({ queryKey: ['me', organisationId, 'dashboard'], queryFn: fetchMyDashboard })
+}
+
+export function useMyAssetAssignments() {
+  const organisationId = useEmployeeScope()
+  return useQuery({ queryKey: ['me', organisationId, 'assets'], queryFn: fetchMyAssetAssignments })
+}
+
+export function useAcknowledgeMyAssetAssignment() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: acknowledgeMyAssetAssignment,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['me'] })
+    },
+  })
+}
+
+export function useMyExpensePolicies() {
+  const organisationId = useEmployeeScope()
+  return useQuery({
+    queryKey: ['me', organisationId, 'expense-policies'],
+    queryFn: fetchMyExpensePolicies,
+  })
+}
+
+export function useMyExpenseClaims() {
+  const organisationId = useEmployeeScope()
+  return useQuery({
+    queryKey: ['me', organisationId, 'expense-claims'],
+    queryFn: fetchMyExpenseClaims,
+  })
+}
+
+export function useCreateMyExpenseClaim() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: createMyExpenseClaim,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['me'] })
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useUpdateMyExpenseClaim() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Record<string, unknown> }) => updateMyExpenseClaim(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['me'] })
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useUploadMyExpenseReceipt() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ claimId, lineId, file }: { claimId: string; lineId: string; file: File }) => uploadMyExpenseReceipt(claimId, lineId, file),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['me'] })
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useSubmitMyExpenseClaim() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: submitMyExpenseClaim,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['me'] })
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useCancelMyExpenseClaim() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: cancelMyExpenseClaim,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['me'] })
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
 }
 
 export function useMyAttendanceSummary() {
@@ -305,9 +410,12 @@ export function useBankAccounts() {
   return useQuery({ queryKey: ['me', organisationId, 'bank-accounts'], queryFn: fetchBankAccounts })
 }
 
-export function useMyPayslips() {
+export function useMyPayslips(params?: { fiscal_year?: string; search?: string }) {
   const organisationId = useEmployeeScope()
-  return useQuery({ queryKey: ['me', organisationId, 'payslips'], queryFn: fetchMyPayslips })
+  return useQuery({
+    queryKey: ['me', organisationId, 'payslips', params],
+    queryFn: () => fetchMyPayslips(params),
+  })
 }
 
 export function useMyPayslip(id: string) {
@@ -322,6 +430,57 @@ export function useMyPayslip(id: string) {
 export function useDownloadMyPayslip() {
   return useMutation({
     mutationFn: downloadMyPayslip,
+  })
+}
+
+export function useDownloadMyPayslipsForFiscalYear() {
+  return useMutation({
+    mutationFn: downloadMyPayslipsForFiscalYear,
+  })
+}
+
+export function useMyInvestmentDeclarations(params?: { fiscal_year?: string }) {
+  const organisationId = useEmployeeScope()
+  return useQuery({
+    queryKey: ['me', organisationId, 'investment-declarations', params],
+    queryFn: () => fetchMyInvestmentDeclarations(params),
+  })
+}
+
+export function useCreateMyInvestmentDeclaration() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: createMyInvestmentDeclaration,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['me'] })
+    },
+  })
+}
+
+export function useUpdateMyInvestmentDeclaration() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Parameters<typeof updateMyInvestmentDeclaration>[1] }) =>
+      updateMyInvestmentDeclaration(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['me'] })
+    },
+  })
+}
+
+export function useDeleteMyInvestmentDeclaration() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: deleteMyInvestmentDeclaration,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['me'] })
+    },
+  })
+}
+
+export function useDownloadMyForm12BB() {
+  return useMutation({
+    mutationFn: downloadMyForm12BB,
   })
 }
 
@@ -401,9 +560,38 @@ export function useMyEvents() {
   return useQuery({ queryKey: ['me', organisationId, 'events'], queryFn: fetchMyEvents })
 }
 
-export function useMyApprovalInbox() {
+export function useMyTeam() {
   const organisationId = useEmployeeScope()
-  return useQuery({ queryKey: ['me', organisationId, 'approval-inbox'], queryFn: fetchMyApprovalInbox })
+  return useQuery({ queryKey: ['me', organisationId, 'my-team'], queryFn: fetchMyTeam })
+}
+
+export function useMyTeamLeave(filters?: {
+  status?: string
+  fromDate?: string
+  toDate?: string
+  includeIndirect?: boolean
+}) {
+  const organisationId = useEmployeeScope()
+  return useQuery({
+    queryKey: ['me', organisationId, 'my-team-leave', filters?.status, filters?.fromDate, filters?.toDate, filters?.includeIndirect],
+    queryFn: () => fetchMyTeamLeave(filters),
+  })
+}
+
+export function useMyTeamAttendance(targetDate?: string, includeIndirect = false) {
+  const organisationId = useEmployeeScope()
+  return useQuery({
+    queryKey: ['me', organisationId, 'my-team-attendance', targetDate, includeIndirect],
+    queryFn: () => fetchMyTeamAttendance(targetDate, includeIndirect),
+  })
+}
+
+export function useMyApprovalInbox(scope?: 'my_team') {
+  const organisationId = useEmployeeScope()
+  return useQuery({
+    queryKey: ['me', organisationId, 'approval-inbox', scope ?? 'all'],
+    queryFn: () => fetchMyApprovalInbox(scope),
+  })
 }
 
 export function useApproveMyApprovalAction() {

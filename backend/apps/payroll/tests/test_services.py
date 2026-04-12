@@ -810,6 +810,7 @@ class TestPayrollServices:
 
         item = pay_run.items.get(employee=employee)
         annual_tax_total = Decimal(item.snapshot['annual_tax_total'])
+        assert Decimal(item.snapshot['annual_taxable_gross']) == Decimal('1200000.00')
         assert item.income_tax == (annual_tax_total / Decimal('6')).quantize(Decimal('0.01'))
 
 

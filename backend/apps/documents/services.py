@@ -1,7 +1,9 @@
 import hashlib
 import os
 import uuid
+from datetime import timedelta
 
+from django.core.cache import cache
 from django.db import transaction
 from django.utils import timezone
 
@@ -19,6 +21,7 @@ from .s3 import generate_presigned_url, upload_file
 
 ALLOWED_EXTENSIONS = {'.pdf', '.png', '.jpg', '.jpeg'}
 MAX_FILE_SIZE = 5 * 1024 * 1024
+DOCUMENT_TYPES_SEEDED_CACHE_KEY = 'documents:onboarding_document_types_seeded'
 SIGNATURES_BY_EXTENSION = {
     '.pdf': (b'%PDF-',),
     '.png': (b'\x89PNG\r\n\x1a\n',),
@@ -86,8 +89,16 @@ def ensure_default_document_types():
         )
 
 
+def ensure_default_document_types_seeded():
+    def _seed_defaults():
+        ensure_default_document_types()
+        return True
+
+    cache.get_or_set(DOCUMENT_TYPES_SEEDED_CACHE_KEY, _seed_defaults, timeout=3600)
+
+
 def list_onboarding_document_types(include_inactive=False):
-    ensure_default_document_types()
+    ensure_default_document_types_seeded()
     queryset = OnboardingDocumentType.objects.all()
     if not include_inactive:
         queryset = queryset.filter(is_active=True)
@@ -95,7 +106,7 @@ def list_onboarding_document_types(include_inactive=False):
 
 
 def get_document_types_by_ids(document_type_ids):
-    ensure_default_document_types()
+    ensure_default_document_types_seeded()
     if not document_type_ids:
         return []
     queryset = OnboardingDocumentType.objects.filter(id__in=document_type_ids, is_active=True)
@@ -143,7 +154,16 @@ def get_document_request(employee, request_id):
     return list_document_requests(employee).get(id=request_id)
 
 
-def _upload_document_record(employee, file_obj, document_type_code, uploaded_by, metadata=None, document_request=None):
+def _upload_document_record(
+    employee,
+    file_obj,
+    document_type_code,
+    uploaded_by,
+    metadata=None,
+    document_request=None,
+    expiry_date=None,
+    alert_days_before=30,
+):
     _validate_upload(file_obj)
     file_bytes = file_obj.read()
     file_obj.seek(0)
@@ -165,6 +185,8 @@ def _upload_document_record(employee, file_obj, document_type_code, uploaded_by,
         metadata=metadata or {},
         file_hash=file_hash,
         version=version,
+        expiry_date=expiry_date,
+        alert_days_before=alert_days_before,
     )
     log_audit_event(
         uploaded_by,
@@ -176,7 +198,15 @@ def _upload_document_record(employee, file_obj, document_type_code, uploaded_by,
     return document
 
 
-def upload_document_request(employee, document_request, file_obj, uploaded_by, metadata=None):
+def upload_document_request(
+    employee,
+    document_request,
+    file_obj,
+    uploaded_by,
+    metadata=None,
+    expiry_date=None,
+    alert_days_before=30,
+):
     with transaction.atomic():
         document = _upload_document_record(
             employee,
@@ -185,6 +215,8 @@ def upload_document_request(employee, document_request, file_obj, uploaded_by, m
             uploaded_by=uploaded_by,
             metadata=metadata,
             document_request=document_request,
+            expiry_date=expiry_date,
+            alert_days_before=alert_days_before,
         )
         document_request.status = EmployeeDocumentRequestStatus.SUBMITTED
         document_request.rejection_note = ''
@@ -197,7 +229,15 @@ def upload_document_request(employee, document_request, file_obj, uploaded_by, m
     return document
 
 
-def upload_document(employee, file_obj, document_type, uploaded_by, metadata=None):
+def upload_document(
+    employee,
+    file_obj,
+    document_type,
+    uploaded_by,
+    metadata=None,
+    expiry_date=None,
+    alert_days_before=30,
+):
     document_type_obj = OnboardingDocumentType.objects.filter(code=document_type).first()
     request = None
     if document_type_obj:
@@ -209,8 +249,37 @@ def upload_document(employee, file_obj, document_type, uploaded_by, metadata=Non
                 'status': EmployeeDocumentRequestStatus.REQUESTED,
             },
         )
-        return upload_document_request(employee, request, file_obj, uploaded_by, metadata=metadata)
-    return _upload_document_record(employee, file_obj, document_type, uploaded_by, metadata=metadata)
+        return upload_document_request(
+            employee,
+            request,
+            file_obj,
+            uploaded_by,
+            metadata=metadata,
+            expiry_date=expiry_date,
+            alert_days_before=alert_days_before,
+        )
+    return _upload_document_record(
+        employee,
+        file_obj,
+        document_type,
+        uploaded_by,
+        metadata=metadata,
+        expiry_date=expiry_date,
+        alert_days_before=alert_days_before,
+    )
+
+
+def list_documents_expiring_soon(*, today=None):
+    today = today or timezone.localdate()
+    queryset = Document.objects.filter(
+        expiry_date__isnull=False,
+        expiry_date__gte=today,
+    ).select_related('employee__user')
+    return [
+        document
+        for document in queryset
+        if document.expiry_date <= today + timedelta(days=document.alert_days_before)
+    ]
 
 
 def generate_download_url(document, *, accessed_by=None, request=None, access_context='DIRECT', expiry=900):

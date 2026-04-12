@@ -1,18 +1,22 @@
 import { Outlet, useNavigate } from 'react-router-dom'
-import { CheckSquare, Clock3, FileText, GraduationCap, LayoutDashboard, LogOut, PlaneTakeoff, Target, User } from 'lucide-react'
+import { BriefcaseBusiness, CheckSquare, Clock3, FileText, GraduationCap, LayoutDashboard, LogOut, PlaneTakeoff, ReceiptText, Target, User, Users } from 'lucide-react'
 import { SidebarNav, type NavItem } from './SidebarNav'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
 import { useAuth } from '@/hooks/useAuth'
+import { useMyTeam } from '@/hooks/useEmployeeSelf'
 import { NotificationBell } from '@/components/ui/NotificationBell'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { ThemeToggle } from '@/components/ui/ThemeToggle'
 
-const navItems: NavItem[] = [
+const baseNavItems: NavItem[] = [
   { label: 'Dashboard', href: '/me/dashboard', icon: LayoutDashboard },
   { label: 'Onboarding', href: '/me/onboarding', icon: CheckSquare },
   { label: 'Profile', href: '/me/profile', icon: User },
   { label: 'Education', href: '/me/education', icon: GraduationCap },
   { label: 'Documents', href: '/me/documents', icon: FileText },
+  { label: 'Assets', href: '/me/assets', icon: BriefcaseBusiness },
+  { label: 'Tax Declarations', href: '/me/tax-declarations', icon: FileText },
+  { label: 'Expenses', href: '/me/expenses', icon: ReceiptText },
   { label: 'Attendance', href: '/me/attendance', icon: Clock3 },
   { label: 'Performance', href: '/me/performance', icon: Target },
   { label: 'Leave', href: '/me/leave', icon: LayoutDashboard },
@@ -23,7 +27,11 @@ const navItems: NavItem[] = [
 
 export function EmployeeLayout() {
   const { user, logout } = useAuth()
+  const { data: team } = useMyTeam()
   const navigate = useNavigate()
+  const navItems = team?.length
+    ? [baseNavItems[0], { label: 'My Team', href: '/me/my-team', icon: Users }, ...baseNavItems.slice(1)]
+    : baseNavItems
 
   const handleLogout = async () => {
     await logout()

@@ -1,5 +1,6 @@
 from rest_framework import serializers
 
+from apps.access_control.services import get_effective_permission_codes, summarize_effective_scopes
 from apps.organisations.services import get_org_admin_setup_state, get_org_operations_guard, is_org_admin_setup_required
 
 from .models import AccountType, User
@@ -53,6 +54,8 @@ class UserSerializer(serializers.ModelSerializer):
     org_setup_completed_at = serializers.SerializerMethodField()
     impersonation = serializers.SerializerMethodField()
     feature_flags = serializers.SerializerMethodField()
+    effective_permissions = serializers.SerializerMethodField()
+    effective_scopes = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -84,6 +87,8 @@ class UserSerializer(serializers.ModelSerializer):
             'org_setup_completed_at',
             'impersonation',
             'feature_flags',
+            'effective_permissions',
+            'effective_scopes',
             'is_active',
         ]
         read_only_fields = fields
@@ -248,3 +253,19 @@ class UserSerializer(serializers.ModelSerializer):
         from apps.organisations.services import get_org_feature_flags_map
 
         return get_org_feature_flags_map(organisation)
+
+    def get_effective_permissions(self, obj):
+        organisation = self._current_org(obj)
+        return get_effective_permission_codes(
+            obj,
+            organisation=organisation,
+            request=self.context.get('request'),
+        )
+
+    def get_effective_scopes(self, obj):
+        organisation = self._current_org(obj)
+        return summarize_effective_scopes(
+            obj,
+            organisation=organisation,
+            request=self.context.get('request'),
+        )

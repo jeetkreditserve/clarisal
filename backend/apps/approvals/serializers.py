@@ -29,6 +29,8 @@ class ApprovalStageApproverSerializer(serializers.ModelSerializer):
             'approver_type',
             'approver_employee_id',
             'approver_employee_name',
+            'manager_level',
+            'role_code',
         ]
 
 
@@ -36,6 +38,8 @@ class ApprovalStageApproverWriteSerializer(serializers.Serializer):
     id = serializers.UUIDField(required=False)
     approver_type = serializers.ChoiceField(choices=ApprovalApproverType.choices)
     approver_employee_id = serializers.UUIDField(required=False, allow_null=True)
+    manager_level = serializers.IntegerField(required=False, min_value=1, default=1)
+    role_code = serializers.CharField(required=False, allow_blank=True, default='')
 
 
 class ApprovalStageSerializer(serializers.ModelSerializer):
@@ -47,6 +51,7 @@ class ApprovalStageSerializer(serializers.ModelSerializer):
     escalation_target_type = serializers.CharField(source='sla_policy.escalation_target_type', read_only=True)
     escalation_employee_id = serializers.UUIDField(source='sla_policy.escalation_employee.id', read_only=True, allow_null=True)
     escalation_employee_name = serializers.CharField(source='sla_policy.escalation_employee.user.full_name', read_only=True, allow_null=True)
+    escalation_role_code = serializers.CharField(source='sla_policy.escalation_role_code', read_only=True)
 
     class Meta:
         model = ApprovalStage
@@ -56,6 +61,7 @@ class ApprovalStageSerializer(serializers.ModelSerializer):
             'sequence',
             'mode',
             'fallback_type',
+            'fallback_role_code',
             'fallback_employee_id',
             'fallback_employee_name',
             'reminder_after_hours',
@@ -63,6 +69,7 @@ class ApprovalStageSerializer(serializers.ModelSerializer):
             'escalation_target_type',
             'escalation_employee_id',
             'escalation_employee_name',
+            'escalation_role_code',
             'approvers',
         ]
 
@@ -74,10 +81,12 @@ class ApprovalStageWriteSerializer(serializers.Serializer):
     mode = serializers.ChoiceField(choices=ApprovalStageMode.choices, default=ApprovalStageMode.ALL)
     fallback_type = serializers.ChoiceField(choices=ApprovalFallbackType.choices, default=ApprovalFallbackType.NONE)
     fallback_employee_id = serializers.UUIDField(required=False, allow_null=True)
+    fallback_role_code = serializers.CharField(required=False, allow_blank=True, default='')
     reminder_after_hours = serializers.IntegerField(required=False, allow_null=True, min_value=1)
     escalate_after_hours = serializers.IntegerField(required=False, allow_null=True, min_value=1)
     escalation_target_type = serializers.ChoiceField(choices=ApprovalFallbackType.choices, default=ApprovalFallbackType.NONE)
     escalation_employee_id = serializers.UUIDField(required=False, allow_null=True)
+    escalation_role_code = serializers.CharField(required=False, allow_blank=True, default='')
     approvers = ApprovalStageApproverWriteSerializer(many=True)
 
     def validate(self, attrs):
@@ -85,12 +94,17 @@ class ApprovalStageWriteSerializer(serializers.Serializer):
         escalate_after = attrs.get('escalate_after_hours')
         target_type = attrs.get('escalation_target_type', ApprovalFallbackType.NONE)
         target_employee_id = attrs.get('escalation_employee_id')
+        fallback_type = attrs.get('fallback_type', ApprovalFallbackType.NONE)
         if reminder_after and escalate_after and reminder_after >= escalate_after:
             raise serializers.ValidationError({'reminder_after_hours': 'Reminder must be scheduled before escalation.'})
+        if fallback_type == ApprovalFallbackType.ROLE and not attrs.get('fallback_role_code', '').strip():
+            raise serializers.ValidationError({'fallback_role_code': 'Select a fallback role for role fallback.'})
         if escalate_after and target_type == ApprovalFallbackType.NONE:
             raise serializers.ValidationError({'escalation_target_type': 'Select an escalation target when an SLA escalation is configured.'})
         if target_type == ApprovalFallbackType.SPECIFIC_EMPLOYEE and not target_employee_id:
             raise serializers.ValidationError({'escalation_employee_id': 'Select an escalation employee for specific-employee escalation.'})
+        if target_type == ApprovalFallbackType.ROLE and not attrs.get('escalation_role_code', '').strip():
+            raise serializers.ValidationError({'escalation_role_code': 'Select an escalation role for role escalation.'})
         return attrs
 
 
@@ -118,6 +132,12 @@ class ApprovalWorkflowRuleSerializer(serializers.ModelSerializer):
             'designation',
             'leave_type',
             'leave_type_name',
+            'min_amount',
+            'max_amount',
+            'grade',
+            'band',
+            'cost_centre',
+            'legal_entity',
         ]
 
 
@@ -133,6 +153,12 @@ class ApprovalWorkflowRuleWriteSerializer(serializers.Serializer):
     employment_type = serializers.CharField(required=False, allow_blank=True, default='')
     designation = serializers.CharField(required=False, allow_blank=True, default='')
     leave_type_id = serializers.UUIDField(required=False, allow_null=True)
+    min_amount = serializers.DecimalField(max_digits=14, decimal_places=2, required=False, allow_null=True)
+    max_amount = serializers.DecimalField(max_digits=14, decimal_places=2, required=False, allow_null=True)
+    grade = serializers.CharField(required=False, allow_blank=True, default='')
+    band = serializers.CharField(required=False, allow_blank=True, default='')
+    cost_centre = serializers.CharField(required=False, allow_blank=True, default='')
+    legal_entity = serializers.CharField(required=False, allow_blank=True, default='')
 
 
 class ApprovalWorkflowSerializer(serializers.ModelSerializer):
@@ -189,6 +215,7 @@ class ApprovalWorkflowWriteSerializer(serializers.Serializer):
 
 
 class ApprovalActionSerializer(serializers.ModelSerializer):
+    approval_run_id = serializers.UUIDField(source='approval_run.id', read_only=True)
     request_kind = serializers.CharField(source='approval_run.request_kind', read_only=True)
     subject_label = serializers.CharField(source='approval_run.subject_label', read_only=True)
     requester_name = serializers.CharField(source='approval_run.requester_name', read_only=True)
@@ -209,6 +236,7 @@ class ApprovalActionSerializer(serializers.ModelSerializer):
             'status',
             'comment',
             'acted_at',
+            'approval_run_id',
             'request_kind',
             'subject_label',
             'requester_name',
@@ -287,3 +315,22 @@ class ApprovalActionDecisionSerializer(serializers.Serializer):
         if self.context.get('require_comment') and not value.strip():
             raise serializers.ValidationError('A rejection note is required.')
         return value
+
+
+class ApprovalWorkflowSimulationRequestSerializer(serializers.Serializer):
+    employee_id = serializers.UUIDField()
+    request_kind = serializers.ChoiceField(choices=ApprovalRequestKind.choices)
+    amount = serializers.DecimalField(max_digits=14, decimal_places=2, required=False)
+    leave_type_id = serializers.UUIDField(required=False)
+    grade = serializers.CharField(required=False, allow_blank=True)
+    band = serializers.CharField(required=False, allow_blank=True)
+    cost_centre = serializers.CharField(required=False, allow_blank=True)
+    legal_entity = serializers.CharField(required=False, allow_blank=True)
+
+
+class ApprovalWorkflowSimulationStageSerializer(serializers.Serializer):
+    sequence = serializers.IntegerField()
+    name = serializers.CharField()
+    mode = serializers.CharField()
+    approvers = serializers.ListField(child=serializers.DictField())
+    warnings = serializers.ListField(child=serializers.CharField())

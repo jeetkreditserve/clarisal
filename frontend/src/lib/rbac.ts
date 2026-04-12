@@ -12,6 +12,33 @@ export function isEmployee(user: Pick<AuthUser, 'has_employee_access'> | undefin
   return Boolean(user?.has_employee_access)
 }
 
+export function hasPermission(
+  user: Pick<AuthUser, 'effective_permissions'> | undefined,
+  permissionCode: string,
+): boolean {
+  return Boolean(user?.effective_permissions?.includes(permissionCode))
+}
+
+export function hasAnyPermission(
+  user: Pick<AuthUser, 'effective_permissions'> | undefined,
+  permissionCodes: string[],
+): boolean {
+  return permissionCodes.some((permissionCode) => hasPermission(user, permissionCode))
+}
+
+export function canAccessScope(
+  user: Pick<AuthUser, 'effective_scopes'> | undefined,
+  scopeKind: string,
+): boolean {
+  return Boolean(user?.effective_scopes?.some((scope) => scope.kind === scopeKind))
+}
+
+export function canManageAccessControl(
+  user: Pick<AuthUser, 'effective_permissions'> | undefined,
+): boolean {
+  return hasAnyPermission(user, ['org.access_control.manage', 'ct.organisations.write'])
+}
+
 export function getDefaultRoute(target: AuthUser | UserRole | undefined): string {
   if (!target) return '/auth/login'
 

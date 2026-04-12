@@ -57,3 +57,4 @@ frontend/tsconfig.tsbuildinfo
 .codex
 .ruff*
 graphify-out
+.graph*

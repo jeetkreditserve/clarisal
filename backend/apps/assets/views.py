@@ -3,7 +3,7 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.accounts.permissions import BelongsToActiveOrg, IsOrgAdmin, OrgAdminMutationAllowed
+from apps.accounts.permissions import BelongsToActiveOrg, IsEmployee, IsOrgAdmin, OrgAdminMutationAllowed
 from apps.accounts.workspaces import get_active_admin_organisation
 from apps.employees.models import Employee
 
@@ -13,7 +13,6 @@ from .models import (
     AssetIncident,
     AssetItem,
     AssetMaintenance,
-    AssetAssignmentStatus,
 )
 from .serializers import (
     AssetAssignmentSerializer,
@@ -21,7 +20,6 @@ from .serializers import (
     AssetCategorySerializer,
     AssetCategoryWriteSerializer,
     AssetIncidentSerializer,
-    AssetIncidentWriteSerializer,
     AssetItemSerializer,
     AssetItemWriteSerializer,
     AssetMaintenanceSerializer,
@@ -94,15 +92,15 @@ class AssetItemListCreateView(APIView):
     def get(self, request):
         organisation = get_active_admin_organisation(request, request.user)
         items = AssetItem.objects.filter(organisation=organisation)
-        
+
         status_filter = request.query_params.get('status')
         if status_filter:
             items = items.filter(lifecycle_status=status_filter)
-        
+
         category_id = request.query_params.get('category')
         if category_id:
             items = items.filter(category_id=category_id)
-        
+
         items = items.order_by('-created_at')
         return Response(AssetItemSerializer(items, many=True).data)
 
@@ -145,15 +143,15 @@ class AssetAssignmentListCreateView(APIView):
         assignments = AssetAssignment.objects.filter(
             asset__organisation=organisation
         ).select_related('asset', 'employee', 'employee__user')
-        
+
         status_filter = request.query_params.get('status')
         if status_filter:
             assignments = assignments.filter(status=status_filter)
-        
+
         employee_id = request.query_params.get('employee')
         if employee_id:
             assignments = assignments.filter(employee_id=employee_id)
-        
+
         assignments = assignments.order_by('-assigned_at')
         return Response(AssetAssignmentSerializer(assignments, many=True).data)
 
@@ -161,14 +159,14 @@ class AssetAssignmentListCreateView(APIView):
         organisation = get_active_admin_organisation(request, request.user)
         serializer = AssetAssignmentWriteSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        
+
         asset = get_object_or_404(
             AssetItem,
             organisation=organisation,
             id=serializer.validated_data['asset_id']
         )
         employee = get_object_or_404(Employee, organisation=organisation, id=request.data.get('employee_id'))
-        
+
         assignment = assign_asset_to_employee(
             asset=asset,
             employee=employee,
@@ -338,7 +336,7 @@ class AssetIncidentListCreateView(APIView):
         employee = None
         if employee_id:
             employee = get_object_or_404(Employee, organisation=organisation, id=employee_id)
-        
+
         incident = create_asset_incident(
             asset=asset,
             incident_type=request.data.get('incident_type'),
@@ -350,14 +348,14 @@ class AssetIncidentListCreateView(APIView):
 
 
 class MyAssetAssignmentsView(APIView):
-    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+    permission_classes = [IsEmployee, BelongsToActiveOrg]
 
     def get(self, request):
         from apps.accounts.workspaces import get_active_employee
         employee = get_active_employee(request, request.user)
         if employee is None:
             return Response({'error': 'No active employee'}, status=status.HTTP_400_BAD_REQUEST)
-        
+
         assignments = AssetAssignment.objects.filter(
             employee=employee
         ).select_related('asset', 'asset__category')
@@ -365,14 +363,14 @@ class MyAssetAssignmentsView(APIView):
 
 
 class MyAssetAcknowledgementView(APIView):
-    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+    permission_classes = [IsEmployee, BelongsToActiveOrg]
 
     def post(self, request, assignment_id):
         from apps.accounts.workspaces import get_active_employee
         employee = get_active_employee(request, request.user)
         if employee is None:
             return Response({'error': 'No active employee'}, status=status.HTTP_400_BAD_REQUEST)
-        
+
         assignment = get_object_or_404(
             AssetAssignment,
             id=assignment_id,

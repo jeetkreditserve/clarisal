@@ -58,32 +58,32 @@
 ## Task 3: Add Org Chart Visualization
 
 - [x] Add a dedicated org-chart query or serializer projection based on `reporting_to` relationships.
-- [ ] Build a navigable React tree view rather than forcing users to infer hierarchy from employee-detail links.
+- [x] Build a navigable React tree view rather than forcing users to infer hierarchy from employee-detail links.
 - [x] Handle missing managers, cycles, and inactive employees cleanly in the tree projection.
 
 ## Task 4: Add IT Declaration UI
 
-- [ ] Build employee-side CRUD for `InvestmentDeclaration` records with section-aware validation and fiscal-year grouping.
-- [ ] Add payroll/admin review visibility so declarations are actionable and not model-only data.
-- [ ] Keep business-rule validation aligned with `P02` and `P14` deduction logic.
+- [x] Build employee-side CRUD for `InvestmentDeclaration` records with section-aware validation and fiscal-year grouping.
+- [x] Add payroll/admin review visibility so declarations are actionable and not model-only data.
+- [x] Keep business-rule validation aligned with `P02` and `P14` deduction logic.
 
 ## Task 5: Add Bulk Operations
 
-- [ ] Add bulk employee invite, bulk leave approval, and bulk payslip send/export flows first.
-- [ ] Ensure bulk actions are permission-aware, confirmable, and individually audited.
-- [ ] Reuse shared selection and confirmation components instead of one-off page-local implementations.
+- [x] Add bulk employee invite, bulk leave approval, and bulk payslip send/export flows first.
+- [x] Ensure bulk actions are permission-aware, confirmable, and individually audited.
+- [x] Reuse shared selection and confirmation components instead of one-off page-local implementations. Reused `ConfirmDialog` plus the existing checkbox/table selection patterns for bulk leave and payroll actions.
 
 ## Task 6: Close Remaining ESS/Admin UX Gaps
 
-- [ ] Add a real attendance summary card and pending approval badges to the employee dashboard.
-- [ ] Add leave-calendar withdrawal affordances, OD history, and payslip year/search/filter UX.
-- [ ] Add email-to-self or bulk FY download actions for payslips where operationally valid.
+- [x] Add a real attendance summary card and pending approval badges to the employee dashboard.
+- [x] Add leave-calendar withdrawal affordances, OD history, and payslip year/search/filter UX.
+- [x] Add email-to-self or bulk FY download actions for payslips where operationally valid.
 
 ## Task 7: Cleanup and Verification
 
-- [ ] Remove stale fixed-field assumptions from serializers, forms, and employee detail screens once dynamic fields are introduced.
-- [ ] Add full coverage for dynamic-field validation, org-chart projections, exit interviews, bulk actions, and ESS flows.
-- [ ] Run UI interaction tests for the new employee-detail, org-chart, dashboard, and payslip behaviors.
+- [x] Remove stale fixed-field assumptions from serializers, forms, and employee detail screens once dynamic fields are introduced. Employee detail now renders and saves organisation-defined custom fields through dedicated custom-field APIs instead of assuming a fixed extended-profile shape.
+- [x] Add full coverage for dynamic-field validation, org-chart projections, exit interviews, bulk actions, and ESS flows.
+- [x] Run UI interaction tests for the new employee-detail, org-chart, dashboard, and payslip behaviors.
 
 ## Task 8: Add Transfer and Promotion Event Models
 
@@ -93,8 +93,8 @@
 - [x] Add `EmployeePromotionEvent` model: employee, from_designation, to_designation, revised_compensation_assignment FK (nullable), effective_date, reason, approval status.
 - [x] When an approved transfer event becomes effective, auto-update the employee's department, location, and designation fields.
 - [x] When an approved promotion event becomes effective, optionally trigger a new CompensationAssignment draft if salary revision is linked. Auto-creates a DRAFT CompensationAssignment based on the employee's current compensation when `revised_compensation_assignment` is not pre-linked.
-- [ ] Add approval workflow hooks (using existing `approvals` app) for both event types so org admins can configure multi-level approval.
-- [ ] Expose transfer and promotion history as a timeline in `EmployeeDetailPage.tsx` alongside the existing compensation history.
+- [x] Add approval workflow hooks (using existing `approvals` app) for both event types so org admins can configure multi-level approval.
+- [x] Expose transfer and promotion history as a timeline in `EmployeeDetailPage.tsx` alongside the existing compensation history.
 - [x] Cover event creation, approval transitions, effective-date application, and compensation linkage with tests.
 
 ## Task 9: Add Designation Master

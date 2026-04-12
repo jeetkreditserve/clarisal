@@ -206,6 +206,36 @@ export function getAttendanceDayStatusTone(status?: string | null): Tone {
   }
 }
 
+export function getAssetLifecycleTone(status?: string | null): Tone {
+  switch (status) {
+    case 'AVAILABLE':
+    case 'RETURNED':
+      return 'success'
+    case 'ASSIGNED':
+      return 'info'
+    case 'IN_MAINTENANCE':
+      return 'warning'
+    case 'LOST':
+      return 'danger'
+    case 'RETIRED':
+    default:
+      return 'neutral'
+  }
+}
+
+export function getAssetAssignmentTone(status?: string | null): Tone {
+  switch (status) {
+    case 'RETURNED':
+      return 'success'
+    case 'ACTIVE':
+      return 'info'
+    case 'LOST':
+      return 'danger'
+    default:
+      return 'neutral'
+  }
+}
+
 export const ORG_ONBOARDING_STEPS: Array<{
   id: OrganisationOnboardingStage
   label: string

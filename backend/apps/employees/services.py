@@ -1,4 +1,6 @@
 import re
+from datetime import datetime, time
+from decimal import Decimal
 
 from django.db import transaction
 from django.utils import timezone
@@ -44,6 +46,10 @@ from .models import (
 PAN_PATTERN = re.compile(r'^[A-Z]{5}[0-9]{4}[A-Z]$')
 AADHAAR_PATTERN = re.compile(r'^[0-9]{12}$')
 IFSC_PATTERN = re.compile(r'^[A-Z]{4}0[A-Z0-9]{6}$')
+EXIT_INTERVIEW_TEMPLATE_NAME = 'Clarisal Exit Interview'
+EXIT_INTERVIEW_RECOMMEND_QUESTION = 'Would you recommend the organisation to others?'
+EXIT_INTERVIEW_FEEDBACK_QUESTION = 'What feedback would you like to share about your experience?'
+EXIT_INTERVIEW_IMPROVEMENT_QUESTION = 'Which areas of improvement should the organisation prioritise?'
 LICENCE_CONSUMING_STATUSES = [
     EmployeeStatus.INVITED,
     EmployeeStatus.PENDING,
@@ -350,6 +356,9 @@ def invite_employee(
 
 
 def create_employee_from_offer(offer, actor=None):
+    from apps.payroll.models import CompensationAssignment
+    from apps.payroll.services import assign_employee_compensation, create_compensation_template
+
     posting = offer.application.job_posting
     candidate = offer.application.candidate
 
@@ -366,6 +375,32 @@ def create_employee_from_offer(offer, actor=None):
         required_document_type_ids=None,
         invited_by=actor,
     )
+    ctc_annual = Decimal(str(offer.ctc_annual or '0')).quantize(Decimal('0.01'))
+    if ctc_annual > Decimal('0.00') and not CompensationAssignment.objects.filter(employee=employee).exists():
+        monthly_gross = (ctc_annual / Decimal('12.00')).quantize(Decimal('0.01'))
+        candidate_name = f'{candidate.first_name} {candidate.last_name}'.strip() or candidate.email
+        template = create_compensation_template(
+            posting.organisation,
+            name=f'Offer compensation - {candidate_name}',
+            description='Generated from accepted recruitment offer.',
+            actor=actor,
+            lines=[
+                {
+                    'component_code': 'BASIC',
+                    'name': 'Basic Pay',
+                    'component_type': 'EARNING',
+                    'monthly_amount': monthly_gross,
+                    'is_taxable': True,
+                }
+            ],
+        )
+        assign_employee_compensation(
+            employee,
+            template,
+            effective_from=offer.joining_date or timezone.localdate(),
+            actor=actor,
+            auto_approve=True,
+        )
     return employee
 
 
@@ -374,6 +409,7 @@ def update_employee(employee, actor=None, **fields):
     has_leave_approval_workflow = 'leave_approval_workflow_id' in fields
     has_on_duty_approval_workflow = 'on_duty_approval_workflow_id' in fields
     has_attendance_regularization_approval_workflow = 'attendance_regularization_approval_workflow_id' in fields
+    has_expense_approval_workflow = 'expense_approval_workflow_id' in fields
     department_id = fields.pop('department_id', None) if 'department_id' in fields else None
     office_location_id = fields.pop('office_location_id', None) if 'office_location_id' in fields else None
     leave_approval_workflow_id = fields.pop('leave_approval_workflow_id', None) if 'leave_approval_workflow_id' in fields else None
@@ -383,6 +419,7 @@ def update_employee(employee, actor=None, **fields):
         if 'attendance_regularization_approval_workflow_id' in fields
         else None
     )
+    expense_approval_workflow_id = fields.pop('expense_approval_workflow_id', None) if 'expense_approval_workflow_id' in fields else None
     if department_id is not None:
         employee.department = _get_department(employee.organisation, department_id)
     if office_location_id is not None:
@@ -405,6 +442,12 @@ def update_employee(employee, actor=None, **fields):
             attendance_regularization_approval_workflow_id,
             ApprovalRequestKind.ATTENDANCE_REGULARIZATION,
         )
+    if has_expense_approval_workflow:
+        employee.expense_approval_workflow = _get_approval_workflow(
+            employee.organisation,
+            expense_approval_workflow_id,
+            ApprovalRequestKind.EXPENSE_CLAIM,
+        )
     if 'employee_code' in fields:
         fields['employee_code'] = (fields['employee_code'] or '').strip().upper() or None
     for attr, value in fields.items():
@@ -419,6 +462,11 @@ def update_employee(employee, actor=None, **fields):
             'attendance_regularization_approval_workflow_id': (
                 str(attendance_regularization_approval_workflow_id)
                 if has_attendance_regularization_approval_workflow and attendance_regularization_approval_workflow_id
+                else None
+            ),
+            'expense_approval_workflow_id': (
+                str(expense_approval_workflow_id)
+                if has_expense_approval_workflow and expense_approval_workflow_id
                 else None
             ),
         }
@@ -778,9 +826,7 @@ def delete_employee(employee, actor=None):
         employee.bank_accounts.update(is_deleted=True, deleted_at=now)
         employee.emergency_contacts.update(is_deleted=True, deleted_at=now)
         employee.family_members.update(is_deleted=True, deleted_at=now)
-        employee.is_deleted = True
-        employee.deleted_at = now
-        employee.save(update_fields=['is_deleted', 'deleted_at', 'modified_at'])
+        employee.soft_delete()
         sync_user_role(user)
 
     log_audit_event(actor, 'employee.deleted', organisation=organisation, target=employee, payload=payload)
@@ -845,9 +891,7 @@ def create_or_update_emergency_contact(employee, actor=None, contact_id=None, **
 def delete_emergency_contact(contact, actor=None):
     organisation = contact.employee.organisation
     payload = {'contact_id': str(contact.id), 'full_name': contact.full_name}
-    contact.is_deleted = True
-    contact.deleted_at = timezone.now()
-    contact.save(update_fields=['is_deleted', 'deleted_at', 'modified_at'])
+    contact.soft_delete()
     refresh_employee_onboarding_status(contact.employee, actor=actor)
     log_audit_event(actor, 'employee.emergency_contact.deleted', organisation=organisation, payload=payload)
 
@@ -871,9 +915,7 @@ def delete_family_member(member, actor=None):
     organisation = member.employee.organisation
     employee = member.employee
     payload = {'member_id': str(member.id), 'full_name': member.full_name}
-    member.is_deleted = True
-    member.deleted_at = timezone.now()
-    member.save(update_fields=['is_deleted', 'deleted_at', 'modified_at'])
+    member.soft_delete()
     refresh_employee_onboarding_status(employee, actor=actor)
     log_audit_event(actor, 'employee.family_member.deleted', organisation=organisation, payload=payload)
 
@@ -895,9 +937,7 @@ def update_education_record(record, actor=None, **fields):
 def delete_education_record(record, actor=None):
     organisation = record.employee.organisation
     payload = {'degree': record.degree, 'institution': record.institution}
-    record.is_deleted = True
-    record.deleted_at = timezone.now()
-    record.save(update_fields=['is_deleted', 'deleted_at', 'modified_at'])
+    record.soft_delete()
     log_audit_event(actor, 'employee.education.deleted', organisation=organisation, payload=payload)
 
 
@@ -961,9 +1001,7 @@ def update_bank_account(account, actor=None, **fields):
 def delete_bank_account(account, actor=None):
     organisation = account.employee.organisation
     payload = {'account_id': str(account.id), 'account_holder_name': account.account_holder_name}
-    account.is_deleted = True
-    account.deleted_at = timezone.now()
-    account.save(update_fields=['is_deleted', 'deleted_at', 'modified_at'])
+    account.soft_delete()
     log_audit_event(actor, 'employee.bank_account.deleted', organisation=organisation, payload=payload)
 
 
@@ -1048,14 +1086,14 @@ def create_exit_interview_template(
     questions=None,
     actor=None,
 ):
-    from .models import ExitInterviewTemplate, ExitInterviewQuestion
-    
+    from .models import ExitInterviewQuestion, ExitInterviewTemplate
+
     template = ExitInterviewTemplate.objects.create(
         organisation=organisation,
         name=name,
         description=description,
     )
-    
+
     if questions:
         for i, q in enumerate(questions):
             ExitInterviewQuestion.objects.create(
@@ -1066,7 +1104,7 @@ def create_exit_interview_template(
                 order=q.get('order', i),
                 is_required=q.get('is_required', True),
             )
-    
+
     log_audit_event(
         actor,
         'employee.exit_interview.template_created',
@@ -1077,6 +1115,165 @@ def create_exit_interview_template(
     return template
 
 
+def _ensure_default_exit_interview_template(organisation):
+    from .models import ExitInterviewQuestion, ExitInterviewQuestionType, ExitInterviewTemplate
+
+    template, _created = ExitInterviewTemplate.objects.get_or_create(
+        organisation=organisation,
+        name=EXIT_INTERVIEW_TEMPLATE_NAME,
+        defaults={'description': 'Default exit interview prompts for offboarding reviews.'},
+    )
+    questions = [
+        (EXIT_INTERVIEW_RECOMMEND_QUESTION, ExitInterviewQuestionType.YES_NO, 10),
+        (EXIT_INTERVIEW_FEEDBACK_QUESTION, ExitInterviewQuestionType.TEXT, 20),
+        (EXIT_INTERVIEW_IMPROVEMENT_QUESTION, ExitInterviewQuestionType.TEXT, 30),
+    ]
+    for question_text, question_type, order in questions:
+        ExitInterviewQuestion.objects.get_or_create(
+            template=template,
+            question_text=question_text,
+            defaults={
+                'question_type': question_type,
+                'order': order,
+                'is_required': False,
+            },
+        )
+    return template
+
+
+def _combine_local_date(value):
+    if value is None:
+        return None
+    return timezone.make_aware(datetime.combine(value, time(hour=12, minute=0)))
+
+
+def get_employee_exit_interview(process):
+    return process.exit_interviews.select_related('conducted_by', 'template').prefetch_related('responses__question').order_by('-created_at').first()
+
+
+def get_employee_exit_interview_payload(process):
+    interview = get_employee_exit_interview(process)
+    if interview is None:
+        return None
+
+    interviewer_employee = None
+    if interview.conducted_by_id:
+        interviewer_employee = Employee.objects.filter(
+            organisation=process.organisation,
+            user=interview.conducted_by,
+        ).first()
+
+    responses_by_question = {
+        response.question.question_text: response
+        for response in interview.responses.all()
+    }
+    feedback_response = responses_by_question.get(EXIT_INTERVIEW_FEEDBACK_QUESTION)
+    improvement_response = responses_by_question.get(EXIT_INTERVIEW_IMPROVEMENT_QUESTION)
+    recommend_response = responses_by_question.get(EXIT_INTERVIEW_RECOMMEND_QUESTION)
+
+    return {
+        'id': str(interview.id),
+        'interview_date': interview.conducted_date.date().isoformat() if interview.conducted_date else (
+            interview.scheduled_date.date().isoformat() if interview.scheduled_date else None
+        ),
+        'exit_reason': process.exit_reason or '',
+        'interviewer_id': str(interviewer_employee.id) if interviewer_employee is not None else None,
+        'interviewer_name': interviewer_employee.user.full_name if interviewer_employee is not None else None,
+        'overall_satisfaction': interview.overall_rating,
+        'would_recommend_org': recommend_response.boolean_value if recommend_response is not None else None,
+        'feedback': feedback_response.text_value if feedback_response is not None else interview.notes,
+        'areas_of_improvement': improvement_response.text_value if improvement_response is not None else '',
+        'submitted_at': interview.conducted_date.isoformat() if interview.conducted_date else None,
+    }
+
+
+def upsert_employee_exit_interview(
+    process,
+    *,
+    interview_date=None,
+    exit_reason='',
+    interviewer_employee=None,
+    overall_satisfaction=None,
+    would_recommend_org=None,
+    feedback='',
+    areas_of_improvement='',
+    actor=None,
+):
+    from .models import ExitInterviewQuestion
+
+    template = _ensure_default_exit_interview_template(process.organisation)
+    interview = get_employee_exit_interview(process)
+    interview_timestamp = _combine_local_date(interview_date or process.date_of_exit)
+    if interview is None:
+        interview = schedule_exit_interview(
+            process=process,
+            scheduled_date=interview_timestamp,
+            stage='EXIT',
+            template=template,
+            actor=actor,
+        )
+    interview.template = template
+    interview.stage = 'EXIT'
+    interview.scheduled_date = interview_timestamp
+    interview.conducted_date = interview_timestamp
+    interview.conducted_by = interviewer_employee.user if interviewer_employee is not None else actor
+    interview.notes = feedback
+    interview.overall_rating = overall_satisfaction
+    interview.save(
+        update_fields=[
+            'template',
+            'stage',
+            'scheduled_date',
+            'conducted_date',
+            'conducted_by',
+            'notes',
+            'overall_rating',
+            'modified_at',
+        ]
+    )
+
+    if exit_reason != '':
+        process.exit_reason = exit_reason
+        process.modified_by = actor
+        process.save(update_fields=['exit_reason', 'modified_by', 'modified_at'])
+
+    questions = {
+        question.question_text: question
+        for question in ExitInterviewQuestion.objects.filter(template=template)
+    }
+    record_exit_interview_response(
+        interview=interview,
+        question=questions[EXIT_INTERVIEW_RECOMMEND_QUESTION],
+        boolean_value=would_recommend_org,
+        actor=actor,
+    )
+    record_exit_interview_response(
+        interview=interview,
+        question=questions[EXIT_INTERVIEW_FEEDBACK_QUESTION],
+        text_value=feedback,
+        actor=actor,
+    )
+    record_exit_interview_response(
+        interview=interview,
+        question=questions[EXIT_INTERVIEW_IMPROVEMENT_QUESTION],
+        text_value=areas_of_improvement,
+        actor=actor,
+    )
+
+    log_audit_event(
+        actor,
+        'employee.exit_interview.recorded',
+        organisation=process.organisation,
+        target=process.employee,
+        payload={
+            'process_id': str(process.id),
+            'interview_id': str(interview.id),
+            'interviewer_employee_id': str(interviewer_employee.id) if interviewer_employee is not None else None,
+        },
+    )
+    return interview
+
+
 def schedule_exit_interview(
     process,
     scheduled_date,
@@ -1084,21 +1281,21 @@ def schedule_exit_interview(
     template=None,
     actor=None,
 ):
-    from .models import ExitInterview
-    
+    from .models import ExitInterview, ExitInterviewTemplate
+
     if template is None:
         template = ExitInterviewTemplate.objects.filter(
             organisation=process.organisation,
             is_active=True,
         ).first()
-    
+
     interview = ExitInterview.objects.create(
         process=process,
         template=template,
         stage=stage,
         scheduled_date=scheduled_date,
     )
-    
+
     log_audit_event(
         actor,
         'employee.exit_interview.scheduled',
@@ -1119,7 +1316,7 @@ def record_exit_interview_response(
     actor=None,
 ):
     from .models import ExitInterviewResponse
-    
+
     response, created = ExitInterviewResponse.objects.update_or_create(
         exit_interview=interview,
         question=question,
@@ -1135,13 +1332,13 @@ def record_exit_interview_response(
 
 def complete_exit_interview(interview, notes='', overall_rating=None, conducted_by=None, actor=None):
     from django.utils import timezone
-    
+
     interview.conducted_date = timezone.now()
     interview.notes = notes
     interview.overall_rating = overall_rating
     interview.conducted_by = conducted_by
     interview.save(update_fields=['conducted_date', 'notes', 'overall_rating', 'conducted_by', 'modified_at'])
-    
+
     log_audit_event(
         actor,
         'employee.exit_interview.completed',
@@ -1188,18 +1385,18 @@ def get_exit_interview_summary(interview):
 
 def get_org_chart_tree(organisation, include_inactive=False):
     from .models import Employee, EmployeeStatus
-    
+
     queryset = Employee.objects.filter(organisation=organisation)
     if not include_inactive:
         queryset = queryset.filter(status__in=[EmployeeStatus.ACTIVE, EmployeeStatus.INVITED, EmployeeStatus.PENDING])
-    
+
     employees = list(queryset.select_related('user', 'department', 'designation_ref', 'reporting_to').all())
-    
+
     employee_map = {e.id: e for e in employees}
-    
+
     children_map = {}
     roots = []
-    
+
     for emp in employees:
         manager_id = emp.reporting_to_id
         if manager_id and manager_id in employee_map:
@@ -1208,7 +1405,7 @@ def get_org_chart_tree(organisation, include_inactive=False):
             children_map[manager_id].append(emp)
         else:
             roots.append(emp)
-    
+
     def build_node(emp):
         return {
             'id': str(emp.id),
@@ -1221,57 +1418,96 @@ def get_org_chart_tree(organisation, include_inactive=False):
             'profile_picture': getattr(emp.profile, 'profile_picture', None) if hasattr(emp, 'profile') else None,
             'direct_reports': [build_node(child) for child in sorted(children_map.get(emp.id, []), key=lambda e: e.user.full_name)],
         }
-    
+
     return [build_node(root) for root in sorted(roots, key=lambda e: e.user.full_name)]
 
 
-def get_employee_direct_reports(employee, include_inactive=False):
-    from .models import Employee, EmployeeStatus
-    
-    queryset = employee.direct_reports
+def get_reporting_team(employee, *, include_inactive=False, include_indirect=False):
+    from .models import EmployeeStatus
+
+    queryset = Employee.objects.filter(organisation=employee.organisation).select_related(
+        'user',
+        'department',
+        'designation_ref',
+    )
     if not include_inactive:
-        queryset = queryset.filter(status__in=[EmployeeStatus.ACTIVE])
-    
-    return list(queryset.select_related('user', 'department', 'designation_ref').all())
+        queryset = queryset.filter(status=EmployeeStatus.ACTIVE)
+
+    if not include_indirect:
+        return list(
+            queryset.filter(reporting_to=employee).order_by(
+                'user__first_name',
+                'user__last_name',
+                'employee_code',
+            )
+        )
+
+    employee_rows = list(
+        queryset.order_by(
+            'user__first_name',
+            'user__last_name',
+            'employee_code',
+        )
+    )
+    children_map = {}
+    for report in employee_rows:
+        children_map.setdefault(report.reporting_to_id, []).append(report)
+
+    team = []
+    queue = [employee.id]
+    seen = set()
+    while queue:
+        manager_id = queue.pop(0)
+        for report in children_map.get(manager_id, []):
+            if report.id in seen:
+                continue
+            seen.add(report.id)
+            team.append(report)
+            queue.append(report.id)
+    return team
+
+
+def get_employee_direct_reports(employee, include_inactive=False):
+    return get_reporting_team(employee, include_inactive=include_inactive, include_indirect=False)
 
 
 def validate_org_chart_cycles(organisation):
     from .models import Employee
-    
+
     employees = Employee.objects.filter(organisation=organisation).exclude(reporting_to=None)
-    
+
     cycles = []
     visited = set()
     rec_stack = set()
-    
+
     def dfs(emp_id, path):
         if emp_id in rec_stack:
             cycle_start = path.index(emp_id)
             cycle = path[cycle_start:] + [emp_id]
             cycles.append([str(e) for e in cycle])
             return True
-        
+
         if emp_id in visited:
             return False
-        
+
         visited.add(emp_id)
         rec_stack.add(emp_id)
         path.append(emp_id)
-        
+
         try:
             emp = Employee.objects.get(id=emp_id)
             if emp.reporting_to_id:
                 dfs(emp.reporting_to_id, path[:])
         except Employee.DoesNotExist:
             pass
-        
+
         rec_stack.discard(emp_id)
         return False
-    
+
     for emp in employees:
         if emp.id not in visited:
             dfs(emp.id, [])
-    
+
     return cycles
 
 
@@ -1285,7 +1521,7 @@ def create_transfer_event(
     requested_by=None,
 ):
     from .models import EmployeeTransferEvent
-    
+
     transfer = EmployeeTransferEvent.objects.create(
         employee=employee,
         from_department=employee.department,
@@ -1299,7 +1535,7 @@ def create_transfer_event(
         requested_by=requested_by,
         status='PENDING',
     )
-    
+
     log_audit_event(
         requested_by,
         'employee.transfer.created',
@@ -1307,19 +1543,46 @@ def create_transfer_event(
         target=transfer,
         payload={'employee_id': str(employee.id), 'effective_date': str(effective_date)},
     )
+
+    try:
+        from apps.approvals.models import ApprovalRequestKind
+        from apps.approvals.services import create_approval_run
+
+        create_approval_run(
+            subject=transfer,
+            request_kind=ApprovalRequestKind.TRANSFER,
+            requester=employee,
+            actor=requested_by,
+            subject_label=f"Transfer: {employee.user.full_name}",
+        )
+    except ValueError:
+        from apps.approvals.services import (
+            create_approval_run,
+            ensure_default_promotion_transfer_workflow,
+        )
+
+        ensure_default_promotion_transfer_workflow(employee.organisation, ApprovalRequestKind.TRANSFER, employee)
+        create_approval_run(
+            subject=transfer,
+            request_kind=ApprovalRequestKind.TRANSFER,
+            requester=employee,
+            actor=requested_by,
+            subject_label=f"Transfer: {employee.user.full_name}",
+        )
+
     return transfer
 
 
 def approve_transfer_event(transfer, approved_by=None, notes=''):
     from django.utils import timezone
-    
+
     transfer.status = 'APPROVED'
     transfer.approved_by = approved_by
     transfer.approved_at = timezone.now()
     if notes:
         transfer.notes = notes
     transfer.save(update_fields=['status', 'approved_by', 'approved_at', 'notes', 'modified_at'])
-    
+
     log_audit_event(
         approved_by,
         'employee.transfer.approved',
@@ -1332,16 +1595,15 @@ def approve_transfer_event(transfer, approved_by=None, notes=''):
 
 def apply_transfer_event(transfer, actor=None):
     from django.utils import timezone
-    from .models import EmployeeTransferEvent
-    
+
     if transfer.status != 'APPROVED':
         raise ValueError('Can only apply approved transfer events')
-    
+
     if transfer.effective_date > timezone.now().date():
         raise ValueError('Transfer effective date has not arrived yet')
-    
+
     employee = transfer.employee
-    
+
     with transaction.atomic():
         if transfer.to_department:
             employee.department = transfer.to_department
@@ -1349,12 +1611,12 @@ def apply_transfer_event(transfer, actor=None):
             employee.office_location = transfer.to_location
         if transfer.to_designation:
             employee.designation_ref = transfer.to_designation
-        
+
         employee.save(update_fields=['department', 'office_location', 'designation_ref', 'modified_at'])
-        
+
         transfer.status = 'EFFECTIVE'
         transfer.save(update_fields=['status', 'modified_at'])
-    
+
     log_audit_event(
         actor,
         'employee.transfer.effective',
@@ -1374,7 +1636,7 @@ def create_promotion_event(
     requested_by=None,
 ):
     from .models import EmployeePromotionEvent
-    
+
     promotion = EmployeePromotionEvent.objects.create(
         employee=employee,
         from_designation=employee.designation_ref,
@@ -1385,7 +1647,7 @@ def create_promotion_event(
         requested_by=requested_by,
         status='PENDING',
     )
-    
+
     log_audit_event(
         requested_by,
         'employee.promotion.created',
@@ -1393,19 +1655,46 @@ def create_promotion_event(
         target=promotion,
         payload={'employee_id': str(employee.id), 'effective_date': str(effective_date)},
     )
+
+    try:
+        from apps.approvals.models import ApprovalRequestKind
+        from apps.approvals.services import create_approval_run
+
+        create_approval_run(
+            subject=promotion,
+            request_kind=ApprovalRequestKind.PROMOTION,
+            requester=employee,
+            actor=requested_by,
+            subject_label=f"Promotion: {employee.user.full_name} to {to_designation.name}",
+        )
+    except ValueError:
+        from apps.approvals.services import (
+            create_approval_run,
+            ensure_default_promotion_transfer_workflow,
+        )
+
+        ensure_default_promotion_transfer_workflow(employee.organisation, ApprovalRequestKind.PROMOTION, employee)
+        create_approval_run(
+            subject=promotion,
+            request_kind=ApprovalRequestKind.PROMOTION,
+            requester=employee,
+            actor=requested_by,
+            subject_label=f"Promotion: {employee.user.full_name} to {to_designation.name}",
+        )
+
     return promotion
 
 
 def approve_promotion_event(promotion, approved_by=None, notes=''):
     from django.utils import timezone
-    
+
     promotion.status = 'APPROVED'
     promotion.approved_by = approved_by
     promotion.approved_at = timezone.now()
     if notes:
         promotion.notes = notes
     promotion.save(update_fields=['status', 'approved_by', 'approved_at', 'notes', 'modified_at'])
-    
+
     log_audit_event(
         approved_by,
         'employee.promotion.approved',
@@ -1418,26 +1707,29 @@ def approve_promotion_event(promotion, approved_by=None, notes=''):
 
 def apply_promotion_event(promotion, actor=None):
     from django.utils import timezone
-    from .models import EmployeePromotionEvent
-    
+
     if promotion.status != 'APPROVED':
         raise ValueError('Can only apply approved promotion events')
-    
+
     if promotion.effective_date > timezone.now().date():
         raise ValueError('Promotion effective date has not arrived yet')
-    
+
     employee = promotion.employee
-    
+
     with transaction.atomic():
         if promotion.to_designation:
             employee.designation = promotion.to_designation.name if hasattr(promotion.to_designation, 'name') else str(promotion.to_designation)
-        
+
         employee.save(update_fields=['designation', 'modified_at'])
-        
+
         if promotion.revised_compensation_assignment is None:
-            from apps.payroll.models import CompensationAssignment, CompensationAssignmentLine, CompensationAssignmentStatus
+            from apps.payroll.models import (
+                CompensationAssignment,
+                CompensationAssignmentLine,
+                CompensationAssignmentStatus,
+            )
             from apps.payroll.services import get_effective_compensation_assignment
-            
+
             current_assignment = get_effective_compensation_assignment(
                 employee, promotion.effective_date
             )
@@ -1466,10 +1758,10 @@ def apply_promotion_event(promotion, actor=None):
                     )
                 promotion.revised_compensation_assignment = revised_assignment
                 promotion.save(update_fields=['revised_compensation_assignment'])
-        
+
         promotion.status = 'EFFECTIVE'
         promotion.save(update_fields=['status', 'modified_at'])
-    
+
     log_audit_event(
         actor,
         'employee.promotion.effective',
@@ -1483,9 +1775,9 @@ def apply_promotion_event(promotion, actor=None):
 def get_employee_career_timeline(employee):
     transfers = list(employee.transfer_events.all().order_by('-effective_date'))
     promotions = list(employee.promotion_events.all().order_by('-effective_date'))
-    
+
     timeline = []
-    
+
     for t in transfers:
         timeline.append({
             'type': 'TRANSFER',
@@ -1502,7 +1794,7 @@ def get_employee_career_timeline(employee):
             'requested_by': t.requested_by.full_name if t.requested_by else None,
             'approved_by': t.approved_by.full_name if t.approved_by else None,
         })
-    
+
     for p in promotions:
         timeline.append({
             'type': 'PROMOTION',
@@ -1516,6 +1808,6 @@ def get_employee_career_timeline(employee):
             'requested_by': p.requested_by.full_name if p.requested_by else None,
             'approved_by': p.approved_by.full_name if p.approved_by else None,
         })
-    
+
     timeline.sort(key=lambda x: x['date'], reverse=True)
     return timeline

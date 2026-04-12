@@ -1,6 +1,7 @@
 import api from '@/lib/api'
 import type {
   RecruitmentApplication,
+  RecruitmentCandidateConversionResponse,
   RecruitmentCandidateDetail,
   RecruitmentInterview,
   RecruitmentJobPosting,
@@ -70,5 +71,10 @@ export async function createRecruitmentOffer(
 
 export async function acceptRecruitmentOffer(offerId: string) {
   const { data } = await api.post<{ employee_id: string; status: string }>(`/org/recruitment/offers/${offerId}/accept/`)
+  return data
+}
+
+export async function convertRecruitmentCandidate(candidateId: string) {
+  const { data } = await api.post<RecruitmentCandidateConversionResponse>(`/org/recruitment/candidates/${candidateId}/convert/`)
   return data
 }

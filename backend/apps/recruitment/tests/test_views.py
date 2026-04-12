@@ -5,7 +5,7 @@ import pytest
 from rest_framework.test import APIClient
 
 from apps.accounts.models import AccountType, User, UserRole
-from apps.approvals.models import ApprovalRequestKind, ApprovalWorkflow
+from apps.approvals.models import ApprovalWorkflow
 from apps.employees.models import Employee, EmployeeStatus
 from apps.invitations.models import Invitation
 from apps.organisations.models import (
@@ -25,18 +25,16 @@ from apps.recruitment.models import (
     JobPosting,
     JobPostingStatus,
     OfferLetter,
+    OfferStatus,
 )
 
 
 def _seed_default_workflows(organisation, actor):
-    for request_kind, label in (
-        (ApprovalRequestKind.LEAVE, 'Leave'),
-        (ApprovalRequestKind.ON_DUTY, 'On Duty'),
-        (ApprovalRequestKind.ATTENDANCE_REGULARIZATION, 'Attendance Regularization'),
-    ):
+    from apps.approvals.catalog import get_required_default_request_kinds
+    for request_kind in get_required_default_request_kinds():
         ApprovalWorkflow.objects.create(
             organisation=organisation,
-            name=f'Default {label} Workflow',
+            name=f'Default {request_kind} Workflow',
             is_default=True,
             default_request_kind=request_kind,
             is_active=True,
@@ -137,7 +135,7 @@ def test_org_admin_can_create_and_list_job_postings(recruitment_api_setup):
     client = recruitment_api_setup['client']
 
     create_response = client.post(
-        '/api/org/recruitment/jobs/',
+        '/api/v1/org/recruitment/jobs/',
         {
             'title': 'Product Designer',
             'description': 'Design internal workflows',
@@ -145,7 +143,7 @@ def test_org_admin_can_create_and_list_job_postings(recruitment_api_setup):
         },
         format='json',
     )
-    list_response = client.get('/api/org/recruitment/jobs/')
+    list_response = client.get('/api/v1/org/recruitment/jobs/')
 
     assert create_response.status_code == 201
     assert create_response.data['status'] == JobPostingStatus.DRAFT
@@ -160,7 +158,7 @@ def test_org_admin_can_filter_applications_by_stage(recruitment_api_setup):
     application.stage = ApplicationStage.INTERVIEW
     application.save(update_fields=['stage', 'modified_at'])
 
-    response = client.get('/api/org/recruitment/applications/', {'stage': ApplicationStage.INTERVIEW})
+    response = client.get('/api/v1/org/recruitment/applications/', {'stage': ApplicationStage.INTERVIEW})
 
     assert response.status_code == 200
     assert len(response.data) == 1
@@ -173,7 +171,7 @@ def test_org_admin_can_advance_application_stage(recruitment_api_setup):
     application = recruitment_api_setup['application']
 
     response = client.post(
-        f'/api/org/recruitment/applications/{application.id}/stage/',
+        f'/api/v1/org/recruitment/applications/{application.id}/stage/',
         {'stage': ApplicationStage.SCREENING},
         format='json',
     )
@@ -191,7 +189,7 @@ def test_org_admin_can_schedule_interview_for_application(recruitment_api_setup)
     interviewer = recruitment_api_setup['interviewer']
 
     response = client.post(
-        f'/api/org/recruitment/applications/{application.id}/interviews/',
+        f'/api/v1/org/recruitment/applications/{application.id}/interviews/',
         {
             'interviewer_id': str(interviewer.id),
             'scheduled_at': '2026-04-15T10:30:00Z',
@@ -214,7 +212,7 @@ def test_org_admin_can_create_offer_letter(recruitment_api_setup):
     application.save(update_fields=['stage', 'modified_at'])
 
     response = client.post(
-        f'/api/org/recruitment/applications/{application.id}/offer/',
+        f'/api/v1/org/recruitment/applications/{application.id}/offer/',
         {
             'ctc_annual': '1450000.00',
             'joining_date': '2026-05-15',
@@ -240,7 +238,7 @@ def test_org_admin_can_accept_offer_and_onboard_candidate(recruitment_api_setup)
         joining_date=date(2026, 5, 15),
     )
 
-    response = client.post(f'/api/org/recruitment/offers/{offer.id}/accept/', format='json')
+    response = client.post(f'/api/v1/org/recruitment/offers/{offer.id}/accept/', format='json')
 
     offer.refresh_from_db()
     application.refresh_from_db()
@@ -249,3 +247,89 @@ def test_org_admin_can_accept_offer_and_onboard_candidate(recruitment_api_setup)
     assert offer.onboarded_employee is not None
     assert application.stage == ApplicationStage.HIRED
     assert Invitation.objects.filter(organisation=recruitment_api_setup['organisation']).count() == 1
+
+
+@pytest.mark.django_db
+def test_org_admin_can_convert_candidate_after_offer_is_already_accepted(recruitment_api_setup):
+    client = recruitment_api_setup['client']
+    application = recruitment_api_setup['application']
+    application.stage = ApplicationStage.OFFER
+    application.save(update_fields=['stage', 'modified_at'])
+    offer = OfferLetter.objects.create(
+        application=application,
+        ctc_annual=Decimal('1450000.00'),
+        joining_date=date(2026, 5, 15),
+        status=OfferStatus.ACCEPTED,
+    )
+
+    response = client.post(f'/api/v1/org/recruitment/candidates/{application.candidate_id}/convert/', format='json')
+
+    application.refresh_from_db()
+    offer.refresh_from_db()
+    candidate = application.candidate
+    candidate.refresh_from_db()
+    assert response.status_code == 201
+    assert response.data['employee']['email'] == 'priya@example.com'
+    assert response.data['employee']['status'] == 'INVITED'
+    assert candidate.converted_to_employee_id == offer.onboarded_employee_id
+    assert candidate.converted_at is not None
+
+
+@pytest.mark.django_db
+def test_org_admin_cannot_convert_candidate_twice(recruitment_api_setup):
+    client = recruitment_api_setup['client']
+    application = recruitment_api_setup['application']
+    application.stage = ApplicationStage.OFFER
+    application.save(update_fields=['stage', 'modified_at'])
+    OfferLetter.objects.create(
+        application=application,
+        ctc_annual=Decimal('1450000.00'),
+        joining_date=date(2026, 5, 15),
+        status=OfferStatus.ACCEPTED,
+    )
+
+    first_response = client.post(f'/api/v1/org/recruitment/candidates/{application.candidate_id}/convert/', format='json')
+    second_response = client.post(f'/api/v1/org/recruitment/candidates/{application.candidate_id}/convert/', format='json')
+
+    assert first_response.status_code == 201
+    assert second_response.status_code == 409
+    assert second_response.data['error'] == 'Candidate has already been converted to an employee.'
+
+
+@pytest.mark.django_db
+def test_org_admin_cannot_convert_candidate_without_accepted_offer(recruitment_api_setup):
+    client = recruitment_api_setup['client']
+    candidate = recruitment_api_setup['candidate']
+
+    response = client.post(f'/api/v1/org/recruitment/candidates/{candidate.id}/convert/', format='json')
+
+    assert response.status_code == 400
+    assert response.data['error'] == 'Accepted offer not found for this candidate.'
+
+
+@pytest.mark.django_db
+def test_employee_cannot_convert_recruitment_candidate(recruitment_api_setup):
+    organisation = recruitment_api_setup['organisation']
+    application = recruitment_api_setup['application']
+    application.stage = ApplicationStage.OFFER
+    application.save(update_fields=['stage', 'modified_at'])
+    OfferLetter.objects.create(
+        application=application,
+        ctc_annual=Decimal('1450000.00'),
+        joining_date=date(2026, 5, 15),
+        status=OfferStatus.ACCEPTED,
+    )
+    employee_user = User.objects.create_user(
+        email='recruitment-employee@test.com',
+        password='pass123!',
+        account_type=AccountType.WORKFORCE,
+        role=UserRole.EMPLOYEE,
+        organisation=organisation,
+        is_active=True,
+    )
+    client = APIClient()
+    client.force_authenticate(user=employee_user)
+
+    response = client.post(f'/api/v1/org/recruitment/candidates/{application.candidate_id}/convert/', format='json')
+
+    assert response.status_code == 403

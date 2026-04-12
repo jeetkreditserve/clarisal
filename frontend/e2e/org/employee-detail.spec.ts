@@ -37,8 +37,7 @@ test.describe('Org Admin — Employee Detail', () => {
 
   test('employment settings section is visible', async ({ page }) => {
     await expect(page.getByText('Employment settings')).toBeVisible()
-    // The form has a designation input and employment type select
-    await expect(page.locator('input[placeholder="Designation"]')).toBeVisible()
+    await expect(page.getByRole('button', { name: /HR Operations Manager|Select designation/i }).first()).toBeVisible()
   })
 
   test('save employee changes button is visible', async ({ page }) => {

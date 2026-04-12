@@ -4,8 +4,8 @@ from django.test import override_settings
 
 from apps.common.security import decrypt_value, encrypt_value, validate_field_encryption_configuration
 
-VALID_FIELD_ENCRYPTION_KEY = 'h8nlt4sUe92YRk0-GDbvJ8vYtM8n0af9moboa-UfJIQ='
-SECOND_VALID_FIELD_ENCRYPTION_KEY = 'o5j7RYM1mPSx3mGkW4onh8aKQk7rVJ6YQmD55Y2A7e8='
+VALID_FIELD_ENCRYPTION_KEY = 'h8nlt4sUe92YRk0-GDbvJ8vYtM8n0af9moboa-UfJIQ='  # pragma: allowlist secret
+SECOND_VALID_FIELD_ENCRYPTION_KEY = 'o5j7RYM1mPSx3mGkW4onh8aKQk7rVJ6YQmD55Y2A7e8='  # pragma: allowlist secret
 
 
 def test_validate_field_encryption_configuration_allows_debug_mode_without_field_key():
@@ -79,3 +79,13 @@ def test_decrypt_value_returns_empty_string_for_non_value_inputs():
     assert decrypt_value(None) == ''
     assert decrypt_value('') == ''
     assert decrypt_value(123) == ''  # type: ignore[arg-type]
+
+
+def test_api_health_endpoint_sets_security_headers(client, monkeypatch):
+    monkeypatch.setenv('GIT_SHA', 'health-sha')
+
+    response = client.get('/api/health/')
+
+    assert response.status_code == 200
+    assert response['X-Content-Type-Options'] == 'nosniff'
+    assert response['X-Frame-Options'] == 'DENY'

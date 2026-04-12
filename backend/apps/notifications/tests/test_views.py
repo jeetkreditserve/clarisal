@@ -87,7 +87,7 @@ def test_org_admin_can_list_own_notifications(notification_clients):
     create_notification(recipient=org_admin_user, kind=NotificationKind.GENERAL, title='Draft ready')
     create_notification(recipient=org_admin_user, kind=NotificationKind.GENERAL, title='Payroll submitted')
 
-    response = client.get('/api/me/notifications/')
+    response = client.get('/api/v1/me/notifications/')
 
     assert response.status_code == 200
     assert response.data['unread_count'] == 2
@@ -100,7 +100,7 @@ def test_employee_can_mark_notification_read(notification_clients):
     client = notification_clients['employee_client']
     notification = create_notification(recipient=employee_user, kind=NotificationKind.GENERAL, title='Payslip ready')
 
-    response = client.patch(f'/api/me/notifications/{notification.id}/read/')
+    response = client.patch(f'/api/v1/me/notifications/{notification.id}/read/')
 
     assert response.status_code == 200
     notification.refresh_from_db()
@@ -115,7 +115,7 @@ def test_employee_can_mark_all_notifications_read(notification_clients):
     create_notification(recipient=employee_user, kind=NotificationKind.GENERAL, title='One')
     create_notification(recipient=employee_user, kind=NotificationKind.GENERAL, title='Two')
 
-    response = client.post('/api/me/notifications/mark-all-read/')
+    response = client.post('/api/v1/me/notifications/mark-all-read/')
 
     assert response.status_code == 200
     assert response.data['marked_read'] == 2

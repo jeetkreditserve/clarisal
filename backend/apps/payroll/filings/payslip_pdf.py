@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import io
 from decimal import Decimal
+from typing import cast
 
 import qrcode
 import weasyprint
@@ -182,7 +183,7 @@ def generate_payslip_pdf_bytes(payslip) -> bytes:
 
     template = _load_template()
     html = template.render(context)
-    pdf_bytes = weasyprint.HTML(string=html).write_pdf()
+    pdf_bytes = cast(bytes, weasyprint.HTML(string=html).write_pdf())
     return pdf_bytes
 
 

@@ -493,6 +493,13 @@ class InvestmentDeclaration(AuditedBaseModel):
     description = models.CharField(max_length=200)
     declared_amount = models.DecimalField(max_digits=12, decimal_places=2)
     proof_file_key = models.CharField(max_length=500, blank=True, null=True)
+    proof_document = models.ForeignKey(
+        'documents.Document',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='investment_declaration_proofs',
+    )
     is_verified = models.BooleanField(default=False)
     verified_by = models.ForeignKey(
         'accounts.User',
@@ -633,6 +640,8 @@ class PayrollRunItem(AuditedBaseModel):
     gross_pay = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     employee_deductions = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     employer_contributions = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    eps_employer = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    epf_employer = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
     income_tax = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     total_deductions = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     net_pay = models.DecimalField(max_digits=12, decimal_places=2, default=0)
@@ -714,13 +723,15 @@ class StatutoryFilingBatch(AuditedBaseModel):
     file_name = models.CharField(max_length=255, blank=True)
     content_type = models.CharField(max_length=120, blank=True)
     file_size_bytes = models.PositiveIntegerField(default=0)
+    artifact_storage_backend = models.CharField(max_length=32, blank=True)
+    artifact_storage_key = models.CharField(max_length=500, blank=True)
+    artifact_uploaded_at = models.DateTimeField(null=True, blank=True)
     generated_at = models.DateTimeField(null=True, blank=True)
     source_signature = models.CharField(max_length=64, blank=True)
     validation_errors = models.JSONField(default=list, blank=True)
     metadata = models.JSONField(default=dict, blank=True)
     structured_payload = models.JSONField(default=dict, blank=True)
     artifact_text = models.TextField(blank=True)
-    artifact_binary = models.BinaryField(null=True, blank=True)
     source_pay_runs: models.ManyToManyField = models.ManyToManyField(
         'PayrollRun',
         related_name='statutory_filing_batches',

@@ -40,6 +40,12 @@ make lint
 make typecheck
 ```
 
+## API Versioning
+
+- Treat `/api/v1/` as the canonical application API base for new frontend code, tests, and documentation.
+- The legacy `/api/` routes remain available as a compatibility alias during the migration window, but do not add new hardcoded consumers against that alias.
+- If a client surface needs a base URL helper, centralize the normalization instead of repeating string literals across components.
+
 ## Commit Messages
 
 Use `type(scope): description`.

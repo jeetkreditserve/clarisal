@@ -30,9 +30,9 @@
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">66.66% </span>
+                <span class="strong">75% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>24/36</span>
+                <span class='fraction'>27/36</span>
             </div>
         
             
@@ -263,29 +263,29 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">521x</span>
-<span class="cline-any cline-yes">521x</span>
+<span class="cline-any cline-yes">1617x</span>
+<span class="cline-any cline-yes">1617x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">541x</span>
-<span class="cline-any cline-yes">521x</span>
+<span class="cline-any cline-yes">1812x</span>
+<span class="cline-any cline-yes">1617x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">521x</span>
-<span class="cline-any cline-yes">347x</span>
-<span class="cline-any cline-yes">347x</span>
+<span class="cline-any cline-yes">1617x</span>
+<span class="cline-any cline-yes">987x</span>
+<span class="cline-any cline-yes">987x</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">521x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1617x</span>
+<span class="cline-any cline-yes">10x</span>
+<span class="cline-any cline-yes">10x</span>
+<span class="cline-any cline-yes">5x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">521x</span>
+<span class="cline-any cline-yes">1617x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -332,15 +332,15 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1742x</span>
-<span class="cline-any cline-yes">1742x</span>
+<span class="cline-any cline-yes">4903x</span>
+<span class="cline-any cline-yes">4903x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">5x</span>
+<span class="cline-any cline-yes">5x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -471,7 +471,7 @@ export function AppSelect({
           )}
         &gt;
           {enableSearch ? (
-<span class="branch-0 cbranch-no" title="branch not covered" >            &lt;div className="relative mb-2"&gt;</span>
+            &lt;div className="relative mb-2"&gt;
               &lt;Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[hsl(var(--muted-foreground))]" /&gt;
               &lt;input
                 value={query}
@@ -483,7 +483,7 @@ export function AppSelect({
           ) : null}
           &lt;div className="max-h-72 overflow-y-auto pr-1"&gt;
             {filteredOptions.length === 0 ? (
-<span class="branch-0 cbranch-no" title="branch not covered" >              &lt;p className="px-3 py-3 text-sm text-[hsl(var(--muted-foreground))]"&gt;{emptyLabel}&lt;/p&gt;</span>
+              &lt;p className="px-3 py-3 text-sm text-[hsl(var(--muted-foreground))]"&gt;{emptyLabel}&lt;/p&gt;
             ) : (
               &lt;div className="grid gap-1"&gt;
                 {filteredOptions.map((option) =&gt; {
@@ -508,7 +508,7 @@ export function AppSelect({
                       &lt;span className="min-w-0 flex-1"&gt;
                         &lt;span className="block truncate font-medium text-[hsl(var(--foreground-strong))]"&gt;{option.label}&lt;/span&gt;
                         {option.hint ? (
-<span class="branch-0 cbranch-no" title="branch not covered" >                          &lt;span className="mt-0.5 block text-xs text-[hsl(var(--muted-foreground))]"&gt;{option.hint}&lt;/span&gt;</span>
+                          &lt;span className="mt-0.5 block text-xs text-[hsl(var(--muted-foreground))]"&gt;{option.hint}&lt;/span&gt;
                         ) : null}
                       &lt;/span&gt;
                       &lt;Check
@@ -535,7 +535,7 @@ export function AppSelect({
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-04-03T15:49:11.005Z
+                at 2026-04-11T11:31:19.575Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

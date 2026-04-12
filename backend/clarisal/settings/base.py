@@ -3,6 +3,7 @@ import os
 from datetime import timedelta
 from decimal import Decimal
 from pathlib import Path
+from types import ModuleType
 
 import environ
 
@@ -18,6 +19,7 @@ environ.Env.read_env(os.path.join(BASE_DIR.parent, '.env'))
 SECRET_KEY = env('SECRET_KEY', default='django-insecure-dev-key-change-in-production')
 DEBUG = env('DEBUG')
 ALLOWED_HOSTS = env('ALLOWED_HOSTS')
+API_VERSION = env('API_VERSION', default='v1')
 
 DJANGO_APPS = [
     'django.contrib.admin',
@@ -38,6 +40,7 @@ THIRD_PARTY_APPS = [
 
 LOCAL_APPS = [
     'apps.accounts',
+    'apps.access_control',
     'apps.common',
     'apps.organisations',
     'apps.invitations',
@@ -51,6 +54,7 @@ LOCAL_APPS = [
     'apps.communications',
     'apps.audit',
     'apps.payroll',
+    'apps.expenses',
     'apps.notifications',
     'apps.reports',
     'apps.biometrics',
@@ -181,6 +185,8 @@ CORS_ALLOWED_ORIGINS = env.list(
     ],
 )
 CORS_ALLOW_CREDENTIALS = True
+# CSRF trusted origins are scheme/host/port values only. API path versioning
+# belongs in URL routing, not in this setting.
 CSRF_TRUSTED_ORIGINS = env.list(
     'CSRF_TRUSTED_ORIGINS',
     default=[
@@ -194,6 +200,9 @@ CSRF_TRUSTED_ORIGINS = env.list(
 )
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 USE_X_FORWARDED_HOST = True
+SECURE_BROWSER_XSS_FILTER = True
+SECURE_CONTENT_TYPE_NOSNIFF = True
+X_FRAME_OPTIONS = 'DENY'
 SESSION_COOKIE_NAME = 'clarisal_sessionid'
 SESSION_COOKIE_AGE = env.int('SESSION_COOKIE_AGE', default=60 * 60 * 12)
 SESSION_COOKIE_HTTPONLY = True
@@ -257,6 +266,10 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'timeoff.run_leave_lapse_for_all_active_cycles',
         'schedule': 86400,  # once daily (1 am handled by Celery beat offset in production)
     },
+    'send-document-expiry-alerts-daily': {
+        'task': 'documents.send_document_expiry_alerts',
+        'schedule': 86400,
+    },
 }
 
 # Email
@@ -280,13 +293,21 @@ AWS_S3_REGION_NAME = env('AWS_S3_REGION_NAME', default='ap-south-1')
 AWS_S3_SIGNATURE_VERSION = 's3v4'
 AWS_DEFAULT_ACL = 'private'
 AWS_S3_FILE_OVERWRITE = False
+PAYROLL_FILING_ARTIFACT_STORAGE = env('PAYROLL_FILING_ARTIFACT_STORAGE', default='database')
 
 # App config
 FRONTEND_URL = env('FRONTEND_URL', default='http://localhost:8080')
 INVITE_TOKEN_EXPIRY_HOURS = env.int('INVITE_TOKEN_EXPIRY_HOURS', default=48)
 PASSWORD_RESET_TOKEN_EXPIRY_MINUTES = env.int('PASSWORD_RESET_TOKEN_EXPIRY_MINUTES', default=30)
 DEFAULT_LICENCE_PRICE_PER_MONTH = Decimal(str(env('DEFAULT_LICENCE_PRICE_PER_MONTH', default='50.00')))
+RAZORPAY_KEY_ID = env('RAZORPAY_KEY_ID', default='')
+RAZORPAY_KEY_SECRET = env('RAZORPAY_KEY_SECRET', default='')
 RAZORPAY_WEBHOOK_SECRET = env('RAZORPAY_WEBHOOK_SECRET', default='')
+STRIPE_SECRET_KEY = env('STRIPE_SECRET_KEY', default='')
+STRIPE_WEBHOOK_SECRET = env('STRIPE_WEBHOOK_SECRET', default='')
+STRIPE_API_VERSION = env('STRIPE_API_VERSION', default='2026-02-25.clover')
+BILLING_DEFAULT_CURRENCY = env('BILLING_DEFAULT_CURRENCY', default='INR')
+BILLING_GST_RATE = Decimal(str(env('BILLING_GST_RATE', default='0.18')))
 
 # ---------------------------------------------------------------------------
 # Sentry
@@ -305,21 +326,23 @@ def configure_optional_sentry(environment, sentry_module):
     return True
 
 
+sentry_sdk_module: ModuleType | None
 try:
-    import sentry_sdk  # noqa: E402
+    import sentry_sdk as sentry_sdk_module  # noqa: E402
 except ImportError:  # pragma: no cover - optional dependency in dev images
-    sentry_sdk = None
+    sentry_sdk_module = None
 
 SENTRY_DSN = env("SENTRY_DSN", default="")
-configure_optional_sentry(env, sentry_sdk)
+configure_optional_sentry(env, sentry_sdk_module)
 
 # ---------------------------------------------------------------------------
 # Logging + structlog
 # ---------------------------------------------------------------------------
+structlog_module: ModuleType | None
 try:
-    import structlog  # noqa: E402
+    import structlog as structlog_module  # noqa: E402
 except ImportError:  # pragma: no cover - optional dependency in dev images
-    structlog = None
+    structlog_module = None
 
 LOGGING = {
     "version": 1,
@@ -335,15 +358,15 @@ LOGGING = {
     },
 }
 
-if structlog is not None:
-    structlog.configure(
+if structlog_module is not None:
+    structlog_module.configure(
         processors=[
-            structlog.contextvars.merge_contextvars,
-            structlog.processors.add_log_level,
-            structlog.processors.TimeStamper(fmt="iso"),
-            structlog.dev.ConsoleRenderer() if DEBUG else structlog.processors.JSONRenderer(),
+            structlog_module.contextvars.merge_contextvars,
+            structlog_module.processors.add_log_level,
+            structlog_module.processors.TimeStamper(fmt="iso"),
+            structlog_module.dev.ConsoleRenderer() if DEBUG else structlog_module.processors.JSONRenderer(),
         ],
-        wrapper_class=structlog.make_filtering_bound_logger(logging.WARNING),
+        wrapper_class=structlog_module.make_filtering_bound_logger(logging.WARNING),
         context_class=dict,
-        logger_factory=structlog.PrintLoggerFactory(),
+        logger_factory=structlog_module.PrintLoggerFactory(),
     )

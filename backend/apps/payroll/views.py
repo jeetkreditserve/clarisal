@@ -1,3 +1,6 @@
+import io
+import zipfile
+from datetime import date
 
 from celery.result import AsyncResult
 from django.db.models import Count, Q, Sum
@@ -10,21 +13,28 @@ from rest_framework.views import APIView
 
 from apps.accounts.permissions import (
     BelongsToActiveOrg,
+    HasPermission,
     IsControlTowerUser,
     IsEmployee,
     IsOrgAdmin,
     OrgAdminMutationAllowed,
 )
 from apps.accounts.workspaces import get_active_admin_organisation, get_active_employee
+from apps.audit.services import log_audit_event
 from apps.employees.models import Employee, EmployeeStatus
 
-from .filings.payslip_pdf import download_payslip_pdf_response
+from .filings import fiscal_year_bounds
+from .filings.payslip_pdf import (
+    download_payslip_pdf_response,
+    generate_payslip_pdf_bytes,
+)
 from .models import (
     Arrears,
     CompensationAssignment,
     CompensationTemplate,
     CostCentre,
     FullAndFinalSettlement,
+    InvestmentDeclaration,
     LabourWelfareFundRule,
     PayrollRun,
     PayrollRunItem,
@@ -45,6 +55,7 @@ from .serializers import (
     CompensationTemplateSerializer,
     CompensationTemplateWriteSerializer,
     FullAndFinalSettlementSerializer,
+    InvestmentDeclarationReviewSerializer,
     InvestmentDeclarationSerializer,
     InvestmentDeclarationWriteSerializer,
     LabourWelfareFundRuleSerializer,
@@ -76,6 +87,7 @@ from .services import (
     generate_form16_data,
     generate_statutory_filing_batch,
     list_statutory_filing_batches,
+    notify_payroll_ready_for_payslips,
     regenerate_statutory_filing_batch,
     rerun_payroll_run,
     submit_compensation_assignment_for_approval,
@@ -109,6 +121,16 @@ def _serialize_pay_run(pay_run):
     return PayrollRunSerializer(annotated).data
 
 
+class OrgPayrollAccessMixin:
+    read_permission_code = 'org.payroll.read'
+    write_permission_code = 'org.payroll.process'
+
+    def get_permission_code(self, request):
+        if request.method in {'GET', 'HEAD', 'OPTIONS'}:
+            return self.read_permission_code
+        return self.write_permission_code
+
+
 def _get_admin_organisation(request):
     organisation = get_active_admin_organisation(request, request.user)
     if organisation is None:
@@ -123,6 +145,13 @@ def _get_employee(request):
     return employee
 
 
+def _selected_pay_run_payslips(*, pay_run, item_ids: list[str] | None = None):
+    queryset = Payslip.objects.filter(pay_run=pay_run).select_related('employee__user', 'pay_run')
+    if not item_ids:
+        return queryset.order_by('employee__employee_code', 'employee__user__last_name', 'created_at')
+    return queryset.filter(pay_run_item_id__in=item_ids).order_by('employee__employee_code', 'employee__user__last_name', 'created_at')
+
+
 def _parse_query_bool(value):
     if value is None:
         return None
@@ -132,6 +161,14 @@ def _parse_query_bool(value):
     if normalized in {'0', 'false', 'no', 'off'}:
         return False
     raise ValueError('Boolean query parameter must be one of true/false, 1/0, yes/no, or on/off.')
+
+
+def _filter_payslips_for_fiscal_year(queryset, fiscal_year):
+    start_date, end_date = fiscal_year_bounds(fiscal_year)
+    return queryset.filter(
+        Q(period_year=start_date.year, period_month__gte=start_date.month)
+        | Q(period_year=end_date.year, period_month__lte=end_date.month)
+    )
 
 
 def _statutory_master_payload(*, state_code=None):
@@ -149,16 +186,10 @@ def _statutory_master_payload(*, state_code=None):
     }
 
 
-
-
 class SurchargeRuleSerializer(serializers.ModelSerializer):
     class Meta:
         model = SurchargeRule
         fields = ['id', 'fiscal_year', 'tax_regime', 'income_threshold', 'surcharge_rate_percent', 'effective_from']
-
-
-
-
 
 
 class CostCentreSerializer(serializers.ModelSerializer):
@@ -183,11 +214,8 @@ class CostCentreWriteSerializer(serializers.Serializer):
     parent_id = serializers.UUIDField(required=False, allow_null=True)
     is_active = serializers.BooleanField(default=True)
 
-
-
-
-class OrgCostCentreListCreateView(APIView):
-    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+class OrgCostCentreListCreateView(OrgPayrollAccessMixin, APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, HasPermission]
 
     def get(self, request):
         organisation = get_active_admin_organisation(request, request.user)
@@ -228,8 +256,8 @@ class OrgCostCentreListCreateView(APIView):
         )
 
 
-class OrgCostCentreDetailView(APIView):
-    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+class OrgCostCentreDetailView(OrgPayrollAccessMixin, APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, HasPermission]
 
     def get(self, request, cost_centre_id):
         organisation = get_active_admin_organisation(request, request.user)
@@ -347,8 +375,8 @@ class CtPayrollStatutoryMasterListView(APIView):
         return Response(_statutory_master_payload(state_code=state_code))
 
 
-class OrgPayrollSummaryView(APIView):
-    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+class OrgPayrollSummaryView(OrgPayrollAccessMixin, APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, HasPermission]
 
     def get(self, request):
         organisation = _get_admin_organisation(request)
@@ -356,13 +384,17 @@ class OrgPayrollSummaryView(APIView):
         tax_slab_sets = PayrollTaxSlabSet.objects.filter(
             organisation__isnull=True, is_system_master=True, country_code='IN', is_active=True,
         ).prefetch_related('slabs').order_by('fiscal_year', 'is_old_regime', 'tax_category')
-        templates = CompensationTemplate.objects.filter(organisation=organisation).prefetch_related('lines__component')
-        assignments = CompensationAssignment.objects.filter(employee__organisation=organisation).select_related('employee__user', 'template')
+        templates = CompensationTemplate.objects.filter(organisation=organisation).prefetch_related('lines__component', 'lines__cost_centre')
+        assignments = CompensationAssignment.objects.filter(employee__organisation=organisation).select_related('employee__user', 'template').prefetch_related('lines__cost_centre')
         pay_runs = _annotated_pay_run_qs(organisation=organisation)
         return Response(
             {
                 'tax_slab_sets': PayrollTaxSlabSetSerializer(tax_slab_sets, many=True).data,
                 'components': PayrollComponentSerializer(setup['components'], many=True).data,
+                'cost_centres': CostCentreSerializer(
+                    CostCentre.objects.filter(organisation=organisation).select_related('parent').order_by('code'),
+                    many=True,
+                ).data,
                 'compensation_templates': CompensationTemplateSerializer(templates, many=True).data,
                 'compensation_assignments': CompensationAssignmentSerializer(assignments, many=True).data,
                 'pay_runs': PayrollRunSerializer(pay_runs, many=True).data,
@@ -380,8 +412,8 @@ class OrgPayrollSummaryView(APIView):
         )
 
 
-class OrgPayrollStatutoryMasterListView(APIView):
-    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+class OrgPayrollStatutoryMasterListView(OrgPayrollAccessMixin, APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, HasPermission]
 
     def get(self, request):
         _get_admin_organisation(request)
@@ -389,10 +421,10 @@ class OrgPayrollStatutoryMasterListView(APIView):
         return Response(_statutory_master_payload(state_code=state_code))
 
 
-class OrgPayrollTaxSlabSetListCreateView(APIView):
+class OrgPayrollTaxSlabSetListCreateView(OrgPayrollAccessMixin, APIView):
     """Read-only view of CT-level statutory tax slab masters for org admins."""
 
-    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, HasPermission]
 
     def get(self, request):
         _get_admin_organisation(request)
@@ -405,8 +437,8 @@ class OrgPayrollTaxSlabSetListCreateView(APIView):
         return Response(PayrollTaxSlabSetSerializer(queryset, many=True).data)
 
 
-class OrgPayrollTDSChallanListCreateView(APIView):
-    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
+class OrgPayrollTDSChallanListCreateView(OrgPayrollAccessMixin, APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, HasPermission, OrgAdminMutationAllowed]
 
     def get(self, request):
         organisation = _get_admin_organisation(request)
@@ -424,8 +456,8 @@ class OrgPayrollTDSChallanListCreateView(APIView):
         return Response(PayrollTDSChallanSerializer(challan).data, status=status.HTTP_201_CREATED)
 
 
-class OrgPayrollTDSChallanDetailView(APIView):
-    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
+class OrgPayrollTDSChallanDetailView(OrgPayrollAccessMixin, APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, HasPermission, OrgAdminMutationAllowed]
 
     def patch(self, request, pk):
         organisation = _get_admin_organisation(request)
@@ -443,36 +475,36 @@ class OrgPayrollTDSChallanDetailView(APIView):
         return Response(PayrollTDSChallanSerializer(challan).data)
 
 
-class OrgCompensationTemplateListCreateView(APIView):
-    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
+class OrgCompensationTemplateListCreateView(OrgPayrollAccessMixin, APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, HasPermission, OrgAdminMutationAllowed]
 
     def get(self, request):
         organisation = _get_admin_organisation(request)
-        queryset = CompensationTemplate.objects.filter(organisation=organisation).prefetch_related('lines__component')
+        queryset = CompensationTemplate.objects.filter(organisation=organisation).prefetch_related('lines__component', 'lines__cost_centre')
         return Response(CompensationTemplateSerializer(queryset, many=True).data)
 
     def post(self, request):
         organisation = _get_admin_organisation(request)
-        serializer = CompensationTemplateWriteSerializer(data=request.data)
+        serializer = CompensationTemplateWriteSerializer(data=request.data, context={'organisation': organisation})
         serializer.is_valid(raise_exception=True)
         template = create_compensation_template(organisation, actor=request.user, **serializer.validated_data)
         return Response(CompensationTemplateSerializer(template).data, status=status.HTTP_201_CREATED)
 
 
-class OrgCompensationTemplateDetailView(APIView):
-    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
+class OrgCompensationTemplateDetailView(OrgPayrollAccessMixin, APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, HasPermission, OrgAdminMutationAllowed]
 
     def patch(self, request, pk):
         organisation = _get_admin_organisation(request)
         template = get_object_or_404(CompensationTemplate, organisation=organisation, id=pk)
-        serializer = CompensationTemplateWriteSerializer(data=request.data, partial=True)
+        serializer = CompensationTemplateWriteSerializer(data=request.data, partial=True, context={'organisation': organisation})
         serializer.is_valid(raise_exception=True)
         template = update_compensation_template(template, actor=request.user, **serializer.validated_data)
         return Response(CompensationTemplateSerializer(template).data)
 
 
-class OrgCompensationTemplateSubmitView(APIView):
-    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
+class OrgCompensationTemplateSubmitView(OrgPayrollAccessMixin, APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, HasPermission, OrgAdminMutationAllowed]
 
     def post(self, request, pk):
         organisation = _get_admin_organisation(request)
@@ -489,12 +521,12 @@ class OrgCompensationTemplateSubmitView(APIView):
         return Response(CompensationTemplateSerializer(template).data)
 
 
-class OrgCompensationAssignmentListCreateView(APIView):
-    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
+class OrgCompensationAssignmentListCreateView(OrgPayrollAccessMixin, APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, HasPermission, OrgAdminMutationAllowed]
 
     def get(self, request):
         organisation = _get_admin_organisation(request)
-        queryset = CompensationAssignment.objects.filter(employee__organisation=organisation).select_related('employee__user', 'template').prefetch_related('lines')
+        queryset = CompensationAssignment.objects.filter(employee__organisation=organisation).select_related('employee__user', 'template').prefetch_related('lines__cost_centre')
         return Response(CompensationAssignmentSerializer(queryset, many=True).data)
 
     def post(self, request):
@@ -517,8 +549,8 @@ class OrgCompensationAssignmentListCreateView(APIView):
         return Response(CompensationAssignmentSerializer(assignment).data, status=status.HTTP_201_CREATED)
 
 
-class OrgCompensationAssignmentSubmitView(APIView):
-    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
+class OrgCompensationAssignmentSubmitView(OrgPayrollAccessMixin, APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, HasPermission, OrgAdminMutationAllowed]
 
     def post(self, request, pk):
         organisation = _get_admin_organisation(request)
@@ -535,8 +567,8 @@ class OrgCompensationAssignmentSubmitView(APIView):
         return Response(CompensationAssignmentSerializer(assignment).data)
 
 
-class OrgPayrollRunListCreateView(APIView):
-    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
+class OrgPayrollRunListCreateView(OrgPayrollAccessMixin, APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, HasPermission, OrgAdminMutationAllowed]
 
     def get(self, request):
         organisation = _get_admin_organisation(request)
@@ -556,8 +588,8 @@ class OrgPayrollRunListCreateView(APIView):
         return Response(_serialize_pay_run(pay_run), status=status.HTTP_201_CREATED)
 
 
-class OrgPayrollRunDetailView(APIView):
-    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+class OrgPayrollRunDetailView(OrgPayrollAccessMixin, APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, HasPermission]
 
     def get(self, request, pk):
         organisation = _get_admin_organisation(request)
@@ -580,6 +612,8 @@ def _serialize_run_item(item):
         'gross_pay': str(item.gross_pay),
         'employee_deductions': str(item.employee_deductions),
         'employer_contributions': str(item.employer_contributions),
+        'eps_employer': str(item.eps_employer),
+        'epf_employer': str(item.epf_employer),
         'income_tax': str(item.income_tax),
         'total_deductions': str(item.total_deductions),
         'net_pay': str(item.net_pay),
@@ -587,6 +621,7 @@ def _serialize_run_item(item):
         'message': item.message or '',
         'arrears': snap.get('arrears', '0'),
         'lop_days': snap.get('lop_days', '0'),
+        'epf_employee': snap.get('auto_pf', snap.get('pf_employee', '0')),
         'esi_employee': snap.get('esi_employee', '0'),
         'esi_employer': snap.get('esi_employer', '0'),
         'pf_employer': snap.get('pf_employer', '0'),
@@ -597,8 +632,8 @@ def _serialize_run_item(item):
     }
 
 
-class OrgPayrollRunItemListView(APIView):
-    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+class OrgPayrollRunItemListView(OrgPayrollAccessMixin, APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, HasPermission]
 
     def get(self, request, pk):
         organisation = _get_admin_organisation(request)
@@ -630,8 +665,8 @@ class OrgPayrollRunItemListView(APIView):
         return paginator.get_paginated_response(serializer.data)
 
 
-class OrgPayrollRunForm16View(APIView):
-    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+class OrgPayrollRunForm16View(OrgPayrollAccessMixin, APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, HasPermission]
 
     def get(self, request, pk):
         organisation = _get_admin_organisation(request)
@@ -644,8 +679,8 @@ class OrgPayrollRunForm16View(APIView):
         return Response(generate_form16_data(pay_run))
 
 
-class OrgPayrollRunCalculateView(APIView):
-    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
+class OrgPayrollRunCalculateView(OrgPayrollAccessMixin, APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, HasPermission, OrgAdminMutationAllowed]
 
     def post(self, request, pk):
         organisation = _get_admin_organisation(request)
@@ -659,8 +694,8 @@ class OrgPayrollRunCalculateView(APIView):
         )
 
 
-class OrgPayrollRunCalculationStatusView(APIView):
-    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+class OrgPayrollRunCalculationStatusView(OrgPayrollAccessMixin, APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, HasPermission]
 
     def get(self, request, pk):
         organisation = _get_admin_organisation(request)
@@ -679,8 +714,8 @@ class OrgPayrollRunCalculationStatusView(APIView):
         return Response(serializer.data)
 
 
-class OrgPayrollRunSubmitView(APIView):
-    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
+class OrgPayrollRunSubmitView(OrgPayrollAccessMixin, APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, HasPermission, OrgAdminMutationAllowed]
 
     def post(self, request, pk):
         organisation = _get_admin_organisation(request)
@@ -697,8 +732,8 @@ class OrgPayrollRunSubmitView(APIView):
         return Response(_serialize_pay_run(pay_run))
 
 
-class OrgPayrollRunFinalizeView(APIView):
-    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
+class OrgPayrollRunFinalizeView(OrgPayrollAccessMixin, APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, HasPermission, OrgAdminMutationAllowed]
 
     def post(self, request, pk):
         organisation = _get_admin_organisation(request)
@@ -710,8 +745,8 @@ class OrgPayrollRunFinalizeView(APIView):
         return Response(_serialize_pay_run(pay_run))
 
 
-class OrgPayrollRunRerunView(APIView):
-    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
+class OrgPayrollRunRerunView(OrgPayrollAccessMixin, APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, HasPermission, OrgAdminMutationAllowed]
 
     def post(self, request, pk):
         organisation = _get_admin_organisation(request)
@@ -723,8 +758,8 @@ class OrgPayrollRunRerunView(APIView):
         return Response(_serialize_pay_run(rerun), status=status.HTTP_201_CREATED)
 
 
-class OrgStatutoryFilingBatchListCreateView(APIView):
-    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
+class OrgStatutoryFilingBatchListCreateView(OrgPayrollAccessMixin, APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, HasPermission, OrgAdminMutationAllowed]
 
     def get(self, request):
         organisation = _get_admin_organisation(request)
@@ -743,8 +778,8 @@ class OrgStatutoryFilingBatchListCreateView(APIView):
         return Response(StatutoryFilingBatchSerializer(batch).data, status=status_code)
 
 
-class OrgStatutoryFilingBatchDetailView(APIView):
-    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+class OrgStatutoryFilingBatchDetailView(OrgPayrollAccessMixin, APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, HasPermission]
 
     def get(self, request, pk):
         organisation = _get_admin_organisation(request)
@@ -752,8 +787,8 @@ class OrgStatutoryFilingBatchDetailView(APIView):
         return Response(StatutoryFilingBatchSerializer(batch).data)
 
 
-class OrgStatutoryFilingBatchRegenerateView(APIView):
-    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
+class OrgStatutoryFilingBatchRegenerateView(OrgPayrollAccessMixin, APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, HasPermission, OrgAdminMutationAllowed]
 
     def post(self, request, pk):
         organisation = _get_admin_organisation(request)
@@ -765,8 +800,8 @@ class OrgStatutoryFilingBatchRegenerateView(APIView):
         return Response(StatutoryFilingBatchSerializer(regenerated).data, status=status.HTTP_201_CREATED)
 
 
-class OrgStatutoryFilingBatchCancelView(APIView):
-    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
+class OrgStatutoryFilingBatchCancelView(OrgPayrollAccessMixin, APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, HasPermission, OrgAdminMutationAllowed]
 
     def post(self, request, pk):
         organisation = _get_admin_organisation(request)
@@ -775,23 +810,25 @@ class OrgStatutoryFilingBatchCancelView(APIView):
         return Response(StatutoryFilingBatchSerializer(batch).data)
 
 
-class OrgStatutoryFilingBatchDownloadView(APIView):
-    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+class OrgStatutoryFilingBatchDownloadView(OrgPayrollAccessMixin, APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, HasPermission]
 
     def get(self, request, pk):
         organisation = _get_admin_organisation(request)
         batch = get_object_or_404(StatutoryFilingBatch, organisation=organisation, id=pk)
         try:
-            payload, content_type, file_name = download_statutory_filing_batch(batch, actor=request.user)
+            payload, content_type, file_name, download_url = download_statutory_filing_batch(batch, actor=request.user)
         except ValueError as exc:
             return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        if download_url:
+            return Response({'url': download_url, 'content_type': content_type, 'file_name': file_name})
         response = HttpResponse(payload, content_type=content_type or 'application/octet-stream')
         response['Content-Disposition'] = f'attachment; filename="{file_name or "statutory-filing"}"'
         return response
 
 
-class OrgFullAndFinalSettlementListView(APIView):
-    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+class OrgFullAndFinalSettlementListView(OrgPayrollAccessMixin, APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, HasPermission]
 
     def get(self, request):
         organisation = _get_admin_organisation(request)
@@ -799,8 +836,8 @@ class OrgFullAndFinalSettlementListView(APIView):
         return Response(FullAndFinalSettlementSerializer(queryset, many=True).data)
 
 
-class OrgFullAndFinalSettlementDetailView(APIView):
-    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+class OrgFullAndFinalSettlementDetailView(OrgPayrollAccessMixin, APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, HasPermission]
 
     def get(self, request, pk):
         organisation = _get_admin_organisation(request)
@@ -812,8 +849,8 @@ class OrgFullAndFinalSettlementDetailView(APIView):
         return Response(FullAndFinalSettlementSerializer(settlement).data)
 
 
-class OrgArrearsListCreateView(APIView):
-    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
+class OrgArrearsListCreateView(OrgPayrollAccessMixin, APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, HasPermission, OrgAdminMutationAllowed]
 
     def get(self, request):
         organisation = _get_admin_organisation(request)
@@ -835,8 +872,8 @@ class OrgArrearsListCreateView(APIView):
         return Response(ArrearsSerializer(arrear).data, status=status.HTTP_201_CREATED)
 
 
-class OrgArrearsDetailView(APIView):
-    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
+class OrgArrearsDetailView(OrgPayrollAccessMixin, APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, HasPermission, OrgAdminMutationAllowed]
 
     def get(self, request, pk):
         organisation = _get_admin_organisation(request)
@@ -853,7 +890,14 @@ class MyPayslipListView(APIView):
 
     def get(self, request):
         employee = _get_employee(request)
-        queryset = Payslip.objects.filter(employee=employee)
+        queryset = Payslip.objects.filter(employee=employee).order_by('-period_year', '-period_month', '-created_at')
+        fiscal_year = request.query_params.get('fiscal_year')
+        search = request.query_params.get('search', '').strip()
+
+        if fiscal_year:
+            queryset = _filter_payslips_for_fiscal_year(queryset, fiscal_year)
+        if search:
+            queryset = queryset.filter(slip_number__icontains=search)
         return Response(PayslipSerializer(queryset, many=True).data)
 
 
@@ -866,13 +910,65 @@ class MyPayslipDetailView(APIView):
         return Response(PayslipSerializer(payslip).data)
 
 
-class OrgPayslipDownloadView(APIView):
-    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+class OrgPayslipDownloadView(OrgPayrollAccessMixin, APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, HasPermission]
 
     def get(self, request, pk):
         organisation = _get_admin_organisation(request)
-        payslip = get_object_or_404(Payslip, organisation=organisation, id=pk)
+        payslip = Payslip.objects.filter(organisation=organisation).filter(Q(id=pk) | Q(pay_run_item_id=pk)).first()
+        if payslip is None:
+            return Response({'error': 'Payslip not found.'}, status=status.HTTP_404_NOT_FOUND)
+        log_audit_event(request.user, 'payroll.payslip.downloaded', organisation=organisation, target=payslip)
         return download_payslip_pdf_response(payslip)
+
+
+class OrgPayrollRunPayslipBulkDownloadView(OrgPayrollAccessMixin, APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, HasPermission]
+    write_permission_code = 'org.payroll.read'
+
+    def post(self, request, pk):
+        organisation = _get_admin_organisation(request)
+        pay_run = get_object_or_404(PayrollRun, organisation=organisation, id=pk)
+        item_ids = request.data.get('item_ids') or []
+        payslips = list(_selected_pay_run_payslips(pay_run=pay_run, item_ids=item_ids))
+        if not payslips:
+            return Response({'error': 'Select at least one payslip from this payroll run.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        archive_buffer = io.BytesIO()
+        with zipfile.ZipFile(archive_buffer, mode='w', compression=zipfile.ZIP_DEFLATED) as archive:
+            for payslip in payslips:
+                safe_slip = payslip.slip_number.replace('/', '-')
+                archive.writestr(f'{safe_slip}.pdf', generate_payslip_pdf_bytes(payslip))
+                log_audit_event(
+                    request.user,
+                    'payroll.payslip.downloaded',
+                    organisation=organisation,
+                    target=payslip,
+                    payload={'pay_run_id': str(pay_run.id), 'bulk': True},
+                )
+
+        response = HttpResponse(archive_buffer.getvalue(), content_type='application/zip')
+        response['Content-Disposition'] = f'attachment; filename="payslips-{pay_run.period_year}-{pay_run.period_month:02d}.zip"'
+        return response
+
+
+class OrgPayrollRunPayslipBulkNotifyView(OrgPayrollAccessMixin, APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, HasPermission, OrgAdminMutationAllowed]
+
+    def post(self, request, pk):
+        organisation = _get_admin_organisation(request)
+        pay_run = get_object_or_404(PayrollRun, organisation=organisation, id=pk)
+        if pay_run.status != 'FINALIZED':
+            return Response({'error': 'Payslip notifications can only be resent for finalized payroll runs.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        item_ids = request.data.get('item_ids') or []
+        payslips = list(_selected_pay_run_payslips(pay_run=pay_run, item_ids=item_ids))
+        if not payslips:
+            return Response({'error': 'Select at least one payslip from this payroll run.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        period_label = f'{date(pay_run.period_year, pay_run.period_month, 1):%B %Y}'
+        notify_payroll_ready_for_payslips(payslips, actor=request.user, period_label=period_label)
+        return Response({'selected_count': len(item_ids) or len(payslips), 'notified_count': len(payslips)})
 
 
 class MyPayslipDownloadView(APIView):
@@ -882,61 +978,84 @@ class MyPayslipDownloadView(APIView):
         employee = _get_employee(request)
         payslip = get_object_or_404(Payslip, employee=employee, id=pk)
         return download_payslip_pdf_response(payslip)
+
+
+class MyPayslipFiscalYearDownloadView(APIView):
+    permission_classes = [IsEmployee, BelongsToActiveOrg]
+
+    def get(self, request, fiscal_year):
+        employee = _get_employee(request)
+        queryset = _filter_payslips_for_fiscal_year(
+            Payslip.objects.filter(employee=employee).order_by('period_year', 'period_month', 'created_at'),
+            fiscal_year,
+        )
+        if not queryset.exists():
+            return Response(
+                {'error': f'No payslips found for FY {fiscal_year}.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        archive_buffer = io.BytesIO()
+        with zipfile.ZipFile(archive_buffer, mode='w', compression=zipfile.ZIP_DEFLATED) as archive:
+            for payslip in queryset:
+                safe_slip = payslip.slip_number.replace('/', '-')
+                archive.writestr(f'{safe_slip}.pdf', generate_payslip_pdf_bytes(payslip))
+
+        response = HttpResponse(archive_buffer.getvalue(), content_type='application/zip')
+        response['Content-Disposition'] = f'attachment; filename="payslips-{fiscal_year}.zip"'
+        return response
+
+
 class MyForm12BBDownloadView(APIView):
     permission_classes = [IsEmployee, BelongsToActiveOrg]
 
     def get(self, request, fiscal_year):
         employee = _get_employee(request)
-        try:
-            from apps.approvals.services import get_org_operations_guard
+        from apps.approvals import services as approval_services
 
-            guard = get_org_operations_guard(employee.organisation)
-            if guard.get("approval_actions_blocked"):
-                return Response(
-                    {"error": guard.get("reason", "Operations are blocked.")},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-        except Exception:
-            pass
+        guard = approval_services.get_org_operations_guard(employee.organisation)
+        if guard.get("approval_actions_blocked"):
+            return Response(
+                {"error": guard.get("reason", "Operations are blocked.")},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         from .filings.form12bb import generate_form12bb_pdf
 
         result = generate_form12bb_pdf(employee=employee, fiscal_year=fiscal_year)
-        if result.validation_errors and not result.artifact_binary:
+        payload = result.payload_bytes()
+        if result.validation_errors and not payload:
             return Response(
                 {"error": result.validation_errors[0]},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        if not result.artifact_binary:
+        if not payload:
             return Response(
                 {"error": f"No Form 12BB available for FY {fiscal_year}."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         response = HttpResponse(
-            result.artifact_binary, content_type=result.content_type
+            payload, content_type=result.content_type
         )
         response["Content-Disposition"] = f'attachment; filename="{result.file_name}"'
         return response
 
 
-class OrgForm12BBBulkDownloadView(APIView):
-    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+class OrgForm12BBBulkDownloadView(OrgPayrollAccessMixin, APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, HasPermission]
 
     def get(self, request, fiscal_year):
         organisation = _get_admin_organisation(request)
-        try:
-            from apps.approvals.services import get_org_operations_guard
+        from apps.approvals import services as approval_services
 
-            guard = get_org_operations_guard(organisation)
-            if guard.get("approval_actions_blocked"):
-                return Response(
-                    {"error": guard.get("reason", "Operations are blocked.")},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-        except Exception:
-            pass
+        guard = approval_services.get_org_operations_guard(organisation)
+        if guard.get("approval_actions_blocked"):
+            return Response(
+                {"error": guard.get("reason", "Operations are blocked.")},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-        zip_bytes, structured_payloads = generate_form12bb_zip_for_organisation(
+        zip_bytes, _structured_payloads = generate_form12bb_zip_for_organisation(
             organisation,
             fiscal_year=fiscal_year,
             actor=request.user,
@@ -952,12 +1071,150 @@ class MyInvestmentDeclarationListCreateView(APIView):
 
     def get(self, request):
         employee = _get_employee(request)
-        queryset = employee.investment_declarations.all()
-        return Response(InvestmentDeclarationSerializer(queryset, many=True).data)
+        queryset = employee.investment_declarations.select_related('verified_by', 'proof_document').all()
+        fiscal_year = request.query_params.get('fiscal_year')
+        if fiscal_year:
+            queryset = queryset.filter(fiscal_year=fiscal_year.replace('/', '-'))
+        return Response(
+            InvestmentDeclarationSerializer(
+                queryset,
+                many=True,
+                context={'request': request, 'document_access_context': 'EMPLOYEE_DECLARATION'},
+            ).data
+        )
 
     def post(self, request):
         employee = _get_employee(request)
-        serializer = InvestmentDeclarationWriteSerializer(data=request.data)
+        serializer = InvestmentDeclarationWriteSerializer(data=request.data, context={'employee': employee})
         serializer.is_valid(raise_exception=True)
         declaration = employee.investment_declarations.create(**serializer.validated_data)
-        return Response(InvestmentDeclarationSerializer(declaration).data, status=status.HTTP_201_CREATED)
+        return Response(
+            InvestmentDeclarationSerializer(
+                declaration,
+                context={'request': request, 'document_access_context': 'EMPLOYEE_DECLARATION'},
+            ).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class MyInvestmentDeclarationDetailView(APIView):
+    permission_classes = [IsEmployee, BelongsToActiveOrg]
+
+    def get(self, request, pk):
+        employee = _get_employee(request)
+        declaration = get_object_or_404(
+            InvestmentDeclaration.objects.select_related('employee__user', 'verified_by', 'proof_document'),
+            employee=employee,
+            id=pk,
+        )
+        return Response(
+            InvestmentDeclarationSerializer(
+                declaration,
+                context={'request': request, 'document_access_context': 'EMPLOYEE_DECLARATION'},
+            ).data
+        )
+
+    def patch(self, request, pk):
+        employee = _get_employee(request)
+        declaration = get_object_or_404(
+            InvestmentDeclaration.objects.select_related('employee__user', 'verified_by', 'proof_document'),
+            employee=employee,
+            id=pk,
+        )
+        serializer = InvestmentDeclarationWriteSerializer(
+            declaration,
+            data=request.data,
+            partial=True,
+            context={'employee': employee},
+        )
+        serializer.is_valid(raise_exception=True)
+        for field, value in serializer.validated_data.items():
+            setattr(declaration, field, value)
+        if any(field in serializer.validated_data for field in ('section', 'declared_amount', 'description', 'proof_file_key', 'proof_document')):
+            declaration.is_verified = False
+            declaration.verified_by = None
+        declaration.save(update_fields=[*serializer.validated_data.keys(), 'is_verified', 'verified_by', 'modified_at'])
+        return Response(
+            InvestmentDeclarationSerializer(
+                declaration,
+                context={'request': request, 'document_access_context': 'EMPLOYEE_DECLARATION'},
+            ).data
+        )
+
+    def delete(self, request, pk):
+        employee = _get_employee(request)
+        declaration = get_object_or_404(InvestmentDeclaration, employee=employee, id=pk)
+        declaration.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class OrgInvestmentDeclarationListView(OrgPayrollAccessMixin, APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, HasPermission]
+
+    def get(self, request):
+        organisation = _get_admin_organisation(request)
+        queryset = InvestmentDeclaration.objects.filter(employee__organisation=organisation).select_related(
+            'employee__user',
+            'verified_by',
+            'proof_document',
+        )
+
+        employee_id = request.query_params.get('employee_id')
+        fiscal_year = request.query_params.get('fiscal_year')
+        section = request.query_params.get('section')
+        is_verified = request.query_params.get('is_verified')
+
+        if employee_id:
+            queryset = queryset.filter(employee_id=employee_id)
+        if fiscal_year:
+            queryset = queryset.filter(fiscal_year=fiscal_year.replace('/', '-'))
+        if section:
+            queryset = queryset.filter(section=section)
+        if is_verified is not None:
+            queryset = queryset.filter(is_verified=_parse_query_bool(is_verified))
+
+        queryset = queryset.order_by('-fiscal_year', 'employee__user__first_name', 'employee__user__last_name', 'section', '-created_at')
+        return Response(
+            InvestmentDeclarationSerializer(
+                queryset,
+                many=True,
+                context={'request': request, 'document_access_context': 'ORG_ADMIN_DECLARATION'},
+            ).data
+        )
+
+
+class OrgInvestmentDeclarationDetailView(OrgPayrollAccessMixin, APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, HasPermission, OrgAdminMutationAllowed]
+
+    def get(self, request, pk):
+        organisation = _get_admin_organisation(request)
+        declaration = get_object_or_404(
+            InvestmentDeclaration.objects.select_related('employee__user', 'verified_by', 'proof_document'),
+            employee__organisation=organisation,
+            id=pk,
+        )
+        return Response(
+            InvestmentDeclarationSerializer(
+                declaration,
+                context={'request': request, 'document_access_context': 'ORG_ADMIN_DECLARATION'},
+            ).data
+        )
+
+    def patch(self, request, pk):
+        organisation = _get_admin_organisation(request)
+        declaration = get_object_or_404(
+            InvestmentDeclaration.objects.select_related('employee__user', 'verified_by', 'proof_document'),
+            employee__organisation=organisation,
+            id=pk,
+        )
+        serializer = InvestmentDeclarationReviewSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        declaration.is_verified = serializer.validated_data['is_verified']
+        declaration.verified_by = request.user if declaration.is_verified else None
+        declaration.save(update_fields=['is_verified', 'verified_by', 'modified_at'])
+        return Response(
+            InvestmentDeclarationSerializer(
+                declaration,
+                context={'request': request, 'document_access_context': 'ORG_ADMIN_DECLARATION'},
+            ).data
+        )

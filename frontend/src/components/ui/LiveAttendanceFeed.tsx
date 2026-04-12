@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { checkDeviceHealth } from '@/lib/api/org-admin'
+import { API_BASE_URL } from '@/lib/api'
 import { formatDateTime } from '@/lib/format'
 
 interface PunchEvent {
@@ -66,8 +67,8 @@ export function LiveAttendanceFeed({ organisationId, deviceId, onPunch, onDevice
     if (!organisationId && !deviceId) return
 
     const endpoint = deviceId
-      ? `/api/org/biometrics/devices/${deviceId}/events/`
-      : '/api/org/biometrics/events/'
+      ? `${API_BASE_URL}/org/biometrics/devices/${deviceId}/events/`
+      : `${API_BASE_URL}/org/biometrics/events/`
 
     let isClosed = false
 

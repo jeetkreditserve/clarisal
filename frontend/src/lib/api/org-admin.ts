@@ -10,6 +10,7 @@ import type { OrgAdminSetupState } from '@/types/organisation'
 import type {
   ApprovalActionItem,
   ApprovalDelegation,
+  ApprovalWorkflowCatalog,
   AttendanceDayRecord,
   AttendanceImportJob,
   AttendancePolicy,
@@ -21,16 +22,24 @@ import type {
   AttendanceShift,
   AttendanceShiftAssignment,
   ApprovalWorkflowConfig,
+  ApprovalWorkflowReadinessRow,
+  ApprovalWorkflowSimulationRequest,
+  ApprovalWorkflowSimulationResult,
   Arrears,
   CompensationAssignment,
   CompensationTemplate,
+  CostCentre,
+  CustomFieldDefinition,
   Department,
   DocumentRecord,
   EmployeeDocumentRequest,
+  EmployeeCustomFieldValue,
   EmployeeDetail,
+  EmployeeExitInterview,
   EmployeeListItem,
   FullAndFinalSettlement,
   HolidayCalendar,
+  InvestmentDeclaration,
   LeaveCycle,
   LeavePlan,
   LeaveRequestRecord,
@@ -229,6 +238,35 @@ export async function fetchEmployeeDetail(id: string) {
   return data
 }
 
+export interface OrgChartNode {
+  id: string
+  name: string
+  email: string
+  employee_code: string | null
+  designation: string | null
+  department: string | null
+  status: EmployeeDetail['status']
+  profile_picture: string | null
+  direct_reports: OrgChartNode[]
+}
+
+export interface OrgChartCyclesResponse {
+  has_cycles: boolean
+  cycles: string[][]
+}
+
+export async function fetchOrgChart(includeInactive = false) {
+  const { data } = await api.get<OrgChartNode[]>('/org/org-chart/', {
+    params: includeInactive ? { include_inactive: true } : undefined,
+  })
+  return data
+}
+
+export async function fetchOrgChartCycles() {
+  const { data } = await api.get<OrgChartCyclesResponse>('/org/org-chart/cycles/')
+  return data
+}
+
 export interface CareerTimelineEntry {
   type: 'PROMOTION' | 'TRANSFER'
   id: string
@@ -251,6 +289,34 @@ export async function fetchEmployeeCareerTimeline(employeeId: string) {
   return data
 }
 
+export async function fetchCustomFieldDefinitions(placement = 'CUSTOM') {
+  const { data } = await api.get<CustomFieldDefinition[]>('/org/custom-fields/', {
+    params: placement ? { placement } : undefined,
+  })
+  return data
+}
+
+export async function fetchEmployeeCustomFieldValues(employeeId: string) {
+  const { data } = await api.get<EmployeeCustomFieldValue[]>(`/org/employees/${employeeId}/custom-fields/`)
+  return data
+}
+
+export async function updateEmployeeCustomFieldValues(
+  employeeId: string,
+  payload: {
+    custom_fields: Array<{
+      field_definition_id: string
+      value_text?: string
+      value_number?: string | null
+      value_date?: string | null
+      value_boolean?: boolean
+    }>
+  },
+) {
+  const { data } = await api.put<EmployeeCustomFieldValue[]>(`/org/employees/${employeeId}/custom-fields/`, payload)
+  return data
+}
+
 export async function updateEmployee(
   id: string,
   payload: Partial<{
@@ -262,6 +328,7 @@ export async function updateEmployee(
     leave_approval_workflow_id: string | null
     on_duty_approval_workflow_id: string | null
     attendance_regularization_approval_workflow_id: string | null
+    expense_approval_workflow_id: string | null
   }>
 ) {
   const { data } = await api.patch<EmployeeDetail>(`/org/employees/${id}/`, payload)
@@ -312,6 +379,27 @@ export async function updateEmployeeOffboarding(
   payload: Partial<{ exit_reason: string; exit_notes: string }>
 ) {
   const { data } = await api.patch<OffboardingProcess>(`/org/employees/${id}/offboarding/`, payload)
+  return data
+}
+
+export async function fetchEmployeeExitInterview(employeeId: string) {
+  const { data } = await api.get<EmployeeExitInterview | null>(`/org/employees/${employeeId}/exit-interview/`)
+  return data
+}
+
+export async function submitEmployeeExitInterview(
+  employeeId: string,
+  payload: Partial<{
+    interview_date: string | null
+    exit_reason: string
+    interviewer_id: string | null
+    overall_satisfaction: number | null
+    would_recommend_org: boolean | null
+    feedback: string
+    areas_of_improvement: string
+  }>
+) {
+  const { data } = await api.patch<EmployeeExitInterview>(`/org/employees/${employeeId}/exit-interview/`, payload)
   return data
 }
 
@@ -368,6 +456,21 @@ export async function fetchApprovalWorkflows() {
 
 export async function fetchApprovalWorkflow(id: string) {
   const { data } = await api.get<ApprovalWorkflowConfig>(`/org/approvals/workflows/${id}/`)
+  return data
+}
+
+export async function fetchApprovalWorkflowCatalog() {
+  const { data } = await api.get<ApprovalWorkflowCatalog>('/org/approvals/workflows/catalog/')
+  return data
+}
+
+export async function fetchApprovalWorkflowReadiness() {
+  const { data } = await api.get<ApprovalWorkflowReadinessRow[]>('/org/approvals/workflows/readiness/')
+  return data
+}
+
+export async function simulateApprovalWorkflow(payload: ApprovalWorkflowSimulationRequest) {
+  const { data } = await api.post<ApprovalWorkflowSimulationResult>('/org/approvals/workflows/simulate/', payload)
   return data
 }
 
@@ -691,6 +794,21 @@ export async function fetchPayrollSummary() {
   return data
 }
 
+export async function fetchOrgInvestmentDeclarations(params?: {
+  employee_id?: string
+  fiscal_year?: string
+  section?: string
+  is_verified?: boolean
+}) {
+  const { data } = await api.get<InvestmentDeclaration[]>('/org/payroll/investment-declarations/', { params })
+  return data
+}
+
+export async function updateOrgInvestmentDeclarationReview(id: string, payload: { is_verified: boolean }) {
+  const { data } = await api.patch<InvestmentDeclaration>(`/org/payroll/investment-declarations/${id}/`, payload)
+  return data
+}
+
 export async function fetchPayrollRunDetail(id: string) {
   const { data } = await api.get<PayrollRun>(`/org/payroll/runs/${id}/`)
   return data
@@ -712,6 +830,21 @@ export async function downloadPayslipPdf(id: string) {
     blob: response.data as Blob,
     filename: response.headers['content-disposition']?.match(/filename="?([^"]+)"?/)?.[1] || `payslip-${id}.pdf`,
   }
+}
+
+export async function downloadPayrollRunPayslipsZip(runId: string, payload: { item_ids?: string[] }) {
+  const response = await api.post<Blob>(`/org/payroll/runs/${runId}/payslips/download/`, payload, {
+    responseType: 'blob',
+  })
+  return {
+    blob: response.data as Blob,
+    filename: response.headers['content-disposition']?.match(/filename="?([^"]+)"?/)?.[1] || `payslips-${runId}.zip`,
+  }
+}
+
+export async function notifyPayrollRunPayslips(runId: string, payload: { item_ids?: string[] }) {
+  const { data } = await api.post<{ selected_count: number; notified_count: number }>(`/org/payroll/runs/${runId}/payslips/notify/`, payload)
+  return data
 }
 
 export async function fetchOrgFullAndFinalSettlements() {
@@ -766,6 +899,32 @@ export async function downloadOrgReport(
 export async function createPayrollTaxSlabSet(payload: Record<string, unknown>) {
   const { data } = await api.post<PayrollTaxSlabSet>('/org/payroll/tax-slab-sets/', payload)
   return data
+}
+
+export async function createCostCentre(payload: {
+  code: string
+  name: string
+  gl_code?: string
+  parent_id?: string | null
+  is_active?: boolean
+}) {
+  const { data } = await api.post<CostCentre>('/org/payroll/cost-centres/', payload)
+  return data
+}
+
+export async function updateCostCentre(id: string, payload: Partial<{
+  code: string
+  name: string
+  gl_code: string
+  parent_id: string | null
+  is_active: boolean
+}>) {
+  const { data } = await api.patch<CostCentre>(`/org/payroll/cost-centres/${id}/`, payload)
+  return data
+}
+
+export async function deactivateCostCentre(id: string) {
+  await api.delete(`/org/payroll/cost-centres/${id}/`)
 }
 
 export async function updatePayrollTaxSlabSet(id: string, payload: Record<string, unknown>) {
@@ -853,6 +1012,17 @@ export async function downloadPayrollFiling(id: string) {
     responseType: 'blob',
   })
 
+  const contentType = response.headers['content-type'] ?? ''
+  if (contentType.includes('application/json')) {
+    const payload = JSON.parse(await (response.data as Blob).text()) as { url: string; file_name?: string }
+    const downloadResponse = await fetch(payload.url)
+    const blob = await downloadResponse.blob()
+    return {
+      blob,
+      filename: payload.file_name || `statutory-filing-${id}`,
+    }
+  }
+
   return {
     blob: response.data as Blob,
     filename: response.headers['content-disposition']?.match(/filename=\"?([^"]+)\"?/)?.[1] || `statutory-filing-${id}`,
@@ -885,7 +1055,7 @@ export async function publishNotice(id: string) {
 }
 
 export async function downloadOrgForm12BBBulk(fiscalYear: string): Promise<Blob> {
-  const response = await api.get<Blob>(`/org/payroll/form12bb/${fiscalYear}/download/`, {
+  const response = await api.get<Blob>(`/org/payroll/form-12bb/${fiscalYear}/download/`, {
     responseType: 'blob',
   })
   return response.data

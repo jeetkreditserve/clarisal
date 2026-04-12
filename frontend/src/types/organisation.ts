@@ -243,6 +243,7 @@ export interface OrganisationDetail {
   entity_type: OrganisationEntityType
   entity_type_label: string
   pan_number: string | null
+  tan_number: string | null
   esi_branch_code: string
   address: string
   phone: string

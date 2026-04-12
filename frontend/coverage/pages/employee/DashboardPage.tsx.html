@@ -23,16 +23,16 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">83.33% </span>
+                <span class="strong">84.61% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>10/12</span>
+                <span class='fraction'>11/13</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">60% </span>
+                <span class="strong">57.14% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>12/20</span>
+                <span class='fraction'>16/28</span>
             </div>
         
             
@@ -44,9 +44,9 @@
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">83.33% </span>
+                <span class="strong">84.61% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>10/12</span>
+                <span class='fraction'>11/13</span>
             </div>
         
             
@@ -256,7 +256,24 @@
 <a name='L191'></a><a href='#L191'>191</a>
 <a name='L192'></a><a href='#L192'>192</a>
 <a name='L193'></a><a href='#L193'>193</a>
-<a name='L194'></a><a href='#L194'>194</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L194'></a><a href='#L194'>194</a>
+<a name='L195'></a><a href='#L195'>195</a>
+<a name='L196'></a><a href='#L196'>196</a>
+<a name='L197'></a><a href='#L197'>197</a>
+<a name='L198'></a><a href='#L198'>198</a>
+<a name='L199'></a><a href='#L199'>199</a>
+<a name='L200'></a><a href='#L200'>200</a>
+<a name='L201'></a><a href='#L201'>201</a>
+<a name='L202'></a><a href='#L202'>202</a>
+<a name='L203'></a><a href='#L203'>203</a>
+<a name='L204'></a><a href='#L204'>204</a>
+<a name='L205'></a><a href='#L205'>205</a>
+<a name='L206'></a><a href='#L206'>206</a>
+<a name='L207'></a><a href='#L207'>207</a>
+<a name='L208'></a><a href='#L208'>208</a>
+<a name='L209'></a><a href='#L209'>209</a>
+<a name='L210'></a><a href='#L210'>210</a>
+<a name='L211'></a><a href='#L211'>211</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -271,6 +288,7 @@
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -297,6 +315,22 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -458,7 +492,7 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { SkeletonMetricCard, SkeletonTable } from '@/components/ui/Skeleton'
 import { StatusBadge } from '@/components/ui/StatusBadge'
-import { useMyDashboard, useMyProfile } from '@/hooks/useEmployeeSelf'
+import { useMyAttendanceSummary, useMyDashboard, useMyProfile } from '@/hooks/useEmployeeSelf'
 import { getApprovalActionTone, getOnboardingStatusTone } from '@/lib/status'
 &nbsp;
 const DASHBOARD_NOTICE_LIMIT = 3
@@ -466,6 +500,7 @@ const DASHBOARD_NOTICE_LIMIT = 3
 export function EmployeeDashboardPage() {
   const { data: dashboard, isLoading } = useMyDashboard()
   const { data: profile } = useMyProfile()
+  const { data: attendanceSummary } = useMyAttendanceSummary()
 &nbsp;
   return (
     &lt;div className="space-y-6"&gt;
@@ -530,6 +565,22 @@ export function EmployeeDashboardPage() {
             &lt;MetricCard title="Pending documents" value={dashboard.pending_documents} hint="Files waiting for admin review." icon={FileClock} tone="warning" /&gt;
             &lt;MetricCard title="Verified documents" value={dashboard.verified_documents} hint="Approved by your organisation." icon={ShieldCheck} tone="success" /&gt;
             &lt;MetricCard title="Rejected documents" value={dashboard.rejected_documents} hint="Upload corrected copies where needed." icon={FileWarning} tone="danger" /&gt;
+            &lt;MetricCard
+              title="Today attendance"
+              value={attendanceSummary?.today.status ?? <span class="branch-1 cbranch-no" title="branch not covered" >'Pending'}</span>
+              hint={
+                attendanceSummary
+                  ? `${attendanceSummary.today.worked_minutes} worked minutes • ${attendanceSummary.pending_regularizations.length} regularizations pending`
+                  : <span class="branch-1 cbranch-no" title="branch not covered" >'Attendance summary unavailable.'</span>
+              }
+              tone="info"
+            /&gt;
+            &lt;MetricCard
+              title="Pending approvals"
+              value={dashboard.approvals.count}
+              hint={dashboard.approvals.count ? <span class="branch-0 cbranch-no" title="branch not covered" >'Review requests waiting on you.' : '</span>No approval actions are waiting on you.'}
+              tone={dashboard.approvals.count ? <span class="branch-0 cbranch-no" title="branch not covered" >'warning' : '</span>success'}
+            /&gt;
           &lt;/div&gt;
 &nbsp;
           {dashboard.offboarding ? (
@@ -649,7 +700,7 @@ export function EmployeeDashboardPage() {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-04-03T15:49:11.005Z
+                at 2026-04-11T11:31:19.575Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

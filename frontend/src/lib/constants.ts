@@ -28,12 +28,26 @@ export const APPROVAL_REQUEST_KIND_OPTIONS: ApprovalRequestKind[] = [
   'LEAVE',
   'ON_DUTY',
   'ATTENDANCE_REGULARIZATION',
+  'EXPENSE_CLAIM',
   'PAYROLL_PROCESSING',
   'SALARY_REVISION',
   'COMPENSATION_TEMPLATE_CHANGE',
+  'PROMOTION',
+  'TRANSFER',
 ]
-export const APPROVAL_APPROVER_TYPE_OPTIONS: ApprovalApproverType[] = ['REPORTING_MANAGER', 'SPECIFIC_EMPLOYEE', 'PRIMARY_ORG_ADMIN']
-export const APPROVAL_FALLBACK_TYPE_OPTIONS: ApprovalFallbackType[] = ['NONE', 'SPECIFIC_EMPLOYEE', 'PRIMARY_ORG_ADMIN']
+export const APPROVAL_APPROVER_TYPE_OPTIONS: ApprovalApproverType[] = [
+  'REPORTING_MANAGER',
+  'NTH_LEVEL_MANAGER',
+  'DEPARTMENT_HEAD',
+  'LOCATION_ADMIN',
+  'HR_BUSINESS_PARTNER',
+  'PAYROLL_ADMIN',
+  'FINANCE_APPROVER',
+  'ROLE',
+  'SPECIFIC_EMPLOYEE',
+  'PRIMARY_ORG_ADMIN',
+]
+export const APPROVAL_FALLBACK_TYPE_OPTIONS: ApprovalFallbackType[] = ['NONE', 'REPORTING_MANAGER', 'DEPARTMENT_HEAD', 'ROLE', 'SPECIFIC_EMPLOYEE', 'PRIMARY_ORG_ADMIN']
 export const APPROVAL_STAGE_MODE_OPTIONS: ApprovalStageMode[] = ['ALL', 'ANY']
 export const DOCUMENT_TYPE_OPTIONS: DocumentType[] = ['PAN', 'AADHAAR', 'EDUCATION_CERT', 'EMPLOYMENT_LETTER', 'OTHER']
 
@@ -56,6 +70,12 @@ export function createDefaultApprovalWorkflow() {
         employment_type: '',
         designation: '',
         leave_type_id: null as string | null,
+        min_amount: null as string | null,
+        max_amount: null as string | null,
+        grade: '',
+        band: '',
+        cost_centre: '',
+        legal_entity: '',
       },
     ],
     stages: [
@@ -65,11 +85,13 @@ export function createDefaultApprovalWorkflow() {
         mode: 'ALL',
         fallback_type: 'PRIMARY_ORG_ADMIN',
         fallback_employee_id: null as string | null,
+        fallback_role_code: '',
         reminder_after_hours: null as number | null,
         escalate_after_hours: null as number | null,
         escalation_target_type: 'NONE' as ApprovalFallbackType,
         escalation_employee_id: null as string | null,
-        approvers: [{ approver_type: 'REPORTING_MANAGER', approver_employee_id: null as string | null }],
+        escalation_role_code: '',
+        approvers: [{ approver_type: 'REPORTING_MANAGER', approver_employee_id: null as string | null, manager_level: 1, role_code: '' }],
       },
     ],
   }

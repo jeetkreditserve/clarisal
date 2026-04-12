@@ -59,12 +59,12 @@ class TestOrgProfileEsiBranchCode:
     def test_org_profile_reads_and_updates_esi_branch_code(self, org_admin_client):
         client, organisation = org_admin_client
 
-        read_response = client.get('/api/org/profile/')
+        read_response = client.get('/api/v1/org/profile/')
         assert read_response.status_code == 200
         assert read_response.data['esi_branch_code'] == ''
 
         write_response = client.patch(
-            '/api/org/profile/',
+            '/api/v1/org/profile/',
             {'esi_branch_code': 'ESI-BLR-001'},
             format='json',
         )

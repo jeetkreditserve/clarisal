@@ -2,6 +2,7 @@ from datetime import date
 from decimal import Decimal
 
 import pytest
+from django.utils import timezone
 
 from apps.accounts.models import AccountType, User, UserRole
 from apps.approvals.models import (
@@ -28,6 +29,9 @@ from apps.timeoff.models import (
     LeaveCycleType,
     LeavePlan,
     LeaveType,
+    LeaveWithoutPayEntry,
+    LeaveWithoutPayEntrySource,
+    LeaveWithoutPayEntryStatus,
 )
 
 ZERO = Decimal('0.00')
@@ -289,6 +293,98 @@ class TestCarryForwardCapEnforcement:
         ).first()
         assert ledger_entry is not None
         assert ledger_entry.amount == Decimal('5.00')
+
+
+@pytest.mark.django_db
+class TestCycleEndProcessing:
+    def test_process_cycle_end_lapse_creates_approved_lwp_entry_for_loss_of_pay_leave(self):
+        from apps.timeoff.services import process_cycle_end_lapse
+
+        organisation = _create_organisation('Timeoff LWP Org')
+        employee = _create_employee(organisation, email='lwp-lapse@test.com')
+        leave_type = _create_leave_type(
+            organisation,
+            code='LWP',
+            carry_forward_mode=CarryForwardMode.NONE,
+        )
+        leave_type.is_loss_of_pay = True
+        leave_type.save(update_fields=['is_loss_of_pay'])
+        balance = _create_balance(
+            employee,
+            leave_type,
+            cycle_start=date(2025, 1, 1),
+            cycle_end=date(2025, 12, 31),
+            available_amount=Decimal('4.00'),
+        )
+
+        process_cycle_end_lapse(employee, balance)
+
+        lwp_entry = LeaveWithoutPayEntry.objects.get(employee=employee, source=LeaveWithoutPayEntrySource.LEAVE_LAPSE)
+        assert lwp_entry.entry_date == balance.cycle_end
+        assert lwp_entry.units == Decimal('4.00')
+        assert lwp_entry.status == LeaveWithoutPayEntryStatus.APPROVED
+        assert 'Cycle end lapse' in lwp_entry.reason
+
+    def test_process_cycle_end_lapse_skips_lwp_entry_for_non_loss_of_pay_leave(self):
+        from apps.timeoff.services import process_cycle_end_lapse
+
+        organisation = _create_organisation('Timeoff Non LWP Org')
+        employee = _create_employee(organisation, email='non-lwp-lapse@test.com')
+        leave_type = _create_leave_type(
+            organisation,
+            code='PL',
+            carry_forward_mode=CarryForwardMode.NONE,
+        )
+        balance = _create_balance(
+            employee,
+            leave_type,
+            cycle_start=date(2025, 1, 1),
+            cycle_end=date(2025, 12, 31),
+            available_amount=Decimal('4.00'),
+        )
+
+        process_cycle_end_lapse(employee, balance)
+
+        assert not LeaveWithoutPayEntry.objects.filter(employee=employee).exists()
+
+    def test_run_leave_lapse_task_enforces_capped_carry_forward(self):
+        from apps.timeoff.tasks import run_leave_lapse_for_all_active_cycles
+
+        organisation = _create_organisation('Timeoff Capped Task Org')
+        employee = _create_employee(organisation, email='capped-task@test.com')
+        leave_type = _create_leave_type(
+            organisation,
+            code='CAP',
+            carry_forward_mode=CarryForwardMode.CAPPED,
+            carry_forward_cap=Decimal('10.00'),
+        )
+        today = timezone.localdate()
+        previous_cycle_start = date(today.year - 1, 1, 1)
+        previous_cycle_end = date(today.year - 1, 12, 31)
+        current_cycle_start = date(today.year, 1, 1)
+        current_cycle_end = date(today.year, 12, 31)
+        balance = _create_balance(
+            employee,
+            leave_type,
+            cycle_start=previous_cycle_start,
+            cycle_end=previous_cycle_end,
+            available_amount=Decimal('15.00'),
+        )
+
+        run_leave_lapse_for_all_active_cycles()
+        run_leave_lapse_for_all_active_cycles()
+
+        balance.refresh_from_db()
+        assert balance.credited_amount == Decimal('10.00')
+        assert balance.ledger_entries.filter(entry_type=LeaveBalanceEntryType.EXPIRY, amount=Decimal('5.00')).count() == 1
+
+        new_balance = LeaveBalance.objects.get(
+            employee=employee,
+            leave_type=leave_type,
+            cycle_start=current_cycle_start,
+            cycle_end=current_cycle_end,
+        )
+        assert new_balance.carried_forward_amount == Decimal('10.00')
 
 
 @pytest.mark.django_db

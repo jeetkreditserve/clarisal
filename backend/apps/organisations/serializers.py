@@ -18,6 +18,7 @@ from .country_metadata import (
 )
 from .models import (
     ActAsSession,
+    Invoice,
     OnboardingChecklist,
     OrgAdminSetupStep,
     Organisation,
@@ -33,6 +34,7 @@ from .models import (
     OrganisationNote,
     OrganisationStateTransition,
     OrganisationTaxRegistration,
+    Payment,
     TenantDataExportBatch,
     TenantDataExportType,
 )
@@ -263,6 +265,54 @@ class LicenceBatchSerializer(serializers.ModelSerializer):
         return get_batch_lifecycle_state(obj)
 
 
+class PaymentSerializer(serializers.ModelSerializer):
+    licence_batch_id = serializers.UUIDField(source='licence_batch.id', read_only=True)
+
+    class Meta:
+        model = Payment
+        fields = [
+            'id',
+            'licence_batch_id',
+            'amount',
+            'currency',
+            'gateway',
+            'gateway_order_id',
+            'gateway_payment_id',
+            'status',
+            'failure_reason',
+            'gateway_options',
+            'completed_at',
+            'created_at',
+            'modified_at',
+        ]
+
+
+class InvoiceSerializer(serializers.ModelSerializer):
+    payment_id = serializers.UUIDField(source='payment.id', read_only=True)
+
+    class Meta:
+        model = Invoice
+        fields = [
+            'id',
+            'payment_id',
+            'invoice_number',
+            'issue_date',
+            'due_date',
+            'amount',
+            'gst_amount',
+            'total_amount',
+            'status',
+            'storage_key',
+            'created_at',
+            'modified_at',
+        ]
+
+
+class PaymentOrderCreateSerializer(serializers.Serializer):
+    licence_batch_id = serializers.UUIDField(required=False)
+    amount = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, min_value=Decimal('0.01'))
+
+
 class LicenceCapacitySummarySerializer(serializers.Serializer):
     active_paid_quantity = serializers.IntegerField()
     allocated = serializers.IntegerField()
@@ -446,7 +496,7 @@ class OrganisationDetailSerializer(serializers.ModelSerializer):
         model = Organisation
         fields = [
             'id', 'name', 'slug', 'status', 'billing_status', 'access_state', 'onboarding_stage',
-            'licence_count', 'country_code', 'currency', 'entity_type', 'entity_type_label', 'pan_number',
+            'licence_count', 'country_code', 'currency', 'entity_type', 'entity_type_label', 'pan_number', 'tan_number',
             'address', 'phone', 'email', 'logo_url', 'esi_branch_code',
             'primary_admin_email', 'primary_admin', 'bootstrap_admin', 'paid_marked_at', 'activated_at', 'suspended_at',
             'created_by_email', 'created_at', 'modified_at',
@@ -588,6 +638,7 @@ class CreateOrganisationSerializer(serializers.Serializer):
 class UpdateOrganisationSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=255, required=False)
     pan_number = serializers.CharField(max_length=10, required=False)
+    tan_number = serializers.CharField(max_length=10, required=False, allow_blank=True)
     phone = serializers.CharField(max_length=20, required=False, allow_blank=True)
     email = serializers.EmailField(required=False, allow_blank=True)
     country_code = serializers.CharField(max_length=2, required=False)
@@ -602,6 +653,9 @@ class UpdateOrganisationSerializer(serializers.Serializer):
             return normalize_pan_number(value)
         except ValueError as exc:
             raise serializers.ValidationError(str(exc)) from exc
+
+    def validate_tan_number(self, value):
+        return (value or '').strip().upper()
 
     def validate_country_code(self, value):
         try:

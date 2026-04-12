@@ -1,3 +1,6 @@
+from datetime import timedelta
+
+from django.utils import timezone
 from rest_framework import serializers
 
 from .models import Document, EmployeeDocumentRequest, OnboardingDocumentType
@@ -7,6 +10,8 @@ class DocumentSerializer(serializers.ModelSerializer):
     uploaded_by_email = serializers.EmailField(source='uploaded_by.email', read_only=True)
     reviewed_by_email = serializers.EmailField(source='reviewed_by.email', read_only=True)
     document_type_code = serializers.CharField(source='document_type', read_only=True)
+    expires_soon = serializers.SerializerMethodField()
+    is_expired = serializers.SerializerMethodField()
 
     class Meta:
         model = Document
@@ -21,11 +26,26 @@ class DocumentSerializer(serializers.ModelSerializer):
             'status',
             'metadata',
             'version',
+            'expiry_date',
+            'alert_days_before',
+            'expires_soon',
+            'is_expired',
             'uploaded_by_email',
             'reviewed_by_email',
             'reviewed_at',
             'created_at',
         ]
+
+    def get_expires_soon(self, obj):
+        if obj.expiry_date is None:
+            return False
+        today = timezone.localdate()
+        return today <= obj.expiry_date <= today + timedelta(days=obj.alert_days_before)
+
+    def get_is_expired(self, obj):
+        if obj.expiry_date is None:
+            return False
+        return obj.expiry_date < timezone.localdate()
 
 
 class OnboardingDocumentTypeSerializer(serializers.ModelSerializer):
@@ -72,6 +92,8 @@ class EmployeeDocumentRequestSerializer(serializers.ModelSerializer):
 class UploadRequestedDocumentSerializer(serializers.Serializer):
     file = serializers.FileField()
     metadata = serializers.JSONField(required=False)
+    expiry_date = serializers.DateField(required=False, allow_null=True)
+    alert_days_before = serializers.IntegerField(required=False, min_value=1, max_value=365, default=30)
 
 
 class LegacyUploadDocumentSerializer(UploadRequestedDocumentSerializer):

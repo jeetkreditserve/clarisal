@@ -11,3 +11,4 @@ ruff
 bandit
 pre-commit
 detect-secrets
+moto[s3]

@@ -1,4 +1,5 @@
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -61,7 +62,16 @@ class EmployeeDocumentListView(APIView):
     def get(self, request, employee_id):
         organisation = get_active_admin_organisation(request, request.user)
         employee = get_object_or_404(Employee, organisation=organisation, id=employee_id)
-        return Response(DocumentSerializer(list_documents(employee), many=True).data)
+        queryset = list_documents(employee)
+        if request.query_params.get('expiring_soon') == 'true':
+            from datetime import timedelta
+            today = timezone.localdate()
+            queryset = [
+                doc for doc in queryset
+                if doc.expiry_date is not None
+                and today <= doc.expiry_date <= today + timedelta(days=doc.alert_days_before)
+            ]
+        return Response(DocumentSerializer(queryset, many=True).data)
 
 
 class EmployeeDocumentDownloadView(APIView):
@@ -119,7 +129,16 @@ class MyDocumentListCreateView(APIView):
 
     def get(self, request):
         employee = get_active_employee(request, request.user)
-        return Response(DocumentSerializer(list_documents(employee), many=True).data)
+        queryset = list_documents(employee)
+        if request.query_params.get('expiring_soon') == 'true':
+            from datetime import timedelta
+            today = timezone.localdate()
+            queryset = [
+                doc for doc in queryset
+                if doc.expiry_date is not None
+                and today <= doc.expiry_date <= today + timedelta(days=doc.alert_days_before)
+            ]
+        return Response(DocumentSerializer(queryset, many=True).data)
 
     def post(self, request):
         employee = get_active_employee(request, request.user)
@@ -132,6 +151,8 @@ class MyDocumentListCreateView(APIView):
                 serializer.validated_data['document_type'],
                 uploaded_by=request.user,
                 metadata=serializer.validated_data.get('metadata'),
+                expiry_date=serializer.validated_data.get('expiry_date'),
+                alert_days_before=serializer.validated_data.get('alert_days_before', 30),
             )
         except ValueError as exc:
             return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -162,6 +183,8 @@ class MyDocumentRequestUploadView(APIView):
                 serializer.validated_data['file'],
                 uploaded_by=request.user,
                 metadata=serializer.validated_data.get('metadata'),
+                expiry_date=serializer.validated_data.get('expiry_date'),
+                alert_days_before=serializer.validated_data.get('alert_days_before', 30),
             )
         except ValueError as exc:
             return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)

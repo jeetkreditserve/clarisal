@@ -31,9 +31,9 @@ test.describe('Org Admin — Notices', () => {
     const draftCard = page.locator('.surface-muted').filter({ hasText: 'Finance policy refresh draft' }).first()
 
     await expect(publishedCard).toBeVisible({ timeout: 10000 })
-    await expect(publishedCard.getByText('Published', { exact: true })).toBeVisible()
+    await expect(publishedCard.locator('.status-pill').filter({ hasText: 'Published' }).first()).toBeVisible()
     await expect(scheduledCard).toBeVisible()
-    await expect(scheduledCard.getByText('Scheduled', { exact: true })).toBeVisible()
+    await expect(scheduledCard.locator('.status-pill').filter({ hasText: 'Scheduled' }).first()).toBeVisible()
     await expect(draftCard).toBeVisible()
     await expect(draftCard.getByRole('button', { name: 'Edit' })).toBeVisible()
   })

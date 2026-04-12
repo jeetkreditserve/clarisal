@@ -98,7 +98,7 @@ class AttendancePolicyWriteSerializer(serializers.Serializer):
     restrict_by_ip = serializers.BooleanField(required=False)
     allowed_ip_ranges = serializers.ListField(child=serializers.CharField(), required=False)
     restrict_by_geo = serializers.BooleanField(required=False)
-    allowed_geo_sites = serializers.ListField(child=serializers.JSONField(), required=False)
+    allowed_geo_sites = serializers.ListField(child=serializers.JSONField(), required=False, allow_null=True)
     is_default = serializers.BooleanField(required=False)
     is_active = serializers.BooleanField(required=False)
 
@@ -170,6 +170,7 @@ class AttendanceDaySerializer(serializers.ModelSerializer):
     employee_code = serializers.CharField(source="employee.employee_code", read_only=True)
     shift_name = serializers.CharField(source="shift.name", read_only=True, allow_null=True)
     policy_name = serializers.CharField(source="policy.name", read_only=True, allow_null=True)
+    geo_fence_warning = serializers.SerializerMethodField()
 
     class Meta:
         model = AttendanceDay
@@ -198,9 +199,13 @@ class AttendanceDaySerializer(serializers.ModelSerializer):
             "metadata",
             "shift_name",
             "policy_name",
+            "geo_fence_warning",
             "created_at",
             "modified_at",
         ]
+
+    def get_geo_fence_warning(self, obj):
+        return bool((obj.metadata or {}).get("geo_fence_warning"))
 
 
 class AttendanceDayOverrideSerializer(serializers.Serializer):

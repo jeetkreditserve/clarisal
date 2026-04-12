@@ -3,6 +3,7 @@ from django.urls import path
 from .views import (
     OrgApplicationListView,
     OrgApplicationStageView,
+    OrgCandidateConvertView,
     OrgCandidateDetailView,
     OrgInterviewListCreateView,
     OrgJobPostingListCreateView,
@@ -14,6 +15,7 @@ urlpatterns = [
     path('recruitment/jobs/', OrgJobPostingListCreateView.as_view(), name='recruitment-job-list-create'),
     path('recruitment/applications/', OrgApplicationListView.as_view(), name='recruitment-application-list'),
     path('recruitment/candidates/<uuid:pk>/', OrgCandidateDetailView.as_view(), name='recruitment-candidate-detail'),
+    path('recruitment/candidates/<uuid:pk>/convert/', OrgCandidateConvertView.as_view(), name='recruitment-candidate-convert'),
     path('recruitment/applications/<uuid:pk>/stage/', OrgApplicationStageView.as_view(), name='recruitment-application-stage'),
     path(
         'recruitment/applications/<uuid:application_id>/interviews/',

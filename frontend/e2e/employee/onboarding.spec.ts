@@ -38,23 +38,23 @@ let inviteToken = ''
 
 test('org admin invites the onboarding test employee', async ({ request }) => {
   // Prime the CSRF cookie jar before login.
-  const csrfResp = await request.get(`${API_ORIGIN}/api/auth/csrf/`)
+  const csrfResp = await request.get(`${API_ORIGIN}/api/v1/auth/csrf/`)
   expect(csrfResp.ok()).toBeTruthy()
 
   // Login as org admin to get session
-  const loginResp = await request.post(`${API_ORIGIN}/api/auth/login/`, {
+  const loginResp = await request.post(`${API_ORIGIN}/api/v1/auth/login/`, {
     data: { email: ORG_ADMIN_EMAIL, password: ORG_ADMIN_PASSWORD },
   })
   expect(loginResp.status()).toBe(200)
 
   // Login rotates CSRF state, so fetch a fresh token for the authenticated session.
-  const sessionCsrfResp = await request.get(`${API_ORIGIN}/api/auth/csrf/`)
+  const sessionCsrfResp = await request.get(`${API_ORIGIN}/api/v1/auth/csrf/`)
   expect(sessionCsrfResp.ok()).toBeTruthy()
   const sessionCsrfData = await sessionCsrfResp.json()
   const csrfToken = sessionCsrfData.csrfToken as string
   expect(csrfToken).toBeTruthy()
 
-  const existingEmployeesResp = await request.get(`${API_ORIGIN}/api/org/employees/`, {
+  const existingEmployeesResp = await request.get(`${API_ORIGIN}/api/v1/org/employees/`, {
     params: { search: 'onboarding.e2e.' },
   })
   expect(existingEmployeesResp.ok()).toBeTruthy()
@@ -65,14 +65,14 @@ test('org admin invites the onboarding test employee', async ({ request }) => {
     if (!employee.email.startsWith('onboarding.e2e.')) {
       continue
     }
-    const deleteResp = await request.delete(`${API_ORIGIN}/api/org/employees/${employee.id}/delete/`, {
+    const deleteResp = await request.delete(`${API_ORIGIN}/api/v1/org/employees/${employee.id}/delete/`, {
       headers: { 'X-CSRFToken': csrfToken },
     })
     expect(deleteResp.status()).toBe(204)
   }
 
   // Invite the new employee
-  const inviteResp = await request.post(`${API_ORIGIN}/api/org/employees/`, {
+  const inviteResp = await request.post(`${API_ORIGIN}/api/v1/org/employees/`, {
     headers: { 'X-CSRFToken': csrfToken },
     data: {
       company_email: ONBOARDING_EMAIL,
@@ -201,7 +201,7 @@ test('onboarding basic details form visible', async ({ page }) => {
 // ─── Step 5: Active employee redirect ─────────────────────────────────────
 
 test('active employee redirected away from /me/onboarding', async ({ page }) => {
-  // Login as Priya Sharma (ACTIVE employee)
+  // Login as the seeded ACTIVE employee
   await page.goto('/auth/login')
   await page.fill('#email', EXISTING_EMPLOYEE_EMAIL)
   await page.fill('#password', EXISTING_EMPLOYEE_PASSWORD)

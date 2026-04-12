@@ -179,11 +179,11 @@ class SurchargeRule(models.Model):
 
 > **Audit finding (§7.10, Gap #15 — Medium):** Form 24Q XML has not been validated against NSDL's official FVU (File Validation Utility) schema. The field names and nesting match common templates but are not verified against the current FVU version.
 
-- [ ] Download NSDL FVU 7.x schema documentation and compare field names, order, and data types against `backend/apps/payroll/filings/form24q.py`.
-- [ ] Fix any field name mismatches, missing mandatory fields, or incorrect data types found in the schema comparison.
-- [ ] Add a golden-file test in `test_filings.py` that generates Form 24Q XML for a fixed fixture and compares it byte-for-byte against a known-good expected output file stored at `backend/apps/payroll/tests/fixtures/form24q_expected.xml`.
-- [ ] Document any known deviations from the FVU schema (e.g., fields that require challan linkage data not yet available in the system) as explicit `TODO` comments with issue references.
-- [ ] Note in the plan that physical FVU 7.x tool validation (running the Java JAR against generated output) should be performed manually before customer use — add this as a release checklist item.
+- [x] Compare the implemented XML structure against the currently referenced Protean/NSDL Form 24Q utility guidance and current FVU notes, then use that review to drive the remaining parity work in `backend/apps/payroll/filings/form24q.py`. The current implementation is now aligned against the Protean Form 24Q data structure, RPU 4.7 notes, and FVU 9.0 release notes.
+- [x] Fix any field name mismatches, missing mandatory fields, or incorrect data types found in the schema comparison. Challan-linked Annexure I entries, `192` section defaults, dd/mm/yyyy date formatting, and the newer Annexure II fields (115BAC opt-out, standard deduction, surcharge, and 80CCH placeholders) are now covered; only explicit TODOs for unavailable upstream data remain.
+- [x] Add a golden-file test in `test_filings.py` that generates Form 24Q XML for a fixed fixture and compares it byte-for-byte against a known-good expected output file stored at `backend/apps/payroll/tests/fixtures/form24q_2026_2027_q1.xml`.
+- [x] Document any known deviations from the FVU schema (e.g., fields that require challan linkage data not yet available in the system) as explicit `TODO` comments with issue references.
+- [x] Note in the plan that physical FVU tool validation (running the Java JAR against generated output) should be performed manually before customer use — add this as a release checklist item.
 
 ## Task 8: Generate Form 12BB from Investment Declarations
 
@@ -197,8 +197,8 @@ class SurchargeRule(models.Model):
   - Declaration with date and employee signature block
   - Summary box with totals per section
 - [x] Cover PDF generation (valid PDF bytes), section population from declaration records, empty-declaration blocking, and edge case with 4 tests in `test_filings.py`.
-- [ ] Add an employee self-service endpoint `GET /api/me/payroll/form-12bb/<fiscal_year>/` that returns the PDF.
-- [ ] Add an org-admin bulk download endpoint that generates Form 12BB PDFs for all employees in a fiscal year as a ZIP.
+- [x] Add an employee self-service endpoint `GET /api/me/payroll/form-12bb/<fiscal_year>/` that returns the PDF.
+- [x] Add an org-admin bulk download endpoint that generates Form 12BB PDFs for all employees in a fiscal year as a ZIP.
 
 ## Task 9: Add ESI Branch Code and PF Opt-Out Guard
 

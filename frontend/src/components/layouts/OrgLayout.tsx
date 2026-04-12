@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { Link, Outlet, useNavigate } from 'react-router-dom'
-import { BarChart3, Bell, BriefcaseBusiness, Building, Building2, CalendarDays, ClipboardCheck, Clock3, Fingerprint, Landmark, LayoutDashboard, LogOut, MapPin, PlaneTakeoff, Repeat, ScrollText, Target, Users } from 'lucide-react'
+import { BarChart3, Bell, BriefcaseBusiness, Building, Building2, CalendarDays, ClipboardCheck, Clock3, CreditCard, Fingerprint, GitBranch, Landmark, LayoutDashboard, LockKeyhole, LogOut, MapPin, PlaneTakeoff, ReceiptText, Repeat, ScrollText, Target, Users, Wrench } from 'lucide-react'
 import { SidebarNav, type NavGroup } from './SidebarNav'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
 import { useAuth } from '@/hooks/useAuth'
@@ -11,13 +11,24 @@ import { getAccessStateTone } from '@/lib/status'
 import { OrgSetupBanner } from '@/components/org/OrgSetupBanner'
 import { useRefreshCtImpersonation, useStopCtImpersonation } from '@/hooks/useCtOrganisations'
 import { formatDateTime } from '@/lib/format'
+import { canManageAccessControl, hasAnyPermission, hasPermission } from '@/lib/rbac'
+import type { AuthUser } from '@/types/auth'
 import { toast } from 'sonner'
 
 function isFeatureEnabled(featureFlags: Record<string, boolean> | undefined, featureCode: string) {
   return featureFlags?.[featureCode] ?? true
 }
 
-function buildNavGroups(featureFlags: Record<string, boolean> | undefined): NavGroup[] {
+function buildNavGroups(user: AuthUser | null | undefined): NavGroup[] {
+  const featureFlags = user?.feature_flags
+  const canReadEmployees = hasPermission(user, 'org.employees.read')
+  const canReadPayroll = hasPermission(user, 'org.payroll.read')
+  const canReadReports = hasPermission(user, 'org.reports.read')
+  const canManageReports = hasPermission(user, 'org.reports.builder.manage')
+  const canAccessApprovals = hasAnyPermission(user, ['org.approvals.workflow.manage', 'org.approvals.action.approve'])
+  const canReadAudit = hasPermission(user, 'org.audit.read')
+  const canAccessControl = canManageAccessControl(user)
+
   return [
     {
       label: 'Workspace',
@@ -29,9 +40,10 @@ function buildNavGroups(featureFlags: Record<string, boolean> | undefined): NavG
     {
       label: 'People',
       items: [
-        { label: 'Employees', href: '/org/employees', icon: Users },
-        { label: 'Departments', href: '/org/departments', icon: Building },
-        { label: 'Locations', href: '/org/locations', icon: MapPin },
+        ...(canReadEmployees ? [{ label: 'Employees', href: '/org/employees', icon: Users }] : []),
+        ...(canReadEmployees ? [{ label: 'Org chart', href: '/org/org-chart', icon: GitBranch }] : []),
+        ...(canReadEmployees ? [{ label: 'Departments', href: '/org/departments', icon: Building }] : []),
+        ...(canReadEmployees ? [{ label: 'Locations', href: '/org/locations', icon: MapPin }] : []),
       ],
     },
     {
@@ -52,7 +64,12 @@ function buildNavGroups(featureFlags: Record<string, boolean> | undefined): NavG
     {
       label: 'Operations',
       items: [
-        ...(isFeatureEnabled(featureFlags, 'PAYROLL') ? [{ label: 'Payroll Preview', href: '/org/payroll', icon: Landmark }] : []),
+        ...(isFeatureEnabled(featureFlags, 'PAYROLL') && canReadPayroll ? [{ label: 'Payroll Preview', href: '/org/payroll', icon: Landmark }] : []),
+        { label: 'Billing', href: '/org/billing', icon: CreditCard },
+        { label: 'Expense policies', href: '/org/expenses/policies', icon: ReceiptText },
+        { label: 'Expense claims', href: '/org/expenses/claims', icon: ReceiptText },
+        { label: 'Assets', href: '/org/assets', icon: BriefcaseBusiness },
+        { label: 'Asset assignments', href: '/org/assets/assignments', icon: Wrench },
         ...(isFeatureEnabled(featureFlags, 'RECRUITMENT')
           ? [
               { label: 'Job postings', href: '/org/recruitment/jobs', icon: BriefcaseBusiness },
@@ -65,10 +82,20 @@ function buildNavGroups(featureFlags: Record<string, boolean> | undefined): NavG
               { label: 'Appraisal cycles', href: '/org/performance/appraisals', icon: ClipboardCheck },
             ]
           : []),
-        ...(isFeatureEnabled(featureFlags, 'REPORTS') ? [{ label: 'Reports', href: '/org/reports', icon: BarChart3 }] : []),
-        ...(isFeatureEnabled(featureFlags, 'APPROVALS') ? [{ label: 'Approvals', href: '/org/approval-workflows', icon: ClipboardCheck }] : []),
+        ...(isFeatureEnabled(featureFlags, 'REPORTS') && canReadReports ? [{ label: 'Reports', href: '/org/reports', icon: BarChart3 }] : []),
+        ...(canReadReports ? [{ label: 'Saved templates', href: '/org/reports/templates', icon: BarChart3 }] : []),
+        ...(canManageReports ? [{ label: 'Report builder', href: '/org/reports/builder', icon: BarChart3 }] : []),
+        ...(isFeatureEnabled(featureFlags, 'APPROVALS') && canAccessApprovals
+          ? [{ label: 'Approvals', href: '/org/approval-workflows', icon: ClipboardCheck }]
+          : []),
+        ...(canAccessControl
+          ? [
+              { label: 'Access control', href: '/org/access-control', icon: LockKeyhole },
+              { label: 'Access simulator', href: '/org/access-control/simulator', icon: LockKeyhole },
+            ]
+          : []),
         ...(isFeatureEnabled(featureFlags, 'NOTICES') ? [{ label: 'Notices', href: '/org/notices', icon: Bell }] : []),
-        { label: 'Audit Timeline', href: '/org/audit', icon: ScrollText },
+        ...(canReadAudit ? [{ label: 'Audit Timeline', href: '/org/audit', icon: ScrollText }] : []),
       ],
     },
   ].filter((group) => group.items.length > 0)
@@ -80,7 +107,7 @@ export function OrgLayout() {
   const refreshImpersonationMutation = useRefreshCtImpersonation()
   const stopImpersonationMutation = useStopCtImpersonation()
   const activeImpersonationSessionId = user?.impersonation?.session_id ?? null
-  const navGroups = buildNavGroups(user?.feature_flags)
+  const navGroups = buildNavGroups(user)
 
   useEffect(() => {
     if (!activeImpersonationSessionId || user?.account_type !== 'CONTROL_TOWER') {

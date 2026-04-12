@@ -1,6 +1,25 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
+import {
+  createAssetAssignment,
+  createAssetCategory,
+  createAssetItem,
+  createAssetMaintenance,
+  fetchAssetAssignments,
+  fetchAssetCategories,
+  fetchAssetItems,
+  fetchAssetMaintenance,
+  markAssetAssignmentLost,
+  returnAssetAssignment,
+} from '@/lib/api/assets'
 import { fetchOrgAuditLogs } from '@/lib/api/audit'
+import {
+  createOrgExpensePolicy,
+  fetchOrgExpenseClaimSummary,
+  fetchOrgExpenseClaims,
+  fetchOrgExpensePolicies,
+  updateOrgExpensePolicy,
+} from '@/lib/api/expenses'
 import { useAuth } from '@/hooks/useAuth'
 import {
   approveApprovalAction,
@@ -15,10 +34,12 @@ import {
   downloadNormalizedAttendanceFile,
   downloadOrgForm12BBBulk,
   downloadPayrollFiling,
+  downloadPayrollRunPayslipsZip,
   createApprovalWorkflow,
   createApprovalDelegation,
   createCompensationAssignment,
   createCompensationTemplate,
+  createCostCentre,
   createDepartment,
   createHolidayCalendar,
   createOrgAddress,
@@ -32,6 +53,7 @@ import {
   createNotice,
   createOnDutyPolicy,
   deactivateDepartment,
+  deactivateCostCentre,
   deactivateOrgAddress,
   deactivateLocation,
   deleteEmployee,
@@ -41,11 +63,17 @@ import {
   fetchDesignations,
   fetchEmployeeDocumentRequests,
   fetchEmployeeDetail,
+  fetchEmployeeCustomFieldValues,
   fetchEmployeeDocuments,
+  fetchEmployeeExitInterview,
   fetchEmployeeCareerTimeline,
   fetchEmployees,
+  fetchCustomFieldDefinitions,
+  fetchOrgChart,
+  fetchOrgChartCycles,
   fetchOrgFullAndFinalSettlement,
   fetchOrgFullAndFinalSettlements,
+  fetchOrgInvestmentDeclarations,
   fetchOrgArrears,
   fetchHolidayCalendars,
   fetchLeaveCycles,
@@ -65,6 +93,8 @@ import {
   fetchPayrollSummary,
   fetchApprovalInbox,
   fetchApprovalDelegations,
+  fetchApprovalWorkflowCatalog,
+  fetchApprovalWorkflowReadiness,
   fetchAttendanceDashboard,
   fetchAttendanceDays,
   fetchAttendanceImports,
@@ -91,6 +121,8 @@ import {
   fetchNotice,
   fetchOnDutyPolicy,
   rerunPayrollRun,
+  simulateApprovalWorkflow,
+  notifyPayrollRunPayslips,
   regeneratePayrollFiling,
   uploadAttendanceSheet,
   uploadPunchSheet,
@@ -98,6 +130,8 @@ import {
   submitCompensationTemplate,
   submitPayrollRun,
   updateCompensationTemplate,
+  updateCostCentre,
+  updateOrgInvestmentDeclarationReview,
   updateOrgAddress,
   updateOrgProfile,
   updatePayrollTaxSlabSet,
@@ -107,8 +141,10 @@ import {
   updateApprovalDelegation,
   updateDepartment,
   updateEmployee,
+  updateEmployeeCustomFieldValues,
   updateEmployeeOffboarding,
   updateEmployeeOffboardingTask,
+  submitEmployeeExitInterview,
   updateHolidayCalendar,
   updateLeaveCycle,
   updateLeavePlan,
@@ -124,6 +160,100 @@ import {
 function useOrgScope() {
   const { user } = useAuth()
   return user?.organisation_id ?? 'unknown-org'
+}
+
+export function useAssetCategories() {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'asset-categories'],
+    queryFn: fetchAssetCategories,
+  })
+}
+
+export function useCreateAssetCategory() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: createAssetCategory,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useAssetItems(filters?: Parameters<typeof fetchAssetItems>[0]) {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'asset-items', filters],
+    queryFn: () => fetchAssetItems(filters),
+  })
+}
+
+export function useCreateAssetItem() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: createAssetItem,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useAssetAssignments(filters?: Parameters<typeof fetchAssetAssignments>[0]) {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'asset-assignments', filters],
+    queryFn: () => fetchAssetAssignments(filters),
+  })
+}
+
+export function useCreateAssetAssignment() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: createAssetAssignment,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+      queryClient.invalidateQueries({ queryKey: ['me'] })
+    },
+  })
+}
+
+export function useReturnAssetAssignment() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Parameters<typeof returnAssetAssignment>[1] }) => returnAssetAssignment(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+      queryClient.invalidateQueries({ queryKey: ['me'] })
+    },
+  })
+}
+
+export function useMarkAssetAssignmentLost() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Parameters<typeof markAssetAssignmentLost>[1] }) => markAssetAssignmentLost(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useAssetMaintenance() {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'asset-maintenance'],
+    queryFn: fetchAssetMaintenance,
+  })
+}
+
+export function useCreateAssetMaintenance() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: createAssetMaintenance,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
 }
 
 export function useOrgDashboard() {
@@ -152,6 +282,53 @@ export function useOrgAuditLogs(params?: Parameters<typeof fetchOrgAuditLogs>[0]
     queryKey: ['org', organisationId, 'audit', params],
     queryFn: () => fetchOrgAuditLogs(params),
     enabled,
+  })
+}
+
+export function useOrgExpensePolicies(enabled = true) {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'expense-policies'],
+    queryFn: fetchOrgExpensePolicies,
+    enabled,
+  })
+}
+
+export function useOrgExpenseClaims(params?: { status?: string; reimbursement_status?: string; employee?: string }, enabled = true) {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'expense-claims', params],
+    queryFn: () => fetchOrgExpenseClaims(params),
+    enabled,
+  })
+}
+
+export function useOrgExpenseClaimSummary(enabled = true) {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'expense-claim-summary'],
+    queryFn: fetchOrgExpenseClaimSummary,
+    enabled,
+  })
+}
+
+export function useCreateOrgExpensePolicy() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: createOrgExpensePolicy,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useUpdateOrgExpensePolicy() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Record<string, unknown> }) => updateOrgExpensePolicy(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
   })
 }
 
@@ -295,6 +472,22 @@ export function useEmployees(params?: { status?: string; search?: string; page?:
   })
 }
 
+export function useOrgChart(includeInactive = false) {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'org-chart', includeInactive],
+    queryFn: () => fetchOrgChart(includeInactive),
+  })
+}
+
+export function useOrgChartCycles() {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'org-chart', 'cycles'],
+    queryFn: fetchOrgChartCycles,
+  })
+}
+
 export function useInviteEmployee() {
   const queryClient = useQueryClient()
   return useMutation({
@@ -328,6 +521,42 @@ export function useEmployeeCareerTimeline(employeeId: string) {
     queryKey: ['org', organisationId, 'employees', employeeId, 'career-timeline'],
     queryFn: () => fetchEmployeeCareerTimeline(employeeId),
     enabled: Boolean(employeeId),
+  })
+}
+
+export function useEmployeeExitInterview(employeeId: string) {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'employees', employeeId, 'exit-interview'],
+    queryFn: () => fetchEmployeeExitInterview(employeeId),
+    enabled: Boolean(employeeId),
+  })
+}
+
+export function useCustomFieldDefinitions(placement = 'CUSTOM') {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'custom-fields', placement],
+    queryFn: () => fetchCustomFieldDefinitions(placement),
+  })
+}
+
+export function useEmployeeCustomFieldValues(employeeId: string) {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'employees', employeeId, 'custom-fields'],
+    queryFn: () => fetchEmployeeCustomFieldValues(employeeId),
+    enabled: Boolean(employeeId),
+  })
+}
+
+export function useUpdateEmployeeCustomFieldValues(employeeId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: Parameters<typeof updateEmployeeCustomFieldValues>[1]) => updateEmployeeCustomFieldValues(employeeId, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
   })
 }
 
@@ -365,6 +594,17 @@ export function useUpdateEmployeeOffboarding(id: string) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (payload: Parameters<typeof updateEmployeeOffboarding>[1]) => updateEmployeeOffboarding(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useSubmitEmployeeExitInterview(employeeId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: Parameters<typeof submitEmployeeExitInterview>[1]) =>
+      submitEmployeeExitInterview(employeeId, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['org'] })
     },
@@ -483,6 +723,30 @@ export function useApprovalWorkflow(id: string, enabled = true) {
     queryKey: ['org', organisationId, 'approval-workflows', id],
     queryFn: () => fetchApprovalWorkflow(id),
     enabled: enabled && Boolean(id),
+  })
+}
+
+export function useApprovalWorkflowCatalog(enabled = true) {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'approval-workflow-catalog'],
+    queryFn: fetchApprovalWorkflowCatalog,
+    enabled,
+  })
+}
+
+export function useApprovalWorkflowReadiness(enabled = true) {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'approval-workflow-readiness'],
+    queryFn: fetchApprovalWorkflowReadiness,
+    enabled,
+  })
+}
+
+export function useSimulateApprovalWorkflow() {
+  return useMutation({
+    mutationFn: simulateApprovalWorkflow,
   })
 }
 
@@ -741,6 +1005,19 @@ export function usePayrollSummary() {
   })
 }
 
+export function useOrgInvestmentDeclarations(params?: {
+  employee_id?: string
+  fiscal_year?: string
+  section?: string
+  is_verified?: boolean
+}) {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'investment-declarations', params],
+    queryFn: () => fetchOrgInvestmentDeclarations(params),
+  })
+}
+
 export function usePayrollRunDetail(id: string) {
   const organisationId = useOrgScope()
   return useQuery({
@@ -765,6 +1042,18 @@ export function usePayrollRunItems(
 export function useDownloadPayslipPdf() {
   return useMutation({
     mutationFn: downloadPayslipPdf,
+  })
+}
+
+export function useDownloadPayrollRunPayslipsZip() {
+  return useMutation({
+    mutationFn: ({ runId, item_ids }: { runId: string; item_ids?: string[] }) => downloadPayrollRunPayslipsZip(runId, { item_ids }),
+  })
+}
+
+export function useNotifyPayrollRunPayslips() {
+  return useMutation({
+    mutationFn: ({ runId, item_ids }: { runId: string; item_ids?: string[] }) => notifyPayrollRunPayslips(runId, { item_ids }),
   })
 }
 
@@ -807,6 +1096,36 @@ export function useUpdatePayrollTaxSlabSet() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: Record<string, unknown> }) => updatePayrollTaxSlabSet(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useCreateCostCentre() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: createCostCentre,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useUpdateCostCentre() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Parameters<typeof updateCostCentre>[1] }) => updateCostCentre(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useDeactivateCostCentre() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: deactivateCostCentre,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['org'] })
     },
@@ -987,6 +1306,18 @@ export function useDownloadPayrollFiling() {
 export function useDownloadOrgForm12BBBulk() {
   return useMutation({
     mutationFn: downloadOrgForm12BBBulk,
+  })
+}
+
+export function useReviewOrgInvestmentDeclaration() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, is_verified }: { id: string; is_verified: boolean }) =>
+      updateOrgInvestmentDeclarationReview(id, { is_verified }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+      queryClient.invalidateQueries({ queryKey: ['me'] })
+    },
   })
 }
 

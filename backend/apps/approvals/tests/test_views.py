@@ -11,7 +11,9 @@ from apps.accounts.models import User, UserRole
 from apps.approvals.models import (
     ApprovalAction,
     ApprovalActionStatus,
+    ApprovalApproverType,
     ApprovalDelegation,
+    ApprovalFallbackType,
     ApprovalRequestKind,
     ApprovalRun,
     ApprovalRunStatus,
@@ -129,7 +131,7 @@ class TestApprovalWorkflowApi:
         client, organisation = org_admin_client
 
         response = client.post(
-            '/api/org/approvals/workflows/',
+            '/api/v1/org/approvals/workflows/',
             {
                 'name': 'Attendance Regularization Workflow',
                 'description': '',
@@ -164,7 +166,7 @@ class TestApprovalWorkflowApi:
         client, organisation = org_admin_client
 
         response = client.post(
-            '/api/org/approvals/workflows/',
+            '/api/v1/org/approvals/workflows/',
             {
                 'name': 'Payroll Workflow',
                 'description': '',
@@ -195,6 +197,75 @@ class TestApprovalWorkflowApi:
         assert response.status_code == 201
         assert response.data['default_request_kind'] == ApprovalRequestKind.PAYROLL_PROCESSING
 
+    def test_catalog_readiness_and_simulation_cover_all_request_kinds(self, org_admin_client):
+        client, organisation = org_admin_client
+        manager_user = User.objects.create_user(
+            email='simulation-manager@test.com',
+            password='pass123!',
+            role=UserRole.EMPLOYEE,
+            is_active=True,
+        )
+        employee_user = User.objects.create_user(
+            email='simulation-employee@test.com',
+            password='pass123!',
+            role=UserRole.EMPLOYEE,
+            is_active=True,
+        )
+        manager = Employee.objects.create(
+            organisation=organisation,
+            user=manager_user,
+            employee_code='EMP-SIM-MGR',
+            status=EmployeeStatus.ACTIVE,
+        )
+        employee = Employee.objects.create(
+            organisation=organisation,
+            user=employee_user,
+            employee_code='EMP-SIM',
+            reporting_to=manager,
+            status=EmployeeStatus.ACTIVE,
+        )
+        workflow = ApprovalWorkflow.objects.create(
+            organisation=organisation,
+            name='Default salary revision',
+            is_default=True,
+            default_request_kind=ApprovalRequestKind.SALARY_REVISION,
+            is_active=True,
+        )
+        stage = ApprovalStage.objects.create(
+            workflow=workflow,
+            name='Manager review',
+            sequence=1,
+            fallback_type=ApprovalFallbackType.PRIMARY_ORG_ADMIN,
+        )
+        ApprovalStageApprover.objects.create(
+            stage=stage,
+            approver_type=ApprovalApproverType.REPORTING_MANAGER,
+        )
+
+        catalog_response = client.get('/api/v1/org/approvals/workflows/catalog/')
+        readiness_response = client.get('/api/v1/org/approvals/workflows/readiness/')
+        simulation_response = client.post(
+            '/api/v1/org/approvals/workflows/simulate/',
+            {
+                'employee_id': str(employee.id),
+                'request_kind': ApprovalRequestKind.SALARY_REVISION,
+                'amount': '120000.00',
+            },
+            format='json',
+        )
+
+        assert catalog_response.status_code == 200
+        request_kinds = {item['kind'] for item in catalog_response.data['request_kinds']}
+        assert ApprovalRequestKind.PROMOTION in request_kinds
+        assert ApprovalRequestKind.TRANSFER in request_kinds
+        assert ApprovalApproverType.FINANCE_APPROVER in catalog_response.data['approver_types']
+        assert readiness_response.status_code == 200
+        assert len(readiness_response.data) == 9
+        assert simulation_response.status_code == 200
+        assert simulation_response.data['workflow_id'] == str(workflow.id)
+        assert simulation_response.data['source'] == 'DEFAULT'
+        assert simulation_response.data['stages'][0]['approvers'][0]['employee_id'] == str(manager.id)
+
     def test_create_accepts_stage_sla_fields(self, org_admin_client):
         client, organisation = org_admin_client
         approver_user = User.objects.create_user(
@@ -211,7 +282,7 @@ class TestApprovalWorkflowApi:
         )
 
         response = client.post(
-            '/api/org/approvals/workflows/',
+            '/api/v1/org/approvals/workflows/',
             {
                 'name': 'SLA Workflow',
                 'description': '',
@@ -276,7 +347,7 @@ class TestApprovalWorkflowApi:
         )
 
         response = client.post(
-            '/api/org/approvals/delegations/',
+            '/api/v1/org/approvals/delegations/',
             {
                 'delegator_employee_id': str(delegator.id),
                 'delegate_employee_id': str(delegate.id),
@@ -304,10 +375,10 @@ class TestApprovalWorkflowApi:
         stage = ApprovalStage.objects.create(workflow=workflow, name='Manager review', sequence=1)
         ApprovalStageApprover.objects.create(stage=stage, approver_type='PRIMARY_ORG_ADMIN')
 
-        list_response = client.get('/api/org/approvals/workflows/')
-        detail_response = client.get(f'/api/org/approvals/workflows/{workflow.id}/')
+        list_response = client.get('/api/v1/org/approvals/workflows/')
+        detail_response = client.get(f'/api/v1/org/approvals/workflows/{workflow.id}/')
         invalid_patch = client.patch(
-            f'/api/org/approvals/workflows/{workflow.id}/',
+            f'/api/v1/org/approvals/workflows/{workflow.id}/',
             {
                 'name': 'Existing Workflow',
                 'description': '',
@@ -330,7 +401,7 @@ class TestApprovalWorkflowApi:
             format='json',
         )
         valid_patch = client.patch(
-            f'/api/org/approvals/workflows/{workflow.id}/',
+            f'/api/v1/org/approvals/workflows/{workflow.id}/',
             {
                 'name': 'Existing Workflow Updated',
                 'description': '',
@@ -411,10 +482,10 @@ class TestApprovalWorkflowApi:
             subject_label='Delegated OD',
         )
 
-        inbox_response = client.get('/api/org/approvals/inbox/')
-        delegation_list = client.get('/api/org/approvals/delegations/')
+        inbox_response = client.get('/api/v1/org/approvals/inbox/')
+        delegation_list = client.get('/api/v1/org/approvals/delegations/')
         delegation_patch = client.patch(
-            f'/api/org/approvals/delegations/{delegation.id}/',
+            f'/api/v1/org/approvals/delegations/{delegation.id}/',
             {
                 'delegator_employee_id': str(requester.id),
                 'delegate_employee_id': str(delegate.id),
@@ -428,12 +499,12 @@ class TestApprovalWorkflowApi:
 
         with patch('apps.notifications.tasks.send_approval_outcome_email.delay'):
             approve_response = client.post(
-                f'/api/org/approvals/actions/{owned_action.id}/approve/',
+                f'/api/v1/org/approvals/actions/{owned_action.id}/approve/',
                 {'comment': 'Approved'},
                 format='json',
             )
         reject_validation = client.post(
-            f'/api/org/approvals/actions/{other_action.id}/reject/',
+            f'/api/v1/org/approvals/actions/{other_action.id}/reject/',
             {'comment': ''},
             format='json',
         )
@@ -459,11 +530,11 @@ class TestApprovalWorkflowApi:
             subject_label='My leave',
         )
 
-        inbox_response = client.get('/api/me/approvals/inbox/')
+        inbox_response = client.get('/api/v1/me/approvals/inbox/')
         with patch('apps.accounts.permissions.get_org_operations_guard', return_value={'approval_actions_blocked': False, 'reason': ''}):
             with patch('apps.notifications.tasks.send_approval_outcome_email.delay'):
                 approve_response = client.post(
-                    f'/api/me/approvals/actions/{approval_action.id}/approve/',
+                    f'/api/v1/me/approvals/actions/{approval_action.id}/approve/',
                     {'comment': 'Looks good'},
                     format='json',
                 )
@@ -488,7 +559,7 @@ class TestApprovalWorkflowApi:
         with patch('apps.accounts.permissions.get_org_operations_guard', return_value={'approval_actions_blocked': False, 'reason': ''}):
             with patch('apps.notifications.tasks.send_approval_outcome_email.delay'):
                 reject_response = client.post(
-                    f'/api/me/approvals/actions/{rejected_action.id}/reject/',
+                    f'/api/v1/me/approvals/actions/{rejected_action.id}/reject/',
                     {'comment': 'Needs changes'},
                     format='json',
                 )

@@ -5,15 +5,20 @@ from calendar import monthrange
 from datetime import date
 from decimal import Decimal
 import hashlib
+from io import BytesIO
+from typing import Any
+from uuid import uuid4
 
+from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
 from django.db.models import Q, Sum
 from django.utils import timezone
 
 from apps.approvals.models import ApprovalRequestKind, ApprovalRun, ApprovalRunStatus
-from apps.approvals.services import cancel_approval_run, get_default_workflow
+from apps.approvals.services import cancel_approval_run, get_default_workflow, resolve_workflow
 from apps.audit.services import log_audit_event
+from apps.documents.s3 import generate_presigned_url, upload_file
 from apps.employees.models import Employee, EmployeeStatus, GovernmentIdType
 from apps.notifications.models import NotificationKind
 from apps.notifications.services import create_notification
@@ -64,6 +69,7 @@ from .models import (
 )
 from .statutory import (
     ESI_WAGE_CEILING,
+    GRATUITY_STATUTORY_CEILING,
     INDIA_STANDARD_DEDUCTION,
     PF_RATE,
     PF_WAGE_CEILING,
@@ -85,12 +91,15 @@ from .statutory import (
 )
 
 ZERO = Decimal('0.00')
+FNF_LEAVE_ENCASHMENT_EXEMPTION_CEILING = Decimal('2500000.00')
 PF_OPT_OUT_NEW_JOINER_CUTOFF = date(2014, 9, 1)
 PAYROLL_STATE_CODE_ALIASES = {
     'OR': 'OD',
     'OD': 'OD',
     'CG': 'CT',
     'CT': 'CT',
+    'TS': 'TG',
+    'TG': 'TG',
 }
 
 
@@ -194,6 +203,12 @@ def _get_or_create_component(organisation, payload):
     if changed:
         component.save()
     return component
+
+
+def _resolve_cost_centre(organisation, cost_centre_id):
+    if not cost_centre_id:
+        return None
+    return organisation.cost_centres.filter(id=cost_centre_id, is_active=True).first()
 
 
 def _fmt_inr(val):
@@ -348,25 +363,36 @@ def _summarize_pay_run_exceptions(pay_run):
 
 
 def _notify_employees_payroll_finalized(pay_run, actor=None):
+    period_label = date(pay_run.period_year, pay_run.period_month, 1).strftime('%B %Y')
+    notify_payroll_ready_for_payslips(pay_run.payslips.select_related('employee__user').all(), actor=actor, period_label=period_label)
+
+
+def notify_payroll_ready_for_payslips(payslips, *, actor=None, period_label: str | None = None):
     from apps.notifications.tasks import send_payroll_ready_email
 
-    period_label = date(pay_run.period_year, pay_run.period_month, 1).strftime('%B %Y')
-    for payslip in pay_run.payslips.select_related('employee__user').all():
+    for payslip in payslips:
         recipient = payslip.employee.user
+        resolved_period_label = period_label or date(payslip.period_year, payslip.period_month, 1).strftime('%B %Y')
+
+        def _queue_email(user_id: str = str(recipient.id), label: str = resolved_period_label) -> None:
+            send_payroll_ready_email.delay(user_id, pay_period=label)
+
         create_notification(
             recipient=recipient,
             kind=NotificationKind.PAYROLL_FINALIZED,
-            title=f'Your payslip for {period_label} is ready',
+            title=f'Your payslip for {resolved_period_label} is ready',
             body='Your payslip has been finalized. View it in your payslips section.',
-            organisation=pay_run.organisation,
-            related_object=pay_run,
+            organisation=payslip.organisation,
+            related_object=payslip.pay_run,
             actor=actor,
         )
-        transaction.on_commit(
-            lambda user_id=str(recipient.id), label=period_label: send_payroll_ready_email.delay(
-                user_id,
-                pay_period=label,
-            )
+        transaction.on_commit(_queue_email)
+        log_audit_event(
+            actor,
+            'payroll.payslip.notification_queued',
+            organisation=payslip.organisation,
+            target=payslip,
+            payload={'pay_run_id': str(payslip.pay_run_id)},
         )
 
 
@@ -402,6 +428,203 @@ def calculate_taxable_income_with_investments(*, employee, annual_gross, fiscal_
         )
         total_deductions += min(_normalize_decimal(section_total) or ZERO, cap)
     return max(ZERO, after_standard_deduction - total_deductions).quantize(Decimal('0.01'))
+
+
+def _is_government_body_employee(employee: Employee) -> bool:
+    return getattr(employee.organisation, 'entity_type', '') == 'GOVERNMENT_BODY'
+
+
+def _calculate_fnf_exemption_breakdown(*, employee, gratuity, leave_encashment):
+    gratuity_amount = _normalize_decimal(gratuity) or ZERO
+    leave_encashment_amount = _normalize_decimal(leave_encashment) or ZERO
+    if _is_government_body_employee(employee):
+        gratuity_exemption = gratuity_amount
+        leave_encashment_exemption = leave_encashment_amount
+    else:
+        gratuity_exemption = min(gratuity_amount, GRATUITY_STATUTORY_CEILING).quantize(Decimal('0.01'))
+        leave_encashment_exemption = min(
+            leave_encashment_amount,
+            FNF_LEAVE_ENCASHMENT_EXEMPTION_CEILING,
+        ).quantize(Decimal('0.01'))
+    gratuity_taxable = max(ZERO, gratuity_amount - gratuity_exemption).quantize(Decimal('0.01'))
+    leave_encashment_taxable = max(ZERO, leave_encashment_amount - leave_encashment_exemption).quantize(Decimal('0.01'))
+    return {
+        'gratuity_exemption': gratuity_exemption,
+        'gratuity_taxable': gratuity_taxable,
+        'leave_encashment_exemption': leave_encashment_exemption,
+        'leave_encashment_taxable': leave_encashment_taxable,
+    }
+
+
+def _sum_taxable_snapshot_earnings(snapshot: dict[str, Any] | None) -> Decimal:
+    data = snapshot or {}
+    taxable_lines_total = ZERO
+    for line in data.get('lines') or []:
+        if line.get('component_type') != PayrollComponentType.EARNING:
+            continue
+        if not line.get('is_taxable', True):
+            continue
+        taxable_lines_total += _normalize_decimal(line.get('monthly_amount')) or ZERO
+    if taxable_lines_total > ZERO:
+        return taxable_lines_total.quantize(Decimal('0.01'))
+    return (_normalize_decimal(data.get('gross_pay')) or ZERO).quantize(Decimal('0.01'))
+
+
+def _get_fnf_ytd_tax_context(*, employee, last_working_day: date) -> tuple[Decimal, Decimal]:
+    fiscal_year = _fiscal_year_for_period(last_working_day.year, last_working_day.month)
+    start_date, end_date = fiscal_year_bounds(fiscal_year)
+    payslips = employee.payslips.select_related('pay_run', 'pay_run_item').filter(
+        pay_run__status=PayrollRunStatus.FINALIZED,
+    ).filter(
+        Q(period_year=start_date.year, period_month__gte=start_date.month)
+        | Q(period_year=end_date.year, period_month__lte=end_date.month)
+        | Q(period_year__gt=start_date.year, period_year__lt=end_date.year)
+    ).filter(
+        Q(period_year__lt=last_working_day.year)
+        | Q(period_year=last_working_day.year, period_month__lte=last_working_day.month)
+    )
+
+    ytd_taxable_income = ZERO
+    existing_ytd_tds = ZERO
+    for payslip in payslips:
+        ytd_taxable_income += _sum_taxable_snapshot_earnings(payslip.snapshot)
+        existing_ytd_tds += _normalize_decimal(
+            (payslip.snapshot or {}).get('income_tax', getattr(payslip.pay_run_item, 'income_tax', ZERO))
+        ) or ZERO
+    return ytd_taxable_income.quantize(Decimal('0.01')), existing_ytd_tds.quantize(Decimal('0.01'))
+
+
+def _calculate_fnf_tax_breakdown(
+    *,
+    employee,
+    last_working_day: date,
+    gratuity,
+    leave_encashment,
+    other_taxable_income,
+    tax_regime: str | None = None,
+    existing_ytd_tds: Decimal | None = None,
+    ytd_taxable_income: Decimal | None = None,
+):
+    exemption_breakdown = _calculate_fnf_exemption_breakdown(
+        employee=employee,
+        gratuity=gratuity,
+        leave_encashment=leave_encashment,
+    )
+    fiscal_year = _fiscal_year_for_period(last_working_day.year, last_working_day.month)
+    assignment = get_effective_compensation_assignment(employee, last_working_day)
+    effective_tax_regime = tax_regime or getattr(assignment, 'tax_regime', TaxRegime.NEW)
+    taxable_other_income = (_normalize_decimal(other_taxable_income) or ZERO).quantize(Decimal('0.01'))
+    total_taxable_fnf = (
+        exemption_breakdown['gratuity_taxable']
+        + exemption_breakdown['leave_encashment_taxable']
+        + taxable_other_income
+    ).quantize(Decimal('0.01'))
+
+    if ytd_taxable_income is None or existing_ytd_tds is None:
+        derived_ytd_taxable_income, derived_existing_ytd_tds = _get_fnf_ytd_tax_context(
+            employee=employee,
+            last_working_day=last_working_day,
+        )
+        if ytd_taxable_income is None:
+            ytd_taxable_income = derived_ytd_taxable_income
+        if existing_ytd_tds is None:
+            existing_ytd_tds = derived_existing_ytd_tds
+
+    ytd_taxable_income = (_normalize_decimal(ytd_taxable_income) or ZERO).quantize(Decimal('0.01'))
+    existing_ytd_tds = (_normalize_decimal(existing_ytd_tds) or ZERO).quantize(Decimal('0.01'))
+    annual_taxable_gross = (ytd_taxable_income + total_taxable_fnf).quantize(Decimal('0.01'))
+
+    tax_category = tax_category_for_fiscal_year(employee, fiscal_year)
+    tax_slab_set = _get_active_tax_slab_set(
+        fiscal_year,
+        organisation=employee.organisation,
+        tax_regime=effective_tax_regime,
+        tax_category=tax_category,
+    )
+    if tax_slab_set is None and effective_tax_regime == TaxRegime.NEW:
+        _ensure_global_default_tax_master(fiscal_year=fiscal_year)
+        tax_slab_set = _get_active_tax_slab_set(
+            fiscal_year,
+            organisation=employee.organisation,
+            tax_regime=effective_tax_regime,
+            tax_category=tax_category,
+        )
+
+    if tax_slab_set is None:
+        return {
+            **exemption_breakdown,
+            'fiscal_year': fiscal_year,
+            'tax_regime': effective_tax_regime,
+            'other_taxable_income': taxable_other_income,
+            'ytd_taxable_income': ytd_taxable_income,
+            'existing_ytd_tds': existing_ytd_tds,
+            'total_taxable_fnf': total_taxable_fnf,
+            'annual_taxable_gross': annual_taxable_gross,
+            'annual_taxable_after_sd': ZERO,
+            'annual_tax_before_rebate': ZERO,
+            'annual_rebate_87a': ZERO,
+            'annual_surcharge': ZERO,
+            'annual_tax_before_cess': ZERO,
+            'annual_cess': ZERO,
+            'annual_tax_total': ZERO,
+            'fnf_tds': ZERO,
+        }
+
+    annual_taxable_after_sd = calculate_taxable_income_with_investments(
+        employee=employee,
+        annual_gross=annual_taxable_gross,
+        fiscal_year=fiscal_year,
+        tax_regime=effective_tax_regime,
+    )
+    annual_tax_breakdown = calculate_income_tax_with_rebate(
+        taxable_income=annual_taxable_after_sd,
+        tax_slab_set=tax_slab_set,
+        surcharge_tiers=surcharge_tiers_for_regime(effective_tax_regime),
+        rebate_threshold=get_rebate_87a_params(fiscal_year, effective_tax_regime)[0],
+        rebate_max=get_rebate_87a_params(fiscal_year, effective_tax_regime)[1],
+    )
+    fnf_tds = max(ZERO, annual_tax_breakdown['annual_tax'] - existing_ytd_tds).quantize(Decimal('0.01'))
+    return {
+        **exemption_breakdown,
+        'fiscal_year': fiscal_year,
+        'tax_regime': effective_tax_regime,
+        'other_taxable_income': taxable_other_income,
+        'ytd_taxable_income': ytd_taxable_income,
+        'existing_ytd_tds': existing_ytd_tds,
+        'total_taxable_fnf': total_taxable_fnf,
+        'annual_taxable_gross': annual_taxable_gross,
+        'annual_taxable_after_sd': annual_taxable_after_sd,
+        'annual_tax_before_rebate': annual_tax_breakdown['tax_before_rebate'],
+        'annual_rebate_87a': annual_tax_breakdown['rebate_87a'],
+        'annual_surcharge': annual_tax_breakdown['surcharge'],
+        'annual_tax_before_cess': annual_tax_breakdown['tax_after_rebate'],
+        'annual_cess': annual_tax_breakdown['cess'],
+        'annual_tax_total': annual_tax_breakdown['annual_tax'],
+        'fnf_tds': fnf_tds,
+    }
+
+
+def _calculate_fnf_tds(
+    *,
+    employee,
+    last_working_day: date,
+    gratuity,
+    leave_encashment,
+    other_taxable_income,
+    tax_regime: str | None = None,
+    existing_ytd_tds: Decimal | None = None,
+    ytd_taxable_income: Decimal | None = None,
+) -> Decimal:
+    return _calculate_fnf_tax_breakdown(
+        employee=employee,
+        last_working_day=last_working_day,
+        gratuity=gratuity,
+        leave_encashment=leave_encashment,
+        other_taxable_income=other_taxable_income,
+        tax_regime=tax_regime,
+        existing_ytd_tds=existing_ytd_tds,
+        ytd_taxable_income=ytd_taxable_income,
+    )['fnf_tds']
 
 
 def _get_assignment_monthly_amounts(assignment):
@@ -440,6 +663,7 @@ def _calculate_fnf_totals(employee, last_working_day, *, settlement=None):
             'prorated_salary': ZERO,
             'leave_encashment': ZERO,
             'gratuity': ZERO,
+            'tds_deduction': tds_deduction,
             'gross_payable': gross_payable,
             'net_payable': net_payable,
         }
@@ -484,17 +708,27 @@ def _calculate_fnf_totals(employee, last_working_day, *, settlement=None):
         date_of_joining=employee.date_of_joining,
         last_working_day=last_working_day,
     )
-    if _completed_service_years(employee.date_of_joining, last_working_day) >= 5:
+    eligibility_threshold = getattr(settings, 'GRATUITY_ELIGIBILITY_YEARS', 5)
+    if gratuity_service_years >= eligibility_threshold:
         gratuity = calculate_gratuity_amount(
             last_basic_salary=monthly_basic_salary,
             years_of_service=gratuity_service_years,
         )
+    tds_deduction = _calculate_fnf_tds(
+        employee=employee,
+        last_working_day=last_working_day,
+        gratuity=gratuity,
+        leave_encashment=leave_encashment,
+        other_taxable_income=(prorated_salary + arrears + other_credits).quantize(Decimal('0.01')),
+        tax_regime=getattr(assignment, 'tax_regime', TaxRegime.NEW),
+    )
     gross_payable = (prorated_salary + leave_encashment + gratuity + arrears + other_credits).quantize(Decimal('0.01'))
     net_payable = max(ZERO, gross_payable - tds_deduction - pf_deduction - loan_recovery - other_deductions).quantize(Decimal('0.01'))
     return {
         'prorated_salary': prorated_salary,
         'leave_encashment': leave_encashment,
         'gratuity': gratuity,
+        'tds_deduction': tds_deduction,
         'gross_payable': gross_payable,
         'net_payable': net_payable,
     }
@@ -511,6 +745,7 @@ def create_full_and_final_settlement(employee, last_working_day: date, initiated
             'prorated_salary': totals['prorated_salary'],
             'leave_encashment': totals['leave_encashment'],
             'gratuity': totals['gratuity'],
+            'tds_deduction': totals['tds_deduction'],
             'gross_payable': totals['gross_payable'],
             'net_payable': totals['net_payable'],
             'created_by': initiated_by,
@@ -526,7 +761,7 @@ def create_full_and_final_settlement(employee, last_working_day: date, initiated
         update_fields.append('offboarding_process')
     if fnf.status == FNFStatus.DRAFT:
         totals = _calculate_fnf_totals(employee, last_working_day, settlement=fnf)
-        for field_name in ('prorated_salary', 'leave_encashment', 'gratuity', 'gross_payable', 'net_payable'):
+        for field_name in ('prorated_salary', 'leave_encashment', 'gratuity', 'tds_deduction', 'gross_payable', 'net_payable'):
             if getattr(fnf, field_name) != totals[field_name]:
                 setattr(fnf, field_name, totals[field_name])
                 update_fields.append(field_name)
@@ -602,11 +837,8 @@ def tax_category_for_fiscal_year(employee, fiscal_year_str: str) -> str:
         start_year = int(fiscal_year_str.split('-')[0])
     except (ValueError, IndexError):
         return TaxCategory.INDIVIDUAL
-    dob = None
-    try:
-        dob = employee.profile.date_of_birth
-    except Exception:
-        pass
+    profile = getattr(employee, 'profile', None)
+    dob = getattr(profile, 'date_of_birth', None)
     if not dob:
         return TaxCategory.INDIVIDUAL
     fy_start = date(start_year, 4, 1)
@@ -655,8 +887,11 @@ def _resolve_payroll_requester_context(requester_user=None, requester_employee=N
     return organisation, requester_user, None
 
 
-def _create_payroll_approval_run(subject, request_kind, organisation, requester_user, requester_employee=None, subject_label=''):
-    workflow = get_default_workflow(organisation, request_kind)
+def _create_payroll_approval_run(subject, request_kind, organisation, requester_user, requester_employee=None, subject_label='', amount=None, context=None):
+    if requester_employee is not None:
+        workflow = resolve_workflow(requester_employee, request_kind, amount=amount, context=context)
+    else:
+        workflow = get_default_workflow(organisation, request_kind)
     if workflow is None:
         raise ValueError(f'No active default approval workflow is configured for {request_kind.lower().replace("_", " ")} requests.')
     first_stage = workflow.stages.prefetch_related('approvers__approver_employee__user').order_by('sequence').first()
@@ -798,11 +1033,15 @@ def create_compensation_template(organisation, *, name, description='', lines, a
         )
         for index, line in enumerate(lines, start=1):
             component = _get_or_create_component(organisation, line)
+            cost_centre = _resolve_cost_centre(organisation, line.get('cost_centre_id'))
+            if line.get('cost_centre_id') and cost_centre is None:
+                raise ValueError('Select an active cost centre from this organisation.')
             CompensationTemplateLine.objects.create(
                 template=template,
                 component=component,
                 monthly_amount=_normalize_decimal(line['monthly_amount']),
                 sequence=index,
+                cost_centre=cost_centre,
             )
     log_audit_event(actor, 'payroll.compensation_template.created', organisation=organisation, target=template)
     return template
@@ -820,11 +1059,15 @@ def update_compensation_template(template, *, name=None, description=None, lines
         template.lines.all().delete()
         for index, line in enumerate(lines, start=1):
             component = _get_or_create_component(template.organisation, line)
+            cost_centre = _resolve_cost_centre(template.organisation, line.get('cost_centre_id'))
+            if line.get('cost_centre_id') and cost_centre is None:
+                raise ValueError('Select an active cost centre from this organisation.')
             CompensationTemplateLine.objects.create(
                 template=template,
                 component=component,
                 monthly_amount=_normalize_decimal(line['monthly_amount']),
                 sequence=index,
+                cost_centre=cost_centre,
             )
     log_audit_event(actor, 'payroll.compensation_template.updated', organisation=template.organisation, target=template)
     return template
@@ -844,6 +1087,7 @@ def submit_compensation_template_for_approval(template, *, requester_user, reque
         organisation,
         requester_user,
         requester_employee=requester_employee,
+        amount=template.lines.aggregate(total=Sum('monthly_amount'))['total'] or Decimal('0.00'),
         subject_label=template.name,
     )
     template.approval_run = approval_run
@@ -887,7 +1131,7 @@ def assign_employee_compensation(
             vpf_rate_percent=normalized_vpf_rate_percent,
             status=CompensationAssignmentStatus.APPROVED if auto_approve else CompensationAssignmentStatus.DRAFT,
         )
-        for line in template.lines.select_related('component').all():
+        for line in template.lines.select_related('component', 'cost_centre').all():
             CompensationAssignmentLine.objects.create(
                 assignment=assignment,
                 component=line.component,
@@ -896,6 +1140,7 @@ def assign_employee_compensation(
                 monthly_amount=line.monthly_amount,
                 is_taxable=line.component.is_taxable,
                 sequence=line.sequence,
+                cost_centre=line.cost_centre,
             )
     log_audit_event(actor, 'payroll.compensation_assignment.created', organisation=employee.organisation, target=assignment)
     return assignment
@@ -915,6 +1160,7 @@ def submit_compensation_assignment_for_approval(assignment, *, requester_user, r
         organisation,
         requester_user,
         requester_employee=requester_employee,
+        amount=assignment.lines.aggregate(total=Sum('monthly_amount'))['total'] or Decimal('0.00'),
         subject_label=f'{assignment.employee.user.full_name} salary revision',
     )
     assignment.approval_run = approval_run
@@ -1160,6 +1406,13 @@ def _resolve_labour_welfare_fund_amount(*, state_code, gross_pay, period_year, p
 
 
 def calculate_pay_run(pay_run, *, actor=None):
+    from apps.expenses.services import (
+        build_payroll_reimbursement_lines,
+        get_pending_expense_claims_by_employee_for_pay_run,
+        mark_expense_claims_included_in_payroll,
+        reset_expense_claims_for_pay_run,
+    )
+
     if pay_run.status == PayrollRunStatus.APPROVED:
         raise ValueError('Approved payroll runs cannot be recalculated. Create a rerun or move the run back to draft first.')
     if pay_run.status == PayrollRunStatus.FINALIZED:
@@ -1181,7 +1434,9 @@ def calculate_pay_run(pay_run, *, actor=None):
         org_state_resolution_error = str(exc)
 
     with transaction.atomic():
+        reset_expense_claims_for_pay_run(pay_run)
         pay_run.items.all().delete()
+        expense_claims_by_employee = get_pending_expense_claims_by_employee_for_pay_run(pay_run)
         run_attendance_snapshot = {
             'attendance_source': 'attendance_service' if pay_run.use_attendance_inputs else 'not_applied',
             'period_start': str(period_start),
@@ -1198,10 +1453,15 @@ def calculate_pay_run(pay_run, *, actor=None):
         total_attendance_paid_days = ZERO
         total_lop_days = ZERO
         total_overtime_minutes = 0
-        employees = list(Employee.objects.filter(
-            organisation=pay_run.organisation,
-            status=EmployeeStatus.ACTIVE,
-        ).select_related('user', 'office_location__organisation_address', 'profile'))
+        employees = list(
+            Employee.objects.filter(
+                organisation=pay_run.organisation,
+                status=EmployeeStatus.ACTIVE,
+            )
+            .select_related('user', 'office_location__organisation_address', 'profile')
+            # Keep the payroll run employee scan aligned with employee_org_status_doj_idx.
+            .order_by('date_of_joining', 'id')
+        )
         employee_states_by_id = {}
         relevant_state_codes = set()
         if org_state_code:
@@ -1323,7 +1583,7 @@ def calculate_pay_run(pay_run, *, actor=None):
             has_pf_employer_line = False
             lines_snapshot = []
 
-            for line in assignment.lines.all().order_by('sequence', 'created_at'):
+            for line in assignment.lines.select_related('component', 'cost_centre').all().order_by('sequence', 'created_at'):
                 amount = _normalize_decimal(line.monthly_amount)
                 comp_code = line.component.code if line.component_id else ''
 
@@ -1340,6 +1600,9 @@ def calculate_pay_run(pay_run, *, actor=None):
                         'is_taxable': line.is_taxable,
                         'auto_calculated': False,
                         'template_amount': str(amount),
+                        'cost_centre_id': str(line.cost_centre_id) if line.cost_centre_id else '',
+                        'cost_centre_code': line.cost_centre.code if line.cost_centre_id else '',
+                        'cost_centre_name': line.cost_centre.name if line.cost_centre_id else '',
                     })
                     continue
                 if comp_code == 'PF_EMPLOYER':
@@ -1352,6 +1615,9 @@ def calculate_pay_run(pay_run, *, actor=None):
                         'is_taxable': line.is_taxable,
                         'auto_calculated': False,
                         'template_amount': str(amount),
+                        'cost_centre_id': str(line.cost_centre_id) if line.cost_centre_id else '',
+                        'cost_centre_code': line.cost_centre.code if line.cost_centre_id else '',
+                        'cost_centre_name': line.cost_centre.name if line.cost_centre_id else '',
                     })
                     continue
 
@@ -1362,6 +1628,9 @@ def calculate_pay_run(pay_run, *, actor=None):
                     'monthly_amount': str(amount),
                     'is_taxable': line.is_taxable,
                     'auto_calculated': False,
+                    'cost_centre_id': str(line.cost_centre_id) if line.cost_centre_id else '',
+                    'cost_centre_code': line.cost_centre.code if line.cost_centre_id else '',
+                    'cost_centre_name': line.cost_centre.name if line.cost_centre_id else '',
                 })
 
                 if line.component_type in [PayrollComponentType.EARNING, PayrollComponentType.REIMBURSEMENT]:
@@ -1382,6 +1651,8 @@ def calculate_pay_run(pay_run, *, actor=None):
             # ── Step 2: PF auto-calculation with wage ceiling, opt-out, and VPF ──
             auto_pf = ZERO
             pf_employer = ZERO
+            epf_employer = ZERO
+            eps_employer = ZERO
             pf_eligible_basic = ZERO
             pf_employee_rate_percent = assignment.vpf_rate_percent if not assignment.is_pf_opted_out else ZERO
             pf_is_opted_out = bool(
@@ -1400,6 +1671,8 @@ def calculate_pay_run(pay_run, *, actor=None):
                 pf_eligible_basic = pf_contributions['eligible_basic']
                 auto_pf = pf_contributions['employee']
                 pf_employer = pf_contributions['employer']
+                epf_employer = pf_contributions.get('epf_employer', ZERO)
+                eps_employer = pf_contributions.get('eps_employer', ZERO)
                 raw_employee_deductions += pf_contributions['employee']
                 raw_employer_contributions += pf_contributions['employer']
                 pf_employee_label = (
@@ -1656,7 +1929,8 @@ def calculate_pay_run(pay_run, *, actor=None):
             )
 
             # ── Step 7: Income tax with standard deduction + cess ────────────
-            annual_taxable_gross = (taxable_monthly * Decimal('12.00')).quantize(Decimal('0.01'))
+            months_remaining = _months_remaining_in_fiscal_year(pay_run.period_month)
+            annual_taxable_gross = (taxable_monthly * Decimal(str(months_remaining))).quantize(Decimal('0.01'))
             annual_standard_deduction = INDIA_STANDARD_DEDUCTION
             annual_taxable_after_sd = calculate_taxable_income_with_investments(
                 employee=employee,
@@ -1681,19 +1955,27 @@ def calculate_pay_run(pay_run, *, actor=None):
             annual_tax_before_cess = annual_tax_breakdown['tax_after_rebate']
             annual_cess = annual_tax_breakdown['cess']
             annual_tax_total = annual_tax_breakdown['annual_tax']
-            income_tax = (annual_tax_total / Decimal(str(_months_remaining_in_fiscal_year(pay_run.period_month)))).quantize(Decimal('0.01'))
+            income_tax = (annual_tax_total / Decimal(str(months_remaining))).quantize(Decimal('0.01'))
 
             # ── Step 8: Final totals ─────────────────────────────────────────
+            expense_claims = expense_claims_by_employee.get(employee.id, [])
+            expense_reimbursement_lines, expense_reimbursement_total = build_payroll_reimbursement_lines(expense_claims)
+            if expense_reimbursement_total > ZERO:
+                lines_snapshot.extend(expense_reimbursement_lines)
+                gross_pay = (gross_pay + expense_reimbursement_total).quantize(Decimal('0.01'))
+
             total_deductions = (employee_deductions + income_tax + lop_deduction).quantize(Decimal('0.01'))
             net_pay = ensure_non_negative_net_pay(gross_pay - total_deductions)
 
-            PayrollRunItem.objects.create(
+            payroll_item = PayrollRunItem.objects.create(
                 pay_run=pay_run,
                 employee=employee,
                 status=PayrollRunItemStatus.READY,
                 gross_pay=gross_pay.quantize(Decimal('0.01')),
                 employee_deductions=employee_deductions.quantize(Decimal('0.01')),
                 employer_contributions=employer_contributions.quantize(Decimal('0.01')),
+                eps_employer=eps_employer.quantize(Decimal('0.01')),
+                epf_employer=epf_employer.quantize(Decimal('0.01')),
                 income_tax=income_tax,
                 total_deductions=total_deductions,
                 net_pay=net_pay,
@@ -1704,6 +1986,7 @@ def calculate_pay_run(pay_run, *, actor=None):
                     'readiness': _employee_payroll_snapshot(employee),
                     'lines': lines_snapshot,
                     'arrears': str(arrears_amount),
+                    'expense_reimbursements': str(expense_reimbursement_total),
                     # Period detail
                     'period_start': str(period_start),
                     'period_end': str(period_end),
@@ -1714,6 +1997,8 @@ def calculate_pay_run(pay_run, *, actor=None):
                     # Auto-calculated statutory
                     'auto_pf': str(auto_pf),
                     'pf_employer': str(pf_employer),
+                    'eps_employer': str(eps_employer),
+                    'epf_employer': str(epf_employer),
                     'pf_eligible_basic': str(pf_eligible_basic),
                     'pf_employee_rate_percent': str(pf_employee_rate_percent),
                     'pf_is_opted_out': pf_is_opted_out,
@@ -1749,6 +2034,7 @@ def calculate_pay_run(pay_run, *, actor=None):
                     'annual_tax_total': str(annual_tax_total),
                 },
             )
+            mark_expense_claims_included_in_payroll(payroll_item, expense_claims)
 
         run_attendance_snapshot['total_attendance_paid_days'] = str(total_attendance_paid_days.quantize(Decimal('0.01')))
         run_attendance_snapshot['total_lop_days'] = str(total_lop_days.quantize(Decimal('0.01')))
@@ -1934,6 +2220,25 @@ def _apply_filing_batch_result(
     result,
     audit_action,
 ):
+    payload_bytes = result.payload_bytes() if not result.validation_errors else b''
+    artifact_storage_backend = ''
+    artifact_storage_key = ''
+    artifact_uploaded_at = None
+    store_artifact_in_s3 = (
+        not result.validation_errors
+        and (
+            bool(result.artifact_binary)
+            or getattr(settings, 'PAYROLL_FILING_ARTIFACT_STORAGE', 'database').lower() == 's3'
+        )
+    )
+    if store_artifact_in_s3:
+        storage_object_id = uuid4()
+        safe_file_name = (result.file_name or 'statutory-filing').replace('/', '-')
+        artifact_storage_key = f'payroll/filings/{organisation.id}/{storage_object_id}/{safe_file_name}'
+        upload_file(BytesIO(payload_bytes), artifact_storage_key, result.content_type or 'application/octet-stream')
+        artifact_storage_backend = 's3'
+        artifact_uploaded_at = timezone.now()
+
     batch = StatutoryFilingBatch.objects.create(
         organisation=organisation,
         filing_type=filing_type,
@@ -1943,17 +2248,19 @@ def _apply_filing_batch_result(
         fiscal_year=fiscal_year or '',
         quarter=quarter or '',
         status=StatutoryFilingStatus.BLOCKED if result.validation_errors else StatutoryFilingStatus.GENERATED,
-        checksum=hashlib.sha256(result.payload_bytes()).hexdigest() if not result.validation_errors else '',
+        checksum=hashlib.sha256(payload_bytes).hexdigest() if not result.validation_errors else '',
         file_name=result.file_name if not result.validation_errors else '',
         content_type=result.content_type if not result.validation_errors else '',
-        file_size_bytes=len(result.payload_bytes()) if not result.validation_errors else 0,
+        file_size_bytes=len(payload_bytes) if not result.validation_errors else 0,
+        artifact_storage_backend=artifact_storage_backend,
+        artifact_storage_key=artifact_storage_key,
+        artifact_uploaded_at=artifact_uploaded_at,
         generated_at=timezone.now() if not result.validation_errors else None,
         source_signature=_source_signature(runs=runs, payslips=payslips),
         validation_errors=result.validation_errors,
         metadata=result.metadata | {'source_run_ids': [str(run.id) for run in runs]},
         structured_payload=result.structured_payload,
         artifact_text=result.artifact_text if not result.validation_errors else '',
-        artifact_binary=result.artifact_binary if not result.validation_errors else None,
     )
     if runs:
         batch.source_pay_runs.set(runs)
@@ -2069,7 +2376,7 @@ def generate_statutory_filing_batch(
             organisation=organisation,
             actor=actor,
             filing_type=filing_type,
-            artifact_format=StatutoryFilingArtifactFormat.JSON,
+            artifact_format=StatutoryFilingArtifactFormat.XML,
             fiscal_year=fiscal_year,
             quarter=quarter,
             runs=runs,
@@ -2146,16 +2453,23 @@ def cancel_statutory_filing_batch(batch, *, actor=None):
 def download_statutory_filing_batch(batch, *, actor=None):
     if batch.status != StatutoryFilingStatus.GENERATED:
         raise ValueError('Only generated statutory filing batches can be downloaded.')
+    download_url = ''
+    if batch.artifact_storage_backend == 's3' and batch.artifact_storage_key:
+        download_url = generate_presigned_url(batch.artifact_storage_key, expiry=900)
     log_audit_event(
         actor,
         'payroll.filing.downloaded',
         organisation=batch.organisation,
         target=batch,
-        payload={'filing_type': batch.filing_type, 'file_name': batch.file_name},
+        payload={
+            'filing_type': batch.filing_type,
+            'file_name': batch.file_name,
+            'artifact_storage_backend': batch.artifact_storage_backend,
+        },
     )
-    if batch.artifact_binary:
-        return bytes(batch.artifact_binary), batch.content_type, batch.file_name
-    return batch.artifact_text.encode('utf-8'), batch.content_type, batch.file_name
+    if download_url:
+        return None, batch.content_type, batch.file_name, download_url
+    return batch.artifact_text.encode('utf-8'), batch.content_type, batch.file_name, ''
 
 
 def submit_pay_run_for_approval(pay_run, *, requester_user, requester_employee=None):
@@ -2177,6 +2491,7 @@ def submit_pay_run_for_approval(pay_run, *, requester_user, requester_employee=N
         organisation,
         requester_user,
         requester_employee=requester_employee,
+        amount=pay_run.items.filter(status=PayrollRunItemStatus.READY).aggregate(total=Sum('gross_pay'))['total'] or Decimal('0.00'),
         subject_label=pay_run.name,
     )
     pay_run.approval_run = approval_run
@@ -2187,6 +2502,8 @@ def submit_pay_run_for_approval(pay_run, *, requester_user, requester_employee=N
 
 
 def finalize_pay_run(pay_run, *, actor=None, skip_approval=False):
+    from apps.expenses.services import mark_expense_claims_paid_for_pay_run_item
+
     if pay_run.status not in [PayrollRunStatus.APPROVED, PayrollRunStatus.CALCULATED]:
         raise ValueError('Only approved or explicitly bypassed calculated payroll runs can be finalized.')
     if pay_run.status == PayrollRunStatus.CALCULATED and not skip_approval:
@@ -2252,6 +2569,7 @@ def finalize_pay_run(pay_run, *, actor=None, skip_approval=False):
                 pay_run=pay_run,
                 is_included_in_payslip=False,
             ).update(is_included_in_payslip=True)
+            mark_expense_claims_paid_for_pay_run_item(item)
 
         pay_run.status = PayrollRunStatus.FINALIZED
         pay_run.finalized_at = timezone.now()
@@ -2277,6 +2595,8 @@ def rerun_payroll_run(pay_run, *, actor=None, requester_user=None, requester_emp
     )
     log_audit_event(actor or requester_user, 'payroll.run.rerun_created', organisation=pay_run.organisation, target=new_run)
     return new_run
+
+
 def generate_form12bb_zip_for_organisation(
     organisation, *, fiscal_year: str, actor=None
 ) -> tuple[bytes, list[dict[str, Any]]]:

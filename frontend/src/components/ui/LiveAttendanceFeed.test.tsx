@@ -79,7 +79,7 @@ describe('LiveAttendanceFeed', () => {
     await waitFor(() => {
       expect(checkDeviceHealth).toHaveBeenCalledWith('device-1')
     })
-    expect(EventSourceMock.instances[0]?.url).toBe('/api/org/biometrics/devices/device-1/events/')
+    expect(EventSourceMock.instances[0]?.url).toBe('/api/v1/org/biometrics/devices/device-1/events/')
 
     EventSourceMock.instances[0]?.dispatch('connected')
     EventSourceMock.instances[0]?.dispatch('device_health_update', {

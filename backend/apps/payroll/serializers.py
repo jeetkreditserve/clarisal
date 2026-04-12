@@ -1,13 +1,19 @@
 from decimal import Decimal
 
+from django.db.models import Sum
 from rest_framework import serializers
 
+from apps.documents.models import Document
+from apps.documents.services import generate_download_url
+
 from .models import (
+    SECTION_LIMITS,
     Arrears,
     CompensationAssignment,
     CompensationAssignmentLine,
     CompensationTemplate,
     CompensationTemplateLine,
+    CostCentre,
     FullAndFinalSettlement,
     InvestmentDeclaration,
     LabourWelfareFundContribution,
@@ -27,6 +33,8 @@ from .models import (
     TaxCategory,
     TaxRegime,
 )
+from .services import _calculate_fnf_exemption_breakdown
+from .statutory import normalize_fiscal_year_label
 
 
 class PayrollTaxSlabSerializer(serializers.ModelSerializer):
@@ -242,10 +250,22 @@ class PayrollComponentSerializer(serializers.ModelSerializer):
 class CompensationTemplateLineSerializer(serializers.ModelSerializer):
     component = PayrollComponentSerializer(read_only=True)
     component_id = serializers.UUIDField(source='component.id', read_only=True)
+    cost_centre_id = serializers.UUIDField(source='cost_centre.id', read_only=True, allow_null=True)
+    cost_centre_code = serializers.CharField(source='cost_centre.code', read_only=True, allow_null=True)
+    cost_centre_name = serializers.CharField(source='cost_centre.name', read_only=True, allow_null=True)
 
     class Meta:
         model = CompensationTemplateLine
-        fields = ['id', 'component_id', 'component', 'monthly_amount', 'sequence']
+        fields = [
+            'id',
+            'component_id',
+            'component',
+            'monthly_amount',
+            'sequence',
+            'cost_centre_id',
+            'cost_centre_code',
+            'cost_centre_name',
+        ]
 
 
 class CompensationTemplateLineWriteSerializer(serializers.Serializer):
@@ -254,12 +274,27 @@ class CompensationTemplateLineWriteSerializer(serializers.Serializer):
     component_type = serializers.CharField(max_length=32)
     monthly_amount = serializers.DecimalField(max_digits=12, decimal_places=2)
     is_taxable = serializers.BooleanField(required=False, default=True)
+    cost_centre_id = serializers.UUIDField(required=False, allow_null=True)
 
     def validate_monthly_amount(self, value):
         if value < 0:
             raise serializers.ValidationError(
                 'Monthly amount cannot be negative. Use a deduction component type for amounts that reduce pay.'
             )
+        return value
+
+    def validate_cost_centre_id(self, value):
+        if value in (None, ''):
+            return None
+        organisation = self.context.get('organisation')
+        if organisation is None:
+            return value
+        if not CostCentre.objects.filter(
+            organisation=organisation,
+            id=value,
+            is_active=True,
+        ).exists():
+            raise serializers.ValidationError('Select an active cost centre from this organisation.')
         return value
 
 
@@ -280,6 +315,9 @@ class CompensationTemplateWriteSerializer(serializers.Serializer):
 
 class CompensationAssignmentLineSerializer(serializers.ModelSerializer):
     component_id = serializers.UUIDField(source='component.id', read_only=True)
+    cost_centre_id = serializers.UUIDField(source='cost_centre.id', read_only=True, allow_null=True)
+    cost_centre_code = serializers.CharField(source='cost_centre.code', read_only=True, allow_null=True)
+    cost_centre_name = serializers.CharField(source='cost_centre.name', read_only=True, allow_null=True)
 
     class Meta:
         model = CompensationAssignmentLine
@@ -291,6 +329,9 @@ class CompensationAssignmentLineSerializer(serializers.ModelSerializer):
             'monthly_amount',
             'is_taxable',
             'sequence',
+            'cost_centre_id',
+            'cost_centre_code',
+            'cost_centre_name',
         ]
 
 
@@ -361,6 +402,8 @@ class PayrollRunItemSerializer(serializers.ModelSerializer):
             'gross_pay',
             'employee_deductions',
             'employer_contributions',
+            'eps_employer',
+            'epf_employer',
             'income_tax',
             'total_deductions',
             'net_pay',
@@ -380,19 +423,22 @@ class PayrollRunItemDetailSerializer(serializers.Serializer):
     gross_pay = serializers.DecimalField(max_digits=12, decimal_places=2)
     employee_deductions = serializers.DecimalField(max_digits=12, decimal_places=2)
     employer_contributions = serializers.DecimalField(max_digits=12, decimal_places=2)
+    eps_employer = serializers.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    epf_employer = serializers.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
     income_tax = serializers.DecimalField(max_digits=12, decimal_places=2)
     total_deductions = serializers.DecimalField(max_digits=12, decimal_places=2)
     net_pay = serializers.DecimalField(max_digits=12, decimal_places=2)
     snapshot = serializers.JSONField()
     message = serializers.CharField(allow_blank=True)
-    arrears = serializers.DecimalField(max_digits=12, decimal_places=2, default=0)
-    lop_days = serializers.DecimalField(max_digits=12, decimal_places=2, default=0)
-    esi_employee = serializers.DecimalField(max_digits=12, decimal_places=2, default=0)
-    esi_employer = serializers.DecimalField(max_digits=12, decimal_places=2, default=0)
-    pf_employer = serializers.DecimalField(max_digits=12, decimal_places=2, default=0)
-    lwf_employee = serializers.DecimalField(max_digits=12, decimal_places=2, default=0)
-    lwf_employer = serializers.DecimalField(max_digits=12, decimal_places=2, default=0)
-    pt_monthly = serializers.DecimalField(max_digits=12, decimal_places=2, default=0)
+    arrears = serializers.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    lop_days = serializers.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    epf_employee = serializers.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    esi_employee = serializers.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    esi_employer = serializers.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    pf_employer = serializers.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    lwf_employee = serializers.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    lwf_employer = serializers.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    pt_monthly = serializers.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
     tax_regime = serializers.CharField(allow_null=True)
 
 
@@ -463,6 +509,9 @@ class StatutoryFilingBatchSerializer(serializers.ModelSerializer):
             'file_name',
             'content_type',
             'file_size_bytes',
+            'artifact_storage_backend',
+            'artifact_storage_key',
+            'artifact_uploaded_at',
             'generated_at',
             'source_signature',
             'validation_errors',
@@ -498,7 +547,7 @@ class StatutoryFilingBatchWriteSerializer(serializers.Serializer):
         if filing_type == StatutoryFilingType.FORM24Q:
             if not attrs.get('fiscal_year') or not attrs.get('quarter'):
                 raise serializers.ValidationError({'quarter': 'fiscal_year and quarter are required for Form 24Q exports.'})
-            attrs['artifact_format'] = StatutoryFilingArtifactFormat.JSON
+            attrs['artifact_format'] = StatutoryFilingArtifactFormat.XML
 
         if filing_type == StatutoryFilingType.FORM16:
             if not attrs.get('fiscal_year'):
@@ -535,27 +584,65 @@ class PayslipSerializer(serializers.ModelSerializer):
 
 class InvestmentDeclarationSerializer(serializers.ModelSerializer):
     employee_id = serializers.UUIDField(source='employee.id', read_only=True)
+    employee_name = serializers.CharField(source='employee.user.full_name', read_only=True)
+    verified_by_id = serializers.UUIDField(source='verified_by.id', read_only=True, allow_null=True)
+    verified_by_name = serializers.CharField(source='verified_by.full_name', read_only=True, allow_null=True)
+    proof_document_id = serializers.UUIDField(source='proof_document.id', read_only=True, allow_null=True)
+    proof_document_file_name = serializers.CharField(source='proof_document.file_name', read_only=True, allow_null=True)
+    proof_document_url = serializers.SerializerMethodField()
+    section_limit = serializers.SerializerMethodField()
 
     class Meta:
         model = InvestmentDeclaration
         fields = [
             'id',
             'employee_id',
+            'employee_name',
             'fiscal_year',
             'section',
             'description',
             'declared_amount',
             'proof_file_key',
+            'proof_document_id',
+            'proof_document_file_name',
+            'proof_document_url',
             'is_verified',
+            'verified_by_id',
+            'verified_by_name',
+            'section_limit',
             'created_at',
             'modified_at',
         ]
+
+    def get_section_limit(self, obj):
+        limit = SECTION_LIMITS.get(obj.section)
+        return str(limit) if limit is not None else None
+
+    def get_proof_document_url(self, obj):
+        if obj.proof_document_id is None:
+            return None
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        access_context = self.context.get('document_access_context', 'PAYROLL_DECLARATION')
+        if request is not None and user is not None and getattr(user, 'is_authenticated', False):
+            return generate_download_url(
+                obj.proof_document,
+                accessed_by=user,
+                request=request,
+                access_context=access_context,
+            )
+        return generate_download_url(obj.proof_document, access_context=access_context)
 
 
 class FullAndFinalSettlementSerializer(serializers.ModelSerializer):
     employee_id = serializers.UUIDField(source='employee.id', read_only=True)
     employee_name = serializers.CharField(source='employee.user.full_name', read_only=True)
     offboarding_process_id = serializers.UUIDField(source='offboarding_process.id', read_only=True, allow_null=True)
+    fnf_tds = serializers.DecimalField(source='tds_deduction', max_digits=12, decimal_places=2, read_only=True)
+    gratuity_exemption = serializers.SerializerMethodField()
+    gratuity_taxable = serializers.SerializerMethodField()
+    leave_encashment_exemption = serializers.SerializerMethodField()
+    leave_encashment_taxable = serializers.SerializerMethodField()
 
     class Meta:
         model = FullAndFinalSettlement
@@ -572,17 +659,41 @@ class FullAndFinalSettlementSerializer(serializers.ModelSerializer):
             'arrears',
             'other_credits',
             'tds_deduction',
+            'fnf_tds',
             'pf_deduction',
             'loan_recovery',
             'other_deductions',
             'gross_payable',
             'net_payable',
             'notes',
+            'gratuity_exemption',
+            'gratuity_taxable',
+            'leave_encashment_exemption',
+            'leave_encashment_taxable',
             'approved_at',
             'paid_at',
             'created_at',
             'modified_at',
         ]
+
+    def _breakdown(self, obj):
+        return _calculate_fnf_exemption_breakdown(
+            employee=obj.employee,
+            gratuity=obj.gratuity,
+            leave_encashment=obj.leave_encashment,
+        )
+
+    def get_gratuity_exemption(self, obj):
+        return self._breakdown(obj)['gratuity_exemption']
+
+    def get_gratuity_taxable(self, obj):
+        return self._breakdown(obj)['gratuity_taxable']
+
+    def get_leave_encashment_exemption(self, obj):
+        return self._breakdown(obj)['leave_encashment_exemption']
+
+    def get_leave_encashment_taxable(self, obj):
+        return self._breakdown(obj)['leave_encashment_taxable']
 
 
 class ArrearsSerializer(serializers.ModelSerializer):
@@ -612,6 +723,70 @@ class InvestmentDeclarationWriteSerializer(serializers.Serializer):
     description = serializers.CharField(max_length=200)
     declared_amount = serializers.DecimalField(max_digits=12, decimal_places=2)
     proof_file_key = serializers.CharField(required=False, allow_blank=True, allow_null=True, default='')
+    proof_document_id = serializers.UUIDField(required=False, allow_null=True)
+
+    def validate_fiscal_year(self, value):
+        normalized = normalize_fiscal_year_label(value)
+        if normalized.count('-') != 1 or len(normalized.split('-', 1)[0]) != 4:
+            raise serializers.ValidationError('Fiscal year must be in YYYY-YYYY or YYYY-YY format.')
+        return normalized
+
+    def validate_declared_amount(self, value):
+        if value <= Decimal('0.00'):
+            raise serializers.ValidationError('Declared amount must be greater than zero.')
+        return value
+
+    def validate(self, attrs):
+        instance = getattr(self, 'instance', None)
+        employee = self.context.get('employee') or getattr(instance, 'employee', None)
+
+        fiscal_year = attrs.get('fiscal_year') or getattr(instance, 'fiscal_year', '')
+        section = attrs.get('section') or getattr(instance, 'section', '')
+        declared_amount = attrs.get('declared_amount', getattr(instance, 'declared_amount', Decimal('0.00')))
+
+        attrs['fiscal_year'] = normalize_fiscal_year_label(fiscal_year)
+
+        section_cap = SECTION_LIMITS.get(section)
+        if employee is not None and section_cap is not None:
+            queryset = InvestmentDeclaration.objects.filter(
+                employee=employee,
+                section=section,
+                fiscal_year=attrs['fiscal_year'],
+            )
+            if instance is not None:
+                queryset = queryset.exclude(id=instance.id)
+            existing_total = queryset.aggregate(total=Sum('declared_amount'))['total'] or Decimal('0.00')
+            if existing_total + declared_amount > section_cap:
+                remaining = max(section_cap - existing_total, Decimal('0.00'))
+                raise serializers.ValidationError(
+                    {
+                        'declared_amount': (
+                            f'{section} declarations cannot exceed {section_cap:.2f} in '
+                            f'{attrs["fiscal_year"]}. Remaining limit: {remaining:.2f}.'
+                        )
+                    }
+                )
+
+        proof_document_id = attrs.pop('proof_document_id', serializers.empty)
+        if proof_document_id is not serializers.empty:
+            if proof_document_id is None:
+                attrs['proof_document'] = None
+                attrs['proof_file_key'] = ''
+            else:
+                if employee is None:
+                    raise serializers.ValidationError({'proof_document_id': 'An employee context is required to attach proof documents.'})
+                try:
+                    proof_document = Document.objects.get(id=proof_document_id, employee=employee)
+                except Document.DoesNotExist as exc:
+                    raise serializers.ValidationError({'proof_document_id': 'Select a document uploaded under your employee profile.'}) from exc
+                attrs['proof_document'] = proof_document
+                attrs['proof_file_key'] = proof_document.file_key
+
+        return attrs
+
+
+class InvestmentDeclarationReviewSerializer(serializers.Serializer):
+    is_verified = serializers.BooleanField()
 
 
 class ArrearsCreateSerializer(serializers.Serializer):

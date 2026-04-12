@@ -1144,6 +1144,8 @@ class TestPayrollRunCalculationService:
         assert Decimal(pf_employer_line['monthly_amount']) == Decimal('1800.00')
         assert meal_card_line['auto_calculated'] is False
         assert nps_line['auto_calculated'] is False
+        assert item.eps_employer == Decimal('1249.50')
+        assert item.epf_employer == Decimal('550.50')
         assert Decimal(item.employee_deductions) >= Decimal('2300.00')
         assert Decimal(item.employer_contributions) >= Decimal('2550.00')
 

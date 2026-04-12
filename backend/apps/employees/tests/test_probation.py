@@ -114,7 +114,7 @@ class TestEmployeeProbationCompleteView:
             probation_end_date=date.today() - timedelta(days=1),
         )
 
-        response = client.post(f'/api/org/employees/{employee.id}/probation-complete/')
+        response = client.post(f'/api/v1/org/employees/{employee.id}/probation-complete/')
 
         assert response.status_code == 200
         employee.refresh_from_db()
@@ -142,6 +142,6 @@ class TestEmployeeProbationCompleteView:
             employee_code='EMP-PROB-004',
         )
 
-        response = client.post(f'/api/org/employees/{other_employee.id}/probation-complete/')
+        response = client.post(f'/api/v1/org/employees/{other_employee.id}/probation-complete/')
 
         assert response.status_code == 404

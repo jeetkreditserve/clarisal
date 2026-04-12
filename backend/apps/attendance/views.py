@@ -12,6 +12,7 @@ from apps.accounts.permissions import BelongsToActiveOrg, IsEmployee, IsOrgAdmin
 from apps.accounts.workspaces import get_active_admin_organisation, get_active_employee
 from apps.common.security import hash_token
 from apps.employees.models import Employee
+from apps.employees.services import get_reporting_team
 
 from .models import (
     AttendanceDay,
@@ -449,6 +450,26 @@ class MyAttendanceSummaryView(APIView):
                 ).data,
             }
         )
+
+
+class MyTeamAttendanceView(APIView):
+    permission_classes = [IsEmployee, BelongsToActiveOrg]
+
+    def get(self, request):
+        employee = _get_self_employee(request)
+        include_indirect = request.query_params.get('include_indirect', 'false').lower() == 'true'
+        try:
+            target_date = _query_date(request)
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        team_ids = [member.id for member in get_reporting_team(employee, include_indirect=include_indirect)]
+        if not team_ids:
+            return Response([])
+
+        payload = list_org_attendance_days(employee.organisation, target_date=target_date)
+        payload = [day for day in payload if day.employee_id in team_ids]
+        return Response(AttendanceDaySerializer(payload, many=True).data)
 
 
 class MyAttendanceHistoryView(APIView):

@@ -5,6 +5,7 @@ import pytest
 
 from apps.accounts.models import AccountType, User, UserRole
 from apps.audit.models import AuditLog
+from apps.documents.models import OnboardingDocumentType
 from apps.employees.models import Employee
 from apps.organisations.models import (
     Organisation,
@@ -269,3 +270,41 @@ class TestTenantDataExportServices:
 
         assert generated.status == TenantDataExportStatus.FAILED
         assert generated.failure_reason == 'upload failed'
+
+    def test_generate_tenant_data_export_batch_can_raise_after_marking_failure(self, ct_user, pending_org, monkeypatch):
+        def boom(*args, **kwargs):
+            raise RuntimeError('upload failed')
+
+        monkeypatch.setattr('apps.organisations.services.upload_file', boom)
+
+        batch = request_tenant_data_export(
+            pending_org,
+            export_type=TenantDataExportType.EMPLOYEES,
+            requested_by=ct_user,
+        )
+
+        with pytest.raises(RuntimeError, match='upload failed'):
+            generate_tenant_data_export_batch(batch, raise_on_failure=True)
+
+        batch.refresh_from_db()
+        assert batch.status == TenantDataExportStatus.FAILED
+        assert batch.failure_reason == 'upload failed'
+
+    def test_create_organisation_seeds_default_document_types(self, ct_user):
+        assert OnboardingDocumentType.objects.count() == 0
+
+        create_organisation(
+            name='Seeded Docs Org',
+            created_by=ct_user,
+            pan_number='ABCDE1234F',
+            addresses=organisation_addresses(),
+            primary_admin={
+                'first_name': 'Aditi',
+                'last_name': 'Rao',
+                'email': 'aditi@seeded-docs.test',
+                'phone': '+919999999999',
+            },
+            licence_count=5,
+        )
+
+        assert OnboardingDocumentType.objects.exists()

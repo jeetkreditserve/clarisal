@@ -16,6 +16,7 @@ import type {
   EmployeeAttendanceSummary,
   FamilyMember,
   GovernmentId,
+  InvestmentDeclaration,
   LeaveEncashmentRequest,
   LeaveOverview,
   LeaveRequestRecord,
@@ -26,6 +27,7 @@ import type {
   OnDutyPolicy,
   OnDutyRequestRecord,
   Payslip,
+  TeamMemberSummary,
 } from '@/types/hr'
 
 export async function fetchMyDashboard() {
@@ -178,12 +180,20 @@ export async function uploadRequestedDocument(payload: {
   request_id: string
   file: File
   metadata?: Record<string, unknown>
+  expiry_date?: string | null
+  alert_days_before?: number
   onUploadProgress?: (progress: number) => void
 }) {
   const formData = new FormData()
   formData.append('file', payload.file)
   if (payload.metadata) {
     formData.append('metadata', JSON.stringify(payload.metadata))
+  }
+  if (payload.expiry_date) {
+    formData.append('expiry_date', payload.expiry_date)
+  }
+  if (payload.alert_days_before) {
+    formData.append('alert_days_before', String(payload.alert_days_before))
   }
   const { data } = await api.post<DocumentRecord>(`/me/document-requests/${payload.request_id}/upload/`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
@@ -199,6 +209,8 @@ export async function uploadMyDocument(payload: {
   document_type: string
   file: File
   metadata?: Record<string, unknown>
+  expiry_date?: string | null
+  alert_days_before?: number
   onUploadProgress?: (progress: number) => void
 }) {
   const formData = new FormData()
@@ -206,6 +218,12 @@ export async function uploadMyDocument(payload: {
   formData.append('file', payload.file)
   if (payload.metadata) {
     formData.append('metadata', JSON.stringify(payload.metadata))
+  }
+  if (payload.expiry_date) {
+    formData.append('expiry_date', payload.expiry_date)
+  }
+  if (payload.alert_days_before) {
+    formData.append('alert_days_before', String(payload.alert_days_before))
   }
   const { data } = await api.post<DocumentRecord>('/me/documents/', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
@@ -232,8 +250,42 @@ export async function fetchMyEvents() {
   return data
 }
 
-export async function fetchMyApprovalInbox() {
-  const { data } = await api.get<ApprovalActionItem[]>('/me/approvals/inbox/')
+export async function fetchMyApprovalInbox(scope?: 'my_team') {
+  const { data } = await api.get<ApprovalActionItem[]>('/me/approvals/inbox/', {
+    params: scope ? { scope } : undefined,
+  })
+  return data
+}
+
+export async function fetchMyTeam() {
+  const { data } = await api.get<TeamMemberSummary[]>('/me/my-team/')
+  return data
+}
+
+export async function fetchMyTeamLeave(filters?: {
+  status?: string
+  fromDate?: string
+  toDate?: string
+  includeIndirect?: boolean
+}) {
+  const params: Record<string, string | boolean> = {}
+  if (filters?.status) params.status = filters.status
+  if (filters?.fromDate) params.from_date = filters.fromDate
+  if (filters?.toDate) params.to_date = filters.toDate
+  if (filters?.includeIndirect) params.include_indirect = true
+  const { data } = await api.get<LeaveRequestRecord[]>('/me/my-team/leave/', {
+    params: Object.keys(params).length ? params : undefined,
+  })
+  return data
+}
+
+export async function fetchMyTeamAttendance(targetDate?: string, includeIndirect = false) {
+  const params: Record<string, string | boolean> = {}
+  if (targetDate) params.date = targetDate
+  if (includeIndirect) params.include_indirect = true
+  const { data } = await api.get<AttendanceDayRecord[]>('/me/my-team/attendance/', {
+    params: Object.keys(params).length ? params : undefined,
+  })
   return data
 }
 
@@ -287,8 +339,8 @@ export async function fetchMyOnDutyRequests() {
   return data
 }
 
-export async function fetchMyPayslips() {
-  const { data } = await api.get<Payslip[]>('/me/payroll/payslips/')
+export async function fetchMyPayslips(params?: { fiscal_year?: string; search?: string }) {
+  const { data } = await api.get<Payslip[]>('/me/payroll/payslips/', { params })
   return data
 }
 
@@ -299,6 +351,13 @@ export async function fetchMyPayslip(id: string) {
 
 export async function downloadMyPayslip(id: string) {
   const response = await api.get<Blob>(`/me/payroll/payslips/${id}/download/`, {
+    responseType: 'blob',
+  })
+  return response.data
+}
+
+export async function downloadMyPayslipsForFiscalYear(fiscalYear: string) {
+  const response = await api.get<Blob>(`/me/payroll/payslips/fiscal-year/${fiscalYear}/download/`, {
     responseType: 'blob',
   })
   return response.data
@@ -384,8 +443,42 @@ export async function withdrawMyAttendanceRegularization(id: string) {
 }
 
 export async function downloadMyForm12BB(fiscalYear: string): Promise<Blob> {
-  const response = await api.get<Blob>(`/me/payroll/form12bb/${fiscalYear}/download/`, {
+  const response = await api.get<Blob>(`/me/payroll/form-12bb/${fiscalYear}/`, {
     responseType: 'blob',
   })
   return response.data
+}
+
+export async function fetchMyInvestmentDeclarations(params?: { fiscal_year?: string }) {
+  const { data } = await api.get<InvestmentDeclaration[]>('/me/payroll/investment-declarations/', { params })
+  return data
+}
+
+export async function createMyInvestmentDeclaration(payload: {
+  fiscal_year: string
+  section: string
+  description: string
+  declared_amount: string
+  proof_document_id?: string | null
+}) {
+  const { data } = await api.post<InvestmentDeclaration>('/me/payroll/investment-declarations/', payload)
+  return data
+}
+
+export async function updateMyInvestmentDeclaration(
+  id: string,
+  payload: Partial<{
+    fiscal_year: string
+    section: string
+    description: string
+    declared_amount: string
+    proof_document_id: string | null
+  }>
+) {
+  const { data } = await api.patch<InvestmentDeclaration>(`/me/payroll/investment-declarations/${id}/`, payload)
+  return data
+}
+
+export async function deleteMyInvestmentDeclaration(id: string) {
+  await api.delete(`/me/payroll/investment-declarations/${id}/`)
 }

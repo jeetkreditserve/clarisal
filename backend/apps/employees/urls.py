@@ -1,40 +1,29 @@
 from django.urls import path
 
 from .views import (
+    CustomFieldDefinitionDetailView,
+    CustomFieldDefinitionListCreateView,
+    DesignationDetailView,
+    DesignationListCreateView,
+    EmployeeCareerTimelineView,
+    EmployeeCustomFieldValuesView,
     EmployeeDeleteView,
     EmployeeDetailView,
+    EmployeeDirectReportsView,
     EmployeeEndEmploymentView,
+    EmployeeExitInterviewDetailView,
     EmployeeListInviteView,
     EmployeeMarkJoinedView,
     EmployeeOffboardingCompleteView,
     EmployeeOffboardingDetailView,
     EmployeeOffboardingTaskDetailView,
     EmployeeProbationCompleteView,
-)
-
-from .views import (
-    CustomFieldDefinitionDetailView,
-    CustomFieldDefinitionListCreateView,
-    DesignationDetailView,
-    DesignationListCreateView,
-    EmployeeCustomFieldValuesView,
-)
-
-from .views import (
     ExitInterviewDetailView,
     ExitInterviewListCreateView,
     ExitInterviewTemplateDetailView,
     ExitInterviewTemplateListCreateView,
-)
-
-from .views import (
-    EmployeeDirectReportsView,
     OrgChartCyclesView,
     OrgChartView,
-)
-
-from .views import (
-    EmployeeCareerTimelineView,
     PromotionEventDetailView,
     PromotionEventListCreateView,
     TransferEventDetailView,
@@ -50,6 +39,7 @@ urlpatterns = [
     path('employees/<uuid:pk>/offboarding/', EmployeeOffboardingDetailView.as_view(), name='employee-offboarding-detail'),
     path('employees/<uuid:pk>/offboarding/complete/', EmployeeOffboardingCompleteView.as_view(), name='employee-offboarding-complete'),
     path('employees/<uuid:pk>/offboarding/tasks/<uuid:task_id>/', EmployeeOffboardingTaskDetailView.as_view(), name='employee-offboarding-task-detail'),
+    path('employees/<uuid:pk>/exit-interview/', EmployeeExitInterviewDetailView.as_view(), name='employee-exit-interview-detail'),
     path('employees/<uuid:pk>/delete/', EmployeeDeleteView.as_view(), name='employee-delete'),
     path('designations/', DesignationListCreateView.as_view(), name='designation-list-create'),
     path('designations/<uuid:pk>/', DesignationDetailView.as_view(), name='designation-detail'),
