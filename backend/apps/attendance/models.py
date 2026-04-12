@@ -97,7 +97,15 @@ class AttendancePolicy(AuditedBaseModel):
     restrict_by_ip = models.BooleanField(default=False)
     allowed_ip_ranges = models.JSONField(default=list, blank=True)
     restrict_by_geo = models.BooleanField(default=False)
-    allowed_geo_sites = models.JSONField(default=list, blank=True)
+    # DEPRECATED (P28): kept for historical compatibility; web punch now reads GeoFencePolicy instead.
+    # This field is preserved for historical reference and phased migration only.
+    allowed_geo_sites = models.JSONField(
+        default=list,
+        blank=True,
+        null=True,
+        help_text='DEPRECATED: Use GeoFencePolicy records tied to office locations.',
+        db_comment='DEPRECATED: historical geo-fence JSON; migrate to attendance_geo_fence_policies before removal.',
+    )
     is_default = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
 

@@ -2,6 +2,7 @@ import hashlib
 import hmac
 import json
 from datetime import date
+from types import SimpleNamespace
 
 import pytest
 from django.contrib.contenttypes.models import ContentType
@@ -55,6 +56,7 @@ from apps.payroll.models import (
     CompensationAssignment,
     CompensationAssignmentStatus,
     CompensationTemplate,
+    PayrollComponent,
     PayrollRun,
     PayrollRunItem,
     PayrollTaxSlabSet,
@@ -278,6 +280,31 @@ class TestOrganisationProfileUpdate:
         )
         assert response.status_code == 400
         assert 'phone' in response.data
+
+    def test_control_tower_updates_tan_and_esi_branch_code(self, ct_client):
+        client, user = ct_client
+        organisation = Organisation.objects.create(
+            name='Acme Corp',
+            created_by=user,
+            country_code='IN',
+            currency='INR',
+        )
+
+        response = client.patch(
+            f'/api/v1/ct/organisations/{organisation.id}/',
+            {
+                'tan_number': 'BLRA12345B',
+                'esi_branch_code': 'ESI-42',
+            },
+            format='json',
+        )
+
+        assert response.status_code == 200
+        organisation.refresh_from_db()
+        assert organisation.tan_number == 'BLRA12345B'
+        assert organisation.esi_branch_code == 'ESI-42'
+        assert response.data['tan_number'] == 'BLRA12345B'
+        assert response.data['esi_branch_code'] == 'ESI-42'
 
 
 @pytest.mark.django_db
@@ -1351,6 +1378,35 @@ class TestCtOrganisationOnboardingProgress:
 
 
 @pytest.mark.django_db
+class TestCtOrganisationSeedMasters:
+    def test_seed_masters_endpoint_is_idempotent(self, ct_client, org):
+        client, _ = ct_client
+
+        first_response = client.post(
+            f'/api/v1/ct/organisations/{org.id}/seed-masters/',
+            {},
+            format='json',
+        )
+
+        assert first_response.status_code == 200
+        assert first_response.data['seeded']['payroll_components']['created_count'] > 0
+        assert first_response.data['seeded']['payroll_components']['total_count'] == PayrollComponent.objects.filter(
+            organisation=org,
+        ).count()
+        assert first_response.data['seeded']['document_types']['total_count'] == OnboardingDocumentType.objects.count()
+
+        second_response = client.post(
+            f'/api/v1/ct/organisations/{org.id}/seed-masters/',
+            {},
+            format='json',
+        )
+
+        assert second_response.status_code == 200
+        assert second_response.data['seeded']['payroll_components']['created_count'] == 0
+        assert second_response.data['seeded']['document_types']['created_count'] == 0
+
+
+@pytest.mark.django_db
 class TestCtOrganisationAnalyticsAndBilling:
     def test_ct_analytics_returns_latest_kpis_and_series(self, ct_client, org):
         client, _ = ct_client
@@ -1442,7 +1498,7 @@ class TestCtOrganisationAnalyticsAndBilling:
         assert response.data['series']['active_employees'] == [{'date': '2026-05-07', 'value': 1}]
         assert response.data['series']['pending_approvals_count'] == [{'date': '2026-05-07', 'value': 1}]
 
-    @override_settings(RAZORPAY_WEBHOOK_SECRET='razorpay-test-secret')
+    @override_settings(RAZORPAY_WEBHOOK_SECRET='razorpay-test-secret')  # pragma: allowlist secret
     def test_razorpay_webhook_marks_batch_paid_and_is_idempotent(self, ct_client, org):
         client, ct_user = ct_client
         batch = org.licence_batches.create(
@@ -1471,25 +1527,50 @@ class TestCtOrganisationAnalyticsAndBilling:
             },
         }
         body = json.dumps(payload).encode()
-        signature = hmac.new(b'razorpay-test-secret', body, hashlib.sha256).hexdigest()
+        signature = hmac.new(b'razorpay-test-secret', body, hashlib.sha256).hexdigest()  # pragma: allowlist secret
+        queued = []
 
-        first_response = client.post(
-            '/api/v1/ct/billing/webhooks/razorpay/',
-            data=body,
-            content_type='application/json',
-            HTTP_X_RAZORPAY_SIGNATURE=signature,
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(
+            'apps.organisations.views.process_razorpay_webhook_task',
+            SimpleNamespace(delay=lambda payload, signature: queued.append((payload, signature))),
+            raising=False,
         )
-        second_response = client.post(
-            '/api/v1/ct/billing/webhooks/razorpay/',
-            data=body,
-            content_type='application/json',
-            HTTP_X_RAZORPAY_SIGNATURE=signature,
-        )
+        monkeypatch.setattr('apps.organisations.views.validate_razorpay_webhook_signature', lambda raw_body, webhook_signature: None, raising=False)
+
+        def should_not_run_inline(*args, **kwargs):
+            raise AssertionError('CT Razorpay webhook processing should be queued, not run inline.')
+
+        monkeypatch.setattr('apps.organisations.views.process_razorpay_webhook', should_not_run_inline, raising=False)
+        from apps.organisations.tasks import process_razorpay_webhook_task
+
+        try:
+            first_response = client.post(
+                '/api/v1/ct/billing/webhooks/razorpay/',
+                data=body,
+                content_type='application/json',
+                HTTP_X_RAZORPAY_SIGNATURE=signature,
+            )
+            second_response = client.post(
+                '/api/v1/ct/billing/webhooks/razorpay/',
+                data=body,
+                content_type='application/json',
+                HTTP_X_RAZORPAY_SIGNATURE=signature,
+            )
+
+            assert first_response.status_code == 200
+            assert second_response.status_code == 200
+            assert first_response.data == {'status': 'accepted'}
+            assert second_response.data == {'status': 'accepted'}
+            assert queued == [(body.decode('utf-8'), signature), (body.decode('utf-8'), signature)]
+
+            process_razorpay_webhook_task.run(*queued[0])
+            process_razorpay_webhook_task.run(*queued[1])
+        finally:
+            monkeypatch.undo()
 
         batch.refresh_from_db()
 
-        assert first_response.status_code == 200
-        assert second_response.status_code == 200
         assert batch.payment_status == 'PAID'
         assert batch.payment_reference == 'pay_test_123'
         assert OrganisationBillingEvent.objects.filter(provider_event_id='payment.captured:pay_test_123').count() == 1

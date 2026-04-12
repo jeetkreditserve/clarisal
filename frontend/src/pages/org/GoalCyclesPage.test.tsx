@@ -61,6 +61,7 @@ describe('GoalCyclesPage', () => {
       start_date: '2026-04-01',
       end_date: '2026-06-30',
       status: 'DRAFT',
+      auto_create_review_cycle: true,
       created_at: '2026-04-03T00:00:00Z',
     })
   })
@@ -81,6 +82,7 @@ describe('GoalCyclesPage', () => {
         name: 'Q2 2026',
         start_date: '2026-04-01',
         end_date: '2026-06-30',
+        auto_create_review_cycle: true,
       })
     })
     expect(toastSuccess).toHaveBeenCalledWith('Goal cycle created.')

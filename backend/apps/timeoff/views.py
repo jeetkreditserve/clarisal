@@ -1,3 +1,5 @@
+from datetime import date
+
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.response import Response
@@ -7,6 +9,7 @@ from apps.accounts.permissions import BelongsToActiveOrg, IsEmployee, IsOrgAdmin
 from apps.accounts.workspaces import get_active_admin_organisation, get_active_employee
 from apps.departments.models import Department
 from apps.employees.models import Employee
+from apps.employees.services import get_reporting_team
 from apps.locations.models import OfficeLocation
 
 from .models import (
@@ -67,6 +70,16 @@ def _get_employee(request):
     if employee is None:
         raise ValueError('Select an employee workspace to continue.')
     return employee
+
+
+def _parse_query_date(request, key):
+    raw_value = request.query_params.get(key)
+    if not raw_value:
+        return None
+    try:
+        return date.fromisoformat(raw_value)
+    except ValueError as exc:
+        raise ValueError(f'{key} must be a valid YYYY-MM-DD date.') from exc
 
 
 class HolidayCalendarListCreateView(APIView):
@@ -327,6 +340,34 @@ class MyLeaveOverviewView(APIView):
                 else None,
             }
         )
+
+
+class MyTeamLeaveView(APIView):
+    permission_classes = [IsEmployee, BelongsToActiveOrg]
+
+    def get(self, request):
+        employee = _get_employee(request)
+        include_indirect = request.query_params.get('include_indirect', 'false').lower() == 'true'
+        try:
+            from_date = _parse_query_date(request, 'from_date')
+            to_date = _parse_query_date(request, 'to_date')
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        team_ids = [member.id for member in get_reporting_team(employee, include_indirect=include_indirect)]
+        if not team_ids:
+            return Response([])
+
+        queryset = LeaveRequest.objects.filter(employee_id__in=team_ids).select_related('employee__user', 'leave_type')
+        status_value = request.query_params.get('status')
+        if status_value:
+            queryset = queryset.filter(status=status_value)
+        if from_date is not None:
+            queryset = queryset.filter(end_date__gte=from_date)
+        if to_date is not None:
+            queryset = queryset.filter(start_date__lte=to_date)
+        queryset = queryset.order_by('start_date', 'employee__user__first_name', 'employee__user__last_name')
+        return Response(LeaveRequestSerializer(queryset, many=True).data)
 
 
 class MyLeaveRequestListCreateView(APIView):

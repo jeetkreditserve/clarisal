@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -77,6 +77,7 @@ describe('PayrollRunDetailPage', () => {
             department: 'People Ops',
             status: 'READY',
             gross_pay: '32000.00',
+            epf_employee: '1800.00',
             esi_employee: '0.00',
             pt_monthly: '200.00',
             income_tax: '1800.00',
@@ -148,6 +149,7 @@ describe('PayrollRunDetailPage', () => {
             department: 'People Ops',
             status: 'READY',
             gross_pay: '32000.00',
+            epf_employee: '1800.00',
             esi_employee: '0.00',
             pt_monthly: '200.00',
             income_tax: '1800.00',
@@ -219,5 +221,63 @@ describe('PayrollRunDetailPage', () => {
 
     expect(screen.queryByRole('button', { name: /Preview/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'PDF' })).not.toBeInTheDocument()
+  })
+
+  it('shows the employee EPF deduction column in the payroll table', () => {
+    renderPage()
+
+    expect(screen.getByText('EPF (Emp)')).toBeInTheDocument()
+    const employeeRow = screen.getByText('Priya Sharma').closest('tr')
+    expect(employeeRow).not.toBeNull()
+    const cells = within(employeeRow as HTMLTableRowElement).getAllByRole('cell')
+    expect(cells[4]).toHaveTextContent('₹1,800.00')
+  })
+
+  it('shows separate EPF and EPS employer contribution lines in the expanded row', async () => {
+    const user = userEvent.setup()
+    usePayrollRunItems.mockReturnValue({
+      isLoading: false,
+      data: {
+        count: 1,
+        next: null,
+        previous: null,
+        results: [
+          {
+            id: 'item-1',
+            employee_id: 'employee-1',
+            employee_name: 'Priya Sharma',
+            employee_code: 'EMP001',
+            department: 'People Ops',
+            status: 'READY',
+            gross_pay: '32000.00',
+            esi_employee: '0.00',
+            pt_monthly: '200.00',
+            income_tax: '1800.00',
+            lop_days: '0',
+            net_pay: '30000.00',
+            pf_employer: '1800.00',
+            epf_employer: '550.50',
+            eps_employer: '1249.50',
+            snapshot: {
+              lines: [
+                {
+                  component_type: 'EMPLOYER_CONTRIBUTION',
+                  component_name: 'Employer PF (12.00% of PF Wages)',
+                  monthly_amount: '1800.00',
+                },
+              ],
+            },
+          },
+        ],
+      },
+    })
+
+    renderPage()
+
+    await user.click(screen.getByRole('button', { name: 'Expand payroll details for Priya Sharma' }))
+
+    expect(screen.getByText('EPF (Employer)')).toBeInTheDocument()
+    expect(screen.getByText('EPS')).toBeInTheDocument()
+    expect(screen.queryByText('Employer PF (12.00% of PF Wages)')).not.toBeInTheDocument()
   })
 })

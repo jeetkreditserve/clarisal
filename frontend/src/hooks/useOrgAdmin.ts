@@ -65,6 +65,7 @@ import {
   fetchEmployeeDetail,
   fetchEmployeeCustomFieldValues,
   fetchEmployeeDocuments,
+  fetchEmployeeExitInterview,
   fetchEmployeeCareerTimeline,
   fetchEmployees,
   fetchCustomFieldDefinitions,
@@ -140,6 +141,7 @@ import {
   updateEmployeeCustomFieldValues,
   updateEmployeeOffboarding,
   updateEmployeeOffboardingTask,
+  submitEmployeeExitInterview,
   updateHolidayCalendar,
   updateLeaveCycle,
   updateLeavePlan,
@@ -519,6 +521,15 @@ export function useEmployeeCareerTimeline(employeeId: string) {
   })
 }
 
+export function useEmployeeExitInterview(employeeId: string) {
+  const organisationId = useOrgScope()
+  return useQuery({
+    queryKey: ['org', organisationId, 'employees', employeeId, 'exit-interview'],
+    queryFn: () => fetchEmployeeExitInterview(employeeId),
+    enabled: Boolean(employeeId),
+  })
+}
+
 export function useCustomFieldDefinitions(placement = 'CUSTOM') {
   const organisationId = useOrgScope()
   return useQuery({
@@ -580,6 +591,17 @@ export function useUpdateEmployeeOffboarding(id: string) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (payload: Parameters<typeof updateEmployeeOffboarding>[1]) => updateEmployeeOffboarding(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org'] })
+    },
+  })
+}
+
+export function useSubmitEmployeeExitInterview(employeeId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: Parameters<typeof submitEmployeeExitInterview>[1]) =>
+      submitEmployeeExitInterview(employeeId, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['org'] })
     },

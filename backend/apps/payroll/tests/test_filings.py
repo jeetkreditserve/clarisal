@@ -1,6 +1,7 @@
 import io
 import zipfile
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
 from unittest.mock import patch
 
@@ -275,6 +276,24 @@ class TestStatutoryFilings:
         assert content_type == "text/csv"
         assert file_name == batch.file_name
         assert download_url == f"https://files.example.test/{batch.artifact_storage_key}?expires=900"
+
+    def test_pf_ecr_uses_persisted_epf_and_eps_split_values(self, filing_fixture):
+        item = filing_fixture["april_run"].items.get(employee=filing_fixture["employee"])
+        item.eps_employer = Decimal('1000.00')
+        item.epf_employer = Decimal('800.00')
+        item.save(update_fields=['eps_employer', 'epf_employer'])
+
+        batch = generate_statutory_filing_batch(
+            filing_fixture["organisation"],
+            filing_type="PF_ECR",
+            actor=filing_fixture["admin"],
+            period_year=2026,
+            period_month=4,
+        )
+
+        row = batch.structured_payload["rows"][0]
+        assert row["eps_employer_share"] == "1000"
+        assert row["epf_employer_share"] == "800"
 
     def test_esi_export_matches_fixture_and_preserves_continued_eligibility(self, filing_fixture):
         batch = generate_statutory_filing_batch(

@@ -74,7 +74,7 @@
 
 ## Task 6: Cleanup and Coverage
 
-- [ ] Remove stale CT-only inline setup logic superseded by the new onboarding flow.
+- [x] Remove stale CT-only inline setup logic superseded by the new onboarding flow.
 - [x] Cover act-as, feature-flag enforcement, onboarding progression, analytics aggregation, and billing webhooks with tests.
 - [x] Verify impersonation and feature flags do not break existing org-admin or employee workspace behavior.
 

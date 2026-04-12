@@ -36,6 +36,7 @@ from .models import (
     LeaveRequestStatus,
     LeaveType,
     LeaveWithoutPayEntry,
+    LeaveWithoutPayEntrySource,
     LeaveWithoutPayEntryStatus,
     OnDutyDurationType,
     OnDutyPolicy,
@@ -521,9 +522,58 @@ def process_cycle_end_lapse(employee, balance):
         effective_date=balance.cycle_end,
         note=f'Cycle end lapse: {balance.cycle_start.isoformat()} – {balance.cycle_end.isoformat()}',
     )
+    if balance.leave_type.is_loss_of_pay:
+        LeaveWithoutPayEntry.objects.create(
+            employee=employee,
+            entry_date=balance.cycle_end,
+            units=amount_to_expire,
+            reason=f'Cycle end lapse: {balance.cycle_start.isoformat()} – {balance.cycle_end.isoformat()}',
+            source=LeaveWithoutPayEntrySource.LEAVE_LAPSE,
+            status=LeaveWithoutPayEntryStatus.APPROVED,
+        )
     # Reduce credited_amount so available balance reflects the expiry
     balance.credited_amount = max(ZERO, _decimal(balance.credited_amount - amount_to_expire))
     balance.save(update_fields=['credited_amount', 'modified_at'])
+
+
+@transaction.atomic
+def process_cycle_end_cap(employee, balance):
+    """Apply carry-forward cap to an ended balance and seed the next cycle balance."""
+    leave_type = balance.leave_type
+    cap = _decimal(leave_type.carry_forward_cap) if leave_type.carry_forward_cap is not None else None
+    if cap is None:
+        return
+
+    available = (
+        balance.opening_balance
+        + balance.carried_forward_amount
+        + balance.credited_amount
+        - balance.used_amount
+        - balance.pending_amount
+    )
+    available = _decimal(max(ZERO, available))
+    if available > cap:
+        excess = _decimal(available - cap)
+        LeaveBalanceLedgerEntry.objects.create(
+            leave_balance=balance,
+            entry_type=LeaveBalanceEntryType.EXPIRY,
+            amount=excess,
+            effective_date=balance.cycle_end,
+            note=f'Carry-forward cap lapse: allowed {cap}, lapsed {excess}',
+        )
+        balance.credited_amount = max(ZERO, _decimal(balance.credited_amount - excess))
+        balance.save(update_fields=['credited_amount', 'modified_at'])
+
+    leave_cycle = leave_type.leave_plan.leave_cycle
+    next_cycle_start, next_cycle_end = get_cycle_window(leave_cycle, employee, as_of=balance.cycle_end + timedelta(days=1))
+    process_cycle_end_carry_forward(
+        employee=employee,
+        leave_type=leave_type,
+        old_cycle_start=balance.cycle_start,
+        old_cycle_end=balance.cycle_end,
+        new_cycle_start=next_cycle_start,
+        new_cycle_end=next_cycle_end,
+    )
 
 
 def get_lwp_days_for_period(employee, period_start, period_end):

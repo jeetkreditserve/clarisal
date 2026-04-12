@@ -14,6 +14,7 @@ const useDesignations = vi.fn()
 const useEmployeeCustomFieldValues = vi.fn()
 const useEmployeeDetail = vi.fn()
 const useEmployeeCareerTimeline = vi.fn()
+const useEmployeeExitInterview = vi.fn()
 const useEmployeeDocumentDownload = vi.fn()
 const useEmployeeDocumentRequests = vi.fn()
 const useEmployeeDocuments = vi.fn()
@@ -27,6 +28,7 @@ const useUpdateEmployee = vi.fn()
 const useUpdateEmployeeCustomFieldValues = vi.fn()
 const useUpdateEmployeeOffboarding = vi.fn()
 const useUpdateEmployeeOffboardingTask = vi.fn()
+const useSubmitEmployeeExitInterview = vi.fn()
 
 vi.mock('sonner', () => ({
   toast: {
@@ -45,6 +47,7 @@ vi.mock('@/hooks/useOrgAdmin', () => ({
   useEmployeeCustomFieldValues: (id: string) => useEmployeeCustomFieldValues(id),
   useEmployeeDetail: (id: string) => useEmployeeDetail(id),
   useEmployeeCareerTimeline: (id: string) => useEmployeeCareerTimeline(id),
+  useEmployeeExitInterview: (id: string) => useEmployeeExitInterview(id),
   useEmployeeDocumentDownload: () => useEmployeeDocumentDownload(),
   useEmployeeDocumentRequests: (id: string) => useEmployeeDocumentRequests(id),
   useEmployeeDocuments: (id: string) => useEmployeeDocuments(id),
@@ -58,6 +61,7 @@ vi.mock('@/hooks/useOrgAdmin', () => ({
   useUpdateEmployeeCustomFieldValues: (id: string) => useUpdateEmployeeCustomFieldValues(id),
   useUpdateEmployeeOffboarding: (id: string) => useUpdateEmployeeOffboarding(id),
   useUpdateEmployeeOffboardingTask: (id: string) => useUpdateEmployeeOffboardingTask(id),
+  useSubmitEmployeeExitInterview: (id: string) => useSubmitEmployeeExitInterview(id),
 }))
 
 function renderPage() {
@@ -112,6 +116,7 @@ describe('EmployeeDetailPage', () => {
     })
     useEmployeeDocumentDownload.mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({ url: 'https://example.com' }) })
     useEmployeeCareerTimeline.mockReturnValue({ isLoading: false, data: [] })
+    useEmployeeExitInterview.mockReturnValue({ isLoading: false, data: null })
     useEmployeeDocumentRequests.mockReturnValue({ data: [] })
     useEmployeeDocuments.mockReturnValue({ data: [] })
     useEmployees.mockReturnValue({ data: { results: [] } })
@@ -155,6 +160,7 @@ describe('EmployeeDetailPage', () => {
       useUpdateEmployeeCustomFieldValues,
       useUpdateEmployeeOffboarding,
       useUpdateEmployeeOffboardingTask,
+      useSubmitEmployeeExitInterview,
     ]) {
       hook.mockReturnValue({ isPending: false, mutateAsync: vi.fn().mockResolvedValue(undefined) })
     }
@@ -275,6 +281,33 @@ describe('EmployeeDetailPage', () => {
     })
   })
 
+  it('does not crash when the page rerenders from loading to loaded state', async () => {
+    const loadedEmployeeDetail = useEmployeeDetail()
+    let loading = true
+
+    useEmployeeDetail.mockImplementation(() => (
+      loading
+        ? { isLoading: true, data: null }
+        : loadedEmployeeDetail
+    ))
+
+    const view = renderPage()
+
+    loading = false
+    view.rerender(
+      <MemoryRouter initialEntries={['/org/employees/emp-1']}>
+        <Routes>
+          <Route path="/org/employees/:id" element={<EmployeeDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Employee One' })).toBeInTheDocument()
+    })
+    expect(screen.getByText('Employee detail')).toBeInTheDocument()
+  })
+
   it('renders the employee career timeline when career events are available', () => {
     useEmployeeCareerTimeline.mockReturnValue({
       isLoading: false,
@@ -331,5 +364,61 @@ describe('EmployeeDetailPage', () => {
         ],
       })
     })
+  })
+
+  it('shows a record-exit-interview action when no interview exists', () => {
+    renderPage()
+
+    expect(screen.getByRole('button', { name: 'Record exit interview' })).toBeInTheDocument()
+  })
+
+  it('shows document expiry badges for expiring and expired files', () => {
+    useEmployeeDocuments.mockReturnValue({
+      data: [
+        {
+          id: 'doc-1',
+          document_type: 'PASSPORT',
+          document_type_code: 'PASSPORT',
+          document_request: null,
+          file_name: 'passport.pdf',
+          file_size: 128,
+          mime_type: 'application/pdf',
+          status: 'VERIFIED',
+          metadata: {},
+          version: 1,
+          uploaded_by_email: 'employee.one@test.com',
+          reviewed_by_email: 'admin@test.com',
+          reviewed_at: '2026-04-01T00:00:00Z',
+          created_at: '2026-04-01T00:00:00Z',
+          expiry_date: '2026-04-20',
+          alert_days_before: 30,
+          expires_soon: true,
+        },
+        {
+          id: 'doc-2',
+          document_type: 'WORK_PERMIT',
+          document_type_code: 'WORK_PERMIT',
+          document_request: null,
+          file_name: 'permit.pdf',
+          file_size: 128,
+          mime_type: 'application/pdf',
+          status: 'VERIFIED',
+          metadata: {},
+          version: 1,
+          uploaded_by_email: 'employee.one@test.com',
+          reviewed_by_email: 'admin@test.com',
+          reviewed_at: '2026-04-01T00:00:00Z',
+          created_at: '2026-04-01T00:00:00Z',
+          expiry_date: '2026-03-20',
+          alert_days_before: 30,
+          expires_soon: false,
+        },
+      ],
+    })
+
+    renderPage()
+
+    expect(screen.getByText('Expiring soon')).toBeInTheDocument()
+    expect(screen.getByText('Expired')).toBeInTheDocument()
   })
 })

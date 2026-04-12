@@ -201,7 +201,7 @@ test('onboarding basic details form visible', async ({ page }) => {
 // ─── Step 5: Active employee redirect ─────────────────────────────────────
 
 test('active employee redirected away from /me/onboarding', async ({ page }) => {
-  // Login as Priya Sharma (ACTIVE employee)
+  // Login as the seeded ACTIVE employee
   await page.goto('/auth/login')
   await page.fill('#email', EXISTING_EMPLOYEE_EMAIL)
   await page.fill('#password', EXISTING_EMPLOYEE_PASSWORD)

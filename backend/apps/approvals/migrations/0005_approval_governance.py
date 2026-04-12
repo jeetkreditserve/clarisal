@@ -84,7 +84,7 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name='approvaldelegation',
-            constraint=models.CheckConstraint(check=models.Q(('end_date__isnull', True), ('end_date__gte', models.F('start_date')), _connector='OR'), name='approval_delegation_end_date_after_start_date'),
+            constraint=models.CheckConstraint(condition=models.Q(('end_date__isnull', True), ('end_date__gte', models.F('start_date')), _connector='OR'), name='approval_delegation_end_date_after_start_date'),
         ),
         migrations.AddIndex(
             model_name='approvaldelegation',

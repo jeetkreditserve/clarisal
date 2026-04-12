@@ -9,6 +9,7 @@ from django.core.management import call_command
 from rest_framework.test import APIClient
 
 from apps.accounts.models import AccountType, User, UserRole
+from apps.documents.models import Document
 from apps.employees.models import Employee, EmployeeProfile, EmployeeStatus, GenderChoice, GovernmentIdType
 from apps.employees.services import upsert_government_id
 from apps.organisations.models import (
@@ -727,6 +728,84 @@ class TestPayrollViews:
 
         assert verified_list_response.status_code == 200
         assert [item['id'] for item in verified_list_response.data] == [declaration_id]
+
+    def test_employee_can_attach_uploaded_document_as_investment_proof(self, payroll_setup):
+        employee_client = payroll_setup['employee_client']
+        employee = payroll_setup['employee']
+
+        proof_document = Document.objects.create(
+            employee=employee,
+            document_type='OTHER',
+            file_key='organisations/acme-payroll/employees/EMP100/other/proof.pdf',
+            file_name='proof.pdf',
+            file_size=128,
+            mime_type='application/pdf',
+            uploaded_by=employee.user,
+        )
+
+        create_response = employee_client.post(
+            '/api/v1/me/payroll/investment-declarations/',
+            {
+                'fiscal_year': '2026-2027',
+                'section': '80C',
+                'description': 'PPF',
+                'declared_amount': '50000.00',
+                'proof_document_id': str(proof_document.id),
+            },
+            format='json',
+        )
+
+        assert create_response.status_code == 201
+        assert create_response.data['proof_document_id'] == str(proof_document.id)
+        assert create_response.data['proof_document_file_name'] == 'proof.pdf'
+        assert create_response.data['proof_document_url']
+        assert create_response.data['proof_file_key'] == proof_document.file_key
+
+    def test_employee_cannot_attach_another_employees_document_as_investment_proof(self, payroll_setup):
+        employee_client = payroll_setup['employee_client']
+        organisation = payroll_setup['organisation']
+        org_admin_user = payroll_setup['org_admin_user']
+
+        other_user = User.objects.create_user(
+            email='other-employee@test.com',
+            password='pass123!',
+            account_type=AccountType.WORKFORCE,
+            role=UserRole.EMPLOYEE,
+            organisation=organisation,
+            is_active=True,
+        )
+        other_employee = Employee.objects.create(
+            organisation=organisation,
+            user=other_user,
+            employee_code='EMP200',
+            designation='Analyst',
+            status=EmployeeStatus.ACTIVE,
+            date_of_joining=date(2026, 4, 1),
+        )
+        other_document = Document.objects.create(
+            employee=other_employee,
+            document_type='OTHER',
+            file_key='organisations/acme-payroll/employees/EMP200/other/proof.pdf',
+            file_name='other-proof.pdf',
+            file_size=64,
+            mime_type='application/pdf',
+            uploaded_by=org_admin_user,
+        )
+
+        response = employee_client.post(
+            '/api/v1/me/payroll/investment-declarations/',
+            {
+                'fiscal_year': '2026-2027',
+                'section': '80C',
+                'description': 'PPF',
+                'declared_amount': '50000.00',
+                'proof_document_id': str(other_document.id),
+            },
+            format='json',
+        )
+
+        assert response.status_code == 400
+        assert 'proof_document_id' in response.data
 
     def test_employee_form12bb_canonical_alias_returns_pdf(self, payroll_setup):
         employee_client = payroll_setup['employee_client']

@@ -14,11 +14,13 @@ from .views import (
     MyOffboardingView,
     MyOnboardingView,
     MyProfileView,
+    MyTeamView,
 )
 
 urlpatterns = [
     path('onboarding/', MyOnboardingView.as_view(), name='my-onboarding'),
     path('dashboard/', MyDashboardView.as_view(), name='my-dashboard'),
+    path('my-team/', MyTeamView.as_view(), name='my-team'),
     path('offboarding/', MyOffboardingView.as_view(), name='my-offboarding'),
     path('profile/', MyProfileView.as_view(), name='my-profile'),
     path('family-members/', MyFamilyMemberListCreateView.as_view(), name='my-family-members'),

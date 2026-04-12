@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { GitBranch, ShieldAlert, Users } from 'lucide-react'
 
+import { OrgChartD3 } from '@/components/OrgChartD3'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
@@ -57,6 +58,7 @@ function OrgChartBranch({ node }: OrgChartBranchProps) {
 
 export function OrgChartPage() {
   const [includeInactive, setIncludeInactive] = useState(false)
+  const [fallbackOpen, setFallbackOpen] = useState(false)
   const { data: tree, isLoading } = useOrgChart(includeInactive)
   const { data: cycles } = useOrgChartCycles()
 
@@ -114,15 +116,24 @@ export function OrgChartPage() {
               </span>
               <span className="inline-flex items-center gap-2">
                 <GitBranch className="h-4 w-4" />
-                Reporting lines are shown recursively below each manager.
+                Search, pan, and zoom through the reporting map. Use the fallback below if you need a simple recursive tree.
               </span>
             </div>
 
-            <div className="space-y-4">
-              {tree.map((node) => (
-                <OrgChartBranch key={node.id} node={node} />
-              ))}
-            </div>
+            <OrgChartD3 data={tree} />
+
+            <details className="rounded-[24px] border border-[hsl(var(--border))] bg-[hsl(var(--background-subtle))] px-5 py-4" onToggle={(event) => setFallbackOpen(event.currentTarget.open)}>
+              <summary className="cursor-pointer font-medium text-[hsl(var(--foreground-strong))]">
+                Accessible hierarchy fallback
+              </summary>
+              {fallbackOpen ? (
+                <div className="mt-4 space-y-4">
+                  {tree.map((node) => (
+                    <OrgChartBranch key={node.id} node={node} />
+                  ))}
+                </div>
+              ) : null}
+            </details>
           </div>
         ) : (
           <EmptyState

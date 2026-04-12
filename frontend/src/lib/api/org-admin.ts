@@ -31,6 +31,7 @@ import type {
   EmployeeDocumentRequest,
   EmployeeCustomFieldValue,
   EmployeeDetail,
+  EmployeeExitInterview,
   EmployeeListItem,
   FullAndFinalSettlement,
   HolidayCalendar,
@@ -374,6 +375,27 @@ export async function updateEmployeeOffboarding(
   payload: Partial<{ exit_reason: string; exit_notes: string }>
 ) {
   const { data } = await api.patch<OffboardingProcess>(`/org/employees/${id}/offboarding/`, payload)
+  return data
+}
+
+export async function fetchEmployeeExitInterview(employeeId: string) {
+  const { data } = await api.get<EmployeeExitInterview | null>(`/org/employees/${employeeId}/exit-interview/`)
+  return data
+}
+
+export async function submitEmployeeExitInterview(
+  employeeId: string,
+  payload: Partial<{
+    interview_date: string | null
+    exit_reason: string
+    interviewer_id: string | null
+    overall_satisfaction: number | null
+    would_recommend_org: boolean | null
+    feedback: string
+    areas_of_improvement: string
+  }>
+) {
+  const { data } = await api.patch<EmployeeExitInterview>(`/org/employees/${employeeId}/exit-interview/`, payload)
   return data
 }
 

@@ -155,6 +155,15 @@ class Document(AuditedBaseModel):
     metadata = models.JSONField(default=dict, blank=True)
     file_hash = models.CharField(max_length=64, blank=True)
     version = models.PositiveIntegerField(default=1)
+    expiry_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text='Date after which this document is no longer valid. Null means the document does not expire.',
+    )
+    alert_days_before = models.PositiveSmallIntegerField(
+        default=30,
+        help_text='Days before expiry_date when the owner should be alerted.',
+    )
     reviewed_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,

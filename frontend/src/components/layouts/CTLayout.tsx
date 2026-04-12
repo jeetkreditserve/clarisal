@@ -1,5 +1,5 @@
 import { Outlet, useNavigate } from 'react-router-dom'
-import { Building2, Landmark, LayoutDashboard, LogOut } from 'lucide-react'
+import { Building2, CreditCard, Landmark, LayoutDashboard, LogOut } from 'lucide-react'
 import { SidebarNav, type NavItem } from './SidebarNav'
 import { useAuth } from '@/hooks/useAuth'
 import { StatusBadge } from '@/components/ui/StatusBadge'
@@ -8,6 +8,7 @@ import { ThemeToggle } from '@/components/ui/ThemeToggle'
 const navItems: NavItem[] = [
   { label: 'Dashboard', href: '/ct/dashboard', icon: LayoutDashboard },
   { label: 'Payroll Masters', href: '/ct/payroll', icon: Landmark },
+  { label: 'Billing', href: '/ct/billing', icon: CreditCard },
   { label: 'Organisations', href: '/ct/organisations', icon: Building2 },
 ]
 

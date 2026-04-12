@@ -1,4 +1,6 @@
 import re
+from datetime import datetime, time
+from decimal import Decimal
 
 from django.db import transaction
 from django.utils import timezone
@@ -44,6 +46,10 @@ from .models import (
 PAN_PATTERN = re.compile(r'^[A-Z]{5}[0-9]{4}[A-Z]$')
 AADHAAR_PATTERN = re.compile(r'^[0-9]{12}$')
 IFSC_PATTERN = re.compile(r'^[A-Z]{4}0[A-Z0-9]{6}$')
+EXIT_INTERVIEW_TEMPLATE_NAME = 'Clarisal Exit Interview'
+EXIT_INTERVIEW_RECOMMEND_QUESTION = 'Would you recommend the organisation to others?'
+EXIT_INTERVIEW_FEEDBACK_QUESTION = 'What feedback would you like to share about your experience?'
+EXIT_INTERVIEW_IMPROVEMENT_QUESTION = 'Which areas of improvement should the organisation prioritise?'
 LICENCE_CONSUMING_STATUSES = [
     EmployeeStatus.INVITED,
     EmployeeStatus.PENDING,
@@ -350,6 +356,9 @@ def invite_employee(
 
 
 def create_employee_from_offer(offer, actor=None):
+    from apps.payroll.models import CompensationAssignment
+    from apps.payroll.services import assign_employee_compensation, create_compensation_template
+
     posting = offer.application.job_posting
     candidate = offer.application.candidate
 
@@ -366,6 +375,32 @@ def create_employee_from_offer(offer, actor=None):
         required_document_type_ids=None,
         invited_by=actor,
     )
+    ctc_annual = Decimal(str(offer.ctc_annual or '0')).quantize(Decimal('0.01'))
+    if ctc_annual > Decimal('0.00') and not CompensationAssignment.objects.filter(employee=employee).exists():
+        monthly_gross = (ctc_annual / Decimal('12.00')).quantize(Decimal('0.01'))
+        candidate_name = f'{candidate.first_name} {candidate.last_name}'.strip() or candidate.email
+        template = create_compensation_template(
+            posting.organisation,
+            name=f'Offer compensation - {candidate_name}',
+            description='Generated from accepted recruitment offer.',
+            actor=actor,
+            lines=[
+                {
+                    'component_code': 'BASIC',
+                    'name': 'Basic Pay',
+                    'component_type': 'EARNING',
+                    'monthly_amount': monthly_gross,
+                    'is_taxable': True,
+                }
+            ],
+        )
+        assign_employee_compensation(
+            employee,
+            template,
+            effective_from=offer.joining_date or timezone.localdate(),
+            actor=actor,
+            auto_approve=True,
+        )
     return employee
 
 
@@ -791,9 +826,7 @@ def delete_employee(employee, actor=None):
         employee.bank_accounts.update(is_deleted=True, deleted_at=now)
         employee.emergency_contacts.update(is_deleted=True, deleted_at=now)
         employee.family_members.update(is_deleted=True, deleted_at=now)
-        employee.is_deleted = True
-        employee.deleted_at = now
-        employee.save(update_fields=['is_deleted', 'deleted_at', 'modified_at'])
+        employee.soft_delete()
         sync_user_role(user)
 
     log_audit_event(actor, 'employee.deleted', organisation=organisation, target=employee, payload=payload)
@@ -858,9 +891,7 @@ def create_or_update_emergency_contact(employee, actor=None, contact_id=None, **
 def delete_emergency_contact(contact, actor=None):
     organisation = contact.employee.organisation
     payload = {'contact_id': str(contact.id), 'full_name': contact.full_name}
-    contact.is_deleted = True
-    contact.deleted_at = timezone.now()
-    contact.save(update_fields=['is_deleted', 'deleted_at', 'modified_at'])
+    contact.soft_delete()
     refresh_employee_onboarding_status(contact.employee, actor=actor)
     log_audit_event(actor, 'employee.emergency_contact.deleted', organisation=organisation, payload=payload)
 
@@ -884,9 +915,7 @@ def delete_family_member(member, actor=None):
     organisation = member.employee.organisation
     employee = member.employee
     payload = {'member_id': str(member.id), 'full_name': member.full_name}
-    member.is_deleted = True
-    member.deleted_at = timezone.now()
-    member.save(update_fields=['is_deleted', 'deleted_at', 'modified_at'])
+    member.soft_delete()
     refresh_employee_onboarding_status(employee, actor=actor)
     log_audit_event(actor, 'employee.family_member.deleted', organisation=organisation, payload=payload)
 
@@ -908,9 +937,7 @@ def update_education_record(record, actor=None, **fields):
 def delete_education_record(record, actor=None):
     organisation = record.employee.organisation
     payload = {'degree': record.degree, 'institution': record.institution}
-    record.is_deleted = True
-    record.deleted_at = timezone.now()
-    record.save(update_fields=['is_deleted', 'deleted_at', 'modified_at'])
+    record.soft_delete()
     log_audit_event(actor, 'employee.education.deleted', organisation=organisation, payload=payload)
 
 
@@ -974,9 +1001,7 @@ def update_bank_account(account, actor=None, **fields):
 def delete_bank_account(account, actor=None):
     organisation = account.employee.organisation
     payload = {'account_id': str(account.id), 'account_holder_name': account.account_holder_name}
-    account.is_deleted = True
-    account.deleted_at = timezone.now()
-    account.save(update_fields=['is_deleted', 'deleted_at', 'modified_at'])
+    account.soft_delete()
     log_audit_event(actor, 'employee.bank_account.deleted', organisation=organisation, payload=payload)
 
 
@@ -1088,6 +1113,165 @@ def create_exit_interview_template(
         payload={'template_id': str(template.id), 'question_count': len(questions) if questions else 0},
     )
     return template
+
+
+def _ensure_default_exit_interview_template(organisation):
+    from .models import ExitInterviewQuestion, ExitInterviewQuestionType, ExitInterviewTemplate
+
+    template, _created = ExitInterviewTemplate.objects.get_or_create(
+        organisation=organisation,
+        name=EXIT_INTERVIEW_TEMPLATE_NAME,
+        defaults={'description': 'Default exit interview prompts for offboarding reviews.'},
+    )
+    questions = [
+        (EXIT_INTERVIEW_RECOMMEND_QUESTION, ExitInterviewQuestionType.YES_NO, 10),
+        (EXIT_INTERVIEW_FEEDBACK_QUESTION, ExitInterviewQuestionType.TEXT, 20),
+        (EXIT_INTERVIEW_IMPROVEMENT_QUESTION, ExitInterviewQuestionType.TEXT, 30),
+    ]
+    for question_text, question_type, order in questions:
+        ExitInterviewQuestion.objects.get_or_create(
+            template=template,
+            question_text=question_text,
+            defaults={
+                'question_type': question_type,
+                'order': order,
+                'is_required': False,
+            },
+        )
+    return template
+
+
+def _combine_local_date(value):
+    if value is None:
+        return None
+    return timezone.make_aware(datetime.combine(value, time(hour=12, minute=0)))
+
+
+def get_employee_exit_interview(process):
+    return process.exit_interviews.select_related('conducted_by', 'template').prefetch_related('responses__question').order_by('-created_at').first()
+
+
+def get_employee_exit_interview_payload(process):
+    interview = get_employee_exit_interview(process)
+    if interview is None:
+        return None
+
+    interviewer_employee = None
+    if interview.conducted_by_id:
+        interviewer_employee = Employee.objects.filter(
+            organisation=process.organisation,
+            user=interview.conducted_by,
+        ).first()
+
+    responses_by_question = {
+        response.question.question_text: response
+        for response in interview.responses.all()
+    }
+    feedback_response = responses_by_question.get(EXIT_INTERVIEW_FEEDBACK_QUESTION)
+    improvement_response = responses_by_question.get(EXIT_INTERVIEW_IMPROVEMENT_QUESTION)
+    recommend_response = responses_by_question.get(EXIT_INTERVIEW_RECOMMEND_QUESTION)
+
+    return {
+        'id': str(interview.id),
+        'interview_date': interview.conducted_date.date().isoformat() if interview.conducted_date else (
+            interview.scheduled_date.date().isoformat() if interview.scheduled_date else None
+        ),
+        'exit_reason': process.exit_reason or '',
+        'interviewer_id': str(interviewer_employee.id) if interviewer_employee is not None else None,
+        'interviewer_name': interviewer_employee.user.full_name if interviewer_employee is not None else None,
+        'overall_satisfaction': interview.overall_rating,
+        'would_recommend_org': recommend_response.boolean_value if recommend_response is not None else None,
+        'feedback': feedback_response.text_value if feedback_response is not None else interview.notes,
+        'areas_of_improvement': improvement_response.text_value if improvement_response is not None else '',
+        'submitted_at': interview.conducted_date.isoformat() if interview.conducted_date else None,
+    }
+
+
+def upsert_employee_exit_interview(
+    process,
+    *,
+    interview_date=None,
+    exit_reason='',
+    interviewer_employee=None,
+    overall_satisfaction=None,
+    would_recommend_org=None,
+    feedback='',
+    areas_of_improvement='',
+    actor=None,
+):
+    from .models import ExitInterviewQuestion
+
+    template = _ensure_default_exit_interview_template(process.organisation)
+    interview = get_employee_exit_interview(process)
+    interview_timestamp = _combine_local_date(interview_date or process.date_of_exit)
+    if interview is None:
+        interview = schedule_exit_interview(
+            process=process,
+            scheduled_date=interview_timestamp,
+            stage='EXIT',
+            template=template,
+            actor=actor,
+        )
+    interview.template = template
+    interview.stage = 'EXIT'
+    interview.scheduled_date = interview_timestamp
+    interview.conducted_date = interview_timestamp
+    interview.conducted_by = interviewer_employee.user if interviewer_employee is not None else actor
+    interview.notes = feedback
+    interview.overall_rating = overall_satisfaction
+    interview.save(
+        update_fields=[
+            'template',
+            'stage',
+            'scheduled_date',
+            'conducted_date',
+            'conducted_by',
+            'notes',
+            'overall_rating',
+            'modified_at',
+        ]
+    )
+
+    if exit_reason != '':
+        process.exit_reason = exit_reason
+        process.modified_by = actor
+        process.save(update_fields=['exit_reason', 'modified_by', 'modified_at'])
+
+    questions = {
+        question.question_text: question
+        for question in ExitInterviewQuestion.objects.filter(template=template)
+    }
+    record_exit_interview_response(
+        interview=interview,
+        question=questions[EXIT_INTERVIEW_RECOMMEND_QUESTION],
+        boolean_value=would_recommend_org,
+        actor=actor,
+    )
+    record_exit_interview_response(
+        interview=interview,
+        question=questions[EXIT_INTERVIEW_FEEDBACK_QUESTION],
+        text_value=feedback,
+        actor=actor,
+    )
+    record_exit_interview_response(
+        interview=interview,
+        question=questions[EXIT_INTERVIEW_IMPROVEMENT_QUESTION],
+        text_value=areas_of_improvement,
+        actor=actor,
+    )
+
+    log_audit_event(
+        actor,
+        'employee.exit_interview.recorded',
+        organisation=process.organisation,
+        target=process.employee,
+        payload={
+            'process_id': str(process.id),
+            'interview_id': str(interview.id),
+            'interviewer_employee_id': str(interviewer_employee.id) if interviewer_employee is not None else None,
+        },
+    )
+    return interview
 
 
 def schedule_exit_interview(
@@ -1238,14 +1422,53 @@ def get_org_chart_tree(organisation, include_inactive=False):
     return [build_node(root) for root in sorted(roots, key=lambda e: e.user.full_name)]
 
 
-def get_employee_direct_reports(employee, include_inactive=False):
+def get_reporting_team(employee, *, include_inactive=False, include_indirect=False):
     from .models import EmployeeStatus
 
-    queryset = employee.direct_reports
+    queryset = Employee.objects.filter(organisation=employee.organisation).select_related(
+        'user',
+        'department',
+        'designation_ref',
+    )
     if not include_inactive:
-        queryset = queryset.filter(status__in=[EmployeeStatus.ACTIVE])
+        queryset = queryset.filter(status=EmployeeStatus.ACTIVE)
 
-    return list(queryset.select_related('user', 'department', 'designation_ref').all())
+    if not include_indirect:
+        return list(
+            queryset.filter(reporting_to=employee).order_by(
+                'user__first_name',
+                'user__last_name',
+                'employee_code',
+            )
+        )
+
+    employee_rows = list(
+        queryset.order_by(
+            'user__first_name',
+            'user__last_name',
+            'employee_code',
+        )
+    )
+    children_map = {}
+    for report in employee_rows:
+        children_map.setdefault(report.reporting_to_id, []).append(report)
+
+    team = []
+    queue = [employee.id]
+    seen = set()
+    while queue:
+        manager_id = queue.pop(0)
+        for report in children_map.get(manager_id, []):
+            if report.id in seen:
+                continue
+            seen.add(report.id)
+            team.append(report)
+            queue.append(report.id)
+    return team
+
+
+def get_employee_direct_reports(employee, include_inactive=False):
+    return get_reporting_team(employee, include_inactive=include_inactive, include_indirect=False)
 
 
 def validate_org_chart_cycles(organisation):

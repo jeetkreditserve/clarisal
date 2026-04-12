@@ -3,6 +3,7 @@ import { Download, FileUp } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { EmptyState } from '@/components/ui/EmptyState'
+import { AppDatePicker } from '@/components/ui/AppDatePicker'
 import { AppSelect } from '@/components/ui/AppSelect'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
@@ -32,6 +33,8 @@ export function DocumentsPage() {
   const [file, setFile] = useState<File | null>(null)
   const [note, setNote] = useState('')
   const [requestFiles, setRequestFiles] = useState<Record<string, File | null>>({})
+  const [requestExpiryDates, setRequestExpiryDates] = useState<Record<string, string>>({})
+  const [expiryDate, setExpiryDate] = useState('')
   const [uploadProgress, setUploadProgress] = useState(0)
   const [requestedUploadProgress, setRequestedUploadProgress] = useState<Record<string, number>>({})
   const documentTypeOptions = DOCUMENT_TYPE_OPTIONS.map((type) => ({
@@ -50,11 +53,13 @@ export function DocumentsPage() {
         document_type: documentType,
         file,
         metadata: note ? { note } : undefined,
+        expiry_date: expiryDate || null,
         onUploadProgress: setUploadProgress,
       })
       toast.success('Document uploaded.')
       setFile(null)
       setNote('')
+      setExpiryDate('')
       setUploadProgress(0)
     } catch (error) {
       toast.error(getErrorMessage(error, 'Unable to upload document.'))
@@ -71,11 +76,13 @@ export function DocumentsPage() {
       await uploadRequestedMutation.mutateAsync({
         request_id: requestId,
         file: requestedFile,
+        expiry_date: requestExpiryDates[requestId] || null,
         onUploadProgress: (progress) =>
           setRequestedUploadProgress((current) => ({ ...current, [requestId]: progress })),
       })
       toast.success('Requested document uploaded.')
       setRequestFiles((current) => ({ ...current, [requestId]: null }))
+      setRequestExpiryDates((current) => ({ ...current, [requestId]: '' }))
       setRequestedUploadProgress((current) => ({ ...current, [requestId]: 0 }))
     } catch (error) {
       toast.error(getErrorMessage(error, 'Unable to upload requested document.'))
@@ -121,6 +128,11 @@ export function DocumentsPage() {
                   ) : null}
                   <div className="mt-4 grid gap-3">
                     <input type="file" className="field-input" onChange={(event) => setRequestFiles((current) => ({ ...current, [request.id]: event.target.files?.[0] ?? null }))} />
+                    <AppDatePicker
+                      value={requestExpiryDates[request.id] ?? ''}
+                      onValueChange={(value) => setRequestExpiryDates((current) => ({ ...current, [request.id]: value }))}
+                      placeholder="Optional expiry date"
+                    />
                     <button type="button" className="btn-primary" onClick={() => void handleRequestedUpload(request.id)} disabled={uploadRequestedMutation.isPending}>
                       {uploadRequestedMutation.isPending && requestedUploadProgress[request.id]
                         ? `Uploading ${requestedUploadProgress[request.id]}%`
@@ -168,6 +180,14 @@ export function DocumentsPage() {
               </label>
               <textarea id="document-note" className="field-textarea" value={note} onChange={(event) => setNote(event.target.value)} />
             </div>
+            <div>
+              <p className="field-label">Expiry date</p>
+              <AppDatePicker
+                value={expiryDate}
+                onValueChange={setExpiryDate}
+                placeholder="Optional expiry date"
+              />
+            </div>
             <button type="submit" className="btn-secondary" disabled={uploadMutation.isPending}>
               <FileUp className="h-4 w-4" />
               {uploadMutation.isPending && uploadProgress ? `Uploading ${uploadProgress}%` : 'Upload additional document'}
@@ -202,9 +222,17 @@ export function DocumentsPage() {
                         <td className="py-4 pr-4">
                           <p className="table-primary font-semibold">{startCase(document.document_type)}</p>
                           <p className="table-secondary mt-1 text-xs">{document.file_name}</p>
+                          {document.expiry_date ? <p className="table-secondary mt-1 text-xs">Expires {document.expiry_date}</p> : null}
                         </td>
                         <td className="py-4 pr-4">
-                          <StatusBadge tone={getDocumentStatusTone(document.status)}>{document.status}</StatusBadge>
+                          <div className="flex flex-wrap items-center gap-2">
+                            {document.is_expired ? (
+                              <StatusBadge tone="danger">Expired</StatusBadge>
+                            ) : document.expires_soon ? (
+                              <StatusBadge tone="warning">Expiring soon</StatusBadge>
+                            ) : null}
+                            <StatusBadge tone={getDocumentStatusTone(document.status)}>{document.status}</StatusBadge>
+                          </div>
                         </td>
                         <td className="table-secondary py-4 pr-4">{formatDateTime(document.created_at)}</td>
                         <td className="py-4 text-right">

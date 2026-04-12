@@ -10,16 +10,22 @@ const {
   toastSuccess,
   toastError,
   fetchMyGoals,
+  fetchMyReviewCycles,
+  fetchMyFeedbackSummary,
   fetchMyReviews,
   updateMyGoalProgress,
-  submitMyReview,
+  saveMySelfAssessment,
+  submitMySelfAssessment,
 } = vi.hoisted(() => ({
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
   fetchMyGoals: vi.fn(),
+  fetchMyReviewCycles: vi.fn(),
+  fetchMyFeedbackSummary: vi.fn(),
   fetchMyReviews: vi.fn(),
   updateMyGoalProgress: vi.fn(),
-  submitMyReview: vi.fn(),
+  saveMySelfAssessment: vi.fn(),
+  submitMySelfAssessment: vi.fn(),
 }))
 
 vi.mock('sonner', () => ({
@@ -34,9 +40,12 @@ vi.mock('@/lib/api/performance', async () => {
   return {
     ...actual,
     fetchMyGoals,
+    fetchMyReviewCycles,
+    fetchMyFeedbackSummary,
     fetchMyReviews,
     updateMyGoalProgress,
-    submitMyReview,
+    saveMySelfAssessment,
+    submitMySelfAssessment,
   }
 })
 
@@ -76,24 +85,62 @@ describe('PerformancePage', () => {
         created_at: '2026-04-03T00:00:00Z',
       },
     ])
+    fetchMyReviewCycles.mockResolvedValue([
+      {
+        id: 'cycle-1',
+        name: 'FY 2026 Review',
+        review_type: '360',
+        status: 'MANAGER_REVIEW',
+        start_date: '2026-07-01',
+        end_date: '2026-07-31',
+        self_assessment_deadline: '2026-07-07',
+        peer_review_deadline: '2026-07-14',
+        manager_review_deadline: '2026-07-21',
+        calibration_deadline: '2026-07-28',
+        feedback_summary_visible: true,
+        self_assessment: {
+          id: 'review-1',
+          cycle: 'cycle-1',
+          cycle_name: 'FY 2026 Review',
+          cycle_status: 'MANAGER_REVIEW',
+          employee: 'employee-1',
+          reviewer: 'employee-1',
+          relationship: 'SELF',
+          ratings: { overall: 4 },
+          comments: 'Delivered the milestone.',
+          status: 'IN_PROGRESS',
+          submitted_at: null,
+        },
+      },
+    ])
+    fetchMyFeedbackSummary.mockResolvedValue({
+      response_count: 1,
+      dimensions: {
+        ownership: { avg: 4.5, count: 1 },
+      },
+      comments: ['Strong cross-team partner.'],
+    })
     fetchMyReviews.mockResolvedValue([
       {
-        id: 'review-1',
+        id: 'review-2',
         cycle: 'cycle-1',
+        cycle_name: 'FY 2026 Review',
+        cycle_status: 'COMPLETED',
         employee: 'employee-1',
-        reviewer: 'employee-1',
-        relationship: 'SELF',
-        ratings: {},
-        comments: '',
-        status: 'PENDING',
-        submitted_at: null,
+        reviewer: 'manager-1',
+        relationship: 'MANAGER',
+        ratings: { overall: 4 },
+        comments: 'Consistent delivery.',
+        status: 'SUBMITTED',
+        submitted_at: '2026-07-25T00:00:00Z',
       },
     ])
     updateMyGoalProgress.mockResolvedValue({})
-    submitMyReview.mockResolvedValue({})
+    saveMySelfAssessment.mockResolvedValue({})
+    submitMySelfAssessment.mockResolvedValue({})
   })
 
-  it('updates goal progress and submits a review', async () => {
+  it('updates goal progress and saves then submits a self-assessment', async () => {
     const user = userEvent.setup()
 
     renderPage()
@@ -108,14 +155,28 @@ describe('PerformancePage', () => {
       expect(updateMyGoalProgress).toHaveBeenCalledWith('goal-1', 75)
     })
 
-    await user.type(screen.getByPlaceholderText('Write your appraisal comments'), 'Completed the planned milestone.')
-    await user.click(screen.getByRole('button', { name: 'Submit review' }))
+    const commentsInput = screen.getByPlaceholderText('Write your self-assessment comments')
+    await user.clear(commentsInput)
+    await user.type(commentsInput, 'Completed the planned milestone.')
+    await user.click(screen.getByRole('button', { name: 'Save draft' }))
 
     await waitFor(() => {
-      expect(submitMyReview).toHaveBeenCalledWith('review-1', {
-        ratings: {},
+      expect(saveMySelfAssessment).toHaveBeenCalledWith('cycle-1', {
+        ratings: { overall: 4 },
         comments: 'Completed the planned milestone.',
       })
     })
+
+    await user.click(screen.getByRole('button', { name: 'Submit self-assessment' }))
+
+    await waitFor(() => {
+      expect(submitMySelfAssessment).toHaveBeenCalledWith('cycle-1', {
+        ratings: { overall: 4 },
+        comments: 'Completed the planned milestone.',
+      })
+    })
+
+    expect(await screen.findByText('Strong cross-team partner.')).toBeInTheDocument()
+    expect(await screen.findByText('Consistent delivery.')).toBeInTheDocument()
   })
 })

@@ -4,6 +4,7 @@ import type {
   OrganisationOnboardingStage,
   OrganisationStatus,
 } from '@/types/organisation'
+import type { EffectiveScopeSummary } from '@/types/access-control'
 import type { EmployeeOnboardingStatus, EmployeeStatus } from '@/types/hr'
 
 export type AccountType = 'CONTROL_TOWER' | 'WORKFORCE'
@@ -84,6 +85,8 @@ export interface AuthUser {
   org_setup_completed_at?: string | null
   impersonation?: ImpersonationSession | null
   feature_flags?: Record<string, boolean>
+  effective_permissions: string[]
+  effective_scopes: EffectiveScopeSummary[]
   is_active: boolean
 }
 

@@ -4,6 +4,7 @@ from .views import (
     CtActAsCurrentView,
     CtActAsRefreshView,
     CtActAsStopView,
+    CtBillingOverviewView,
     CTDashboardStatsView,
     CtOrganisationActAsStartView,
     CtOrganisationAdminDeactivateView,
@@ -45,6 +46,7 @@ from .views import (
     CtOrganisationOnDutyPolicyDetailView,
     CtOrganisationOnDutyPolicyListCreateView,
     CtOrganisationPayrollSummaryView,
+    CtOrganisationSeedMastersView,
     CtRazorpayWebhookView,
     OrganisationActivateView,
     OrganisationAddressDetailView,
@@ -63,6 +65,7 @@ from .views import (
 
 urlpatterns = [
     path('dashboard/', CTDashboardStatsView.as_view(), name='ct-dashboard'),
+    path('billing/', CtBillingOverviewView.as_view(), name='ct-billing-overview'),
     path('billing/webhooks/razorpay/', CtRazorpayWebhookView.as_view(), name='ct-billing-webhook-razorpay'),
     path('act-as/', CtActAsCurrentView.as_view(), name='ct-act-as-current'),
     path('act-as/refresh/', CtActAsRefreshView.as_view(), name='ct-act-as-refresh'),
@@ -94,6 +97,7 @@ urlpatterns = [
     path('organisations/<uuid:pk>/onboarding-checklist/', CtOrganisationOnboardingChecklistView.as_view(), name='ct-organisation-onboarding-checklist'),
     path('organisations/<uuid:pk>/onboarding/', CtOrganisationOnboardingProgressView.as_view(), name='ct-organisation-onboarding-progress'),
     path('organisations/<uuid:pk>/onboarding/<str:step>/<str:action>/', CtOrganisationOnboardingStepView.as_view(), name='ct-organisation-onboarding-step'),
+    path('organisations/<uuid:pk>/seed-masters/', CtOrganisationSeedMastersView.as_view(), name='ct-organisation-seed-masters'),
     path('organisations/<uuid:pk>/approvals/', CtOrganisationApprovalSupportView.as_view(), name='ct-organisation-approval-support'),
     path('organisations/<uuid:pk>/payroll/', CtOrganisationPayrollSummaryView.as_view(), name='ct-organisation-payroll-summary'),
     path('organisations/<uuid:pk>/holiday-calendars/', CtOrganisationHolidayCalendarListCreateView.as_view(), name='ct-organisation-holiday-calendar-list-create'),

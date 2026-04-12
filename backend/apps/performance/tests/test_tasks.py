@@ -10,8 +10,16 @@ from apps.organisations.models import (
     OrganisationBillingStatus,
     OrganisationStatus,
 )
-from apps.performance.models import AppraisalCycle, AppraisalReview, ReviewRelationship, ReviewType
-from apps.performance.tasks import auto_schedule_probation_reviews
+from apps.performance.models import (
+    AppraisalCycle,
+    AppraisalReview,
+    CycleStatus,
+    GoalCycle,
+    ReviewRelationship,
+    ReviewStatus,
+    ReviewType,
+)
+from apps.performance.tasks import auto_advance_review_cycles, auto_schedule_probation_reviews
 
 
 def _create_organisation(name='Performance Task Org'):
@@ -115,3 +123,73 @@ def test_auto_schedule_probation_reviews_skips_existing_probation_review():
     assert system_user.is_superuser is True
     assert result == {'status': 'OK', 'scheduled': 0}
     assert AppraisalCycle.objects.filter(organisation=organisation, is_probation_review=True).count() == 1
+
+
+@pytest.mark.django_db
+def test_auto_advance_review_cycles_creates_review_cycle_from_goal_cycle():
+    organisation = _create_organisation()
+    _create_user('system-advance@test.com', is_superuser=True, is_staff=True)
+    actor = _create_user('goal-owner@test.com', organisation=organisation, role=UserRole.ORG_ADMIN)
+    GoalCycle.objects.create(
+        organisation=organisation,
+        name='H1 Goals',
+        start_date=date.today() - timedelta(days=90),
+        end_date=date.today() - timedelta(days=1),
+        status=CycleStatus.ACTIVE,
+        auto_create_review_cycle=True,
+        created_by=actor,
+        modified_by=actor,
+    )
+
+    result = auto_advance_review_cycles()
+
+    assert result['status'] == 'OK'
+    assert result['created'] == 1
+    assert AppraisalCycle.objects.filter(organisation=organisation, goal_cycle__name='H1 Goals').exists()
+
+
+@pytest.mark.django_db
+def test_auto_advance_review_cycles_advances_due_self_assessment_phase():
+    organisation = _create_organisation()
+    system_user = _create_user('system-advance-phase@test.com', is_superuser=True, is_staff=True)
+    manager_user = _create_user('manager-advance-phase@test.com', organisation=organisation, role=UserRole.ORG_ADMIN)
+    manager_employee = Employee.objects.create(
+        organisation=organisation,
+        user=manager_user,
+        employee_code='EMP700',
+        status=EmployeeStatus.ACTIVE,
+    )
+    employee_user = _create_user('employee-advance-phase@test.com', organisation=organisation)
+    employee = Employee.objects.create(
+        organisation=organisation,
+        user=employee_user,
+        employee_code='EMP701',
+        status=EmployeeStatus.ACTIVE,
+        reporting_to=manager_employee,
+    )
+    cycle = AppraisalCycle.objects.create(
+        organisation=organisation,
+        name='Advance Due Cycle',
+        review_type=ReviewType.MANAGER,
+        start_date=date.today() - timedelta(days=10),
+        end_date=date.today() + timedelta(days=10),
+        status=CycleStatus.SELF_ASSESSMENT,
+        peer_review_deadline=date.today() - timedelta(days=1),
+    )
+    AppraisalReview.objects.create(
+        cycle=cycle,
+        employee=employee,
+        reviewer=employee,
+        relationship=ReviewRelationship.SELF,
+        ratings={'ownership': 4},
+        comments='Done',
+        status=ReviewStatus.SUBMITTED,
+    )
+
+    result = auto_advance_review_cycles()
+
+    cycle.refresh_from_db()
+    assert system_user.is_superuser is True
+    assert result['status'] == 'OK'
+    assert result['advanced'] == 1
+    assert cycle.status == CycleStatus.MANAGER_REVIEW

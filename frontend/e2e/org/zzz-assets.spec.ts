@@ -10,7 +10,7 @@ function requireEnv(name: string) {
   return value
 }
 
-const ACME_EMPLOYEE_EMAIL = process.env.SEED_SECONDARY_EMPLOYEE_EMAIL ?? 'priya.sharma@acmeworkforce.com'
+const ACME_EMPLOYEE_EMAIL = process.env.SEED_PRIMARY_EMPLOYEE_EMAIL ?? 'rohan.mehta@acmeworkforce.com'
 const EMPLOYEE_PASSWORD = requireEnv('SEED_EMPLOYEE_PASSWORD')
 const ORG_ADMIN_EMAIL = process.env.SEED_ORG_ADMIN_EMAIL ?? 'admin@acmeworkforce.com'
 const ORG_ADMIN_PASSWORD = requireEnv('SEED_ORG_ADMIN_PASSWORD')

@@ -350,6 +350,19 @@ export interface OffboardingProcess {
   tasks: OffboardingTask[]
 }
 
+export interface EmployeeExitInterview {
+  id: string | null
+  interview_date: string | null
+  exit_reason: string
+  interviewer_id: string | null
+  interviewer_name: string | null
+  overall_satisfaction: number | null
+  would_recommend_org: boolean | null
+  feedback: string
+  areas_of_improvement: string
+  submitted_at: string | null
+}
+
 export interface AssetCategory {
   id: string
   name: string
@@ -637,6 +650,10 @@ export interface DocumentRecord {
   status: DocumentStatus
   metadata: Record<string, unknown>
   version: number
+  expiry_date: string | null
+  alert_days_before: number
+  expires_soon: boolean
+  is_expired: boolean
   uploaded_by_email: string | null
   reviewed_by_email: string | null
   reviewed_at: string | null
@@ -707,6 +724,18 @@ export interface ApprovalActionItem {
   escalated_from_action_id: string | null
   created_at: string
   modified_at: string
+}
+
+export interface TeamMemberSummary {
+  id: string
+  name: string
+  employee_code: string | null
+  designation: string | null
+  department: string | null
+  status: EmployeeStatus
+  pending_leave_requests: number
+  attendance_deviations_this_month: number
+  leave_balance_summary: LeaveBalanceSnapshot[]
 }
 
 export interface LeaveBalanceSnapshot {
@@ -966,8 +995,16 @@ export interface RecruitmentCandidateDetail {
   email: string
   phone: string
   source: string
+  converted_to_employee_id: string | null
+  converted_to_employee_name: string | null
+  converted_at: string | null
   created_at: string
   applications: RecruitmentApplication[]
+}
+
+export interface RecruitmentCandidateConversionResponse {
+  employee: EmployeeListItem
+  message: string
 }
 
 export interface RecruitmentJobPosting {
@@ -992,6 +1029,7 @@ export interface PerformanceGoalCycle {
   start_date: string
   end_date: string
   status: string
+   auto_create_review_cycle: boolean
   created_at: string
 }
 
@@ -1014,16 +1052,33 @@ export interface PerformanceAppraisalCycle {
   id: string
   name: string
   review_type: string
+  goal_cycle: string | null
   start_date: string
   end_date: string
   status: string
   is_probation_review: boolean
+  self_assessment_deadline: string | null
+  peer_review_deadline: string | null
+  manager_review_deadline: string | null
+  calibration_deadline: string | null
+  activated_at: string | null
+  completed_at: string | null
+  completion_stats: {
+    self_submitted: number
+    self_total: number
+    manager_submitted: number
+    manager_total: number
+    feedback_submitted: number
+    feedback_total: number
+  }
   created_at: string
 }
 
 export interface PerformanceReview {
   id: string
   cycle: string
+  cycle_name: string
+  cycle_status: string
   employee: string
   reviewer: string | null
   relationship: string
@@ -1031,6 +1086,43 @@ export interface PerformanceReview {
   comments: string
   status: string
   submitted_at: string | null
+}
+
+export interface PerformanceReviewCycleSummary {
+  id: string
+  name: string
+  review_type: string
+  status: string
+  start_date: string
+  end_date: string
+  self_assessment_deadline: string | null
+  peer_review_deadline: string | null
+  manager_review_deadline: string | null
+  calibration_deadline: string | null
+  feedback_summary_visible: boolean
+  self_assessment: PerformanceReview | null
+}
+
+export interface PerformanceFeedbackSummary {
+  response_count: number
+  dimensions: Record<string, { avg: number; count: number }>
+  comments: string[]
+}
+
+export interface PerformanceCalibrationEntry {
+  id: string
+  employee: string
+  employee_name: string
+  original_rating: number | null
+  current_rating: number | null
+  reason: string
+}
+
+export interface PerformanceCalibrationSession {
+  id: string
+  cycle: string
+  locked_at: string | null
+  entries: PerformanceCalibrationEntry[]
 }
 
 export interface OrgAttendanceDashboard {
@@ -1553,9 +1645,12 @@ export interface PayrollRunItem {
   message: string
   arrears: string
   lop_days: string
+  epf_employee: string
   esi_employee: string
   esi_employer: string
   pf_employer: string
+  eps_employer?: string
+  epf_employer?: string
   lwf_employee: string
   lwf_employer: string
   pt_monthly: string
@@ -1619,6 +1714,7 @@ export interface Payslip {
   period_year: number
   period_month: number
   snapshot: Record<string, unknown>
+  /** @deprecated Legacy raw text fallback; use structured snapshot data and PDF download instead. */
   rendered_text: string
   created_at: string
 }
@@ -1632,6 +1728,9 @@ export interface InvestmentDeclaration {
   description: string
   declared_amount: string
   proof_file_key: string | null
+  proof_document_id: string | null
+  proof_document_file_name: string | null
+  proof_document_url: string | null
   is_verified: boolean
   verified_by_id: string | null
   verified_by_name: string | null

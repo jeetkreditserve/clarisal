@@ -36,7 +36,7 @@
         <period year="2026" month="5" />
       </pay_periods>
       <gross_salary>45000.00</gross_salary>
-      <taxable_income>225000.00</taxable_income>
+      <taxable_income>200000.00</taxable_income>
       <tax_deducted>0.00</tax_deducted>
       <health_and_education_cess>0.00</health_and_education_cess>
       <challan_refs>

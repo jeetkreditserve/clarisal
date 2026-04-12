@@ -13,6 +13,7 @@ const controlTowerEmail = process.env.CONTROL_TOWER_EMAIL ?? 'admin@clarisal.com
 const controlTowerPassword = requireEnv('CONTROL_TOWER_PASSWORD', 'CONTROL_TOWER_PASSWORD must be set before running the smoke script.')
 const orgAdminEmail = process.env.SEED_ORG_ADMIN_EMAIL ?? 'admin@acmeworkforce.com'
 const orgAdminPassword = requireEnv('SEED_ORG_ADMIN_PASSWORD', 'SEED_ORG_ADMIN_PASSWORD must be set before running the smoke script.')
+const employeeEmail = process.env.SEED_PRIMARY_EMPLOYEE_EMAIL ?? 'rohan.mehta@acmeworkforce.com'
 const employeePassword = requireEnv('SEED_EMPLOYEE_PASSWORD', 'SEED_EMPLOYEE_PASSWORD must be set before running the smoke script.')
 const browser = await chromium.launch({ headless: true })
 const results = []
@@ -184,7 +185,7 @@ try {
 
   await run('employee_login', async (page) => {
     await page.goto(`${baseUrl}/auth/login`, { waitUntil: 'networkidle' })
-    await page.getByLabel('Email address').fill('priya.sharma@acmeworkforce.com')
+    await page.getByLabel('Email address').fill(employeeEmail)
     await page.getByLabel('Password').fill(employeePassword)
     await page.getByRole('button', { name: /^sign in$/i }).click()
     await page.waitForURL('**/me/dashboard')

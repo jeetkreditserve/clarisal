@@ -6,7 +6,7 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.accounts.permissions import BelongsToActiveOrg, IsOrgAdmin
+from apps.accounts.permissions import BelongsToActiveOrg, HasPermission, IsOrgAdmin
 from apps.accounts.workspaces import get_active_admin_organisation
 
 from .attendance_summary import AttendanceSummaryReport
@@ -26,7 +26,13 @@ REPORT_REGISTRY = {
 
 
 class OrgReportView(APIView):
-    permission_classes = [IsOrgAdmin, BelongsToActiveOrg]
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, HasPermission]
+
+    def get_permission_code(self, request):
+        report_format = request.query_params.get('file_format', 'json')
+        if report_format in {'csv', 'xlsx'}:
+            return 'org.reports.export'
+        return 'org.reports.read'
 
     def get(self, request, report_type: str):
         organisation = get_active_admin_organisation(request, request.user)

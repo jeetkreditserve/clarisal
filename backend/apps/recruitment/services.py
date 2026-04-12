@@ -6,6 +6,8 @@ from decimal import Decimal
 from django.db import transaction
 from django.utils import timezone
 
+from apps.audit.services import log_audit_event
+
 from .models import (
     Application,
     ApplicationStage,
@@ -98,10 +100,48 @@ def create_offer_letter(
     )
 
 
-def accept_offer_and_onboard(offer: OfferLetter, actor=None):
+def convert_candidate_to_employee(candidate: Candidate, offer: OfferLetter, actor=None):
     from apps.employees.services import create_employee_from_offer
 
+    if offer.application.candidate_id != candidate.id:
+        raise ValueError('Offer does not belong to this candidate.')
+    if offer.status != OfferStatus.ACCEPTED:
+        raise ValueError('Only accepted offers can be converted.')
+    if candidate.converted_to_employee_id:
+        raise ValueError('Candidate has already been converted to an employee.')
+    if offer.application.stage != ApplicationStage.HIRED:
+        advance_application_stage(offer.application, ApplicationStage.HIRED, actor=actor)
+
+    employee = create_employee_from_offer(offer, actor=actor)
+    candidate.converted_to_employee = employee
+    candidate.converted_at = timezone.now()
+    candidate.modified_by = actor
+    candidate.save(update_fields=['converted_to_employee', 'converted_at', 'modified_at', 'modified_by'])
+
+    if offer.onboarded_employee_id != employee.id:
+        offer.onboarded_employee = employee
+        offer.modified_by = actor
+        offer.save(update_fields=['onboarded_employee', 'modified_at', 'modified_by'])
+
+    log_audit_event(
+        actor,
+        'recruitment.candidate.converted',
+        organisation=candidate.organisation,
+        target=candidate,
+        payload={'offer_id': str(offer.id), 'employee_id': str(employee.id)},
+    )
+    return employee
+
+
+def accept_offer_and_onboard(offer: OfferLetter, actor=None):
+    candidate = offer.application.candidate
+
     if offer.status == OfferStatus.ACCEPTED and offer.onboarded_employee_id:
+        if candidate.converted_to_employee_id != offer.onboarded_employee_id:
+            candidate.converted_to_employee = offer.onboarded_employee
+            candidate.converted_at = candidate.converted_at or offer.accepted_at or timezone.now()
+            candidate.modified_by = actor
+            candidate.save(update_fields=['converted_to_employee', 'converted_at', 'modified_at', 'modified_by'])
         return offer.onboarded_employee
     if offer.status not in {OfferStatus.DRAFT, OfferStatus.SENT, OfferStatus.ACCEPTED}:
         raise ValueError('Only draft or sent offers can be accepted.')
@@ -112,9 +152,13 @@ def accept_offer_and_onboard(offer: OfferLetter, actor=None):
         offer.modified_by = actor
         offer.save(update_fields=['status', 'accepted_at', 'modified_at', 'modified_by'])
 
-        advance_application_stage(offer.application, ApplicationStage.HIRED, actor=actor)
-        employee = create_employee_from_offer(offer, actor=actor)
-        offer.onboarded_employee = employee
-        offer.save(update_fields=['onboarded_employee', 'modified_at'])
+        if candidate.converted_to_employee_id:
+            employee = candidate.converted_to_employee
+            if offer.onboarded_employee_id != employee.id:
+                offer.onboarded_employee = employee
+                offer.modified_by = actor
+                offer.save(update_fields=['onboarded_employee', 'modified_at', 'modified_by'])
+        else:
+            employee = convert_candidate_to_employee(candidate, offer, actor=actor)
 
     return employee

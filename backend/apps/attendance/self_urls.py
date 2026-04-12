@@ -11,10 +11,12 @@ from .views import (
     MyAttendanceRegularizationWithdrawView,
     MyAttendanceSummaryView,
     MyMobilePunchView,
+    MyTeamAttendanceView,
 )
 
 urlpatterns = [
     path("attendance/summary/", MyAttendanceSummaryView.as_view(), name="my-attendance-summary"),
+    path("my-team/attendance/", MyTeamAttendanceView.as_view(), name="my-team-attendance"),
     path("attendance/history/", MyAttendanceHistoryView.as_view(), name="my-attendance-history"),
     path("attendance/calendar/", MyAttendanceCalendarView.as_view(), name="my-attendance-calendar"),
     path("attendance/policy/", MyAttendancePolicyView.as_view(), name="my-attendance-policy"),

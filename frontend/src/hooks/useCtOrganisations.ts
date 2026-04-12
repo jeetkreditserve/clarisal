@@ -45,6 +45,7 @@ import {
   reactivateCtOrgAdmin,
   resendOrgAdminInvite,
   restoreOrganisation,
+  seedCtOrgMasters,
   startCtImpersonation,
   stopCtImpersonation,
   revokePendingCtOrgAdmin,
@@ -706,6 +707,18 @@ export function useSyncCtOrgOnboardingProgress(orgId: string) {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['ct', 'organisations', orgId, 'onboarding-progress'] })
       void qc.invalidateQueries({ queryKey: ['ct', 'organisations', orgId] })
+    },
+  })
+}
+
+export function useSeedCtOrgMasters(orgId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => seedCtOrgMasters(orgId),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['ct', 'organisations', orgId] })
+      void qc.invalidateQueries({ queryKey: ['ct', 'organisations', orgId, 'payroll'] })
+      void qc.invalidateQueries({ queryKey: ['ct', 'organisations', orgId, 'onboarding-progress'] })
     },
   })
 }

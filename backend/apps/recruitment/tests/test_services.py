@@ -187,6 +187,118 @@ class TestOfferAndOnboarding:
         invitation = Invitation.objects.get(user=employee.user, organisation=organisation, role=InvitationRole.EMPLOYEE)
         assert invitation.status == InvitationStatus.PENDING
 
+    def test_accept_offer_creates_compensation_assignment_from_ctc(self):
+        from apps.payroll.models import CompensationAssignment
+        from apps.recruitment.services import accept_offer_and_onboard, create_offer_letter
+
+        organisation = _create_organisation()
+        user = _create_user('offer-compensation@test.com', organisation=organisation)
+        _seed_licences(organisation, user)
+        _seed_default_workflows(organisation, user)
+        posting = JobPosting.objects.create(
+            organisation=organisation,
+            title='Engineer',
+            status=JobPostingStatus.OPEN,
+        )
+        candidate = Candidate.objects.create(
+            organisation=organisation,
+            first_name='Leela',
+            last_name='Iyer',
+            email='leela@example.com',
+        )
+        application = Application.objects.create(
+            candidate=candidate,
+            job_posting=posting,
+            stage=ApplicationStage.OFFER,
+        )
+        offer = create_offer_letter(
+            application=application,
+            ctc_annual=Decimal('1200000'),
+            joining_date=date(2026, 5, 1),
+            actor=user,
+        )
+
+        employee = accept_offer_and_onboard(offer, actor=user)
+
+        assignment = CompensationAssignment.objects.get(employee=employee)
+        assert assignment.effective_from == date(2026, 5, 1)
+        assert assignment.status == 'APPROVED'
+        line = assignment.lines.get(component__code='BASIC')
+        assert line.monthly_amount == Decimal('100000.00')
+
+    def test_convert_candidate_rejects_second_conversion(self):
+        from apps.recruitment.services import (
+            accept_offer_and_onboard,
+            convert_candidate_to_employee,
+            create_offer_letter,
+        )
+
+        organisation = _create_organisation()
+        user = _create_user('offer-double-conversion@test.com', organisation=organisation)
+        _seed_licences(organisation, user)
+        _seed_default_workflows(organisation, user)
+        posting = JobPosting.objects.create(
+            organisation=organisation,
+            title='Engineer',
+            status=JobPostingStatus.OPEN,
+        )
+        candidate = Candidate.objects.create(
+            organisation=organisation,
+            first_name='Nikhil',
+            last_name='Rao',
+            email='nikhil@example.com',
+        )
+        application = Application.objects.create(
+            candidate=candidate,
+            job_posting=posting,
+            stage=ApplicationStage.OFFER,
+        )
+        offer = create_offer_letter(
+            application=application,
+            ctc_annual=Decimal('900000'),
+            joining_date=date(2026, 6, 1),
+            actor=user,
+        )
+        accept_offer_and_onboard(offer, actor=user)
+        candidate.refresh_from_db()
+        offer.refresh_from_db()
+
+        with pytest.raises(ValueError, match='already been converted'):
+            convert_candidate_to_employee(candidate, offer, actor=user)
+
+    def test_convert_candidate_rejects_non_accepted_offer(self):
+        from apps.recruitment.services import convert_candidate_to_employee, create_offer_letter
+
+        organisation = _create_organisation()
+        user = _create_user('offer-not-accepted@test.com', organisation=organisation)
+        _seed_licences(organisation, user)
+        _seed_default_workflows(organisation, user)
+        posting = JobPosting.objects.create(
+            organisation=organisation,
+            title='Engineer',
+            status=JobPostingStatus.OPEN,
+        )
+        candidate = Candidate.objects.create(
+            organisation=organisation,
+            first_name='Sara',
+            last_name='Khan',
+            email='sara@example.com',
+        )
+        application = Application.objects.create(
+            candidate=candidate,
+            job_posting=posting,
+            stage=ApplicationStage.OFFER,
+        )
+        offer = create_offer_letter(
+            application=application,
+            ctc_annual=Decimal('900000'),
+            joining_date=date(2026, 6, 1),
+            actor=user,
+        )
+
+        with pytest.raises(ValueError, match='Only accepted offers'):
+            convert_candidate_to_employee(candidate, offer, actor=user)
+
     def test_accept_offer_sets_application_stage_to_hired(self):
         from apps.recruitment.services import accept_offer_and_onboard, create_offer_letter
 
@@ -224,3 +336,40 @@ class TestOfferAndOnboarding:
         assert application.stage == ApplicationStage.HIRED
         assert offer.status == OfferStatus.ACCEPTED
         assert offer.onboarded_employee is not None
+
+    def test_accept_offer_tracks_candidate_conversion(self):
+        from apps.recruitment.services import accept_offer_and_onboard, create_offer_letter
+
+        organisation = _create_organisation()
+        user = _create_user('offer-conversion@test.com', organisation=organisation)
+        _seed_licences(organisation, user)
+        _seed_default_workflows(organisation, user)
+        posting = JobPosting.objects.create(
+            organisation=organisation,
+            title='Engineer',
+            status=JobPostingStatus.OPEN,
+        )
+        candidate = Candidate.objects.create(
+            organisation=organisation,
+            first_name='Mira',
+            last_name='Sen',
+            email='mira@example.com',
+        )
+        application = Application.objects.create(
+            candidate=candidate,
+            job_posting=posting,
+            stage=ApplicationStage.OFFER,
+        )
+
+        offer = create_offer_letter(
+            application=application,
+            ctc_annual=Decimal('900000'),
+            joining_date=date(2026, 6, 1),
+            actor=user,
+        )
+
+        employee = accept_offer_and_onboard(offer, actor=user)
+
+        candidate.refresh_from_db()
+        assert candidate.converted_to_employee == employee
+        assert candidate.converted_at is not None

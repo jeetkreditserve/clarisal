@@ -14,8 +14,24 @@ from apps.approvals.models import (
     ApprovalWorkflowRule,
 )
 from apps.audit.models import AuditLog
-from apps.employees.models import Employee, EmployeeOffboardingProcess, OffboardingProcessStatus
-from apps.employees.services import create_or_update_offboarding_process, invite_employee, update_employee_profile
+from apps.employees.models import (
+    EducationRecord,
+    Employee,
+    EmployeeBankAccount,
+    EmployeeEmergencyContact,
+    EmployeeFamilyMember,
+    EmployeeOffboardingProcess,
+    OffboardingProcessStatus,
+)
+from apps.employees.services import (
+    create_or_update_offboarding_process,
+    delete_bank_account,
+    delete_education_record,
+    delete_emergency_contact,
+    delete_family_member,
+    invite_employee,
+    update_employee_profile,
+)
 from apps.organisations.models import (
     Organisation,
     OrganisationAccessState,
@@ -237,3 +253,62 @@ class TestEmployeeAuditPayloadSanitization:
         assert audit_log.payload['address_line1'] == '[REDACTED]'
         assert audit_log.payload['city'] == '[REDACTED]'
         assert audit_log.payload['phone_personal'] == '[REDACTED]'
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ('factory', 'delete_fn', 'kwargs'),
+    [
+        (
+            EmployeeEmergencyContact,
+            delete_emergency_contact,
+            {'full_name': 'Primary Contact', 'relation': 'Spouse', 'phone_number': '+919900000001'},
+        ),
+        (
+            EmployeeFamilyMember,
+            delete_family_member,
+            {'full_name': 'Dependent', 'relation': 'DAUGHTER'},
+        ),
+        (
+            EducationRecord,
+            delete_education_record,
+            {'degree': 'BSc Computer Science', 'institution': 'Example University'},
+        ),
+        (
+            EmployeeBankAccount,
+            delete_bank_account,
+            {'account_holder_name': 'Test Employee'},
+        ),
+    ],
+)
+def test_delete_helpers_use_soft_delete(factory, delete_fn, kwargs, organisation, org_admin):
+    employee_user = User.objects.create_user(
+        email='soft-delete@test.com',
+        password='pass123!',
+        role=UserRole.EMPLOYEE,
+        is_active=True,
+    )
+    employee = Employee.objects.create(
+        organisation=organisation,
+        user=employee_user,
+        status='ACTIVE',
+        employee_code='EMP999',
+    )
+    record = factory.objects.create(employee=employee, **kwargs)
+    called = []
+
+    def fake_soft_delete(self, save=True):
+        called.append(self.pk)
+        self.is_deleted = True
+        self.deleted_at = None
+        if save:
+            self.save(update_fields=['is_deleted', 'deleted_at', 'modified_at'])
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(factory, 'soft_delete', fake_soft_delete, raising=False)
+    try:
+        delete_fn(record, actor=org_admin)
+    finally:
+        monkeypatch.undo()
+
+    assert called == [record.pk]

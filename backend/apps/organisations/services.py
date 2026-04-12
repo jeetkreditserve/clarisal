@@ -3,6 +3,7 @@ import hashlib
 import hmac
 import io
 import json
+import logging
 import math
 import re
 import zipfile
@@ -10,6 +11,7 @@ from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any, cast
+from uuid import uuid4
 
 from django.conf import settings
 from django.db import IntegrityError, transaction
@@ -22,6 +24,7 @@ from apps.accounts.workspaces import ACTIVE_EMPLOYEE_STATUSES, sync_user_role
 from apps.audit.models import AuditLog
 from apps.audit.services import log_audit_event
 from apps.documents.s3 import generate_presigned_url, upload_file
+from apps.documents.services import ensure_default_document_types
 from apps.employees.models import Employee, EmployeeStatus
 
 from .address_metadata import (
@@ -29,6 +32,12 @@ from .address_metadata import (
     normalize_subdivision,
     validate_billing_tax_identifier,
     validate_postal_code,
+)
+from .billing.base import (
+    WebhookSignatureError,
+    get_billing_gateway,
+    get_gateway_by_name,
+    resolve_billing_gateway_name,
 )
 from .country_metadata import (
     DEFAULT_COUNTRY_CODE,
@@ -41,6 +50,8 @@ from .country_metadata import (
 from .models import (
     ActAsSession,
     BootstrapAdminStatus,
+    Invoice,
+    InvoiceStatus,
     LicenceBatchLifecycleState,
     LicenceBatchPaymentStatus,
     LicenceLedgerReason,
@@ -74,10 +85,14 @@ from .models import (
     OrganisationTaxRegistration,
     OrganisationTaxRegistrationType,
     OrgUsageStat,
+    Payment,
+    PaymentStatus,
     TenantDataExportBatch,
     TenantDataExportStatus,
     TenantDataExportType,
 )
+
+logger = logging.getLogger(__name__)
 
 PAN_PATTERN = re.compile(r'^[A-Z]{5}[0-9]{4}[A-Z]$')
 
@@ -1101,6 +1116,7 @@ def create_organisation(
                 'primary_admin_email': normalized_primary_admin['email'],
             },
         )
+        ensure_default_document_types()
         initialize_onboarding_checklist(organisation)
     return organisation
 
@@ -1180,6 +1196,36 @@ def update_organisation_profile(organisation, actor=None, **fields):
         },
     )
     return organisation
+
+
+def seed_ct_onboarding_defaults(organisation, actor=None):
+    """Seed repeatable defaults used by the CT onboarding wizard."""
+    from apps.documents.models import OnboardingDocumentType
+    from apps.payroll.models import PayrollComponent
+    from apps.payroll.services import ensure_org_payroll_setup
+
+    component_count_before = PayrollComponent.objects.filter(organisation=organisation).count()
+    document_type_count_before = OnboardingDocumentType.objects.count()
+
+    payroll_result = ensure_org_payroll_setup(organisation, actor=actor)
+    ensure_default_document_types()
+
+    component_count_after = PayrollComponent.objects.filter(organisation=organisation).count()
+    document_type_count_after = OnboardingDocumentType.objects.count()
+
+    return {
+        'payroll_components': {
+            'created_count': max(component_count_after - component_count_before, 0),
+            'existing_count': component_count_before,
+            'total_count': component_count_after,
+            'codes': [component.code for component in payroll_result['components']],
+        },
+        'document_types': {
+            'created_count': max(document_type_count_after - document_type_count_before, 0),
+            'existing_count': document_type_count_before,
+            'total_count': document_type_count_after,
+        },
+    }
 
 
 def transition_organisation_state(org, new_status, transitioned_by, note=''):
@@ -1687,7 +1733,11 @@ def _build_tenant_data_export_payload(batch: TenantDataExportBatch) -> tuple[io.
     return file_buffer, export_name, {'row_count': row_count, 'inner_file_name': inner_file_name}
 
 
-def generate_tenant_data_export_batch(export_batch: TenantDataExportBatch) -> TenantDataExportBatch:
+def generate_tenant_data_export_batch(
+    export_batch: TenantDataExportBatch,
+    *,
+    raise_on_failure: bool = False,
+) -> TenantDataExportBatch:
     with transaction.atomic():
         batch = TenantDataExportBatch.objects.select_for_update().select_related('organisation').get(id=export_batch.id)
         if batch.status == TenantDataExportStatus.COMPLETED and batch.artifact_key:
@@ -1739,6 +1789,8 @@ def generate_tenant_data_export_batch(export_batch: TenantDataExportBatch) -> Te
             target=batch,
             payload={'export_type': batch.export_type, 'failure_reason': str(exc)},
         )
+        if raise_on_failure:
+            raise
     return batch
 
 
@@ -1757,16 +1809,231 @@ def generate_tenant_data_export_download_url(batch: TenantDataExportBatch, *, ac
     return url
 
 
+def _payment_order_response(payment: Payment) -> dict[str, Any]:
+    return {
+        'id': str(payment.id),
+        'gateway': payment.gateway,
+        'gateway_order_id': payment.gateway_order_id,
+        'amount': payment.amount,
+        'currency': payment.currency,
+        'status': payment.status,
+        'gateway_options': payment.gateway_options,
+    }
+
+
+def create_payment_order(
+    organisation: Organisation,
+    licence_batch: OrganisationLicenceBatch,
+    amount: Decimal | None = None,
+) -> dict[str, Any]:
+    if licence_batch.organisation_id != organisation.id:
+        raise ValueError('Licence batch does not belong to this organisation.')
+    if licence_batch.payment_status != LicenceBatchPaymentStatus.DRAFT:
+        raise ValueError('Only draft licence batches can be paid online.')
+
+    payment_amount = (amount or licence_batch.total_amount).quantize(Decimal('0.01'))
+    if payment_amount <= Decimal('0.00'):
+        raise ValueError('Payment amount must be greater than zero.')
+
+    existing = Payment.objects.filter(
+        organisation=organisation,
+        licence_batch=licence_batch,
+        status=PaymentStatus.PENDING,
+    ).first()
+    if existing:
+        return _payment_order_response(existing)
+
+    gateway = get_billing_gateway(organisation)
+    currency = 'INR' if organisation.country_code == 'IN' else getattr(settings, 'BILLING_DEFAULT_CURRENCY', 'USD')
+    if organisation.currency and organisation.country_code != 'IN':
+        currency = organisation.currency
+    order = gateway.create_order(
+        amount=payment_amount,
+        currency=currency,
+        receipt=str(licence_batch.id),
+        notes={'organisation_id': str(organisation.id), 'licence_batch_id': str(licence_batch.id)},
+    )
+
+    payment = Payment.objects.create(
+        organisation=organisation,
+        licence_batch=licence_batch,
+        amount=payment_amount,
+        currency=order.currency,
+        gateway=gateway.gateway_name,
+        gateway_order_id=order.gateway_order_id,
+        status=PaymentStatus.PENDING,
+        idempotency_key=f'payment:{organisation.id}:{licence_batch.id}:{uuid4().hex}',
+        gateway_options=order.gateway_options,
+    )
+    licence_batch.payment_provider = gateway.gateway_name
+    licence_batch.payment_reference = order.gateway_order_id
+    licence_batch.save(update_fields=['payment_provider', 'payment_reference', 'modified_at'])
+    return _payment_order_response(payment)
+
+
+def process_payment_webhook(payload: bytes, signature: str, gateway_name: str) -> dict[str, str]:
+    gateway = get_gateway_by_name(gateway_name)
+    if not gateway.verify_webhook_signature(payload, signature):
+        raise WebhookSignatureError('Invalid webhook signature.')
+
+    event = gateway.parse_webhook_event(json.loads(payload.decode('utf-8')))
+    with transaction.atomic():
+        payment = (
+            Payment.objects.select_for_update()
+            .select_related('organisation', 'licence_batch')
+            .filter(gateway_order_id=event.gateway_order_id)
+            .first()
+        )
+        if payment is None:
+            logger.warning(
+                'billing_webhook_unknown_order',
+                extra={'order_id': event.gateway_order_id, 'gateway': gateway.gateway_name},
+            )
+            return {'status': 'ignored'}
+        if payment.status != PaymentStatus.PENDING:
+            return {'status': 'already_processed'}
+
+        if event.status == PaymentStatus.SUCCESS:
+            payment.status = PaymentStatus.SUCCESS
+            payment.gateway_payment_id = event.gateway_payment_id
+            payment.completed_at = timezone.now()
+            payment.save(update_fields=['status', 'gateway_payment_id', 'completed_at', 'modified_at'])
+            if payment.licence_batch.payment_status == LicenceBatchPaymentStatus.DRAFT:
+                mark_licence_batch_paid(
+                    payment.licence_batch,
+                    payment_provider=payment.gateway,
+                    payment_reference=event.gateway_payment_id,
+                    invoice_reference=payment.gateway_order_id,
+                )
+            from .tasks import generate_invoice_task
+
+            generate_invoice_task.delay(str(payment.id))
+            return {'status': 'processed'}
+
+        if event.status == PaymentStatus.REFUNDED:
+            payment.status = PaymentStatus.REFUNDED
+            payment.failure_reason = json.dumps(event.raw_payload)
+            payment.save(update_fields=['status', 'failure_reason', 'modified_at'])
+            return {'status': 'processed'}
+
+        payment.status = PaymentStatus.FAILED
+        payment.failure_reason = json.dumps(event.raw_payload)
+        payment.save(update_fields=['status', 'failure_reason', 'modified_at'])
+        return {'status': 'processed'}
+
+
+def _next_invoice_number(issue_date: date) -> str:
+    prefix = f'INV-{issue_date.year}-'
+    latest = (
+        Invoice.objects.filter(invoice_number__startswith=prefix)
+        .order_by('-invoice_number')
+        .values_list('invoice_number', flat=True)
+        .first()
+    )
+    next_sequence = 1
+    if latest:
+        try:
+            next_sequence = int(str(latest).split('-')[-1]) + 1
+        except ValueError:
+            next_sequence = Invoice.objects.filter(invoice_number__startswith=prefix).count() + 1
+    return f'{prefix}{next_sequence:06d}'
+
+
+def _render_invoice_pdf(invoice: Invoice) -> bytes:
+    from weasyprint import HTML
+
+    org = invoice.organisation
+    payment = invoice.payment
+    html = f"""
+    <html>
+      <body style="font-family: sans-serif; color: #111827;">
+        <h1>TAX INVOICE</h1>
+        <p><strong>Clarisal</strong><br>GSTIN: 29ABCDE1234F1Z5</p>
+        <hr>
+        <h2>{org.name}</h2>
+        <p>Invoice: {invoice.invoice_number}</p>
+        <p>Issue date: {invoice.issue_date.isoformat()}</p>
+        <p>Payment reference: {payment.gateway_payment_id or payment.gateway_order_id}</p>
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr><th align="left">Line item</th><th align="right">Amount</th></tr>
+          <tr><td>SaaS subscription - {payment.licence_batch.quantity} seats</td><td align="right">{payment.currency} {invoice.amount}</td></tr>
+          <tr><td>GST</td><td align="right">{payment.currency} {invoice.gst_amount}</td></tr>
+          <tr><td><strong>Total</strong></td><td align="right"><strong>{payment.currency} {invoice.total_amount}</strong></td></tr>
+        </table>
+      </body>
+    </html>
+    """
+    return cast(bytes, HTML(string=html).write_pdf())
+
+
+def generate_invoice(payment: Payment) -> Invoice:
+    if payment.status != PaymentStatus.SUCCESS:
+        raise ValueError('Invoice can only be generated for successful payments.')
+    existing = getattr(payment, 'invoice', None)
+    if existing:
+        return existing
+
+    with transaction.atomic():
+        locked_payment = Payment.objects.select_for_update().select_related('organisation', 'licence_batch').get(id=payment.id)
+        existing = getattr(locked_payment, 'invoice', None)
+        if existing:
+            return existing
+        issue_date = timezone.localdate()
+        gst_rate = getattr(settings, 'BILLING_GST_RATE', Decimal('0.18'))
+        gst_amount = (locked_payment.amount * gst_rate).quantize(Decimal('0.01'))
+        invoice = Invoice.objects.create(
+            organisation=locked_payment.organisation,
+            payment=locked_payment,
+            invoice_number=_next_invoice_number(issue_date),
+            issue_date=issue_date,
+            due_date=issue_date,
+            amount=locked_payment.amount,
+            gst_amount=gst_amount,
+            total_amount=(locked_payment.amount + gst_amount).quantize(Decimal('0.01')),
+            status=InvoiceStatus.ISSUED,
+        )
+        payload = _render_invoice_pdf(invoice)
+        storage_key = f'billing/invoices/{locked_payment.organisation_id}/{invoice.id}/{invoice.invoice_number}.pdf'
+        upload_file(io.BytesIO(payload), storage_key, 'application/pdf')
+        invoice.storage_key = storage_key
+        invoice.save(update_fields=['storage_key', 'modified_at'])
+        log_audit_event(
+            None,
+            'organisation.billing.invoice_generated',
+            organisation=locked_payment.organisation,
+            target=invoice,
+            payload={'payment_id': str(locked_payment.id), 'invoice_number': invoice.invoice_number},
+        )
+        return invoice
+
+
+def generate_invoice_download_url(invoice: Invoice, *, expiry=900) -> str:
+    if not invoice.storage_key:
+        raise ValueError('Invoice PDF is not available.')
+    return cast(str, generate_presigned_url(invoice.storage_key, expiry=expiry))
+
+
+def get_org_billing_summary(organisation: Organisation) -> dict[str, Any]:
+    return {
+        'organisation': {
+            'id': str(organisation.id),
+            'name': organisation.name,
+            'billing_status': organisation.billing_status,
+            'currency': organisation.currency,
+            'gateway': resolve_billing_gateway_name(organisation),
+        },
+        'licence_batches': list(organisation.licence_batches.order_by('-created_at')),
+        'payments': list(organisation.payments.select_related('licence_batch').order_by('-created_at')[:10]),
+        'invoices': list(organisation.invoices.select_related('payment').order_by('-issue_date', '-created_at')[:20]),
+    }
+
+
 def _get_razorpay_signature(raw_body: bytes, secret: str) -> str:
     return hmac.new(secret.encode('utf-8'), raw_body, hashlib.sha256).hexdigest()
 
 
 def process_razorpay_webhook(raw_body: bytes, signature: str) -> OrganisationBillingEvent:
-    secret = getattr(settings, 'RAZORPAY_WEBHOOK_SECRET', '')
-    if not secret:
-        raise ValueError('Razorpay webhook secret is not configured.')
-    if not signature or not hmac.compare_digest(_get_razorpay_signature(raw_body, secret), signature):
-        raise ValueError('Invalid Razorpay signature.')
+    validate_razorpay_webhook_signature(raw_body, signature)
 
     payload = json.loads(raw_body.decode('utf-8'))
     event_type = payload.get('event', '')
@@ -1836,6 +2103,14 @@ def process_razorpay_webhook(raw_body: bytes, signature: str) -> OrganisationBil
         ]
     )
     return billing_event
+
+
+def validate_razorpay_webhook_signature(raw_body: bytes, signature: str) -> None:
+    secret = getattr(settings, 'RAZORPAY_WEBHOOK_SECRET', '')
+    if not secret:
+        raise ValueError('Razorpay webhook secret is not configured.')
+    if not signature or not hmac.compare_digest(_get_razorpay_signature(raw_body, secret), signature):
+        raise ValueError('Invalid Razorpay signature.')
 
 
 def get_ct_dashboard_stats():

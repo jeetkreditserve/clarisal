@@ -27,6 +27,7 @@ import type {
   OnDutyPolicy,
   OnDutyRequestRecord,
   Payslip,
+  TeamMemberSummary,
 } from '@/types/hr'
 
 export async function fetchMyDashboard() {
@@ -179,12 +180,20 @@ export async function uploadRequestedDocument(payload: {
   request_id: string
   file: File
   metadata?: Record<string, unknown>
+  expiry_date?: string | null
+  alert_days_before?: number
   onUploadProgress?: (progress: number) => void
 }) {
   const formData = new FormData()
   formData.append('file', payload.file)
   if (payload.metadata) {
     formData.append('metadata', JSON.stringify(payload.metadata))
+  }
+  if (payload.expiry_date) {
+    formData.append('expiry_date', payload.expiry_date)
+  }
+  if (payload.alert_days_before) {
+    formData.append('alert_days_before', String(payload.alert_days_before))
   }
   const { data } = await api.post<DocumentRecord>(`/me/document-requests/${payload.request_id}/upload/`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
@@ -200,6 +209,8 @@ export async function uploadMyDocument(payload: {
   document_type: string
   file: File
   metadata?: Record<string, unknown>
+  expiry_date?: string | null
+  alert_days_before?: number
   onUploadProgress?: (progress: number) => void
 }) {
   const formData = new FormData()
@@ -207,6 +218,12 @@ export async function uploadMyDocument(payload: {
   formData.append('file', payload.file)
   if (payload.metadata) {
     formData.append('metadata', JSON.stringify(payload.metadata))
+  }
+  if (payload.expiry_date) {
+    formData.append('expiry_date', payload.expiry_date)
+  }
+  if (payload.alert_days_before) {
+    formData.append('alert_days_before', String(payload.alert_days_before))
   }
   const { data } = await api.post<DocumentRecord>('/me/documents/', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
@@ -233,8 +250,42 @@ export async function fetchMyEvents() {
   return data
 }
 
-export async function fetchMyApprovalInbox() {
-  const { data } = await api.get<ApprovalActionItem[]>('/me/approvals/inbox/')
+export async function fetchMyApprovalInbox(scope?: 'my_team') {
+  const { data } = await api.get<ApprovalActionItem[]>('/me/approvals/inbox/', {
+    params: scope ? { scope } : undefined,
+  })
+  return data
+}
+
+export async function fetchMyTeam() {
+  const { data } = await api.get<TeamMemberSummary[]>('/me/my-team/')
+  return data
+}
+
+export async function fetchMyTeamLeave(filters?: {
+  status?: string
+  fromDate?: string
+  toDate?: string
+  includeIndirect?: boolean
+}) {
+  const params: Record<string, string | boolean> = {}
+  if (filters?.status) params.status = filters.status
+  if (filters?.fromDate) params.from_date = filters.fromDate
+  if (filters?.toDate) params.to_date = filters.toDate
+  if (filters?.includeIndirect) params.include_indirect = true
+  const { data } = await api.get<LeaveRequestRecord[]>('/me/my-team/leave/', {
+    params: Object.keys(params).length ? params : undefined,
+  })
+  return data
+}
+
+export async function fetchMyTeamAttendance(targetDate?: string, includeIndirect = false) {
+  const params: Record<string, string | boolean> = {}
+  if (targetDate) params.date = targetDate
+  if (includeIndirect) params.include_indirect = true
+  const { data } = await api.get<AttendanceDayRecord[]>('/me/my-team/attendance/', {
+    params: Object.keys(params).length ? params : undefined,
+  })
   return data
 }
 
@@ -408,7 +459,7 @@ export async function createMyInvestmentDeclaration(payload: {
   section: string
   description: string
   declared_amount: string
-  proof_file_key?: string
+  proof_document_id?: string | null
 }) {
   const { data } = await api.post<InvestmentDeclaration>('/me/payroll/investment-declarations/', payload)
   return data
@@ -421,7 +472,7 @@ export async function updateMyInvestmentDeclaration(
     section: string
     description: string
     declared_amount: string
-    proof_file_key: string
+    proof_document_id: string | null
   }>
 ) {
   const { data } = await api.patch<InvestmentDeclaration>(`/me/payroll/investment-declarations/${id}/`, payload)

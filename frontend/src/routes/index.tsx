@@ -20,6 +20,7 @@ import { OrgDashboardPage } from '@/pages/org/DashboardPage'
 import { OrgSetupPage } from '@/pages/org/SetupPage'
 import { OrgProfilePage } from '@/pages/org/ProfilePage'
 import { PayrollPage } from '@/pages/org/PayrollPage'
+import { BillingPage } from '@/pages/org/BillingPage'
 import { PayrollRunDetailPage } from '@/pages/org/PayrollRunDetailPage'
 import { ExpensePoliciesPage } from '@/pages/org/ExpensePoliciesPage'
 import { ExpenseClaimsPage } from '@/pages/org/ExpenseClaimsPage'
@@ -28,6 +29,7 @@ import { ApplicationsPage } from '@/pages/org/ApplicationsPage'
 import { CandidateDetailPage } from '@/pages/org/CandidateDetailPage'
 import { GoalCyclesPage } from '@/pages/org/GoalCyclesPage'
 import { AppraisalCyclesPage } from '@/pages/org/AppraisalCyclesPage'
+import { CalibrationPage } from '@/pages/org/CalibrationPage'
 import { ReportsPage } from '@/pages/org/ReportsPage'
 import { OrgAuditPage } from '@/pages/org/AuditPage'
 import { AssetAssignmentsPage } from '@/pages/org/AssetAssignmentsPage'
@@ -40,6 +42,8 @@ import { EmployeesPage } from '@/pages/org/EmployeesPage'
 import { EmployeeDetailPage } from '@/pages/org/EmployeeDetailPage'
 import { OrgChartPage } from '@/pages/org/OrgChartPage'
 import { EmployeeDashboardPage } from '@/pages/employee/DashboardPage'
+import { MyTeamAttendancePage } from '@/pages/employee/MyTeamAttendancePage'
+import { MyTeamPage } from '@/pages/employee/MyTeamPage'
 import { MyAssetsPage } from '@/pages/employee/MyAssetsPage'
 import { AttendancePage } from '@/pages/employee/AttendancePage'
 import { OnboardingPage } from '@/pages/employee/OnboardingPage'
@@ -65,6 +69,7 @@ import { NoticesPage } from '@/pages/org/NoticesPage'
 import { NoticeEditorPage } from '@/pages/org/NoticeEditorPage'
 import { PayrollMastersPage } from '@/pages/ct/PayrollMastersPage'
 import { CtOrgPayrollPage } from '@/pages/ct/CtOrgPayrollPage'
+import { CtBillingPage } from '@/pages/ct/CtBillingPage'
 
 function withErrorBoundary(element: ReactNode) {
   return <AppErrorBoundary>{element}</AppErrorBoundary>
@@ -110,6 +115,7 @@ export const router = createBrowserRouter([
         children: [
           { path: '/ct/dashboard', element: <CTDashboardPage /> },
           { path: '/ct/payroll', element: <PayrollMastersPage /> },
+          { path: '/ct/billing', element: <CtBillingPage /> },
           { path: '/ct/organisations', element: <OrganisationsPage /> },
           { path: '/ct/organisations/new', element: <NewOrganisationPage /> },
           { path: '/ct/organisations/:id/first-licence-batch', element: <FirstLicenceBatchPage /> },
@@ -149,6 +155,7 @@ export const router = createBrowserRouter([
           { path: '/org/assets', element: <AssetsInventoryPage /> },
           { path: '/org/assets/assignments', element: <AssetAssignmentsPage /> },
           { path: '/org/payroll', element: <PayrollPage /> },
+          { path: '/org/billing', element: <BillingPage /> },
           { path: '/org/payroll/runs/:id', element: <PayrollRunDetailPage /> },
           { path: '/org/expenses/policies', element: <ExpensePoliciesPage /> },
           { path: '/org/expenses/claims', element: <ExpenseClaimsPage /> },
@@ -157,6 +164,7 @@ export const router = createBrowserRouter([
           { path: '/org/recruitment/candidates/:id', element: <CandidateDetailPage /> },
           { path: '/org/performance/goals', element: <GoalCyclesPage /> },
           { path: '/org/performance/appraisals', element: <AppraisalCyclesPage /> },
+          { path: '/org/performance/appraisals/:id/calibration', element: <CalibrationPage /> },
           { path: '/org/reports', element: <ReportsPage /> },
           { path: '/org/locations', element: <LocationsPage /> },
           { path: '/org/departments', element: <DepartmentsPage /> },
@@ -192,6 +200,8 @@ export const router = createBrowserRouter([
         children: [
           { path: '/me/onboarding', element: <OnboardingPage /> },
           { path: '/me/dashboard', element: <EmployeeDashboardPage /> },
+          { path: '/me/my-team', element: <MyTeamPage /> },
+          { path: '/me/my-team/attendance', element: <MyTeamAttendancePage /> },
           { path: '/me/attendance', element: <AttendancePage /> },
           { path: '/me/assets', element: <MyAssetsPage /> },
           { path: '/me/profile', element: <ProfilePage /> },

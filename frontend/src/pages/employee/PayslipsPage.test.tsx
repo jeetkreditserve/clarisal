@@ -63,6 +63,7 @@ describe('PayslipsPage', () => {
     expect(screen.getByLabelText('Fiscal year')).toBeInTheDocument()
     expect(screen.getByLabelText('Search slip number')).toBeInTheDocument()
     expect(screen.getByText('PS/2026/04/001')).toBeInTheDocument()
+    expect(screen.queryByText('Raw generated text')).not.toBeInTheDocument()
   })
 
   it('downloads a fiscal year zip', async () => {

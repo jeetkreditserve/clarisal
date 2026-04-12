@@ -45,8 +45,11 @@ def generate_ecr_export(*, organisation, payslips, period_year: int, period_mont
         epf_wages = Decimal(str(basic_line.get('monthly_amount', '0') if basic_line else '0'))
         eps_wages = min(epf_wages, Decimal('15000.00'))
         edli_wages = epf_wages
-        eps_employer_share = min(eps_wages * Decimal('0.0833'), Decimal('1250.00')).quantize(Decimal('1'))
-        epf_employer_share = max(Decimal('0.00'), pf_employer_total - eps_employer_share).quantize(Decimal('1'))
+        eps_employer_share = Decimal(str(getattr(payslip.pay_run_item, 'eps_employer', '0') or '0')).quantize(Decimal('1'))
+        epf_employer_share = Decimal(str(getattr(payslip.pay_run_item, 'epf_employer', '0') or '0')).quantize(Decimal('1'))
+        if eps_employer_share <= Decimal('0') and epf_employer_share <= Decimal('0'):
+            eps_employer_share = min(eps_wages * Decimal('0.0833'), Decimal('1250.00')).quantize(Decimal('1'))
+            epf_employer_share = max(Decimal('0.00'), pf_employer_total - eps_employer_share).quantize(Decimal('1'))
         epf_admin_charges = (epf_wages * Decimal('0.0050')).quantize(Decimal('1'))
         edli_charges = (edli_wages * Decimal('0.0050')).quantize(Decimal('1'))
 

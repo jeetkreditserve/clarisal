@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.conf import settings
 from django.db import models
 from django.db.models import Q
@@ -57,6 +59,21 @@ class LicenceBatchLifecycleState(models.TextChoices):
 class OrganisationBillingProvider(models.TextChoices):
     MANUAL = 'MANUAL', 'Manual'
     RAZORPAY = 'RAZORPAY', 'Razorpay'
+    STRIPE = 'STRIPE', 'Stripe'
+
+
+class PaymentStatus(models.TextChoices):
+    PENDING = 'PENDING', 'Pending'
+    SUCCESS = 'SUCCESS', 'Success'
+    FAILED = 'FAILED', 'Failed'
+    REFUNDED = 'REFUNDED', 'Refunded'
+
+
+class InvoiceStatus(models.TextChoices):
+    DRAFT = 'DRAFT', 'Draft'
+    ISSUED = 'ISSUED', 'Issued'
+    PAID = 'PAID', 'Paid'
+    VOID = 'VOID', 'Void'
 
 
 class OrganisationBillingEventStatus(models.TextChoices):
@@ -202,6 +219,13 @@ class Organisation(AuditedBaseModel):
     pan_number = models.CharField(max_length=10, null=True, blank=True)
     tan_number = models.CharField(max_length=10, null=True, blank=True)
     esi_branch_code = models.CharField(max_length=20, blank=True)
+    billing_gateway = models.CharField(
+        max_length=20,
+        choices=OrganisationBillingProvider.choices,
+        blank=True,
+    )
+    # P28 ADR hook: future org settings can add lwp_deduction_basis
+    # (GROSS/BASIC). Current accepted default remains gross-pay basis.
     address = models.TextField(blank=True)
     phone = models.CharField(max_length=20, blank=True)
     email = models.EmailField(blank=True)
@@ -521,6 +545,7 @@ class OrganisationLicenceBatch(AuditedBaseModel):
         related_name='paid_licence_batches',
     )
     paid_at = models.DateField(null=True, blank=True)
+    gateway_subscription_id = models.CharField(max_length=200, null=True, blank=True)
 
     class Meta:
         db_table = 'organisation_licence_batches'
@@ -536,6 +561,71 @@ class OrganisationLicenceBatch(AuditedBaseModel):
         if self.start_date <= today <= self.end_date:
             return LicenceBatchLifecycleState.ACTIVE
         return LicenceBatchLifecycleState.EXPIRED
+
+
+class Payment(AuditedBaseModel):
+    organisation = models.ForeignKey(
+        Organisation,
+        on_delete=models.CASCADE,
+        related_name='payments',
+    )
+    licence_batch = models.ForeignKey(
+        OrganisationLicenceBatch,
+        on_delete=models.PROTECT,
+        related_name='payments',
+    )
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    currency = models.CharField(max_length=3, default='INR')
+    gateway = models.CharField(max_length=20, choices=OrganisationBillingProvider.choices)
+    gateway_order_id = models.CharField(max_length=200, unique=True)
+    gateway_payment_id = models.CharField(max_length=200, null=True, blank=True)
+    status = models.CharField(max_length=20, choices=PaymentStatus.choices, default=PaymentStatus.PENDING)
+    idempotency_key = models.CharField(max_length=160, unique=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    failure_reason = models.TextField(blank=True)
+    gateway_options = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        db_table = 'organisation_payments'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['organisation', 'status']),
+            models.Index(fields=['licence_batch', 'status']),
+        ]
+
+    def __str__(self):
+        return f'{self.gateway_order_id} ({self.status})'
+
+
+class Invoice(AuditedBaseModel):
+    organisation = models.ForeignKey(
+        Organisation,
+        on_delete=models.CASCADE,
+        related_name='invoices',
+    )
+    payment = models.OneToOneField(
+        Payment,
+        on_delete=models.PROTECT,
+        related_name='invoice',
+    )
+    invoice_number = models.CharField(max_length=50, unique=True)
+    issue_date = models.DateField()
+    due_date = models.DateField()
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    gst_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    total_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    status = models.CharField(max_length=20, choices=InvoiceStatus.choices, default=InvoiceStatus.ISSUED)
+    storage_key = models.CharField(max_length=500, blank=True)
+
+    class Meta:
+        db_table = 'organisation_invoices'
+        ordering = ['-issue_date', '-created_at']
+        indexes = [
+            models.Index(fields=['organisation', 'status']),
+        ]
+
+    def __str__(self):
+        return self.invoice_number
 
 
 class OrganisationBillingEvent(AuditedBaseModel):

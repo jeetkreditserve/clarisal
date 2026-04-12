@@ -237,6 +237,14 @@ class Employee(SoftDeleteModel):
                 fields=['organisation', 'status', 'date_of_joining'],
                 name='employee_org_status_doj_idx',
             ),
+            models.Index(
+                fields=['organisation', 'reporting_to', 'status'],
+                name='emp_org_mgr_status_idx',
+            ),
+            models.Index(
+                fields=['organisation', 'department', 'status'],
+                name='emp_org_dept_status_idx',
+            ),
         ]
 
     def __str__(self):

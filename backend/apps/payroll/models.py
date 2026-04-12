@@ -493,6 +493,13 @@ class InvestmentDeclaration(AuditedBaseModel):
     description = models.CharField(max_length=200)
     declared_amount = models.DecimalField(max_digits=12, decimal_places=2)
     proof_file_key = models.CharField(max_length=500, blank=True, null=True)
+    proof_document = models.ForeignKey(
+        'documents.Document',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='investment_declaration_proofs',
+    )
     is_verified = models.BooleanField(default=False)
     verified_by = models.ForeignKey(
         'accounts.User',
@@ -633,6 +640,8 @@ class PayrollRunItem(AuditedBaseModel):
     gross_pay = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     employee_deductions = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     employer_contributions = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    eps_employer = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    epf_employer = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
     income_tax = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     total_deductions = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     net_pay = models.DecimalField(max_digits=12, decimal_places=2, default=0)

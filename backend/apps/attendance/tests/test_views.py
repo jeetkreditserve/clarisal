@@ -450,3 +450,68 @@ def test_mobile_punch_uses_employee_location_policy_and_records_warning_when_war
     assert 'location_warning' in response.data
     punch = AttendancePunch.objects.get()
     assert punch.source == AttendancePunchSource.MOBILE
+
+
+@pytest.mark.django_db
+def test_web_punch_blocks_when_outside_blocking_geo_fence(attendance_setup):
+    employee = attendance_setup['employee']
+    client = attendance_setup['employee_client']
+    location = OfficeLocation.objects.create(organisation=employee.organisation, name='HQ')
+    employee.office_location = location
+    employee.save(update_fields=['office_location', 'modified_at'])
+    GeoFencePolicy.objects.create(
+        organisation=employee.organisation,
+        location=location,
+        name='HQ Block',
+        latitude='12.971600',
+        longitude='77.594600',
+        radius_metres=100,
+        enforcement_mode='BLOCK',
+        is_active=True,
+    )
+
+    response = client.post(
+        '/api/v1/me/attendance/punch-in/',
+        {
+            'latitude': '13.035000',
+            'longitude': '77.597000',
+        },
+        format='json',
+    )
+
+    assert response.status_code == 400
+    assert 'geo-fence' in response.data['error'].lower()
+    assert AttendancePunch.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_web_punch_exposes_geo_fence_warning_when_warn_only(attendance_setup):
+    employee = attendance_setup['employee']
+    client = attendance_setup['employee_client']
+    location = OfficeLocation.objects.create(organisation=employee.organisation, name='Field Office')
+    employee.office_location = location
+    employee.save(update_fields=['office_location', 'modified_at'])
+    GeoFencePolicy.objects.create(
+        organisation=employee.organisation,
+        location=location,
+        name='Field Office Warn',
+        latitude='12.971600',
+        longitude='77.594600',
+        radius_metres=100,
+        enforcement_mode='WARN',
+        is_active=True,
+    )
+
+    response = client.post(
+        '/api/v1/me/attendance/punch-in/',
+        {
+            'latitude': '13.035000',
+            'longitude': '77.597000',
+        },
+        format='json',
+    )
+
+    assert response.status_code == 201
+    assert response.data['geo_fence_warning'] is True
+    punch = AttendancePunch.objects.get()
+    assert punch.metadata.get('geo_fence_warning') is True

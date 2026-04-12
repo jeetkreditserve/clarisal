@@ -1,7 +1,7 @@
 from datetime import date
 
 from django.core.exceptions import PermissionDenied
-from django.db.models import Count, F, Max, Q
+from django.db.models import Count, F, Max, Q, Sum
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.pagination import PageNumberPagination
@@ -73,12 +73,16 @@ from apps.timeoff.services import (
     upsert_on_duty_policy,
 )
 
+from .billing.base import get_gateway_by_name
 from .models import (
+    Invoice,
     Organisation,
     OrganisationAddress,
     OrganisationLicenceBatch,
     OrganisationNote,
     OrganisationStatus,
+    Payment,
+    PaymentStatus,
 )
 from .repositories import get_org_admins, get_organisations
 from .serializers import (
@@ -86,6 +90,7 @@ from .serializers import (
     ActAsSessionStartSerializer,
     CreateOrganisationSerializer,
     CTDashboardStatsSerializer,
+    InvoiceSerializer,
     LicenceBatchExtendExpirySerializer,
     LicenceBatchMarkPaidSerializer,
     LicenceBatchSerializer,
@@ -104,6 +109,8 @@ from .serializers import (
     OrganisationNoteSerializer,
     OrganisationNoteWriteSerializer,
     OrgDashboardStatsSerializer,
+    PaymentOrderCreateSerializer,
+    PaymentSerializer,
     TenantDataExportBatchRequestSerializer,
     TenantDataExportBatchSerializer,
     UpdateOrganisationSerializer,
@@ -113,13 +120,16 @@ from .services import (
     create_organisation,
     create_organisation_address,
     create_organisation_note,
+    create_payment_order,
     deactivate_org_admin_membership,
     deactivate_organisation_address,
     extend_licence_batch_expiry,
+    generate_invoice_download_url,
     generate_tenant_data_export_download_url,
     get_ct_dashboard_stats,
     get_ct_onboarding_checklist,
     get_org_admin_setup_state,
+    get_org_billing_summary,
     get_org_dashboard_stats,
     get_org_licence_summary,
     get_org_usage_analytics,
@@ -128,12 +138,12 @@ from .services import (
     list_tenant_data_exports,
     mark_licence_batch_paid,
     mark_onboarding_step_complete,
-    process_razorpay_webhook,
     reactivate_org_admin_membership,
     refresh_act_as_session,
     request_tenant_data_export,
     reset_onboarding_step,
     revoke_org_admin_membership_invitation,
+    seed_ct_onboarding_defaults,
     set_org_feature_flag,
     start_act_as_session,
     stop_act_as_session,
@@ -143,8 +153,13 @@ from .services import (
     update_org_admin_setup_state,
     update_organisation_address,
     update_organisation_profile,
+    validate_razorpay_webhook_signature,
 )
-from .tasks import generate_tenant_data_export
+from .tasks import (
+    generate_tenant_data_export,
+    process_payment_webhook_task,
+    process_razorpay_webhook_task,
+)
 
 
 def _get_ct_organisation(pk):
@@ -952,6 +967,14 @@ class CtOrganisationOnboardingStepView(APIView):
         return Response(OnboardingChecklistSerializer(item).data)
 
 
+class CtOrganisationSeedMastersView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def post(self, request, pk):
+        org = get_object_or_404(Organisation, id=pk)
+        return Response({'seeded': seed_ct_onboarding_defaults(org, actor=request.user)})
+
+
 class CtOrganisationAnalyticsView(APIView):
     permission_classes = [IsControlTowerUser]
 
@@ -960,25 +983,142 @@ class CtOrganisationAnalyticsView(APIView):
         return Response(get_org_usage_analytics(org))
 
 
+def _billing_summary_payload(organisation):
+    summary = get_org_billing_summary(organisation)
+    return {
+        'organisation': summary['organisation'],
+        'licence_batches': LicenceBatchSerializer(summary['licence_batches'], many=True).data,
+        'payments': PaymentSerializer(summary['payments'], many=True).data,
+        'invoices': InvoiceSerializer(summary['invoices'], many=True).data,
+    }
+
+
+class OrgBillingSummaryView(APIView):
+    permission_classes = [IsOrgAdmin]
+
+    def get(self, request):
+        organisation = get_active_admin_organisation(request, request.user)
+        return Response(_billing_summary_payload(organisation))
+
+
+class OrgBillingPaymentOrderView(APIView):
+    permission_classes = [IsOrgAdmin]
+
+    def post(self, request):
+        organisation = get_active_admin_organisation(request, request.user)
+        serializer = PaymentOrderCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        licence_batch_id = serializer.validated_data.get('licence_batch_id')
+        if licence_batch_id:
+            licence_batch = get_object_or_404(OrganisationLicenceBatch, id=licence_batch_id, organisation=organisation)
+        else:
+            licence_batch = organisation.licence_batches.filter(payment_status='DRAFT').order_by('-created_at').first()
+            if licence_batch is None:
+                return Response({'detail': 'No draft licence batch is available for online payment.'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            payment_order = create_payment_order(
+                organisation,
+                licence_batch,
+                amount=serializer.validated_data.get('amount'),
+            )
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(payment_order, status=status.HTTP_201_CREATED)
+
+
+class OrgBillingPaymentStatusView(APIView):
+    permission_classes = [IsOrgAdmin]
+
+    def get(self, request, payment_id):
+        organisation = get_active_admin_organisation(request, request.user)
+        payment = get_object_or_404(Payment, id=payment_id, organisation=organisation)
+        return Response(PaymentSerializer(payment).data)
+
+
+class OrgBillingInvoiceListView(APIView):
+    permission_classes = [IsOrgAdmin]
+
+    def get(self, request):
+        organisation = get_active_admin_organisation(request, request.user)
+        invoices = Invoice.objects.filter(organisation=organisation).select_related('payment').order_by('-issue_date', '-created_at')
+        return Response(InvoiceSerializer(invoices, many=True).data)
+
+
+class OrgBillingInvoiceDownloadView(APIView):
+    permission_classes = [IsOrgAdmin]
+
+    def get(self, request, invoice_id):
+        organisation = get_active_admin_organisation(request, request.user)
+        invoice = get_object_or_404(Invoice, id=invoice_id, organisation=organisation)
+        try:
+            download_url = generate_invoice_download_url(invoice)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'download_url': download_url, 'invoice_number': invoice.invoice_number})
+
+
+class CtBillingOverviewView(APIView):
+    permission_classes = [IsControlTowerUser]
+
+    def get(self, request):
+        organisations = Organisation.objects.order_by('name')
+        rows = []
+        for organisation in organisations:
+            latest_payment = Payment.objects.filter(organisation=organisation).order_by('-created_at').first()
+            latest_invoice = Invoice.objects.filter(organisation=organisation).order_by('-issue_date', '-created_at').first()
+            pending_amount = (
+                Payment.objects.filter(organisation=organisation, status=PaymentStatus.PENDING)
+                .aggregate(total=Sum('amount'))
+                .get('total')
+                or 0
+            )
+            rows.append(
+                {
+                    'organisation_id': str(organisation.id),
+                    'organisation_name': organisation.name,
+                    'billing_status': organisation.billing_status,
+                    'status': organisation.status,
+                    'currency': organisation.currency,
+                    'licence_count': get_org_licence_summary(organisation)['active_paid_quantity'],
+                    'outstanding_amount': pending_amount,
+                    'last_payment_status': latest_payment.status if latest_payment else None,
+                    'last_payment_at': latest_payment.completed_at if latest_payment else None,
+                    'latest_invoice_number': latest_invoice.invoice_number if latest_invoice else None,
+                }
+            )
+        return Response({'results': rows})
+
+
+class BillingWebhookView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+    gateway_name = ''
+
+    def post(self, request):
+        signature_header = 'Stripe-Signature' if self.gateway_name.upper() == 'STRIPE' else 'X-Razorpay-Signature'
+        try:
+            signature = request.headers.get(signature_header, '')
+            gateway = get_gateway_by_name(self.gateway_name)
+            if not gateway.verify_webhook_signature(request.body, signature):
+                raise ValueError('Invalid webhook signature.')
+            process_payment_webhook_task.delay(request.body.decode('utf-8'), signature, self.gateway_name)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'status': 'accepted'})
+
+
 class CtRazorpayWebhookView(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
 
     def post(self, request):
         try:
-            billing_event = process_razorpay_webhook(
-                request.body,
-                request.headers.get('X-Razorpay-Signature', ''),
-            )
+            signature = request.headers.get('X-Razorpay-Signature', '')
+            validate_razorpay_webhook_signature(request.body, signature)
+            process_razorpay_webhook_task.delay(request.body.decode('utf-8'), signature)
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-
-        return Response(
-            {
-                'provider_event_id': billing_event.provider_event_id,
-                'status': billing_event.status,
-            }
-        )
+        return Response({'status': 'accepted'})
 
 
 class CtOrganisationApprovalSupportView(APIView):

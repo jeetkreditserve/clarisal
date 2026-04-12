@@ -65,6 +65,14 @@ vi.mock('@/hooks/useAuth', () => ({
         REPORTS: true,
         TIMEOFF: true,
       },
+      effective_permissions: [
+        'org.employees.read',
+        'org.payroll.read',
+        'org.reports.read',
+        'org.approvals.workflow.manage',
+        'org.audit.read',
+      ],
+      effective_scopes: [{ kind: 'ALL_EMPLOYEES', label: 'All employees' }],
       impersonation: {
         session_id: 'act-as-1',
         organisation_id: 'org-1',

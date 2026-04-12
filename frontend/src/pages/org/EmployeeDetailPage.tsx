@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Download } from 'lucide-react'
 import { toast } from 'sonner'
@@ -25,6 +25,7 @@ import {
   useEmployeeDocumentDownload,
   useEmployeeDocumentRequests,
   useEmployeeDocuments,
+  useEmployeeExitInterview,
   useEmployees,
   useEndEmployeeEmployment,
   useLocations,
@@ -35,6 +36,7 @@ import {
   useUpdateEmployeeOffboardingTask,
   useUpdateEmployee,
   useUpdateEmployeeCustomFieldValues,
+  useSubmitEmployeeExitInterview,
 } from '@/hooks/useOrgAdmin'
 import { getErrorMessage } from '@/lib/errors'
 import { formatDateTime, startCase } from '@/lib/format'
@@ -89,6 +91,7 @@ export function EmployeeDetailPage() {
   const { data: managerOptions } = useEmployees({ status: 'ACTIVE', page: 1 })
   const { data: documentRequests } = useEmployeeDocumentRequests(employeeId)
   const { data: documents } = useEmployeeDocuments(employeeId)
+  const { data: exitInterview } = useEmployeeExitInterview(employeeId)
   const { data: fnfSettlements } = useOrgFullAndFinalSettlements()
   const updateMutation = useUpdateEmployee(employeeId)
   const markJoinedMutation = useMarkEmployeeJoined(employeeId)
@@ -100,6 +103,7 @@ export function EmployeeDetailPage() {
   const deleteEmployeeMutation = useDeleteEmployee(employeeId)
   const updateCustomFieldsMutation = useUpdateEmployeeCustomFieldValues(employeeId)
   const downloadDocumentMutation = useEmployeeDocumentDownload()
+  const submitExitInterviewMutation = useSubmitEmployeeExitInterview(employeeId)
 
   const [draft, setDraft] = useState<Partial<{
     designation: string
@@ -131,6 +135,16 @@ export function EmployeeDetailPage() {
     value_date?: string | null
     value_boolean?: boolean
   }>>({})
+  const [showExitInterviewForm, setShowExitInterviewForm] = useState(false)
+  const [exitInterviewForm, setExitInterviewForm] = useState({
+    interview_date: '',
+    exit_reason: '',
+    interviewer_id: '',
+    overall_satisfaction: '',
+    would_recommend_org: '',
+    feedback: '',
+    areas_of_improvement: '',
+  })
 
   const employmentTypeOptions = ['FULL_TIME', 'PART_TIME', 'CONTRACT', 'INTERN'].map((type) => ({
     value: type,
@@ -163,6 +177,25 @@ export function EmployeeDetailPage() {
       })) ?? []
     ),
   ]
+  useEffect(() => {
+    if (!employee) {
+      return
+    }
+    setExitInterviewForm({
+      interview_date: exitInterview?.interview_date ?? employee.offboarding?.date_of_exit ?? '',
+      exit_reason: exitInterview?.exit_reason ?? employee.offboarding?.exit_reason ?? '',
+      interviewer_id: exitInterview?.interviewer_id ?? '',
+      overall_satisfaction: exitInterview?.overall_satisfaction ? String(exitInterview.overall_satisfaction) : '',
+      would_recommend_org:
+        exitInterview?.would_recommend_org == null ? '' : (exitInterview.would_recommend_org ? 'YES' : 'NO'),
+      feedback: exitInterview?.feedback ?? '',
+      areas_of_improvement: exitInterview?.areas_of_improvement ?? '',
+    })
+    if (exitInterview) {
+      setShowExitInterviewForm(false)
+    }
+  }, [employee?.offboarding?.date_of_exit, employee?.offboarding?.exit_reason, exitInterview])
+
   if (isLoading || !employee) {
     return (
       <div className="space-y-5">
@@ -182,6 +215,13 @@ export function EmployeeDetailPage() {
         value: manager.id,
         label: manager.full_name,
       })) ?? []),
+  ]
+  const interviewerOptions = [
+    { value: '', label: 'Select interviewer' },
+    ...(managerOptions?.results.map((manager) => ({
+      value: manager.id,
+      label: manager.full_name,
+    })) ?? []),
   ]
   const terminalStatusOptions = ['RESIGNED', 'RETIRED', 'TERMINATED'].map((status) => ({
     value: status,
@@ -309,6 +349,28 @@ export function EmployeeDetailPage() {
       window.open(response.url, '_blank', 'noopener,noreferrer')
     } catch (error) {
       toast.error(getErrorMessage(error, 'Unable to open document.'))
+    }
+  }
+
+  const handleSaveExitInterview = async (event: React.FormEvent) => {
+    event.preventDefault()
+    try {
+      await submitExitInterviewMutation.mutateAsync({
+        interview_date: exitInterviewForm.interview_date || null,
+        exit_reason: exitInterviewForm.exit_reason,
+        interviewer_id: exitInterviewForm.interviewer_id || null,
+        overall_satisfaction: exitInterviewForm.overall_satisfaction ? Number(exitInterviewForm.overall_satisfaction) : null,
+        would_recommend_org:
+          exitInterviewForm.would_recommend_org === ''
+            ? null
+            : exitInterviewForm.would_recommend_org === 'YES',
+        feedback: exitInterviewForm.feedback,
+        areas_of_improvement: exitInterviewForm.areas_of_improvement,
+      })
+      toast.success('Exit interview saved.')
+      setShowExitInterviewForm(false)
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to save the exit interview.'))
     }
   }
 
@@ -769,6 +831,157 @@ export function EmployeeDetailPage() {
                   </div>
                 </form>
 
+                <div className="rounded-[24px] border border-[hsl(var(--border)_/_0.72)] bg-[hsl(var(--surface))] p-5">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="font-semibold text-[hsl(var(--foreground-strong))]">Exit Interview</p>
+                      <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
+                        Capture the final feedback summary before the offboarding workflow is closed.
+                      </p>
+                    </div>
+                    {!showExitInterviewForm && !exitInterview ? (
+                      <button type="button" className="btn-secondary" onClick={() => setShowExitInterviewForm(true)}>
+                        Record exit interview
+                      </button>
+                    ) : null}
+                    {!showExitInterviewForm && exitInterview ? (
+                      <button type="button" className="btn-secondary" onClick={() => setShowExitInterviewForm(true)}>
+                        Edit exit interview
+                      </button>
+                    ) : null}
+                  </div>
+
+                  {showExitInterviewForm ? (
+                    <form onSubmit={handleSaveExitInterview} className="mt-5 grid gap-4">
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div>
+                          <p className="field-label">Interview date</p>
+                          <AppDatePicker
+                            value={exitInterviewForm.interview_date}
+                            onValueChange={(value) => setExitInterviewForm((current) => ({ ...current, interview_date: value }))}
+                            placeholder="Select interview date"
+                          />
+                        </div>
+                        <div>
+                          <label className="field-label" htmlFor="exit-interviewer">Interviewer</label>
+                          <AppSelect
+                            id="exit-interviewer"
+                            value={exitInterviewForm.interviewer_id}
+                            onValueChange={(value) => setExitInterviewForm((current) => ({ ...current, interviewer_id: value }))}
+                            options={interviewerOptions}
+                          />
+                        </div>
+                      </div>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div>
+                          <label className="field-label" htmlFor="exit-reason">Exit reason</label>
+                          <input
+                            id="exit-reason"
+                            className="field-input"
+                            value={exitInterviewForm.exit_reason}
+                            onChange={(event) => setExitInterviewForm((current) => ({ ...current, exit_reason: event.target.value }))}
+                            placeholder="Career growth, relocation, personal reasons"
+                          />
+                        </div>
+                        <div>
+                          <label className="field-label" htmlFor="exit-satisfaction">Overall satisfaction</label>
+                          <AppSelect
+                            id="exit-satisfaction"
+                            value={exitInterviewForm.overall_satisfaction}
+                            onValueChange={(value) => setExitInterviewForm((current) => ({ ...current, overall_satisfaction: value }))}
+                            options={[
+                              { value: '', label: 'Select rating' },
+                              { value: '1', label: '1' },
+                              { value: '2', label: '2' },
+                              { value: '3', label: '3' },
+                              { value: '4', label: '4' },
+                              { value: '5', label: '5' },
+                            ]}
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="field-label" htmlFor="exit-recommend">Would recommend organisation</label>
+                        <AppSelect
+                          id="exit-recommend"
+                          value={exitInterviewForm.would_recommend_org}
+                          onValueChange={(value) => setExitInterviewForm((current) => ({ ...current, would_recommend_org: value }))}
+                          options={[
+                            { value: '', label: 'Select response' },
+                            { value: 'YES', label: 'Yes' },
+                            { value: 'NO', label: 'No' },
+                          ]}
+                        />
+                      </div>
+                      <div>
+                        <label className="field-label" htmlFor="exit-feedback">Feedback</label>
+                        <textarea
+                          id="exit-feedback"
+                          className="field-input min-h-[120px]"
+                          value={exitInterviewForm.feedback}
+                          onChange={(event) => setExitInterviewForm((current) => ({ ...current, feedback: event.target.value }))}
+                          placeholder="What worked well during the employee experience?"
+                        />
+                      </div>
+                      <div>
+                        <label className="field-label" htmlFor="exit-improvements">Areas of improvement</label>
+                        <textarea
+                          id="exit-improvements"
+                          className="field-input min-h-[120px]"
+                          value={exitInterviewForm.areas_of_improvement}
+                          onChange={(event) => setExitInterviewForm((current) => ({ ...current, areas_of_improvement: event.target.value }))}
+                          placeholder="What should the organisation improve for future exits?"
+                        />
+                      </div>
+                      <div className="flex flex-wrap gap-3">
+                        <button type="submit" className="btn-primary" disabled={submitExitInterviewMutation.isPending}>
+                          Save exit interview
+                        </button>
+                        <button type="button" className="btn-secondary" onClick={() => setShowExitInterviewForm(false)}>
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  ) : exitInterview ? (
+                    <div className="mt-5 grid gap-4 md:grid-cols-2">
+                      <div className="surface-muted rounded-[20px] px-4 py-4">
+                        <p className="text-sm text-[hsl(var(--muted-foreground))]">Interview date</p>
+                        <p className="mt-2 font-medium text-[hsl(var(--foreground-strong))]">{exitInterview.interview_date || 'Not recorded'}</p>
+                      </div>
+                      <div className="surface-muted rounded-[20px] px-4 py-4">
+                        <p className="text-sm text-[hsl(var(--muted-foreground))]">Interviewer</p>
+                        <p className="mt-2 font-medium text-[hsl(var(--foreground-strong))]">{exitInterview.interviewer_name || 'Not assigned'}</p>
+                      </div>
+                      <div className="surface-muted rounded-[20px] px-4 py-4">
+                        <p className="text-sm text-[hsl(var(--muted-foreground))]">Exit reason</p>
+                        <p className="mt-2 font-medium text-[hsl(var(--foreground-strong))]">{exitInterview.exit_reason || 'Not recorded'}</p>
+                      </div>
+                      <div className="surface-muted rounded-[20px] px-4 py-4">
+                        <p className="text-sm text-[hsl(var(--muted-foreground))]">Overall satisfaction</p>
+                        <p className="mt-2 font-medium text-[hsl(var(--foreground-strong))]">{exitInterview.overall_satisfaction ?? 'Not rated'}</p>
+                      </div>
+                      <div className="surface-muted rounded-[20px] px-4 py-4">
+                        <p className="text-sm text-[hsl(var(--muted-foreground))]">Would recommend organisation</p>
+                        <p className="mt-2 font-medium text-[hsl(var(--foreground-strong))]">
+                          {exitInterview.would_recommend_org == null ? 'Not recorded' : (exitInterview.would_recommend_org ? 'Yes' : 'No')}
+                        </p>
+                      </div>
+                      <div className="surface-muted rounded-[20px] px-4 py-4">
+                        <p className="text-sm text-[hsl(var(--muted-foreground))]">Submitted at</p>
+                        <p className="mt-2 font-medium text-[hsl(var(--foreground-strong))]">{exitInterview.submitted_at ? formatDateTime(exitInterview.submitted_at) : 'Not recorded'}</p>
+                      </div>
+                      <div className="surface-muted rounded-[20px] px-4 py-4 md:col-span-2">
+                        <p className="text-sm text-[hsl(var(--muted-foreground))]">Feedback</p>
+                        <p className="mt-2 text-sm font-medium text-[hsl(var(--foreground-strong))]">{exitInterview.feedback || 'No feedback recorded.'}</p>
+                      </div>
+                      <div className="surface-muted rounded-[20px] px-4 py-4 md:col-span-2">
+                        <p className="text-sm text-[hsl(var(--muted-foreground))]">Areas of improvement</p>
+                        <p className="mt-2 text-sm font-medium text-[hsl(var(--foreground-strong))]">{exitInterview.areas_of_improvement || 'No areas recorded.'}</p>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+
                 <div className="space-y-3">
                   {employee.offboarding.tasks.map((task) => (
                     <div key={task.id} className="rounded-[20px] border border-[hsl(var(--border))] bg-white/70 px-4 py-4">
@@ -948,8 +1161,16 @@ export function EmployeeDetailPage() {
                     <div>
                       <p className="font-medium text-[hsl(var(--foreground-strong))]">{document.document_type}</p>
                       <p className="text-sm text-[hsl(var(--muted-foreground))]">{document.file_name}</p>
+                      {document.expiry_date ? (
+                        <p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">Expires {document.expiry_date}</p>
+                      ) : null}
                     </div>
                     <div className="flex items-center gap-3">
+                      {document.is_expired ? (
+                        <StatusBadge tone="danger">Expired</StatusBadge>
+                      ) : document.expires_soon ? (
+                        <StatusBadge tone="warning">Expiring soon</StatusBadge>
+                      ) : null}
                       <StatusBadge tone={getDocumentStatusTone(document.status)}>{document.status}</StatusBadge>
                       <button className="btn-secondary" onClick={() => void handleDownload(document.id)}>
                         <Download className="h-4 w-4" />

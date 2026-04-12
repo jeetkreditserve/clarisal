@@ -1,13 +1,14 @@
 import { Outlet, useNavigate } from 'react-router-dom'
-import { BriefcaseBusiness, CheckSquare, Clock3, FileText, GraduationCap, LayoutDashboard, LogOut, PlaneTakeoff, ReceiptText, Target, User } from 'lucide-react'
+import { BriefcaseBusiness, CheckSquare, Clock3, FileText, GraduationCap, LayoutDashboard, LogOut, PlaneTakeoff, ReceiptText, Target, User, Users } from 'lucide-react'
 import { SidebarNav, type NavItem } from './SidebarNav'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
 import { useAuth } from '@/hooks/useAuth'
+import { useMyTeam } from '@/hooks/useEmployeeSelf'
 import { NotificationBell } from '@/components/ui/NotificationBell'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { ThemeToggle } from '@/components/ui/ThemeToggle'
 
-const navItems: NavItem[] = [
+const baseNavItems: NavItem[] = [
   { label: 'Dashboard', href: '/me/dashboard', icon: LayoutDashboard },
   { label: 'Onboarding', href: '/me/onboarding', icon: CheckSquare },
   { label: 'Profile', href: '/me/profile', icon: User },
@@ -26,7 +27,11 @@ const navItems: NavItem[] = [
 
 export function EmployeeLayout() {
   const { user, logout } = useAuth()
+  const { data: team } = useMyTeam()
   const navigate = useNavigate()
+  const navItems = team?.length
+    ? [baseNavItems[0], { label: 'My Team', href: '/me/my-team', icon: Users }, ...baseNavItems.slice(1)]
+    : baseNavItems
 
   const handleLogout = async () => {
     await logout()

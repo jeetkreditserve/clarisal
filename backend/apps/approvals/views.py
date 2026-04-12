@@ -14,6 +14,7 @@ from apps.accounts.permissions import (
 from apps.accounts.workspaces import get_active_admin_organisation, get_active_employee
 from apps.departments.models import Department
 from apps.employees.models import Employee
+from apps.employees.services import get_reporting_team
 from apps.locations.models import OfficeLocation
 from apps.timeoff.models import LeaveType
 
@@ -334,6 +335,9 @@ class MyApprovalInboxView(APIView):
     def get(self, request):
         employee = _get_employee(request)
         queryset = get_pending_approval_actions_for_user(request.user, organisation=employee.organisation)
+        if request.query_params.get('scope') == 'my_team':
+            team_ids = [member.id for member in get_reporting_team(employee)]
+            queryset = queryset.filter(approval_run__requested_by_id__in=team_ids) if team_ids else queryset.none()
         return Response(ApprovalActionSerializer(queryset, many=True).data)
 
 

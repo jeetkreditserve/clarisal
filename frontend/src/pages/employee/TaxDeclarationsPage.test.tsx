@@ -11,6 +11,7 @@ const useCreateMyInvestmentDeclaration = vi.fn()
 const useDeleteMyInvestmentDeclaration = vi.fn()
 const useDownloadMyForm12BB = vi.fn()
 const useMyInvestmentDeclarations = vi.fn()
+const useUploadMyDocument = vi.fn()
 const useUpdateMyInvestmentDeclaration = vi.fn()
 
 vi.mock('sonner', () => ({
@@ -25,6 +26,7 @@ vi.mock('@/hooks/useEmployeeSelf', () => ({
   useDeleteMyInvestmentDeclaration: () => useDeleteMyInvestmentDeclaration(),
   useDownloadMyForm12BB: () => useDownloadMyForm12BB(),
   useMyInvestmentDeclarations: () => useMyInvestmentDeclarations(),
+  useUploadMyDocument: () => useUploadMyDocument(),
   useUpdateMyInvestmentDeclaration: () => useUpdateMyInvestmentDeclaration(),
 }))
 
@@ -42,6 +44,7 @@ describe('TaxDeclarationsPage', () => {
     useCreateMyInvestmentDeclaration.mockReturnValue({ isPending: false, mutateAsync: vi.fn().mockResolvedValue(undefined) })
     useDeleteMyInvestmentDeclaration.mockReturnValue({ isPending: false, mutateAsync: vi.fn().mockResolvedValue(undefined) })
     useDownloadMyForm12BB.mockReturnValue({ isPending: false, mutateAsync: vi.fn().mockResolvedValue(new Blob(['pdf'])) })
+    useUploadMyDocument.mockReturnValue({ isPending: false, mutateAsync: vi.fn().mockResolvedValue(undefined) })
     useUpdateMyInvestmentDeclaration.mockReturnValue({ isPending: false, mutateAsync: vi.fn().mockResolvedValue(undefined) })
   })
 
@@ -58,6 +61,9 @@ describe('TaxDeclarationsPage', () => {
           description: 'PPF',
           declared_amount: '150000.00',
           proof_file_key: '',
+          proof_document_id: null,
+          proof_document_file_name: null,
+          proof_document_url: null,
           is_verified: true,
           verified_by_id: 'admin-1',
           verified_by_name: 'Payroll Admin',
@@ -74,6 +80,8 @@ describe('TaxDeclarationsPage', () => {
     expect(screen.getByText('PPF')).toBeInTheDocument()
     expect(screen.getByText('Reviewed by Payroll Admin')).toBeInTheDocument()
     expect(screen.getByText('Verified')).toBeInTheDocument()
+    expect(screen.getByText('Proof document')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Proof file key')).not.toBeInTheDocument()
   })
 
   it('creates a new declaration', async () => {
@@ -95,7 +103,7 @@ describe('TaxDeclarationsPage', () => {
         section: '80C',
         description: 'Mediclaim premium',
         declared_amount: '25000.00',
-        proof_file_key: '',
+        proof_document_id: null,
       })
     })
     expect(toastSuccess).toHaveBeenCalledWith('Tax declaration saved.')

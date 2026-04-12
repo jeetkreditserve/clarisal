@@ -94,6 +94,14 @@ class Candidate(AuditedBaseModel):
     phone = models.CharField(max_length=20, blank=True)
     resume_file_key = models.CharField(max_length=500, blank=True, help_text='S3 object key')
     source = models.CharField(max_length=100, blank=True, help_text='LinkedIn, Naukri, Referral, etc.')
+    converted_to_employee = models.ForeignKey(
+        'employees.Employee',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='sourced_candidates',
+    )
+    converted_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ['-created_at']

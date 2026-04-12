@@ -25,6 +25,7 @@ from apps.recruitment.models import (
     JobPosting,
     JobPostingStatus,
     OfferLetter,
+    OfferStatus,
 )
 
 
@@ -249,3 +250,89 @@ def test_org_admin_can_accept_offer_and_onboard_candidate(recruitment_api_setup)
     assert offer.onboarded_employee is not None
     assert application.stage == ApplicationStage.HIRED
     assert Invitation.objects.filter(organisation=recruitment_api_setup['organisation']).count() == 1
+
+
+@pytest.mark.django_db
+def test_org_admin_can_convert_candidate_after_offer_is_already_accepted(recruitment_api_setup):
+    client = recruitment_api_setup['client']
+    application = recruitment_api_setup['application']
+    application.stage = ApplicationStage.OFFER
+    application.save(update_fields=['stage', 'modified_at'])
+    offer = OfferLetter.objects.create(
+        application=application,
+        ctc_annual=Decimal('1450000.00'),
+        joining_date=date(2026, 5, 15),
+        status=OfferStatus.ACCEPTED,
+    )
+
+    response = client.post(f'/api/v1/org/recruitment/candidates/{application.candidate_id}/convert/', format='json')
+
+    application.refresh_from_db()
+    offer.refresh_from_db()
+    candidate = application.candidate
+    candidate.refresh_from_db()
+    assert response.status_code == 201
+    assert response.data['employee']['email'] == 'priya@example.com'
+    assert response.data['employee']['status'] == 'INVITED'
+    assert candidate.converted_to_employee_id == offer.onboarded_employee_id
+    assert candidate.converted_at is not None
+
+
+@pytest.mark.django_db
+def test_org_admin_cannot_convert_candidate_twice(recruitment_api_setup):
+    client = recruitment_api_setup['client']
+    application = recruitment_api_setup['application']
+    application.stage = ApplicationStage.OFFER
+    application.save(update_fields=['stage', 'modified_at'])
+    OfferLetter.objects.create(
+        application=application,
+        ctc_annual=Decimal('1450000.00'),
+        joining_date=date(2026, 5, 15),
+        status=OfferStatus.ACCEPTED,
+    )
+
+    first_response = client.post(f'/api/v1/org/recruitment/candidates/{application.candidate_id}/convert/', format='json')
+    second_response = client.post(f'/api/v1/org/recruitment/candidates/{application.candidate_id}/convert/', format='json')
+
+    assert first_response.status_code == 201
+    assert second_response.status_code == 409
+    assert second_response.data['error'] == 'Candidate has already been converted to an employee.'
+
+
+@pytest.mark.django_db
+def test_org_admin_cannot_convert_candidate_without_accepted_offer(recruitment_api_setup):
+    client = recruitment_api_setup['client']
+    candidate = recruitment_api_setup['candidate']
+
+    response = client.post(f'/api/v1/org/recruitment/candidates/{candidate.id}/convert/', format='json')
+
+    assert response.status_code == 400
+    assert response.data['error'] == 'Accepted offer not found for this candidate.'
+
+
+@pytest.mark.django_db
+def test_employee_cannot_convert_recruitment_candidate(recruitment_api_setup):
+    organisation = recruitment_api_setup['organisation']
+    application = recruitment_api_setup['application']
+    application.stage = ApplicationStage.OFFER
+    application.save(update_fields=['stage', 'modified_at'])
+    OfferLetter.objects.create(
+        application=application,
+        ctc_annual=Decimal('1450000.00'),
+        joining_date=date(2026, 5, 15),
+        status=OfferStatus.ACCEPTED,
+    )
+    employee_user = User.objects.create_user(
+        email='recruitment-employee@test.com',
+        password='pass123!',
+        account_type=AccountType.WORKFORCE,
+        role=UserRole.EMPLOYEE,
+        organisation=organisation,
+        is_active=True,
+    )
+    client = APIClient()
+    client.force_authenticate(user=employee_user)
+
+    response = client.post(f'/api/v1/org/recruitment/candidates/{application.candidate_id}/convert/', format='json')
+
+    assert response.status_code == 403

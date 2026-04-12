@@ -62,9 +62,19 @@ function ExpandedRow({ item }: { item: PayrollRunItem }) {
   const deductions = lines
     .filter((l) => l.component_type === 'EMPLOYEE_DEDUCTION')
     .map((l) => ({ label: l.component_name, amount: l.monthly_amount, costCentre: l.cost_centre_name }))
-  const employerContributions = lines
+  const rawEmployerContributions = lines
     .filter((l) => l.component_type === 'EMPLOYER_CONTRIBUTION')
     .map((l) => ({ label: l.component_name, amount: l.monthly_amount, costCentre: l.cost_centre_name }))
+  const hasPfSplit = Number.parseFloat(item.epf_employer ?? '0') > 0 || Number.parseFloat(item.eps_employer ?? '0') > 0
+  const employerContributions = rawEmployerContributions.filter(
+    (line) => !(hasPfSplit && line.label.toLowerCase().includes('employer pf')),
+  )
+  if (hasPfSplit) {
+    employerContributions.push(
+      { label: 'EPF (Employer)', amount: item.epf_employer ?? '0', costCentre: undefined },
+      { label: 'EPS', amount: item.eps_employer ?? '0', costCentre: undefined },
+    )
+  }
 
   return (
     <div className="bg-[hsl(var(--muted)/0.5)] px-6 py-4">
@@ -225,6 +235,7 @@ function ItemTableRow({
             <button
               type="button"
               onClick={() => setExpanded((e) => !e)}
+              aria-label={`${expanded ? 'Collapse' : 'Expand'} payroll details for ${item.employee_name}`}
               className="flex h-7 w-7 items-center justify-center rounded-md border border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))]"
             >
               {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
@@ -244,6 +255,7 @@ function ItemTableRow({
           )}
         </td>
         <td className="px-4 py-3 text-right font-medium tabular-nums">{formatINR(item.gross_pay)}</td>
+        <td className="px-4 py-3 text-right tabular-nums text-[hsl(var(--muted-foreground))]">{formatINR(item.epf_employee)}</td>
         <td className="px-4 py-3 text-right tabular-nums text-[hsl(var(--muted-foreground))]">{formatINR(item.esi_employee)}</td>
         <td className="px-4 py-3 text-right tabular-nums text-[hsl(var(--muted-foreground))]">{formatINR(item.pt_monthly)}</td>
         <td className="px-4 py-3 text-right tabular-nums text-[hsl(var(--danger))]">{formatINR(item.income_tax)}</td>
@@ -569,6 +581,9 @@ export function PayrollRunDetailPage() {
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-[hsl(var(--muted-foreground))]">Dept</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-[hsl(var(--muted-foreground))]">Status</th>
                   <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-[hsl(var(--muted-foreground))]">Gross</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-[hsl(var(--muted-foreground))]" title="Employee EPF contribution (12% of PF wage)">
+                    EPF (Emp)
+                  </th>
                   <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-[hsl(var(--muted-foreground))]">ESI</th>
                   <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-[hsl(var(--muted-foreground))]">PT</th>
                   <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-[hsl(var(--muted-foreground))]">TDS</th>

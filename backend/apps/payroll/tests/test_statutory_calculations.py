@@ -287,6 +287,22 @@ class TestTaxHelpers:
         assert result['eligible_basic'] == Decimal('15000.00')
         assert result['employee'] == Decimal('1800.00')
         assert result['employer'] == Decimal('1800.00')
+        assert result['eps_employer'] == Decimal('1249.50')
+        assert result['epf_employer'] == Decimal('550.50')
+
+    def test_epf_split_caps_eps_and_keeps_total_equal_to_employer_share(self):
+        result = calculate_epf_contributions(
+            basic_pay=Decimal('30000.00'),
+            wage_ceiling=PF_WAGE_CEILING,
+            cap_wages=False,
+        )
+
+        assert result['eligible_basic'] == Decimal('30000.00')
+        assert result['employee'] == Decimal('3600.00')
+        assert result['employer'] == Decimal('3600.00')
+        assert result['eps_employer'] == Decimal('1250.00')
+        assert result['epf_employer'] == Decimal('2350.00')
+        assert result['eps_employer'] + result['epf_employer'] == result['employer']
 
     def test_esi_returns_zero_above_ceiling_without_force_flag(self):
         result = calculate_esi_contributions(gross_pay=Decimal('21000.01'))

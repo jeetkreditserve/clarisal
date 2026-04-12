@@ -1,10 +1,26 @@
-from datetime import date
+from datetime import date, datetime, time
 
 import pytest
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.accounts.models import User, UserRole
-from apps.approvals.models import ApprovalRequestKind, ApprovalWorkflow
+from apps.approvals.models import (
+    ApprovalApproverType,
+    ApprovalRequestKind,
+    ApprovalStage,
+    ApprovalStageApprover,
+    ApprovalWorkflow,
+)
+from apps.approvals.services import create_approval_run
+from apps.attendance.models import (
+    AttendanceDay,
+    AttendanceDayStatus,
+    AttendancePunch,
+    AttendancePunchActionType,
+    AttendancePunchSource,
+)
+from apps.departments.models import Department
 from apps.employees.models import (
     CustomFieldDefinition,
     CustomFieldPlacement,
@@ -12,6 +28,7 @@ from apps.employees.models import (
     Employee,
     EmployeeOffboardingProcess,
     EmployeeStatus,
+    ExitInterview,
     OffboardingProcessStatus,
     OffboardingTaskStatus,
 )
@@ -24,6 +41,7 @@ from apps.organisations.models import (
     OrganisationStatus,
 )
 from apps.organisations.services import create_licence_batch, mark_licence_batch_paid
+from apps.timeoff.models import LeaveBalance, LeaveCycle, LeavePlan, LeaveRequest, LeaveRequestStatus, LeaveType
 
 
 @pytest.fixture
@@ -325,6 +343,76 @@ class TestEmployeeWorkflowAssignments:
         assert complete_response.status_code == 200
         assert complete_response.data['status'] == OffboardingProcessStatus.COMPLETED
 
+    def test_employee_exit_interview_endpoint_upserts_flat_summary(self, org_admin_client):
+        client, organisation = org_admin_client
+        interviewer_user = User.objects.create_user(
+            email='interviewer@test.com',
+            password='pass123!',
+            role=UserRole.EMPLOYEE,
+            is_active=True,
+            first_name='Asha',
+            last_name='Rao',
+        )
+        interviewer = Employee.objects.create(
+            organisation=organisation,
+            user=interviewer_user,
+            status=EmployeeStatus.ACTIVE,
+            employee_code='EMP-INT',
+        )
+        employee_user = User.objects.create_user(
+            email='exit@test.com',
+            password='pass123!',
+            role=UserRole.EMPLOYEE,
+            is_active=True,
+            first_name='Priya',
+            last_name='Sharma',
+        )
+        employee = Employee.objects.create(
+            organisation=organisation,
+            user=employee_user,
+            status=EmployeeStatus.RESIGNED,
+            employee_code='EMP-EXIT',
+        )
+        EmployeeOffboardingProcess.objects.create(
+            organisation=organisation,
+            employee=employee,
+            status=OffboardingProcessStatus.IN_PROGRESS,
+            exit_status=EmployeeStatus.RESIGNED,
+            date_of_exit=date(2026, 4, 30),
+            exit_reason='Personal',
+        )
+
+        response = client.patch(
+            f'/api/v1/org/employees/{employee.id}/exit-interview/',
+            {
+                'interview_date': '2026-04-29',
+                'exit_reason': 'Career growth',
+                'interviewer_id': str(interviewer.id),
+                'overall_satisfaction': 4,
+                'would_recommend_org': True,
+                'feedback': 'Supportive team.',
+                'areas_of_improvement': 'Faster promotion cycles.',
+            },
+            format='json',
+        )
+
+        assert response.status_code == 200
+        assert response.data['interview_date'] == '2026-04-29'
+        assert response.data['exit_reason'] == 'Career growth'
+        assert response.data['interviewer_id'] == str(interviewer.id)
+        assert response.data['interviewer_name'] == 'Asha Rao'
+        assert response.data['overall_satisfaction'] == 4
+        assert response.data['would_recommend_org'] is True
+        assert response.data['feedback'] == 'Supportive team.'
+        assert response.data['areas_of_improvement'] == 'Faster promotion cycles.'
+
+        interview = ExitInterview.objects.get(process__employee=employee)
+        detail_response = client.get(f'/api/v1/org/employees/{employee.id}/exit-interview/')
+
+        assert detail_response.status_code == 200
+        assert detail_response.data['id'] == str(interview.id)
+        assert detail_response.data['feedback'] == 'Supportive team.'
+
 
 @pytest.mark.django_db
 class TestEmployeeOffboardingSelfService:
@@ -345,3 +433,271 @@ class TestEmployeeOffboardingSelfService:
         assert response.status_code == 200
         assert response.data['id'] == str(process.id)
         assert response.data['tasks'][0]['code'] == 'EXIT_COMMUNICATION'
+
+
+@pytest.mark.django_db
+class TestManagerSelfServiceViews:
+    def _build_team_setup(self, employee_client):
+        client, organisation, manager = employee_client
+        manager.user.first_name = 'Maya'
+        manager.user.last_name = 'Patel'
+        manager.user.save(update_fields=['first_name', 'last_name', 'modified_at'])
+
+        engineering = Department.objects.create(organisation=organisation, name='Engineering')
+
+        report_one_user = User.objects.create_user(
+            email='report-one@test.com',
+            password='pass123!',
+            role=UserRole.EMPLOYEE,
+            is_active=True,
+            first_name='Rohan',
+            last_name='Mehta',
+        )
+        report_one = Employee.objects.create(
+            organisation=organisation,
+            user=report_one_user,
+            status=EmployeeStatus.ACTIVE,
+            employee_code='EMP-101',
+            department=engineering,
+            reporting_to=manager,
+        )
+        report_two_user = User.objects.create_user(
+            email='report-two@test.com',
+            password='pass123!',
+            role=UserRole.EMPLOYEE,
+            is_active=True,
+            first_name='Ananya',
+            last_name='Gupta',
+        )
+        report_two = Employee.objects.create(
+            organisation=organisation,
+            user=report_two_user,
+            status=EmployeeStatus.ACTIVE,
+            employee_code='EMP-102',
+            department=engineering,
+            reporting_to=manager,
+        )
+        outsider_user = User.objects.create_user(
+            email='outside@test.com',
+            password='pass123!',
+            role=UserRole.EMPLOYEE,
+            is_active=True,
+            first_name='Ira',
+            last_name='Sen',
+        )
+        outsider = Employee.objects.create(
+            organisation=organisation,
+            user=outsider_user,
+            status=EmployeeStatus.ACTIVE,
+            employee_code='EMP-103',
+            department=engineering,
+        )
+
+        leave_cycle = LeaveCycle.objects.create(
+            organisation=organisation,
+            name='CY 2026',
+            is_default=True,
+            is_active=True,
+            created_by=manager.user,
+        )
+        leave_plan = LeavePlan.objects.create(
+            organisation=organisation,
+            leave_cycle=leave_cycle,
+            name='Default Leave Plan',
+            is_default=True,
+            is_active=True,
+            created_by=manager.user,
+        )
+        annual_leave = LeaveType.objects.create(
+            leave_plan=leave_plan,
+            code='AL',
+            name='Annual Leave',
+            annual_entitlement='12.00',
+            is_active=True,
+        )
+
+        cycle_start = date(date.today().year, 1, 1)
+        cycle_end = date(date.today().year, 12, 31)
+        LeaveBalance.objects.create(
+            employee=report_one,
+            leave_type=annual_leave,
+            cycle_start=cycle_start,
+            cycle_end=cycle_end,
+            opening_balance='0.00',
+            credited_amount='8.00',
+            used_amount='1.00',
+            pending_amount='0.00',
+            carried_forward_amount='0.00',
+        )
+        LeaveBalance.objects.create(
+            employee=report_two,
+            leave_type=annual_leave,
+            cycle_start=cycle_start,
+            cycle_end=cycle_end,
+            opening_balance='0.00',
+            credited_amount='10.00',
+            used_amount='2.00',
+            pending_amount='0.00',
+            carried_forward_amount='0.00',
+        )
+
+        target_date = date.today()
+        LeaveRequest.objects.create(
+            employee=report_one,
+            leave_type=annual_leave,
+            start_date=target_date,
+            end_date=target_date,
+            total_units='1.00',
+            reason='Medical appointment',
+            status=LeaveRequestStatus.PENDING,
+        )
+        LeaveRequest.objects.create(
+            employee=report_one,
+            leave_type=annual_leave,
+            start_date=target_date,
+            end_date=target_date,
+            total_units='1.00',
+            reason='Approved leave for attendance status',
+            status=LeaveRequestStatus.APPROVED,
+        )
+        LeaveRequest.objects.create(
+            employee=outsider,
+            leave_type=annual_leave,
+            start_date=target_date,
+            end_date=target_date,
+            total_units='1.00',
+            reason='Outside team leave',
+            status=LeaveRequestStatus.PENDING,
+        )
+
+        AttendanceDay.objects.create(
+            organisation=organisation,
+            employee=report_one,
+            attendance_date=target_date,
+            status=AttendanceDayStatus.INCOMPLETE,
+            needs_regularization=True,
+            raw_punch_count=1,
+        )
+
+        return {
+            'client': client,
+            'organisation': organisation,
+            'manager': manager,
+            'report_one': report_one,
+            'report_two': report_two,
+            'outsider': outsider,
+            'department': engineering,
+            'annual_leave': annual_leave,
+            'target_date': target_date,
+        }
+
+    def test_manager_can_list_direct_reports_with_team_metrics(self, employee_client):
+        setup = self._build_team_setup(employee_client)
+
+        response = setup['client'].get('/api/v1/me/my-team/')
+
+        assert response.status_code == 200
+        summary_by_code = {item['employee_code']: item for item in response.data}
+        assert set(summary_by_code) == {'EMP-101', 'EMP-102'}
+        first_member = summary_by_code['EMP-101']
+        assert first_member['name'] == 'Rohan Mehta'
+        assert first_member['pending_leave_requests'] == 1
+        assert first_member['attendance_deviations_this_month'] == 1
+        assert first_member['leave_balance_summary'][0]['leave_type_name'] == 'Annual Leave'
+        assert first_member['leave_balance_summary'][0]['available'] > 0
+
+    def test_non_manager_receives_empty_my_team_payload(self, employee_client):
+        client, _organisation, _employee = employee_client
+
+        response = client.get('/api/v1/me/my-team/')
+
+        assert response.status_code == 200
+        assert response.data == []
+
+    def test_manager_team_leave_endpoint_only_returns_direct_reports(self, employee_client):
+        setup = self._build_team_setup(employee_client)
+
+        response = setup['client'].get(
+            '/api/v1/me/my-team/leave/',
+            {
+                'status': LeaveRequestStatus.PENDING,
+                'from_date': setup['target_date'].isoformat(),
+                'to_date': setup['target_date'].isoformat(),
+            },
+        )
+
+        assert response.status_code == 200
+        assert [item['employee_name'] for item in response.data] == ['Rohan Mehta']
+        assert response.data[0]['leave_type_name'] == 'Annual Leave'
+
+    def test_manager_team_attendance_endpoint_only_returns_direct_reports(self, employee_client):
+        setup = self._build_team_setup(employee_client)
+        target_dt = timezone.make_aware(datetime.combine(setup['target_date'], time(9, 0)))
+        AttendancePunch.objects.create(
+            organisation=setup['organisation'],
+            employee=setup['report_two'],
+            action_type=AttendancePunchActionType.CHECK_IN,
+            source=AttendancePunchSource.WEB,
+            punch_at=target_dt,
+        )
+        AttendancePunch.objects.create(
+            organisation=setup['organisation'],
+            employee=setup['report_two'],
+            action_type=AttendancePunchActionType.CHECK_OUT,
+            source=AttendancePunchSource.WEB,
+            punch_at=timezone.make_aware(datetime.combine(setup['target_date'], time(18, 0))),
+        )
+        AttendancePunch.objects.create(
+            organisation=setup['organisation'],
+            employee=setup['outsider'],
+            action_type=AttendancePunchActionType.CHECK_IN,
+            source=AttendancePunchSource.WEB,
+            punch_at=target_dt,
+        )
+
+        response = setup['client'].get(
+            '/api/v1/me/my-team/attendance/',
+            {'date': setup['target_date'].isoformat()},
+        )
+
+        assert response.status_code == 200
+        assert {item['employee_name'] for item in response.data} == {'Rohan Mehta', 'Ananya Gupta'}
+        status_by_employee = {item['employee_name']: item['status'] for item in response.data}
+        assert status_by_employee['Rohan Mehta'] == AttendanceDayStatus.ON_LEAVE
+        assert status_by_employee['Ananya Gupta'] == AttendanceDayStatus.PRESENT
+
+    def test_manager_approval_inbox_scope_only_returns_direct_reports(self, employee_client):
+        setup = self._build_team_setup(employee_client)
+        workflow = ApprovalWorkflow.objects.create(
+            organisation=setup['organisation'],
+            name='Manager Scope Workflow',
+            is_default=True,
+            default_request_kind=ApprovalRequestKind.LEAVE,
+            is_active=True,
+        )
+        stage = ApprovalStage.objects.create(workflow=workflow, name='Manager review', sequence=1)
+        ApprovalStageApprover.objects.create(
+            stage=stage,
+            approver_type=ApprovalApproverType.SPECIFIC_EMPLOYEE,
+            approver_employee=setup['manager'],
+        )
+
+        create_approval_run(
+            setup['department'],
+            ApprovalRequestKind.LEAVE,
+            requester=setup['report_one'],
+            actor=setup['report_one'].user,
+            subject_label='Rohan leave request',
+        )
+        create_approval_run(
+            setup['department'],
+            ApprovalRequestKind.LEAVE,
+            requester=setup['outsider'],
+            actor=setup['outsider'].user,
+            subject_label='Ira leave request',
+        )
+
+        response = setup['client'].get('/api/v1/me/approvals/inbox/', {'scope': 'my_team'})
+
+        assert response.status_code == 200
+        assert [item['subject_label'] for item in response.data] == ['Rohan leave request']

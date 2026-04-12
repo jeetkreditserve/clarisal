@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 
 import { EmptyState } from '@/components/ui/EmptyState'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { SkeletonPageHeader, SkeletonTable } from '@/components/ui/Skeleton'
@@ -11,6 +12,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge'
 import { fetchEmployees } from '@/lib/api/org-admin'
 import {
   acceptRecruitmentOffer,
+  convertRecruitmentCandidate,
   createRecruitmentOffer,
   fetchRecruitmentCandidate,
   scheduleRecruitmentInterview,
@@ -77,13 +79,26 @@ export function CandidateDetailPage() {
   const acceptMutation = useMutation({
     mutationFn: acceptRecruitmentOffer,
     onSuccess: () => {
-      toast.success('Offer accepted and onboarding handoff created.')
+      toast.success('Offer accepted and employee invite created.')
       void queryClient.invalidateQueries({ queryKey: ['recruitment', 'candidate', id] })
       void queryClient.invalidateQueries({ queryKey: ['recruitment', 'applications'] })
       void queryClient.invalidateQueries({ queryKey: ['employees'] })
     },
     onError: (error) => {
       toast.error(getErrorMessage(error, 'Unable to accept the offer.'))
+    },
+  })
+
+  const convertMutation = useMutation({
+    mutationFn: convertRecruitmentCandidate,
+    onSuccess: (data) => {
+      toast.success(data.message)
+      void queryClient.invalidateQueries({ queryKey: ['recruitment', 'candidate', id] })
+      void queryClient.invalidateQueries({ queryKey: ['recruitment', 'applications'] })
+      void queryClient.invalidateQueries({ queryKey: ['employees'] })
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error, 'Unable to convert the candidate to an employee invite.'))
     },
   })
 
@@ -117,6 +132,9 @@ export function CandidateDetailPage() {
           {candidateQuery.data.applications.map((application) => {
             const interviewForm = interviewForms[application.id] ?? DEFAULT_INTERVIEW_FORM
             const offerForm = offerForms[application.id] ?? DEFAULT_OFFER_FORM
+            const convertedEmployeeId = candidateQuery.data.converted_to_employee_id ?? application.offer_letter?.onboarded_employee_id ?? null
+            const convertedEmployeeName = candidateQuery.data.converted_to_employee_name ?? candidateQuery.data.full_name
+            const canConvertCandidate = application.offer_letter?.status === 'ACCEPTED' && !convertedEmployeeId
 
             return (
               <SectionCard
@@ -159,14 +177,34 @@ export function CandidateDetailPage() {
                         <p className="text-sm text-[hsl(var(--muted-foreground))]">
                           Joining {application.offer_letter.joining_date || 'Not set'}
                         </p>
-                        {application.offer_letter.status !== 'ACCEPTED' ? (
+                        {convertedEmployeeId ? (
+                          <Link to={`/org/employees/${convertedEmployeeId}`} className="btn-secondary inline-flex">
+                            Converted: {convertedEmployeeName}
+                          </Link>
+                        ) : canConvertCandidate ? (
+                          <ConfirmDialog
+                            title="Convert Candidate to Employee"
+                            description={`This will create an employee invite for ${candidateQuery.data.full_name}. Email: ${candidateQuery.data.email}. Role: ${application.job_posting_title}. CTC: ${application.offer_letter.ctc_annual}. Start date: ${application.offer_letter.joining_date || 'Not set'}.`}
+                            confirmLabel="Convert & Send Invite"
+                            cancelLabel="Review again"
+                            variant="primary"
+                            onConfirm={async () => {
+                              await convertMutation.mutateAsync(candidateQuery.data.id)
+                            }}
+                            trigger={
+                              <button type="button" className="btn-secondary" disabled={convertMutation.isPending}>
+                                {convertMutation.isPending ? 'Converting…' : 'Convert to employee'}
+                              </button>
+                            }
+                          />
+                        ) : application.offer_letter.status !== 'ACCEPTED' ? (
                           <button
                             type="button"
                             className="btn-primary"
                             disabled={acceptMutation.isPending}
                             onClick={() => void acceptMutation.mutateAsync(application.offer_letter!.id)}
                           >
-                            Accept offer
+                            {acceptMutation.isPending ? 'Accepting…' : 'Accept offer & create employee'}
                           </button>
                         ) : null}
                       </div>

@@ -1017,7 +1017,7 @@ def _validate_geo_fence(
     location_id: str | UUID | None = None,
     enforcement_mode: str = "BLOCK",
 ) -> tuple[bool, str | None]:
-    if latitude is None or longitude is None:
+    if latitude is None or longitude is None or location_id is None:
         return True, None
 
     from .models import GeoFenceEnforcementMode, GeoFencePolicy
@@ -1036,6 +1036,10 @@ def _validate_geo_fence(
         if _policy_matches_geo_fence(policy, latitude=latitude, longitude=longitude):
             return True, None
 
+    if policies.filter(enforcement_mode=GeoFenceEnforcementMode.BLOCK).exists():
+        return False, "You are outside all configured geo-fence locations."
+    if policies.filter(enforcement_mode=GeoFenceEnforcementMode.WARN).exists():
+        return True, "Warning: You are outside the approved geo-fence area. Your punch has been recorded."
     if enforcement_mode == GeoFenceEnforcementMode.BLOCK:
         return False, "You are outside all configured geo-fence locations."
     return True, "Warning: You are outside the approved geo-fence area. Your punch has been recorded."
@@ -1048,7 +1052,7 @@ def validate_mobile_punch_location(
     *,
     location_id: str | UUID | None = None,
 ) -> tuple[bool, str | None, str | None]:
-    if latitude is None or longitude is None:
+    if latitude is None or longitude is None or location_id is None:
         return True, None, None
 
     from .models import GeoFenceEnforcementMode, GeoFencePolicy
@@ -1157,7 +1161,22 @@ def record_employee_punch(
     if source == AttendancePunchSource.WEB and not policy.allow_web_punch:
         raise ValueError("Web punch is disabled for this attendance policy.")
     _validate_ip(policy, remote_ip)
-    _validate_geo(policy, latitude, longitude)
+    geo_fence_warning = None
+    if getattr(policy, "allowed_geo_sites", None):
+        logger.warning(
+            "deprecated_geo_fence_field_still_populated",
+            extra={"policy_id": str(policy.pk), "organisation_id": str(policy.organisation_id)},
+        )
+    if employee.office_location_id is not None:
+        geo_allowed, geo_message = _validate_geo_fence(
+            str(employee.organisation_id),
+            latitude,
+            longitude,
+            location_id=employee.office_location_id,
+        )
+        if not geo_allowed:
+            raise ValueError(geo_message or "You are outside all configured geo-fence locations.")
+        geo_fence_warning = geo_message
 
     today = _policy_local_date(policy)
     attendance_day = recalculate_attendance_day(employee, today)
@@ -1169,6 +1188,9 @@ def record_employee_punch(
         raise ValueError("You are already checked in for today.")
     if action_type == AttendancePunchActionType.CHECK_OUT and not attendance_day.check_in_at:
         raise ValueError("Check in before punching out.")
+    punch_metadata = {}
+    if geo_fence_warning:
+        punch_metadata["geo_fence_warning"] = True
     punch = AttendancePunch.objects.create(
         organisation=employee.organisation,
         employee=employee,
@@ -1178,8 +1200,14 @@ def record_employee_punch(
         remote_ip=remote_ip,
         latitude=latitude,
         longitude=longitude,
+        metadata=punch_metadata,
     )
     attendance_day = recalculate_attendance_day(employee, today, actor=actor)
+    if geo_fence_warning:
+        attendance_metadata = dict(attendance_day.metadata or {})
+        attendance_metadata["geo_fence_warning"] = True
+        attendance_day.metadata = attendance_metadata
+        attendance_day.save(update_fields=["metadata", "modified_at"])
     log_audit_event(
         actor or employee.user,
         "attendance.punch.recorded",

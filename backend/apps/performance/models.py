@@ -1,4 +1,5 @@
 from django.db import models
+from django.utils import timezone
 
 from apps.common.models import AuditedBaseModel
 
@@ -6,6 +7,11 @@ from apps.common.models import AuditedBaseModel
 class CycleStatus(models.TextChoices):
     DRAFT = 'DRAFT', 'Draft'
     ACTIVE = 'ACTIVE', 'Active'
+    SELF_ASSESSMENT = 'SELF_ASSESSMENT', 'Self Assessment'
+    PEER_REVIEW = 'PEER_REVIEW', 'Peer Review'
+    MANAGER_REVIEW = 'MANAGER_REVIEW', 'Manager Review'
+    CALIBRATION = 'CALIBRATION', 'Calibration'
+    COMPLETED = 'COMPLETED', 'Completed'
     CLOSED = 'CLOSED', 'Closed'
 
 
@@ -53,6 +59,7 @@ class GoalCycle(AuditedBaseModel):
     start_date = models.DateField()
     end_date = models.DateField()
     status = models.CharField(max_length=20, choices=CycleStatus.choices, default=CycleStatus.DRAFT)
+    auto_create_review_cycle = models.BooleanField(default=False)
 
     class Meta:
         ordering = ['-created_at']
@@ -98,12 +105,25 @@ class AppraisalCycle(AuditedBaseModel):
         on_delete=models.CASCADE,
         related_name='appraisal_cycles',
     )
+    goal_cycle = models.ForeignKey(
+        GoalCycle,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='appraisal_cycles',
+    )
     name = models.CharField(max_length=200)
     review_type = models.CharField(max_length=20, choices=ReviewType.choices, default=ReviewType.SELF)
     start_date = models.DateField()
     end_date = models.DateField()
     status = models.CharField(max_length=20, choices=CycleStatus.choices, default=CycleStatus.DRAFT)
     is_probation_review = models.BooleanField(default=False)
+    self_assessment_deadline = models.DateField(null=True, blank=True)
+    peer_review_deadline = models.DateField(null=True, blank=True)
+    manager_review_deadline = models.DateField(null=True, blank=True)
+    calibration_deadline = models.DateField(null=True, blank=True)
+    activated_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ['-created_at']
@@ -171,4 +191,69 @@ class FeedbackRequest(AuditedBaseModel):
         indexes = [
             models.Index(fields=['cycle', 'status']),
             models.Index(fields=['requested_from', 'status']),
+        ]
+
+
+class FeedbackResponse(AuditedBaseModel):
+    request = models.OneToOneField(
+        FeedbackRequest,
+        on_delete=models.CASCADE,
+        related_name='response',
+    )
+    ratings = models.JSONField(default=dict, help_text='{"competency_id": rating_score, ...}')
+    comments = models.TextField(blank=True)
+    submitted_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['submitted_at']),
+        ]
+
+    def save(self, *args, **kwargs):
+        if self.submitted_at is None:
+            self.submitted_at = timezone.now()
+        super().save(*args, **kwargs)
+        if self.request.status != FeedbackStatus.SUBMITTED:
+            self.request.status = FeedbackStatus.SUBMITTED
+            self.request.save(update_fields=['status', 'modified_at'])
+
+
+class CalibrationSession(AuditedBaseModel):
+    cycle = models.OneToOneField(
+        AppraisalCycle,
+        on_delete=models.CASCADE,
+        related_name='calibration_session',
+    )
+    locked_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+
+class CalibrationSessionEntry(AuditedBaseModel):
+    session = models.ForeignKey(
+        CalibrationSession,
+        on_delete=models.CASCADE,
+        related_name='entries',
+    )
+    employee = models.ForeignKey(
+        'employees.Employee',
+        on_delete=models.CASCADE,
+        related_name='calibration_entries',
+    )
+    original_rating = models.DecimalField(max_digits=4, decimal_places=2, null=True, blank=True)
+    current_rating = models.DecimalField(max_digits=4, decimal_places=2, null=True, blank=True)
+    reason = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ['created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['session', 'employee'],
+                name='unique_calibration_entry_per_session_employee',
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['session', 'employee']),
         ]

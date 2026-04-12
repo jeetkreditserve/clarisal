@@ -488,6 +488,26 @@ LABOUR_WELFARE_FUND_RULES = [
             },
         ],
     },
+    {
+        'country_code': 'IN',
+        'state_code': 'WB',
+        'state_name': 'West Bengal',
+        'wage_basis': StatutoryIncomeBasis.MONTHLY,
+        'deduction_frequency': StatutoryDeductionFrequency.ANNUAL,
+        'effective_from': date(2018, 1, 1),
+        'source_label': 'West Bengal Labour Welfare Fund annual contribution',
+        'source_url': 'https://labourwb.gov.in/',
+        'notes': 'Annual contribution collected in December. Employee Rs. 3, employer Rs. 6.',
+        'contributions': [
+            {
+                'min_wage': None,
+                'max_wage': None,
+                'employee_amount': '3.00',
+                'employer_amount': '6.00',
+                'applicable_months': [12],
+            },
+        ],
+    },
 ]
 
 
@@ -709,6 +729,7 @@ def seed_statutory_master_data():
         lwf_count += 1
 
     it_count = seed_income_tax_masters()
+    seed_surcharge_rules()
     return {'professional_tax_rules': pt_count, 'labour_welfare_fund_rules': lwf_count, 'income_tax_masters': it_count}
 
 
@@ -716,33 +737,33 @@ def seed_surcharge_rules(using='default'):
     from decimal import Decimal
 
     from apps.payroll.models import SurchargeRule
-    
+
     surcharge_data = [
         # FY2024-2025 New Regime
         ("2024-2025", "NEW", Decimal("5000000.00"), Decimal("0.00")),
         ("2024-2025", "NEW", Decimal("10000000.00"), Decimal("10.00")),
         ("2024-2025", "NEW", Decimal("20000000.00"), Decimal("15.00")),
         ("2024-2025", "NEW", Decimal("50000000.00"), Decimal("25.00")),
-        
+
         # FY2024-2025 Old Regime
-        ("2024-2025", "OLD", Decimal("5000000.00"), Decimal("0.00")),
+        ("2024-2025", "OLD", Decimal("5000000.00"), Decimal("10.00")),
         ("2024-2025", "OLD", Decimal("10000000.00"), Decimal("10.00")),
         ("2024-2025", "OLD", Decimal("20000000.00"), Decimal("15.00")),
-        ("2024-2025", "OLD", Decimal("50000000.00"), Decimal("25.00")),
-        
+        ("2024-2025", "OLD", Decimal("50000000.00"), Decimal("37.00")),
+
         # FY2025-2026 New Regime
         ("2025-2026", "NEW", Decimal("5000000.00"), Decimal("0.00")),
         ("2025-2026", "NEW", Decimal("10000000.00"), Decimal("10.00")),
         ("2025-2026", "NEW", Decimal("20000000.00"), Decimal("15.00")),
         ("2025-2026", "NEW", Decimal("50000000.00"), Decimal("25.00")),
-        
+
         # FY2025-2026 Old Regime
-        ("2025-2026", "OLD", Decimal("5000000.00"), Decimal("0.00")),
+        ("2025-2026", "OLD", Decimal("5000000.00"), Decimal("10.00")),
         ("2025-2026", "OLD", Decimal("10000000.00"), Decimal("10.00")),
         ("2025-2026", "OLD", Decimal("20000000.00"), Decimal("15.00")),
-        ("2025-2026", "OLD", Decimal("50000000.00"), Decimal("25.00")),
+        ("2025-2026", "OLD", Decimal("50000000.00"), Decimal("37.00")),
     ]
-    
+
     from datetime import date
     created = []
     for fiscal_year, regime, threshold, rate in surcharge_data:

@@ -3,6 +3,9 @@ from decimal import Decimal
 from django.db.models import Sum
 from rest_framework import serializers
 
+from apps.documents.models import Document
+from apps.documents.services import generate_download_url
+
 from .models import (
     SECTION_LIMITS,
     Arrears,
@@ -30,6 +33,7 @@ from .models import (
     TaxCategory,
     TaxRegime,
 )
+from .services import _calculate_fnf_exemption_breakdown
 from .statutory import normalize_fiscal_year_label
 
 
@@ -398,6 +402,8 @@ class PayrollRunItemSerializer(serializers.ModelSerializer):
             'gross_pay',
             'employee_deductions',
             'employer_contributions',
+            'eps_employer',
+            'epf_employer',
             'income_tax',
             'total_deductions',
             'net_pay',
@@ -417,6 +423,8 @@ class PayrollRunItemDetailSerializer(serializers.Serializer):
     gross_pay = serializers.DecimalField(max_digits=12, decimal_places=2)
     employee_deductions = serializers.DecimalField(max_digits=12, decimal_places=2)
     employer_contributions = serializers.DecimalField(max_digits=12, decimal_places=2)
+    eps_employer = serializers.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    epf_employer = serializers.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
     income_tax = serializers.DecimalField(max_digits=12, decimal_places=2)
     total_deductions = serializers.DecimalField(max_digits=12, decimal_places=2)
     net_pay = serializers.DecimalField(max_digits=12, decimal_places=2)
@@ -424,6 +432,7 @@ class PayrollRunItemDetailSerializer(serializers.Serializer):
     message = serializers.CharField(allow_blank=True)
     arrears = serializers.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
     lop_days = serializers.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    epf_employee = serializers.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
     esi_employee = serializers.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
     esi_employer = serializers.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
     pf_employer = serializers.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
@@ -578,6 +587,9 @@ class InvestmentDeclarationSerializer(serializers.ModelSerializer):
     employee_name = serializers.CharField(source='employee.user.full_name', read_only=True)
     verified_by_id = serializers.UUIDField(source='verified_by.id', read_only=True, allow_null=True)
     verified_by_name = serializers.CharField(source='verified_by.full_name', read_only=True, allow_null=True)
+    proof_document_id = serializers.UUIDField(source='proof_document.id', read_only=True, allow_null=True)
+    proof_document_file_name = serializers.CharField(source='proof_document.file_name', read_only=True, allow_null=True)
+    proof_document_url = serializers.SerializerMethodField()
     section_limit = serializers.SerializerMethodField()
 
     class Meta:
@@ -591,6 +603,9 @@ class InvestmentDeclarationSerializer(serializers.ModelSerializer):
             'description',
             'declared_amount',
             'proof_file_key',
+            'proof_document_id',
+            'proof_document_file_name',
+            'proof_document_url',
             'is_verified',
             'verified_by_id',
             'verified_by_name',
@@ -603,11 +618,31 @@ class InvestmentDeclarationSerializer(serializers.ModelSerializer):
         limit = SECTION_LIMITS.get(obj.section)
         return str(limit) if limit is not None else None
 
+    def get_proof_document_url(self, obj):
+        if obj.proof_document_id is None:
+            return None
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        access_context = self.context.get('document_access_context', 'PAYROLL_DECLARATION')
+        if request is not None and user is not None and getattr(user, 'is_authenticated', False):
+            return generate_download_url(
+                obj.proof_document,
+                accessed_by=user,
+                request=request,
+                access_context=access_context,
+            )
+        return generate_download_url(obj.proof_document, access_context=access_context)
+
 
 class FullAndFinalSettlementSerializer(serializers.ModelSerializer):
     employee_id = serializers.UUIDField(source='employee.id', read_only=True)
     employee_name = serializers.CharField(source='employee.user.full_name', read_only=True)
     offboarding_process_id = serializers.UUIDField(source='offboarding_process.id', read_only=True, allow_null=True)
+    fnf_tds = serializers.DecimalField(source='tds_deduction', max_digits=12, decimal_places=2, read_only=True)
+    gratuity_exemption = serializers.SerializerMethodField()
+    gratuity_taxable = serializers.SerializerMethodField()
+    leave_encashment_exemption = serializers.SerializerMethodField()
+    leave_encashment_taxable = serializers.SerializerMethodField()
 
     class Meta:
         model = FullAndFinalSettlement
@@ -624,17 +659,41 @@ class FullAndFinalSettlementSerializer(serializers.ModelSerializer):
             'arrears',
             'other_credits',
             'tds_deduction',
+            'fnf_tds',
             'pf_deduction',
             'loan_recovery',
             'other_deductions',
             'gross_payable',
             'net_payable',
             'notes',
+            'gratuity_exemption',
+            'gratuity_taxable',
+            'leave_encashment_exemption',
+            'leave_encashment_taxable',
             'approved_at',
             'paid_at',
             'created_at',
             'modified_at',
         ]
+
+    def _breakdown(self, obj):
+        return _calculate_fnf_exemption_breakdown(
+            employee=obj.employee,
+            gratuity=obj.gratuity,
+            leave_encashment=obj.leave_encashment,
+        )
+
+    def get_gratuity_exemption(self, obj):
+        return self._breakdown(obj)['gratuity_exemption']
+
+    def get_gratuity_taxable(self, obj):
+        return self._breakdown(obj)['gratuity_taxable']
+
+    def get_leave_encashment_exemption(self, obj):
+        return self._breakdown(obj)['leave_encashment_exemption']
+
+    def get_leave_encashment_taxable(self, obj):
+        return self._breakdown(obj)['leave_encashment_taxable']
 
 
 class ArrearsSerializer(serializers.ModelSerializer):
@@ -664,6 +723,7 @@ class InvestmentDeclarationWriteSerializer(serializers.Serializer):
     description = serializers.CharField(max_length=200)
     declared_amount = serializers.DecimalField(max_digits=12, decimal_places=2)
     proof_file_key = serializers.CharField(required=False, allow_blank=True, allow_null=True, default='')
+    proof_document_id = serializers.UUIDField(required=False, allow_null=True)
 
     def validate_fiscal_year(self, value):
         normalized = normalize_fiscal_year_label(value)
@@ -706,6 +766,21 @@ class InvestmentDeclarationWriteSerializer(serializers.Serializer):
                         )
                     }
                 )
+
+        proof_document_id = attrs.pop('proof_document_id', serializers.empty)
+        if proof_document_id is not serializers.empty:
+            if proof_document_id is None:
+                attrs['proof_document'] = None
+                attrs['proof_file_key'] = ''
+            else:
+                if employee is None:
+                    raise serializers.ValidationError({'proof_document_id': 'An employee context is required to attach proof documents.'})
+                try:
+                    proof_document = Document.objects.get(id=proof_document_id, employee=employee)
+                except Document.DoesNotExist as exc:
+                    raise serializers.ValidationError({'proof_document_id': 'Select a document uploaded under your employee profile.'}) from exc
+                attrs['proof_document'] = proof_document
+                attrs['proof_file_key'] = proof_document.file_key
 
         return attrs
 

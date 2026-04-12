@@ -55,6 +55,9 @@ import {
   fetchMyPayslip,
   fetchMyPayslips,
   fetchMyProfile,
+  fetchMyTeam,
+  fetchMyTeamAttendance,
+  fetchMyTeamLeave,
   getMyDocumentDownloadUrl,
   punchIn,
   punchOut,
@@ -557,9 +560,38 @@ export function useMyEvents() {
   return useQuery({ queryKey: ['me', organisationId, 'events'], queryFn: fetchMyEvents })
 }
 
-export function useMyApprovalInbox() {
+export function useMyTeam() {
   const organisationId = useEmployeeScope()
-  return useQuery({ queryKey: ['me', organisationId, 'approval-inbox'], queryFn: fetchMyApprovalInbox })
+  return useQuery({ queryKey: ['me', organisationId, 'my-team'], queryFn: fetchMyTeam })
+}
+
+export function useMyTeamLeave(filters?: {
+  status?: string
+  fromDate?: string
+  toDate?: string
+  includeIndirect?: boolean
+}) {
+  const organisationId = useEmployeeScope()
+  return useQuery({
+    queryKey: ['me', organisationId, 'my-team-leave', filters?.status, filters?.fromDate, filters?.toDate, filters?.includeIndirect],
+    queryFn: () => fetchMyTeamLeave(filters),
+  })
+}
+
+export function useMyTeamAttendance(targetDate?: string, includeIndirect = false) {
+  const organisationId = useEmployeeScope()
+  return useQuery({
+    queryKey: ['me', organisationId, 'my-team-attendance', targetDate, includeIndirect],
+    queryFn: () => fetchMyTeamAttendance(targetDate, includeIndirect),
+  })
+}
+
+export function useMyApprovalInbox(scope?: 'my_team') {
+  const organisationId = useEmployeeScope()
+  return useQuery({
+    queryKey: ['me', organisationId, 'approval-inbox', scope ?? 'all'],
+    queryFn: () => fetchMyApprovalInbox(scope),
+  })
 }
 
 export function useApproveMyApprovalAction() {

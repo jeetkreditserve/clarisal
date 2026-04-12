@@ -8,9 +8,10 @@ from apps.accounts.permissions import BelongsToActiveOrg, IsOrgAdmin, OrgAdminMu
 from apps.accounts.workspaces import get_active_admin_organisation
 from apps.departments.models import Department
 from apps.employees.models import Employee
+from apps.employees.serializers import EmployeeListSerializer
 from apps.locations.models import OfficeLocation
 
-from .models import Application, ApplicationStage, Candidate, Interview, JobPosting, OfferLetter
+from .models import Application, ApplicationStage, Candidate, Interview, JobPosting, OfferLetter, OfferStatus
 from .serializers import (
     ApplicationSerializer,
     ApplicationStageUpdateSerializer,
@@ -22,7 +23,13 @@ from .serializers import (
     OfferLetterSerializer,
     OfferLetterWriteSerializer,
 )
-from .services import accept_offer_and_onboard, advance_application_stage, create_job_posting, create_offer_letter
+from .services import (
+    accept_offer_and_onboard,
+    advance_application_stage,
+    convert_candidate_to_employee,
+    create_job_posting,
+    create_offer_letter,
+)
 
 
 def _get_admin_organisation(request):
@@ -106,7 +113,9 @@ class OrgCandidateDetailView(APIView):
     def get(self, request, pk):
         organisation = _get_admin_organisation(request)
         candidate = get_object_or_404(
-            Candidate.objects.filter(organisation=organisation).prefetch_related(
+            Candidate.objects.filter(organisation=organisation)
+            .select_related('converted_to_employee__user')
+            .prefetch_related(
                 Prefetch(
                     'applications',
                     queryset=Application.objects.select_related('job_posting', 'offer_letter').prefetch_related(
@@ -117,6 +126,45 @@ class OrgCandidateDetailView(APIView):
             id=pk,
         )
         return Response(CandidateDetailSerializer(candidate).data)
+
+
+class OrgCandidateConvertView(APIView):
+    permission_classes = [IsOrgAdmin, BelongsToActiveOrg, OrgAdminMutationAllowed]
+
+    def post(self, request, pk):
+        organisation = _get_admin_organisation(request)
+        candidate = get_object_or_404(
+            Candidate.objects.select_related('converted_to_employee__user').filter(organisation=organisation),
+            id=pk,
+        )
+        offer = (
+            OfferLetter.objects.filter(
+                application__candidate=candidate,
+                application__job_posting__organisation=organisation,
+                status=OfferStatus.ACCEPTED,
+            )
+            .select_related('application__candidate', 'onboarded_employee__user')
+            .order_by('-accepted_at', '-created_at')
+            .first()
+        )
+        if offer is None:
+            return Response({'error': 'Accepted offer not found for this candidate.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            employee = convert_candidate_to_employee(candidate, offer, actor=request.user)
+        except ValueError as exc:
+            message = str(exc)
+            if message == 'Candidate has already been converted to an employee.':
+                return Response({'error': message}, status=status.HTTP_409_CONFLICT)
+            return Response({'error': message}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(
+            {
+                'employee': EmployeeListSerializer(employee).data,
+                'message': f'Candidate converted to employee invite for {employee.user.email}',
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class OrgApplicationStageView(APIView):

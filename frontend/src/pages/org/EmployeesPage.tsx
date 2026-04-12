@@ -499,7 +499,7 @@ export function EmployeesPage() {
             <AppDatePicker
               id="bulk-date_of_joining"
               value={bulkInviteForm.date_of_joining}
-              onChange={(value) => setBulkInviteForm((current) => ({ ...current, date_of_joining: value }))}
+              onValueChange={(value) => setBulkInviteForm((current) => ({ ...current, date_of_joining: value }))}
             />
           </div>
           <div>

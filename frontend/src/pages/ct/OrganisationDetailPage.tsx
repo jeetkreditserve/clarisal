@@ -116,6 +116,7 @@ import {
   getSubdivisionOptions,
   resolveSubdivisionCode,
 } from '@/lib/addressMetadata'
+import { WIZARD_STEPS, getWizardResumeStepIndex } from '@/lib/ctOnboardingWizard'
 import { getErrorMessage } from '@/lib/errors'
 import { formatDate, formatDateTime, startCase } from '@/lib/format'
 import {
@@ -892,6 +893,10 @@ export function OrganisationDetailPage() {
     const currentIndex = ORG_ONBOARDING_STEPS.findIndex((step) => step.id === organisation?.onboarding_stage)
     return currentIndex >= 0 ? currentIndex : 0
   }, [organisation?.onboarding_stage])
+  const wizardResumeStepIndex = useMemo(
+    () => getWizardResumeStepIndex(organisation, onboardingProgress),
+    [organisation, onboardingProgress],
+  )
 
   const onlyDraftBatch =
     organisation?.licence_batches.length === 1 && organisation.licence_batches[0].payment_status === 'DRAFT'
@@ -3267,6 +3272,20 @@ export function OrganisationDetailPage() {
         <DetailMetric label="Employees" value={String(organisation.employee_count)} helper={`${organisation.admin_count} org admins`} />
         <DetailMetric label="Holiday calendars" value={String(organisation.holiday_calendar_count)} helper={`${organisation.note_count} CT notes`} />
       </div>
+
+      {wizardResumeStepIndex < WIZARD_STEPS.length ? (
+        <div className="rounded-[24px] border border-[hsl(var(--brand)_/_0.26)] bg-[hsl(var(--brand)_/_0.08)] px-5 py-4 text-sm text-[hsl(var(--foreground-strong))]">
+          <p className="font-semibold">This organisation still has guided onboarding work pending.</p>
+          <p className="mt-1 text-[hsl(var(--muted-foreground))]">
+            Re-open the wizard to continue from the next unresolved Control Tower step instead of piecing setup together across tabs.
+          </p>
+          <div className="mt-4">
+            <Link className="btn-primary" to={`/ct/organisations/new?organisationId=${organisation.id}`}>
+              Resume onboarding wizard
+            </Link>
+          </div>
+        </div>
+      ) : null}
 
       {isImpersonatingThisOrg ? (
         <div className="rounded-[24px] border border-[hsl(var(--warning)_/_0.32)] bg-[hsl(var(--warning)_/_0.12)] px-5 py-4 text-sm text-[hsl(var(--foreground-strong))]">

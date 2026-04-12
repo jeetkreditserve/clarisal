@@ -189,6 +189,110 @@ function renderPage() {
   )
 }
 
+function makeOrganisationDetail(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'org-1',
+    name: 'Acme Workforce',
+    slug: 'acme-workforce',
+    status: 'ACTIVE',
+    billing_status: 'PAID',
+    access_state: 'ACTIVE',
+    onboarding_stage: 'EMPLOYEES_INVITED',
+    licence_count: 25,
+    country_code: 'IN',
+    currency: 'INR',
+    entity_type: 'PRIVATE_LIMITED',
+    entity_type_label: 'Private Limited',
+    pan_number: 'ABCDE1234F', // pragma: allowlist secret
+    address: 'Bengaluru',
+    phone: '',
+    email: '',
+    logo_url: null,
+    primary_admin_email: 'admin@example.com',
+    primary_admin: null,
+    bootstrap_admin: null,
+    paid_marked_at: '2026-04-01T00:00:00Z',
+    activated_at: '2026-04-02T00:00:00Z',
+    suspended_at: null,
+    created_by_email: 'ct@example.com',
+    created_at: '2026-04-01T00:00:00Z',
+    modified_at: '2026-04-07T00:00:00Z',
+    admin_count: 2,
+    employee_count: 10,
+    holiday_calendar_count: 1,
+    note_count: 2,
+    configuration_summary: {
+      locations: 0,
+      departments: 0,
+      leave_cycles: 0,
+      leave_plans: 0,
+      on_duty_policies: 0,
+      approval_workflows: 0,
+      notices: 0,
+    },
+    operations_guard: {
+      licence_expired: false,
+      admin_mutations_blocked: false,
+      approval_actions_blocked: false,
+      seat_assignment_blocked: false,
+      reason: '',
+      summary: {
+        active_paid_quantity: 25,
+        allocated: 10,
+        available: 15,
+        overage: 0,
+        has_overage: false,
+        utilisation_percent: 40,
+      },
+    },
+    feature_flags: [],
+    addresses: [],
+    legal_identifiers: [],
+    tax_registrations: [],
+    state_transitions: [],
+    lifecycle_events: [],
+    licence_ledger_entries: [],
+    licence_summary: {
+      active_paid_quantity: 25,
+      allocated: 10,
+      available: 15,
+      overage: 0,
+      has_overage: false,
+      utilisation_percent: 40,
+    },
+    licence_batches: [
+      {
+        id: 'batch-1',
+        quantity: 25,
+        price_per_licence_per_month: '1000.00',
+        start_date: '2026-04-01',
+        end_date: '2026-04-30',
+        billing_months: 1,
+        total_amount: '25000.00',
+        payment_status: 'PAID',
+        lifecycle_state: 'ACTIVE',
+        note: '',
+        payment_provider: 'RAZORPAY',
+        payment_reference: 'pay_1',
+        invoice_reference: 'inv_1',
+        created_by_email: 'ct@example.com',
+        paid_by_email: 'ct@example.com',
+        paid_at: '2026-04-01',
+        created_at: '2026-04-01T00:00:00Z',
+        modified_at: '2026-04-01T00:00:00Z',
+      },
+    ],
+    batch_defaults: {
+      start_date: '2026-05-01',
+      end_date: '2026-05-31',
+      price_per_licence_per_month: '1000.00',
+      billing_months: 1,
+      total_amount: '25000.00',
+    },
+    ...overrides,
+  }
+}
+
 describe('OrganisationDetailPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -196,106 +300,7 @@ describe('OrganisationDetailPage', () => {
 
     useOrganisation.mockReturnValue({
       isLoading: false,
-      data: {
-        id: 'org-1',
-        name: 'Acme Workforce',
-        slug: 'acme-workforce',
-        status: 'ACTIVE',
-        billing_status: 'PAID',
-        access_state: 'ACTIVE',
-        onboarding_stage: 'EMPLOYEES_INVITED',
-        licence_count: 25,
-        country_code: 'IN',
-        currency: 'INR',
-        entity_type: 'PRIVATE_LIMITED',
-        entity_type_label: 'Private Limited',
-        pan_number: 'ABCDE1234F',
-        address: 'Bengaluru',
-        phone: '',
-        email: '',
-        logo_url: null,
-        primary_admin_email: 'admin@example.com',
-        primary_admin: null,
-        bootstrap_admin: null,
-        paid_marked_at: '2026-04-01T00:00:00Z',
-        activated_at: '2026-04-02T00:00:00Z',
-        suspended_at: null,
-        created_by_email: 'ct@example.com',
-        created_at: '2026-04-01T00:00:00Z',
-        modified_at: '2026-04-07T00:00:00Z',
-        admin_count: 2,
-        employee_count: 10,
-        holiday_calendar_count: 1,
-        note_count: 2,
-        configuration_summary: {
-          locations: 0,
-          departments: 0,
-          leave_cycles: 0,
-          leave_plans: 0,
-          on_duty_policies: 0,
-          approval_workflows: 0,
-          notices: 0,
-        },
-        operations_guard: {
-          licence_expired: false,
-          admin_mutations_blocked: false,
-          approval_actions_blocked: false,
-          seat_assignment_blocked: false,
-          reason: '',
-          summary: {
-            active_paid_quantity: 25,
-            allocated: 10,
-            available: 15,
-            overage: 0,
-            has_overage: false,
-            utilisation_percent: 40,
-          },
-        },
-        feature_flags: [],
-        addresses: [],
-        legal_identifiers: [],
-        tax_registrations: [],
-        state_transitions: [],
-        lifecycle_events: [],
-        licence_ledger_entries: [],
-        licence_summary: {
-          active_paid_quantity: 25,
-          allocated: 10,
-          available: 15,
-          overage: 0,
-          has_overage: false,
-          utilisation_percent: 40,
-        },
-        licence_batches: [
-          {
-            id: 'batch-1',
-            quantity: 25,
-            price_per_licence_per_month: '1000.00',
-            start_date: '2026-04-01',
-            end_date: '2026-04-30',
-            billing_months: 1,
-            total_amount: '25000.00',
-            payment_status: 'PAID',
-            lifecycle_state: 'ACTIVE',
-            note: '',
-            payment_provider: 'RAZORPAY',
-            payment_reference: 'pay_1',
-            invoice_reference: 'inv_1',
-            created_by_email: 'ct@example.com',
-            paid_by_email: 'ct@example.com',
-            paid_at: '2026-04-01',
-            created_at: '2026-04-01T00:00:00Z',
-            modified_at: '2026-04-01T00:00:00Z',
-          },
-        ],
-        batch_defaults: {
-          start_date: '2026-05-01',
-          end_date: '2026-05-31',
-          price_per_licence_per_month: '1000.00',
-          billing_months: 1,
-          total_amount: '25000.00',
-        },
-      },
+      data: makeOrganisationDetail(),
     })
     useOrgAdmins.mockReturnValue({ data: [] })
     useCtOrgEmployees.mockReturnValue({ isLoading: false, data: { count: 0, next: null, previous: null, results: [] } })
@@ -444,5 +449,56 @@ describe('OrganisationDetailPage', () => {
       expect(createExport).toHaveBeenCalledWith({ export_type: 'EMPLOYEES' })
     })
     expect(toastSuccess).toHaveBeenCalledWith('Employees CSV requested.')
+  })
+
+  it('shows a resume onboarding banner for incomplete wizard setups', () => {
+    useOrganisation.mockReturnValue({
+      isLoading: false,
+      data: makeOrganisationDetail({
+        status: 'PENDING',
+        billing_status: 'PENDING_PAYMENT',
+        access_state: 'PROVISIONING',
+        onboarding_stage: 'ORG_CREATED',
+        licence_batches: [],
+        licence_summary: {
+          active_paid_quantity: 0,
+          allocated: 0,
+          available: 0,
+          overage: 0,
+          has_overage: false,
+          utilisation_percent: 0,
+        },
+      }),
+    })
+    useCtOrgOnboardingProgress.mockReturnValue({
+      isLoading: false,
+      data: {
+        current_stage: 'ORG_CREATED',
+        completed_count: 1,
+        total_count: 8,
+        percent_complete: 13,
+        steps: [
+          {
+            step: 'ADMINS',
+            label: 'Admins',
+            is_completed: false,
+            completed_at: null,
+            completion_source: null,
+            blockers: ['No active organisation admin'],
+            can_reset: false,
+            is_actionable: true,
+            action: 'admins',
+          },
+        ],
+      },
+    })
+
+    renderPage()
+
+    expect(screen.getByText('Resume onboarding wizard')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Resume onboarding wizard' })).toHaveAttribute(
+      'href',
+      '/ct/organisations/new?organisationId=org-1',
+    )
   })
 })

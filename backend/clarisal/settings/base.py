@@ -40,6 +40,7 @@ THIRD_PARTY_APPS = [
 
 LOCAL_APPS = [
     'apps.accounts',
+    'apps.access_control',
     'apps.common',
     'apps.organisations',
     'apps.invitations',
@@ -199,6 +200,9 @@ CSRF_TRUSTED_ORIGINS = env.list(
 )
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 USE_X_FORWARDED_HOST = True
+SECURE_BROWSER_XSS_FILTER = True
+SECURE_CONTENT_TYPE_NOSNIFF = True
+X_FRAME_OPTIONS = 'DENY'
 SESSION_COOKIE_NAME = 'clarisal_sessionid'
 SESSION_COOKIE_AGE = env.int('SESSION_COOKIE_AGE', default=60 * 60 * 12)
 SESSION_COOKIE_HTTPONLY = True
@@ -262,6 +266,10 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'timeoff.run_leave_lapse_for_all_active_cycles',
         'schedule': 86400,  # once daily (1 am handled by Celery beat offset in production)
     },
+    'send-document-expiry-alerts-daily': {
+        'task': 'documents.send_document_expiry_alerts',
+        'schedule': 86400,
+    },
 }
 
 # Email
@@ -292,7 +300,14 @@ FRONTEND_URL = env('FRONTEND_URL', default='http://localhost:8080')
 INVITE_TOKEN_EXPIRY_HOURS = env.int('INVITE_TOKEN_EXPIRY_HOURS', default=48)
 PASSWORD_RESET_TOKEN_EXPIRY_MINUTES = env.int('PASSWORD_RESET_TOKEN_EXPIRY_MINUTES', default=30)
 DEFAULT_LICENCE_PRICE_PER_MONTH = Decimal(str(env('DEFAULT_LICENCE_PRICE_PER_MONTH', default='50.00')))
+RAZORPAY_KEY_ID = env('RAZORPAY_KEY_ID', default='')
+RAZORPAY_KEY_SECRET = env('RAZORPAY_KEY_SECRET', default='')
 RAZORPAY_WEBHOOK_SECRET = env('RAZORPAY_WEBHOOK_SECRET', default='')
+STRIPE_SECRET_KEY = env('STRIPE_SECRET_KEY', default='')
+STRIPE_WEBHOOK_SECRET = env('STRIPE_WEBHOOK_SECRET', default='')
+STRIPE_API_VERSION = env('STRIPE_API_VERSION', default='2026-02-25.clover')
+BILLING_DEFAULT_CURRENCY = env('BILLING_DEFAULT_CURRENCY', default='INR')
+BILLING_GST_RATE = Decimal(str(env('BILLING_GST_RATE', default='0.18')))
 
 # ---------------------------------------------------------------------------
 # Sentry

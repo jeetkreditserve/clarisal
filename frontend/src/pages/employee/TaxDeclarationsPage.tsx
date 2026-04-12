@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Download } from 'lucide-react'
 import { toast } from 'sonner'
 
+import { DocumentUploadWidget } from '@/components/DocumentUploadWidget'
 import { AppSelect } from '@/components/ui/AppSelect'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -48,7 +49,9 @@ export function TaxDeclarationsPage() {
     section: '80C',
     description: '',
     declared_amount: '',
-    proof_file_key: '',
+    proof_document_id: null as string | null,
+    proof_document_file_name: null as string | null,
+    proof_document_url: null as string | null,
   })
 
   const { data: declarations = [], isLoading } = useMyInvestmentDeclarations()
@@ -74,7 +77,9 @@ export function TaxDeclarationsPage() {
       section: '80C',
       description: '',
       declared_amount: '',
-      proof_file_key: '',
+      proof_document_id: null,
+      proof_document_file_name: null,
+      proof_document_url: null,
     })
   }
 
@@ -85,7 +90,7 @@ export function TaxDeclarationsPage() {
       section: form.section,
       description: form.description,
       declared_amount: form.declared_amount,
-      proof_file_key: form.proof_file_key,
+      proof_document_id: form.proof_document_id,
     }
 
     try {
@@ -112,9 +117,42 @@ export function TaxDeclarationsPage() {
       section: declaration.section,
       description: declaration.description,
       declared_amount: declaration.declared_amount,
-      proof_file_key: declaration.proof_file_key ?? '',
+      proof_document_id: declaration.proof_document_id,
+      proof_document_file_name: declaration.proof_document_file_name,
+      proof_document_url: declaration.proof_document_url,
     })
     setSelectedFiscalYear(declaration.fiscal_year)
+  }
+
+  const handleProofUpload = async (document: {
+    id: string
+    file_name: string
+  }) => {
+    if (editingId) {
+      try {
+        const updated = await updateMutation.mutateAsync({
+          id: editingId,
+          payload: { proof_document_id: document.id },
+        })
+        setForm((current) => ({
+          ...current,
+          proof_document_id: updated.proof_document_id,
+          proof_document_file_name: updated.proof_document_file_name,
+          proof_document_url: updated.proof_document_url,
+        }))
+        toast.success('Proof document linked.')
+      } catch (error) {
+        toast.error(getErrorMessage(error, 'Unable to link the proof document.'))
+      }
+      return
+    }
+
+    setForm((current) => ({
+      ...current,
+      proof_document_id: document.id,
+      proof_document_file_name: document.file_name,
+      proof_document_url: null,
+    }))
   }
 
   const handleDelete = async (id: string) => {
@@ -222,18 +260,13 @@ export function TaxDeclarationsPage() {
                 placeholder="150000.00"
               />
             </div>
-            <div>
-              <label className="field-label" htmlFor="tax-declaration-proof">
-                Proof file key
-              </label>
-              <input
-                id="tax-declaration-proof"
-                className="field-input"
-                value={form.proof_file_key}
-                onChange={(event) => setForm((current) => ({ ...current, proof_file_key: event.target.value }))}
-                placeholder="Optional storage key"
-              />
-            </div>
+            <DocumentUploadWidget
+              id="tax-declaration-proof"
+              label="Proof document"
+              existingFileName={form.proof_document_file_name}
+              existingDownloadUrl={form.proof_document_url}
+              onUpload={(document) => handleProofUpload(document)}
+            />
             <div className="flex flex-wrap gap-3">
               <button type="submit" className="btn-primary" disabled={createMutation.isPending || updateMutation.isPending}>
                 {editingId ? 'Update declaration' : 'Save declaration'}
@@ -286,6 +319,21 @@ export function TaxDeclarationsPage() {
                       <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
                         {declaration.verified_by_name ? `Reviewed by ${declaration.verified_by_name}` : 'Awaiting payroll review'}
                       </p>
+                      {declaration.proof_document_file_name ? (
+                        <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
+                          Proof document:{' '}
+                          {declaration.proof_document_url ? (
+                            <a
+                              href={declaration.proof_document_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-[hsl(var(--brand))] hover:text-[hsl(var(--brand-strong))]"
+                            >
+                              {declaration.proof_document_file_name}
+                            </a>
+                          ) : declaration.proof_document_file_name}
+                        </p>
+                      ) : null}
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <button type="button" className="btn-secondary" onClick={() => handleEdit(declaration.id)}>

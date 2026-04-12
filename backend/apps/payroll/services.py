@@ -69,6 +69,7 @@ from .models import (
 )
 from .statutory import (
     ESI_WAGE_CEILING,
+    GRATUITY_STATUTORY_CEILING,
     INDIA_STANDARD_DEDUCTION,
     PF_RATE,
     PF_WAGE_CEILING,
@@ -90,12 +91,15 @@ from .statutory import (
 )
 
 ZERO = Decimal('0.00')
+FNF_LEAVE_ENCASHMENT_EXEMPTION_CEILING = Decimal('2500000.00')
 PF_OPT_OUT_NEW_JOINER_CUTOFF = date(2014, 9, 1)
 PAYROLL_STATE_CODE_ALIASES = {
     'OR': 'OD',
     'OD': 'OD',
     'CG': 'CT',
     'CT': 'CT',
+    'TS': 'TG',
+    'TG': 'TG',
 }
 
 
@@ -426,6 +430,203 @@ def calculate_taxable_income_with_investments(*, employee, annual_gross, fiscal_
     return max(ZERO, after_standard_deduction - total_deductions).quantize(Decimal('0.01'))
 
 
+def _is_government_body_employee(employee: Employee) -> bool:
+    return getattr(employee.organisation, 'entity_type', '') == 'GOVERNMENT_BODY'
+
+
+def _calculate_fnf_exemption_breakdown(*, employee, gratuity, leave_encashment):
+    gratuity_amount = _normalize_decimal(gratuity) or ZERO
+    leave_encashment_amount = _normalize_decimal(leave_encashment) or ZERO
+    if _is_government_body_employee(employee):
+        gratuity_exemption = gratuity_amount
+        leave_encashment_exemption = leave_encashment_amount
+    else:
+        gratuity_exemption = min(gratuity_amount, GRATUITY_STATUTORY_CEILING).quantize(Decimal('0.01'))
+        leave_encashment_exemption = min(
+            leave_encashment_amount,
+            FNF_LEAVE_ENCASHMENT_EXEMPTION_CEILING,
+        ).quantize(Decimal('0.01'))
+    gratuity_taxable = max(ZERO, gratuity_amount - gratuity_exemption).quantize(Decimal('0.01'))
+    leave_encashment_taxable = max(ZERO, leave_encashment_amount - leave_encashment_exemption).quantize(Decimal('0.01'))
+    return {
+        'gratuity_exemption': gratuity_exemption,
+        'gratuity_taxable': gratuity_taxable,
+        'leave_encashment_exemption': leave_encashment_exemption,
+        'leave_encashment_taxable': leave_encashment_taxable,
+    }
+
+
+def _sum_taxable_snapshot_earnings(snapshot: dict[str, Any] | None) -> Decimal:
+    data = snapshot or {}
+    taxable_lines_total = ZERO
+    for line in data.get('lines') or []:
+        if line.get('component_type') != PayrollComponentType.EARNING:
+            continue
+        if not line.get('is_taxable', True):
+            continue
+        taxable_lines_total += _normalize_decimal(line.get('monthly_amount')) or ZERO
+    if taxable_lines_total > ZERO:
+        return taxable_lines_total.quantize(Decimal('0.01'))
+    return (_normalize_decimal(data.get('gross_pay')) or ZERO).quantize(Decimal('0.01'))
+
+
+def _get_fnf_ytd_tax_context(*, employee, last_working_day: date) -> tuple[Decimal, Decimal]:
+    fiscal_year = _fiscal_year_for_period(last_working_day.year, last_working_day.month)
+    start_date, end_date = fiscal_year_bounds(fiscal_year)
+    payslips = employee.payslips.select_related('pay_run', 'pay_run_item').filter(
+        pay_run__status=PayrollRunStatus.FINALIZED,
+    ).filter(
+        Q(period_year=start_date.year, period_month__gte=start_date.month)
+        | Q(period_year=end_date.year, period_month__lte=end_date.month)
+        | Q(period_year__gt=start_date.year, period_year__lt=end_date.year)
+    ).filter(
+        Q(period_year__lt=last_working_day.year)
+        | Q(period_year=last_working_day.year, period_month__lte=last_working_day.month)
+    )
+
+    ytd_taxable_income = ZERO
+    existing_ytd_tds = ZERO
+    for payslip in payslips:
+        ytd_taxable_income += _sum_taxable_snapshot_earnings(payslip.snapshot)
+        existing_ytd_tds += _normalize_decimal(
+            (payslip.snapshot or {}).get('income_tax', getattr(payslip.pay_run_item, 'income_tax', ZERO))
+        ) or ZERO
+    return ytd_taxable_income.quantize(Decimal('0.01')), existing_ytd_tds.quantize(Decimal('0.01'))
+
+
+def _calculate_fnf_tax_breakdown(
+    *,
+    employee,
+    last_working_day: date,
+    gratuity,
+    leave_encashment,
+    other_taxable_income,
+    tax_regime: str | None = None,
+    existing_ytd_tds: Decimal | None = None,
+    ytd_taxable_income: Decimal | None = None,
+):
+    exemption_breakdown = _calculate_fnf_exemption_breakdown(
+        employee=employee,
+        gratuity=gratuity,
+        leave_encashment=leave_encashment,
+    )
+    fiscal_year = _fiscal_year_for_period(last_working_day.year, last_working_day.month)
+    assignment = get_effective_compensation_assignment(employee, last_working_day)
+    effective_tax_regime = tax_regime or getattr(assignment, 'tax_regime', TaxRegime.NEW)
+    taxable_other_income = (_normalize_decimal(other_taxable_income) or ZERO).quantize(Decimal('0.01'))
+    total_taxable_fnf = (
+        exemption_breakdown['gratuity_taxable']
+        + exemption_breakdown['leave_encashment_taxable']
+        + taxable_other_income
+    ).quantize(Decimal('0.01'))
+
+    if ytd_taxable_income is None or existing_ytd_tds is None:
+        derived_ytd_taxable_income, derived_existing_ytd_tds = _get_fnf_ytd_tax_context(
+            employee=employee,
+            last_working_day=last_working_day,
+        )
+        if ytd_taxable_income is None:
+            ytd_taxable_income = derived_ytd_taxable_income
+        if existing_ytd_tds is None:
+            existing_ytd_tds = derived_existing_ytd_tds
+
+    ytd_taxable_income = (_normalize_decimal(ytd_taxable_income) or ZERO).quantize(Decimal('0.01'))
+    existing_ytd_tds = (_normalize_decimal(existing_ytd_tds) or ZERO).quantize(Decimal('0.01'))
+    annual_taxable_gross = (ytd_taxable_income + total_taxable_fnf).quantize(Decimal('0.01'))
+
+    tax_category = tax_category_for_fiscal_year(employee, fiscal_year)
+    tax_slab_set = _get_active_tax_slab_set(
+        fiscal_year,
+        organisation=employee.organisation,
+        tax_regime=effective_tax_regime,
+        tax_category=tax_category,
+    )
+    if tax_slab_set is None and effective_tax_regime == TaxRegime.NEW:
+        _ensure_global_default_tax_master(fiscal_year=fiscal_year)
+        tax_slab_set = _get_active_tax_slab_set(
+            fiscal_year,
+            organisation=employee.organisation,
+            tax_regime=effective_tax_regime,
+            tax_category=tax_category,
+        )
+
+    if tax_slab_set is None:
+        return {
+            **exemption_breakdown,
+            'fiscal_year': fiscal_year,
+            'tax_regime': effective_tax_regime,
+            'other_taxable_income': taxable_other_income,
+            'ytd_taxable_income': ytd_taxable_income,
+            'existing_ytd_tds': existing_ytd_tds,
+            'total_taxable_fnf': total_taxable_fnf,
+            'annual_taxable_gross': annual_taxable_gross,
+            'annual_taxable_after_sd': ZERO,
+            'annual_tax_before_rebate': ZERO,
+            'annual_rebate_87a': ZERO,
+            'annual_surcharge': ZERO,
+            'annual_tax_before_cess': ZERO,
+            'annual_cess': ZERO,
+            'annual_tax_total': ZERO,
+            'fnf_tds': ZERO,
+        }
+
+    annual_taxable_after_sd = calculate_taxable_income_with_investments(
+        employee=employee,
+        annual_gross=annual_taxable_gross,
+        fiscal_year=fiscal_year,
+        tax_regime=effective_tax_regime,
+    )
+    annual_tax_breakdown = calculate_income_tax_with_rebate(
+        taxable_income=annual_taxable_after_sd,
+        tax_slab_set=tax_slab_set,
+        surcharge_tiers=surcharge_tiers_for_regime(effective_tax_regime),
+        rebate_threshold=get_rebate_87a_params(fiscal_year, effective_tax_regime)[0],
+        rebate_max=get_rebate_87a_params(fiscal_year, effective_tax_regime)[1],
+    )
+    fnf_tds = max(ZERO, annual_tax_breakdown['annual_tax'] - existing_ytd_tds).quantize(Decimal('0.01'))
+    return {
+        **exemption_breakdown,
+        'fiscal_year': fiscal_year,
+        'tax_regime': effective_tax_regime,
+        'other_taxable_income': taxable_other_income,
+        'ytd_taxable_income': ytd_taxable_income,
+        'existing_ytd_tds': existing_ytd_tds,
+        'total_taxable_fnf': total_taxable_fnf,
+        'annual_taxable_gross': annual_taxable_gross,
+        'annual_taxable_after_sd': annual_taxable_after_sd,
+        'annual_tax_before_rebate': annual_tax_breakdown['tax_before_rebate'],
+        'annual_rebate_87a': annual_tax_breakdown['rebate_87a'],
+        'annual_surcharge': annual_tax_breakdown['surcharge'],
+        'annual_tax_before_cess': annual_tax_breakdown['tax_after_rebate'],
+        'annual_cess': annual_tax_breakdown['cess'],
+        'annual_tax_total': annual_tax_breakdown['annual_tax'],
+        'fnf_tds': fnf_tds,
+    }
+
+
+def _calculate_fnf_tds(
+    *,
+    employee,
+    last_working_day: date,
+    gratuity,
+    leave_encashment,
+    other_taxable_income,
+    tax_regime: str | None = None,
+    existing_ytd_tds: Decimal | None = None,
+    ytd_taxable_income: Decimal | None = None,
+) -> Decimal:
+    return _calculate_fnf_tax_breakdown(
+        employee=employee,
+        last_working_day=last_working_day,
+        gratuity=gratuity,
+        leave_encashment=leave_encashment,
+        other_taxable_income=other_taxable_income,
+        tax_regime=tax_regime,
+        existing_ytd_tds=existing_ytd_tds,
+        ytd_taxable_income=ytd_taxable_income,
+    )['fnf_tds']
+
+
 def _get_assignment_monthly_amounts(assignment):
     gross_monthly_salary = ZERO
     monthly_basic_salary = ZERO
@@ -462,6 +663,7 @@ def _calculate_fnf_totals(employee, last_working_day, *, settlement=None):
             'prorated_salary': ZERO,
             'leave_encashment': ZERO,
             'gratuity': ZERO,
+            'tds_deduction': tds_deduction,
             'gross_payable': gross_payable,
             'net_payable': net_payable,
         }
@@ -506,17 +708,27 @@ def _calculate_fnf_totals(employee, last_working_day, *, settlement=None):
         date_of_joining=employee.date_of_joining,
         last_working_day=last_working_day,
     )
-    if _completed_service_years(employee.date_of_joining, last_working_day) >= 5:
+    eligibility_threshold = getattr(settings, 'GRATUITY_ELIGIBILITY_YEARS', 5)
+    if gratuity_service_years >= eligibility_threshold:
         gratuity = calculate_gratuity_amount(
             last_basic_salary=monthly_basic_salary,
             years_of_service=gratuity_service_years,
         )
+    tds_deduction = _calculate_fnf_tds(
+        employee=employee,
+        last_working_day=last_working_day,
+        gratuity=gratuity,
+        leave_encashment=leave_encashment,
+        other_taxable_income=(prorated_salary + arrears + other_credits).quantize(Decimal('0.01')),
+        tax_regime=getattr(assignment, 'tax_regime', TaxRegime.NEW),
+    )
     gross_payable = (prorated_salary + leave_encashment + gratuity + arrears + other_credits).quantize(Decimal('0.01'))
     net_payable = max(ZERO, gross_payable - tds_deduction - pf_deduction - loan_recovery - other_deductions).quantize(Decimal('0.01'))
     return {
         'prorated_salary': prorated_salary,
         'leave_encashment': leave_encashment,
         'gratuity': gratuity,
+        'tds_deduction': tds_deduction,
         'gross_payable': gross_payable,
         'net_payable': net_payable,
     }
@@ -533,6 +745,7 @@ def create_full_and_final_settlement(employee, last_working_day: date, initiated
             'prorated_salary': totals['prorated_salary'],
             'leave_encashment': totals['leave_encashment'],
             'gratuity': totals['gratuity'],
+            'tds_deduction': totals['tds_deduction'],
             'gross_payable': totals['gross_payable'],
             'net_payable': totals['net_payable'],
             'created_by': initiated_by,
@@ -548,7 +761,7 @@ def create_full_and_final_settlement(employee, last_working_day: date, initiated
         update_fields.append('offboarding_process')
     if fnf.status == FNFStatus.DRAFT:
         totals = _calculate_fnf_totals(employee, last_working_day, settlement=fnf)
-        for field_name in ('prorated_salary', 'leave_encashment', 'gratuity', 'gross_payable', 'net_payable'):
+        for field_name in ('prorated_salary', 'leave_encashment', 'gratuity', 'tds_deduction', 'gross_payable', 'net_payable'):
             if getattr(fnf, field_name) != totals[field_name]:
                 setattr(fnf, field_name, totals[field_name])
                 update_fields.append(field_name)
@@ -1433,6 +1646,8 @@ def calculate_pay_run(pay_run, *, actor=None):
             # ── Step 2: PF auto-calculation with wage ceiling, opt-out, and VPF ──
             auto_pf = ZERO
             pf_employer = ZERO
+            epf_employer = ZERO
+            eps_employer = ZERO
             pf_eligible_basic = ZERO
             pf_employee_rate_percent = assignment.vpf_rate_percent if not assignment.is_pf_opted_out else ZERO
             pf_is_opted_out = bool(
@@ -1451,6 +1666,8 @@ def calculate_pay_run(pay_run, *, actor=None):
                 pf_eligible_basic = pf_contributions['eligible_basic']
                 auto_pf = pf_contributions['employee']
                 pf_employer = pf_contributions['employer']
+                epf_employer = pf_contributions.get('epf_employer', ZERO)
+                eps_employer = pf_contributions.get('eps_employer', ZERO)
                 raw_employee_deductions += pf_contributions['employee']
                 raw_employer_contributions += pf_contributions['employer']
                 pf_employee_label = (
@@ -1707,7 +1924,8 @@ def calculate_pay_run(pay_run, *, actor=None):
             )
 
             # ── Step 7: Income tax with standard deduction + cess ────────────
-            annual_taxable_gross = (taxable_monthly * Decimal('12.00')).quantize(Decimal('0.01'))
+            months_remaining = _months_remaining_in_fiscal_year(pay_run.period_month)
+            annual_taxable_gross = (taxable_monthly * Decimal(str(months_remaining))).quantize(Decimal('0.01'))
             annual_standard_deduction = INDIA_STANDARD_DEDUCTION
             annual_taxable_after_sd = calculate_taxable_income_with_investments(
                 employee=employee,
@@ -1732,7 +1950,7 @@ def calculate_pay_run(pay_run, *, actor=None):
             annual_tax_before_cess = annual_tax_breakdown['tax_after_rebate']
             annual_cess = annual_tax_breakdown['cess']
             annual_tax_total = annual_tax_breakdown['annual_tax']
-            income_tax = (annual_tax_total / Decimal(str(_months_remaining_in_fiscal_year(pay_run.period_month)))).quantize(Decimal('0.01'))
+            income_tax = (annual_tax_total / Decimal(str(months_remaining))).quantize(Decimal('0.01'))
 
             # ── Step 8: Final totals ─────────────────────────────────────────
             expense_claims = expense_claims_by_employee.get(employee.id, [])
@@ -1751,6 +1969,8 @@ def calculate_pay_run(pay_run, *, actor=None):
                 gross_pay=gross_pay.quantize(Decimal('0.01')),
                 employee_deductions=employee_deductions.quantize(Decimal('0.01')),
                 employer_contributions=employer_contributions.quantize(Decimal('0.01')),
+                eps_employer=eps_employer.quantize(Decimal('0.01')),
+                epf_employer=epf_employer.quantize(Decimal('0.01')),
                 income_tax=income_tax,
                 total_deductions=total_deductions,
                 net_pay=net_pay,
@@ -1772,6 +1992,8 @@ def calculate_pay_run(pay_run, *, actor=None):
                     # Auto-calculated statutory
                     'auto_pf': str(auto_pf),
                     'pf_employer': str(pf_employer),
+                    'eps_employer': str(eps_employer),
+                    'epf_employer': str(epf_employer),
                     'pf_eligible_basic': str(pf_eligible_basic),
                     'pf_employee_rate_percent': str(pf_employee_rate_percent),
                     'pf_is_opted_out': pf_is_opted_out,

@@ -231,10 +231,6 @@ export function PayslipsPage() {
                     </div>
                   </div>
                 </div>
-                <div className="surface-shell rounded-[18px] px-4 py-4">
-                  <p className="text-sm font-semibold text-[hsl(var(--foreground-strong))]">Raw generated text</p>
-                  <pre className="mt-3 overflow-x-auto text-sm text-[hsl(var(--foreground-strong))]">{selectedPayslip.rendered_text}</pre>
-                </div>
               </div>
             ) : (
               <EmptyState title="Select a payslip" description="Choose a payslip from the filtered list to inspect the finalized snapshot." />
