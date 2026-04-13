@@ -446,12 +446,11 @@ export function PayrollMastersPage() {
   }, {})
   const sortedYears = Object.keys(byFiscalYear).sort().reverse()
 
-  // Collect all existing years for display; also allow creating for any new year
+  // Always default to currentYear-nextYear.
+  // Jan–Mar: this resolves to the upcoming FY (budget season, pre-configure before April).
+  // Apr–Dec: this resolves to the active FY.
   const currentYear = new Date().getFullYear()
-  const defaultFiscalYear =
-    new Date().getMonth() >= 3
-      ? `${currentYear}-${currentYear + 1}`
-      : `${currentYear - 1}-${currentYear}`
+  const defaultFiscalYear = `${currentYear}-${currentYear + 1}`
 
   function handleCreate(form: MasterFormState) {
     const payload = {
